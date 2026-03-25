@@ -324,6 +324,10 @@ function genStmt(id: int) {
     const kind = nGetKind(id)
 
     if (kind == "FUNC_DECL") {
+        const fname = nGetS1(id)
+        // Skip duplicate function declarations (from merged imports)
+        if (fname != "main" && funcRetTypes.has(fname + "_generated") == 1) { return }
+        funcRetTypes.set(fname + "_generated", "1")
         genFuncDecl(id)
         return
     }
@@ -490,6 +494,7 @@ function genBlock(blockId: int) {
 
 function genGlobalVar(id: int) {
     const name = nGetS1(id)
+    if (globalAliases.has(name) == 1) { return }
     const initId = nGetI1(id)
     const ik = nGetKind(initId)
     let gType = "ptr"
