@@ -192,6 +192,21 @@ function emitRuntimeDecls() {
     emitIR("declare i64 @ym_timeMs()")
     emitIR("declare void @ym_exit(i32)")
     emitIR("declare i32 @ym_system(ptr)")
+    emitIR("declare i32 @ym_tcpListen(i32)")
+    emitIR("declare i32 @ym_tcpAccept(i32)")
+    emitIR("declare ptr @ym_tcpRead(i32, i32)")
+    emitIR("declare i32 @ym_tcpWrite(i32, ptr)")
+    emitIR("declare void @ym_tcpClose(i32)")
+    emitIR("declare ptr @ym_getenv(ptr)")
+    emitIR("declare i64 @ym_timeUnix()")
+    emitIR("declare i32 @ym_mkdir(ptr)")
+    emitIR("declare i32 @ym_mkdirp(ptr)")
+    emitIR("declare i32 @ym_fileExists(ptr)")
+    emitIR("declare i64 @ym_fileSize(ptr)")
+    emitIR("declare i32 @ym_removeFile(ptr)")
+    emitIR("declare i32 @ym_renameFile(ptr, ptr)")
+    emitIR("declare ptr @ym_listDir(ptr)")
+    emitIR("declare ptr @ym_sha256(ptr)")
     emitIR("declare double @ym_sqrt(double)")
     emitIR("declare double @ym_abs(double)")
     emitIR("declare double @ym_floor(double)")
@@ -1628,12 +1643,12 @@ function inferType(id: int): string {
 }
 
 function callReturnType(callee: string): string {
-    if (callee == "readLine" || callee == "readFile" || callee == "arg") { return "string" }
-    if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "appendFile" || callee == "exit") { return "void" }
-    if (callee == "parseInt" || callee == "args" || callee == "system") { return "int" }
+    if (callee == "readLine" || callee == "readFile" || callee == "arg" || callee == "getenv" || callee == "listDir" || callee == "sha256" || callee == "tcpRead") { return "string" }
+    if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "appendFile" || callee == "exit" || callee == "tcpClose") { return "void" }
+    if (callee == "parseInt" || callee == "args" || callee == "system" || callee == "tcpListen" || callee == "tcpAccept" || callee == "tcpWrite" || callee == "mkdir" || callee == "mkdirp" || callee == "fileExists" || callee == "removeFile" || callee == "renameFile") { return "int" }
     if (callee == "parseDouble" || callee == "sqrt" || callee == "abs" || callee == "floor" || callee == "ceil" || callee == "round" || callee == "pow" || callee == "log" || callee == "sin" || callee == "cos" || callee == "random" || callee == "min" || callee == "max") { return "double" }
     if (callee == "Map") { return "ptr" }
-    if (callee == "timeMs") { return "i64" }
+    if (callee == "timeMs" || callee == "timeUnix" || callee == "fileSize") { return "i64" }
     // User-defined function
     if (funcRetTypes.has(callee) == 1) {
         return funcRetTypes.getString(callee)

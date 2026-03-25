@@ -99,19 +99,17 @@ function main() {
     // Parse CLI args
     let inputFile = ""
     let outputFile = "a.out"
+    let release = 0
+    let emitIrOnly = 0
     let i = 1
     while (i < args()) {
         const a = arg(i)
-        if (a == "-o") {
-            i = i + 1
-            outputFile = arg(i)
-        } else {
-            inputFile = a
-        }
+        if (a == "-o") { i = i + 1; outputFile = arg(i) } else if (a == "--release") { release = 1 } else if (a == "--emit-ir") { emitIrOnly = 1 } else { inputFile = a }
         i = i + 1
     }
     if (inputFile == "") {
-        println("usage: ss-bootstrap <input.ss> [-o output]")
+        println("SimpleScript Bootstrap Compiler")
+        println("usage: ss <input.ss> [-o output] [--release] [--emit-ir]")
         exit(1)
     }
 
@@ -122,45 +120,46 @@ function main() {
         exit(1)
     }
 
-    // 2. Lex
+    // 2. Lex → Parse → Codegen
     const tokens = tokenize(source)
-
-    // 3. Parse
     const root = parse(tokens)
-
-    // 4. Check (skip for self-bootstrap — checker scope system too simple for 3800 LOC)
-    // check(root)
-
-    // 5. Codegen → LLVM IR text (write directly to file to avoid O(n²) string concat)
     const llFile = "/tmp/ss_bootstrap.ll"
     generateToFile(root, llFile)
 
-    // 7. Compile with llc
+    if (emitIrOnly == 1) {
+        println(readFile(llFile))
+        exit(0)
+    }
+
+    // 3. LLC
     const objFile = "/tmp/ss_bootstrap.o"
-    const llcCmd = "llc-18 -filetype=obj " + llFile + " -o " + objFile
-    const llcRc = system(llcCmd)
+    const llcRc = system("llc-18 -filetype=obj " + llFile + " -o " + objFile)
     if (llcRc != 0) {
-        println("error: llc failed (exit " + llcRc + ")")
-        println("IR written to: " + llFile)
+        println("error: llc failed")
         exit(1)
     }
 
-    // 8. Compile runtime.c
+    // 4. Find and compile runtime
+    let rtSrc = "runtime/runtime.c"
+    if (fileExists(rtSrc) == 0) {
+        rtSrc = "../runtime/runtime.c"
+        if (fileExists(rtSrc) == 0) {
+            rtSrc = getenv("SS_RUNTIME")
+            if (rtSrc == "") {
+                println("error: cannot find runtime.c (set SS_RUNTIME env var)")
+                exit(1)
+            }
+        }
+    }
     const runtimeO = "/tmp/ss_bootstrap_runtime.o"
-    const rtCmd = "musl-gcc -c -O2 runtime/runtime.c -o " + runtimeO
-    const rtRc = system(rtCmd)
-    if (rtRc != 0) {
-        println("error: runtime compilation failed")
-        exit(1)
-    }
+    const rtRc = system("musl-gcc -c -O2 " + rtSrc + " -o " + runtimeO)
+    if (rtRc != 0) { println("error: runtime compilation failed"); exit(1) }
 
-    // 9. Link
-    const linkCmd = "musl-gcc -static " + objFile + " " + runtimeO + " -o " + outputFile + " -lm"
-    const linkRc = system(linkCmd)
-    if (linkRc != 0) {
-        println("error: linking failed")
-        exit(1)
-    }
+    // 5. Link
+    let linkFlags = "-static"
+    if (release == 1) { linkFlags = "-static -O2 -s" }
+    const linkRc = system("musl-gcc " + linkFlags + " " + objFile + " " + runtimeO + " -o " + outputFile + " -lm")
+    if (linkRc != 0) { println("error: linking failed"); exit(1) }
 
     println("compiled: " + outputFile)
 }
