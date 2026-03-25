@@ -207,6 +207,8 @@ function emitRuntimeDecls() {
     emitIR("declare i32 @ym_renameFile(ptr, ptr)")
     emitIR("declare ptr @ym_listDir(ptr)")
     emitIR("declare ptr @ym_sha256(ptr)")
+    emitIR("declare i32 @ym_charCodeAt(ptr, i32)")
+    emitIR("declare ptr @ym_fromCharCode(i32)")
     emitIR("declare double @ym_sqrt(double)")
     emitIR("declare double @ym_abs(double)")
     emitIR("declare double @ym_floor(double)")
@@ -328,7 +330,7 @@ function runtimeName(callee: string): string {
     if (callee == "arg") { return "ym_argGet" }
     if (callee == "Map") { return "ym_mapNew" }
     // Check if ym_ prefixed function exists in known builtins
-    const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,"
+    const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,"
     if (builtins.contains("," + callee + ",") == 1) { return "ym_" + callee }
     return callee
 }
@@ -1305,6 +1307,12 @@ function genMethodCall(id: int): string {
         }
         return r
     }
+    if (method == "charCodeAt") {
+        const ccaIdx = genExpr(parseInt(argList))
+        const r = nextReg()
+        emitIR("  " + r + " = call i32 @ym_charCodeAt(ptr " + objVal + ", i32 " + ccaIdx + ")")
+        return r
+    }
     if (method == "charAt") {
         const argId = parseInt(argList)
         const idx = genExpr(argId)
@@ -1769,9 +1777,9 @@ function inferType(id: int): string {
 }
 
 function callReturnType(callee: string): string {
-    if (callee == "readLine" || callee == "readFile" || callee == "arg" || callee == "getenv" || callee == "listDir" || callee == "sha256" || callee == "tcpRead") { return "string" }
+    if (callee == "readLine" || callee == "readFile" || callee == "arg" || callee == "getenv" || callee == "listDir" || callee == "sha256" || callee == "tcpRead" || callee == "fromCharCode") { return "string" }
     if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "appendFile" || callee == "exit" || callee == "tcpClose") { return "void" }
-    if (callee == "parseInt" || callee == "args" || callee == "system" || callee == "tcpListen" || callee == "tcpAccept" || callee == "tcpWrite" || callee == "mkdir" || callee == "mkdirp" || callee == "fileExists" || callee == "removeFile" || callee == "renameFile") { return "int" }
+    if (callee == "parseInt" || callee == "args" || callee == "system" || callee == "tcpListen" || callee == "tcpAccept" || callee == "tcpWrite" || callee == "mkdir" || callee == "mkdirp" || callee == "fileExists" || callee == "removeFile" || callee == "renameFile" || callee == "charCodeAt") { return "int" }
     if (callee == "parseDouble" || callee == "sqrt" || callee == "abs" || callee == "floor" || callee == "ceil" || callee == "round" || callee == "pow" || callee == "log" || callee == "sin" || callee == "cos" || callee == "random" || callee == "min" || callee == "max") { return "double" }
     if (callee == "Map") { return "ptr" }
     if (callee == "timeMs" || callee == "timeUnix" || callee == "fileSize") { return "i64" }

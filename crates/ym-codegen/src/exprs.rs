@@ -611,6 +611,8 @@ impl<'ctx> Codegen<'ctx> {
             "tcpWrite" => "ym_tcpWrite",
             "tcpWriteBytes" => "ym_tcpWriteBytes",
             "tcpClose" => "ym_tcpClose",
+            "charCodeAt" => "ym_charCodeAt",
+            "fromCharCode" => "ym_fromCharCode",
             "getenv" => "ym_getenv",
             "timeUnix" => "ym_timeUnix",
             "mkdir" => "ym_mkdir",

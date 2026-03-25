@@ -637,6 +637,19 @@ char* ym_getenv(const char* name) {
     return strdup(val);
 }
 
+int ym_charCodeAt(const char* s, int index) {
+    int len = (int)strlen(s);
+    if (index < 0 || index >= len) return -1;
+    return (unsigned char)s[index];
+}
+
+char* ym_fromCharCode(int code) {
+    char* buf = (char*)malloc(2);
+    buf[0] = (char)code;
+    buf[1] = '\0';
+    return buf;
+}
+
 long long ym_timeUnix() {
     return (long long)time(NULL);
 }
