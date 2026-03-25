@@ -1459,6 +1459,39 @@ function genMethodCall(id: int): string {
         emitIR("  " + r + " = call i32 @ym_mapSize(ptr " + objVal + ")")
         return r
     }
+    if (method == "keys") {
+        const r = nextReg()
+        emitIR("  " + r + " = call ptr @ym_mapKeys(ptr " + objVal + ")")
+        return r
+    }
+    if (method == "delete") {
+        const delKey = genExpr(parseInt(argList))
+        emitIR("  call void @ym_mapDelete(ptr " + objVal + ", ptr " + delKey + ")")
+        return "0"
+    }
+    // Array reverse/sort
+    if (method == "reverse") {
+        emitIR("  call void @ym_arrayReverse(ptr " + objVal + ")")
+        return objVal
+    }
+    if (method == "sort") {
+        emitIR("  call void @ym_arraySort(ptr " + objVal + ")")
+        return objVal
+    }
+    if (method == "slice") {
+        const slArgs = argList.split(",")
+        const slStart = genExpr(parseInt(slArgs[0]))
+        const slEnd = genExpr(parseInt(slArgs[1]))
+        const r = nextReg()
+        emitIR("  " + r + " = call ptr @ym_arraySlice(ptr " + objVal + ", i32 " + slStart + ", i32 " + slEnd + ")")
+        return r
+    }
+    if (method == "concat") {
+        const otherArr = genExpr(parseInt(argList))
+        const r = nextReg()
+        emitIR("  " + r + " = call ptr @ym_arrayConcat(ptr " + objVal + ", ptr " + otherArr + ")")
+        return r
+    }
 
     // Class method call: obj.method(args) → ClassName_method(obj, args)
     const objId2 = nGetI1(id)
@@ -1687,7 +1720,9 @@ function inferType(id: int): string {
         const method = nGetS1(id)
         if (method == "length" || method == "indexOf" || method == "has" || method == "size") { return "int" }
         if (method == "charAt" || method == "substring" || method == "trim" || method == "toUpperCase" || method == "toLowerCase" || method == "replace" || method == "join" || method == "repeat" || method == "padStart" || method == "padEnd") { return "string" }
-        if (method == "split" || method == "push") { return "ptr" }
+        if (method == "split" || method == "push" || method == "slice" || method == "concat" || method == "reverse" || method == "sort") { return "ptr" }
+        if (method == "keys") { return "string" }
+        if (method == "delete") { return "void" }
         if (method == "get") { return "i64" }
         if (method == "getString") { return "string" }
         if (method == "contains" || method == "startsWith" || method == "endsWith") { return "int" }
