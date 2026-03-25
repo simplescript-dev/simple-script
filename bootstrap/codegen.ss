@@ -401,6 +401,14 @@ function genStmt(id: int) {
         emitIR("  store i32 " + r2 + ", ptr " + pRef + ", align 4")
         return
     }
+    if (kind == "DO_WHILE") {
+        genDoWhile(id)
+        return
+    }
+    if (kind == "SWITCH") {
+        genSwitch(id)
+        return
+    }
     if (kind == "CLASS_DECL") {
         genClassDecl(id)
         return
@@ -809,6 +817,83 @@ function genWhile(id: int) {
     continueLabel = savedContinue3
 }
 
+function genDoWhile(id: int) {
+    const bodyId = nGetI1(id)
+    const condId = nGetI2(id)
+    const bodyLabel = nextLabel("dowhile.body")
+    const condLabel = nextLabel("dowhile.cond")
+    const afterLabel = nextLabel("dowhile.after")
+    const savedBreak = breakLabel
+    const savedContinue = continueLabel
+    breakLabel = afterLabel
+    continueLabel = condLabel
+    emitIR("  br label %" + bodyLabel)
+    emitIR(bodyLabel + ":")
+    terminated = 0
+    genBlock(bodyId)
+    if (terminated == 0) { emitIR("  br label %" + condLabel) }
+    emitIR(condLabel + ":")
+    const condVal = genExpr(condId)
+    const r = nextReg()
+    emitIR("  " + r + " = icmp ne i32 " + condVal + ", 0")
+    emitIR("  br i1 " + r + ", label %" + bodyLabel + ", label %" + afterLabel)
+    emitIR(afterLabel + ":")
+    terminated = 0
+    breakLabel = savedBreak
+    continueLabel = savedContinue
+}
+
+function genSwitch(id: int) {
+    const subjectId = nGetI1(id)
+    const defaultId = nGetI2(id)
+    const caseList = nGetList(id)
+    const subjectVal = genExpr(subjectId)
+    const subjectType = inferType(subjectId)
+    const afterLabel = nextLabel("switch.end")
+
+    if (caseList != "") {
+        const cases = caseList.split(",")
+        for (c in cases) {
+            const caseId = parseInt(c)
+            if (caseId <= 0) { continue }
+            const patId = nGetI1(caseId)
+            const bodyId = nGetI2(caseId)
+            const patType = nGetS1(patId)
+            const patVal = nGetS2(patId)
+            const thenLabel = nextLabel("switch.case")
+            const nextLabel2 = nextLabel("switch.next")
+            // Compare subject with pattern
+            let cmpResult = ""
+            if (patType == "STRING" || subjectType == "string") {
+                const patStr = addStringConst(patVal)
+                const cmp = nextReg()
+                emitIR("  " + cmp + " = call i32 @ym_string_eq(ptr " + subjectVal + ", ptr " + patStr + ")")
+                const br = nextReg()
+                emitIR("  " + br + " = icmp ne i32 " + cmp + ", 0")
+                cmpResult = br
+            } else {
+                const cmp = nextReg()
+                emitIR("  " + cmp + " = icmp eq i32 " + subjectVal + ", " + patVal)
+                cmpResult = cmp
+            }
+            emitIR("  br i1 " + cmpResult + ", label %" + thenLabel + ", label %" + nextLabel2)
+            emitIR(thenLabel + ":")
+            terminated = 0
+            genBlock(bodyId)
+            if (terminated == 0) { emitIR("  br label %" + afterLabel) }
+            emitIR(nextLabel2 + ":")
+        }
+    }
+    // Default case
+    if (defaultId > 0) {
+        terminated = 0
+        genBlock(defaultId)
+    }
+    if (terminated == 0) { emitIR("  br label %" + afterLabel) }
+    emitIR(afterLabel + ":")
+    terminated = 0
+}
+
 // ── Expression generation ─────────────────────────────────────
 // Returns the SSA register or constant string holding the result.
 
@@ -1211,7 +1296,13 @@ function genMethodCall(id: int): string {
     // String methods
     if (method == "length") {
         const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_stringLength(ptr " + objVal + ")")
+        // Heuristic: if object is from split/newArray (ptr type), use arrayLen
+        const origType = inferType(objId)
+        if (origType == "ptr" || origType == "i64") {
+            emitIR("  " + r + " = call i32 @ym_arrayLen(ptr " + objVal + ")")
+        } else {
+            emitIR("  " + r + " = call i32 @ym_stringLength(ptr " + objVal + ")")
+        }
         return r
     }
     if (method == "charAt") {
