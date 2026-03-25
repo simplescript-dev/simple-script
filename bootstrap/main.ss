@@ -4,7 +4,7 @@
 import { tokenize } from "./lexer"
 import { parse } from "./parser"
 import { check } from "./checker"
-import { generate } from "./codegen"
+import { generate, generateToFile } from "./codegen"
 
 function main() {
     // Parse CLI args
@@ -42,12 +42,9 @@ function main() {
     // 4. Check
     check(root)
 
-    // 5. Codegen → LLVM IR text
-    const ir = generate(root)
-
-    // 6. Write .ll file
+    // 5. Codegen → LLVM IR text (write directly to file to avoid O(n²) string concat)
     const llFile = "/tmp/ss_bootstrap.ll"
-    writeFile(llFile, ir)
+    generateToFile(root, llFile)
 
     // 7. Compile with llc
     const objFile = "/tmp/ss_bootstrap.o"

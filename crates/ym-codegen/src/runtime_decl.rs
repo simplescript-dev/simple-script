@@ -19,6 +19,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function("ym_readFile", readfile_type, None);
         let writefile_type = void_type.fn_type(&[i8_ptr.into(), i8_ptr.into()], false);
         self.module.add_function("ym_writeFile", writefile_type, None);
+        self.module.add_function("ym_appendFile", writefile_type, None);
 
         // Type conversion
         let concat_type = i8_ptr.fn_type(&[i8_ptr.into(), i8_ptr.into()], false);

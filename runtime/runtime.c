@@ -265,6 +265,13 @@ void ym_writeFile(const char* path, const char* content) {
     fclose(f);
 }
 
+void ym_appendFile(const char* path, const char* content) {
+    FILE* f = fopen(path, "a");
+    if (!f) return;
+    fputs(content, f);
+    fclose(f);
+}
+
 char* ym_substring(const char* s, int start, int len) {
     int slen = (int)strlen(s);
     if (start < 0 || start >= slen) return "";

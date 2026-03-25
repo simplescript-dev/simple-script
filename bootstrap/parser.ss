@@ -7,15 +7,15 @@ import { tkGet, tkKind, tkValue } from "./lexer"
 // ── AST node storage ──────────────────────────────────────────
 
 let nextId = 1
-let nKind = Map()
-let nStr1 = Map()
-let nStr2 = Map()
-let nStr3 = Map()
-let nInt1 = Map()
-let nInt2 = Map()
-let nInt3 = Map()
-let nInt4 = Map()
-let nList = Map()
+let nKind = ""
+let nStr1 = ""
+let nStr2 = ""
+let nStr3 = ""
+let nInt1 = ""
+let nInt2 = ""
+let nInt3 = ""
+let nInt4 = ""
+let nList = ""
 let mapsReady = 0
 
 function initParser() {

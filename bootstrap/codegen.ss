@@ -9,19 +9,22 @@ import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetL
 let irBuf = ""
 let strConsts = ""
 let strCount = 0
+let irOutFile = ""
 let regCount = 0
 let labelCount = 0
-let varTypes = Map()
+let varTypes = ""
 let varTypesReady = 0
 let currentFunc = ""
 let terminated = 0
 let varCounter = 0
-let varAliases = Map()
+let varAliases = ""
+let globalAliases = ""
 let varAliasReady = 0
 
 function initVarAliases() {
     if (varAliasReady == 1) { return }
     varAliases = Map()
+    globalAliases = Map()
     varAliasReady = 1
 }
 
@@ -38,14 +41,17 @@ function llVarName(name: string): string {
     if (varAliases.has(name) == 1) {
         return varAliases.getString(name)
     }
+    if (globalAliases.has(name) == 1) {
+        return globalAliases.getString(name)
+    }
     return name
 }
-let funcRetTypes = Map()
+let funcRetTypes = ""
 let funcRetReady = 0
-let classFields = Map()     // "ClassName" -> "field1,field2,..."
-let classFieldTypes = Map() // "ClassName.field" -> "type"
-let classMethods = Map()    // "ClassName" -> "method1,method2,..."
-let objClasses = Map()      // "varName" -> "ClassName"
+let classFields = ""     // "ClassName" -> "field1,field2,..."
+let classFieldTypes = "" // "ClassName.field" -> "type"
+let classMethods = ""    // "ClassName" -> "method1,method2,..."
+let objClasses = ""      // "varName" -> "ClassName"
 let currentClassName = ""
 let breakLabel = ""
 let continueLabel = ""
@@ -67,8 +73,11 @@ function initCodegen() {
 }
 
 function emitIR(s: string) {
-
-    irBuf = irBuf + s + "\n"
+    if (irOutFile != "") {
+        appendFile(irOutFile, s + "\n")
+    } else {
+        irBuf = irBuf + s + "\n"
+    }
 }
 
 function nextReg(): string {
@@ -218,13 +227,26 @@ function generate(rootId: int): string {
         }
     }
 
-    // Walk program and generate
+    // Pass 1: emit global variables (top-level const/let with literal initializers)
+    const stmtList1 = nGetList(rootId)
+    if (stmtList1 != "") {
+        const parts1 = stmtList1.split(",")
+        for (p1 in parts1) {
+            const stmtId1 = parseInt(p1)
+            if (stmtId1 > 0 && nGetKind(stmtId1) == "VAR_DECL") {
+                genGlobalVar(stmtId1)
+            }
+        }
+    }
+    emitIR("")
+
+    // Pass 2: emit functions and classes
     const stmtList = nGetList(rootId)
     if (stmtList != "") {
         const parts = stmtList.split(",")
         for (p in parts) {
             const stmtId = parseInt(p)
-            if (stmtId > 0) {
+            if (stmtId > 0 && nGetKind(stmtId) != "VAR_DECL") {
                 genStmt(stmtId)
             }
         }
@@ -233,6 +255,70 @@ function generate(rootId: int): string {
     // Prepend string constants
     const header = "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strConsts + "\n"
     return header + irBuf
+}
+
+function generateToFile(rootId: int, outFile: string) {
+    initCodegen()
+    initFuncRetTypes()
+    irBuf = ""
+    strConsts = ""
+    strCount = 0
+    regCount = 0
+    labelCount = 0
+    irOutFile = outFile
+
+    // Write header placeholder (will prepend string consts later)
+    writeFile(outFile, "")
+
+    emitRuntimeDecls()
+
+    // Pass 0: register functions + classes
+    const stmtList0 = nGetList(rootId)
+    if (stmtList0 != "") {
+        const parts0 = stmtList0.split(",")
+        for (p0 in parts0) {
+            const sid = parseInt(p0)
+            if (sid <= 0) { continue }
+            const sk = nGetKind(sid)
+            if (sk == "FUNC_DECL") {
+                let fret = nGetS2(sid)
+                if (fret == "") { fret = "void" }
+                funcRetTypes.set(nGetS1(sid), fret)
+            }
+            if (sk == "CLASS_DECL") { registerClass(sid) }
+        }
+    }
+
+    // Pass 1: globals
+    const stmtList1 = nGetList(rootId)
+    if (stmtList1 != "") {
+        const parts1 = stmtList1.split(",")
+        for (p1 in parts1) {
+            const stmtId1 = parseInt(p1)
+            if (stmtId1 > 0 && nGetKind(stmtId1) == "VAR_DECL") {
+                genGlobalVar(stmtId1)
+            }
+        }
+    }
+    emitIR("")
+
+    // Pass 2: functions + classes
+    const stmtList = nGetList(rootId)
+    if (stmtList != "") {
+        const parts = stmtList.split(",")
+        for (p in parts) {
+            const stmtId = parseInt(p)
+            if (stmtId > 0 && nGetKind(stmtId) != "VAR_DECL") {
+                genStmt(stmtId)
+            }
+        }
+    }
+
+    // Now read back the file and prepend header + string constants
+    irOutFile = ""
+    const body = readFile(outFile)
+    const header = "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strConsts + "\n"
+    writeFile(outFile, header + body)
 }
 
 // ── Builtin function name mapping ─────────────────────────────
@@ -442,6 +528,43 @@ function genBlock(blockId: int) {
         if (stmtId > 0) {
             genStmt(stmtId)
         }
+    }
+}
+
+function genGlobalVar(id: int) {
+    const name = nGetS1(id)
+    const initId = nGetI1(id)
+    const initKind = nGetKind(initId)
+
+    if (initKind == "INT_LIT") {
+        const val = nGetS1(initId)
+        emitIR("@" + name + " = global i32 " + val + ", align 4")
+        setVarType(name, "int")
+        // Register alias to self (globals use @name, not %name)
+        globalAliases.set(name, "@" + name)
+    } else if (initKind == "DOUBLE_LIT") {
+        const val = nGetS1(initId)
+        emitIR("@" + name + " = global double " + val + ", align 8")
+        setVarType(name, "double")
+        globalAliases.set(name, "@" + name)
+    } else if (initKind == "STRING_LIT") {
+        const strName = addStringConst(nGetS1(initId))
+        emitIR("@" + name + " = global ptr " + strName + ", align 8")
+        setVarType(name, "string")
+        globalAliases.set(name, "@" + name)
+    } else if (initKind == "TRUE_LIT") {
+        emitIR("@" + name + " = global i32 1, align 4")
+        setVarType(name, "int")
+        globalAliases.set(name, "@" + name)
+    } else if (initKind == "FALSE_LIT") {
+        emitIR("@" + name + " = global i32 0, align 4")
+        setVarType(name, "int")
+        globalAliases.set(name, "@" + name)
+    } else {
+        // Non-literal init (Map(), function call, etc.) — use a null global, initialize in main
+        emitIR("@" + name + " = global ptr null, align 8")
+        setVarType(name, "ptr")
+        globalAliases.set(name, "@" + name)
     }
 }
 

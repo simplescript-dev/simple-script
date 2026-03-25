@@ -66,6 +66,10 @@ impl Checker {
             params: vec![Type::String, Type::String],
             return_type: Type::Void,
         });
+        functions.insert("appendFile".to_string(), FuncInfo {
+            params: vec![Type::String, Type::String],
+            return_type: Type::Void,
+        });
         functions.insert("args".to_string(), FuncInfo {
             params: vec![],
             return_type: Type::Int,

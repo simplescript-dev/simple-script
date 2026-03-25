@@ -8,9 +8,9 @@ import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetL
 // ── Scope + function registry ─────────────────────────────────
 
 let scopeDepth = 0
-let varNames = Map()     // "depth:name" -> "type"
-let varConst = Map()     // "depth:name" -> 1 if const
-let funcNames = Map()    // "funcName" -> "retType"
+let varNames = ""     // "depth:name" -> "type"
+let varConst = ""     // "depth:name" -> 1 if const
+let funcNames = ""    // "funcName" -> "retType"
 let funcReady = 0
 
 function initChecker() {

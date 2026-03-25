@@ -598,6 +598,7 @@ impl<'ctx> Codegen<'ctx> {
             "readLine" => "ym_readLine",
             "readFile" => "ym_readFile",
             "writeFile" => "ym_writeFile",
+            "appendFile" => "ym_appendFile",
             "args" => "ym_argCount",
             "arg" => "ym_argGet",
             "exit" => "ym_exit",

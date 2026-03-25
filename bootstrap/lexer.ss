@@ -10,10 +10,21 @@ let curLine = 1
 let curCol = 1
 let tokenBuf = ""
 let tokenCount = 0
+let tkKinds = ""
+let tkValues = ""
+let tkMapReady = 0
+
+function initTkMap() {
+    if (tkMapReady == 1) { return }
+    tkKinds = Map()
+    tkValues = Map()
+    tkMapReady = 1
+}
 
 // ── Public API ────────────────────────────────────────────────
 
 function tokenize(source: string): string {
+    initTkMap()
     src = source
     pos = 0
     srcLen = src.length()
@@ -21,6 +32,8 @@ function tokenize(source: string): string {
     curCol = 1
     tokenBuf = ""
     tokenCount = 0
+    tkKinds = Map()
+    tkValues = Map()
 
     while (pos < srcLen) {
         skipWS()
@@ -64,28 +77,17 @@ function tokenize(source: string): string {
         exit(1)
     }
     emit("EOF", "")
-    return tokenBuf
+    return "done"
 }
 
 // ── Token access helpers ──────────────────────────────────────
 
+// Token access — O(1) via Map
 function tkGet(tokens: string, index: int): string {
-    let start = 0
-    let count = 0
-    let i = 0
-    const len = tokens.length()
-    while (i < len) {
-        if (count == index) {
-            let end = i
-            while (end < len && tokens.charAt(end) != "\n") {
-                end = end + 1
-            }
-            return tokens.substring(i, end - i)
-        }
-        if (tokens.charAt(i) == "\n") {
-            count = count + 1
-        }
-        i = i + 1
+    // Legacy compatibility — returns "KIND\tVALUE" but now from Map
+    const idx = index + ""
+    if (tkKinds.has(idx) == 1) {
+        return tkKinds.getString(idx) + "\t" + tkValues.getString(idx)
     }
     return "EOF\t"
 }
@@ -99,20 +101,19 @@ function tkKind(tokenLine: string): string {
 function tkValue(tokenLine: string): string {
     const tabPos = tokenLine.indexOf("\t")
     if (tabPos < 0) { return "" }
-    const raw = tokenLine.substring(tabPos + 1, tokenLine.length() - tabPos - 1)
-    // Unescape \\n and \\t back to real chars
-    return raw.replace("\\n", "\n").replace("\\t", "\t")
+    return tokenLine.substring(tabPos + 1, tokenLine.length() - tabPos - 1)
+}
+
+function tkCount(): int {
+    return tokenCount
 }
 
 // ── Internal ──────────────────────────────────────────────────
 
 function emit(kind: string, value: string) {
-    if (tokenCount > 0) {
-        tokenBuf = tokenBuf + "\n"
-    }
-    // Escape \n and \t in value to avoid breaking token format
-    const escaped = value.replace("\n", "\\n").replace("\t", "\\t")
-    tokenBuf = tokenBuf + kind + "\t" + escaped
+    const idx = tokenCount + ""
+    tkKinds.set(idx, kind)
+    tkValues.set(idx, value)
     tokenCount = tokenCount + 1
 }
 
