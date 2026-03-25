@@ -1,0 +1,16 @@
+[package]
+name = "ym-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ss"
+path = "src/main.rs"
+
+[dependencies]
+ym-lexer = { path = "../ym-lexer" }
+ym-parser = { path = "../ym-parser" }
+ym-checker = { path = "../ym-checker" }
+ym-codegen = { path = "../ym-codegen" }
+clap = { version = "4", features = ["derive"] }
+inkwell = { version = "0.5", features = ["llvm18-0"] }

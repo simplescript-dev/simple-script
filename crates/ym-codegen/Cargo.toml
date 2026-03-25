@@ -1,0 +1,10 @@
+[package]
+name = "ym-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ym-parser = { path = "../ym-parser" }
+ym-checker = { path = "../ym-checker" }
+inkwell = { version = "0.5", features = ["llvm18-0"] }
+thiserror = "2"

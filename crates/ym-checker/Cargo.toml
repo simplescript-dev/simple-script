@@ -1,0 +1,8 @@
+[package]
+name = "ym-checker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ym-parser = { path = "../ym-parser" }
+thiserror = "2"
