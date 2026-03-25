@@ -314,12 +314,12 @@ function generateToFile(rootId: int, outFile: string) {
                             pCount = pCount + 1
                         }
                     }
-                    funcParamCount.set(fname, pCount)
+                    funcParamCount.set(fname, pCount + "")
                     if (defaults != "") {
                         funcDefaults.set(fname, defaults)
                     }
                 } else {
-                    funcParamCount.set(fname, 0)
+                    funcParamCount.set(fname, "0")
                 }
             }
             if (sk == "CLASS_DECL") { registerClass(sid) }
@@ -1213,7 +1213,7 @@ function genCall(id: int): string {
     // Check if we need to fill in defaults
     let expectedCount = providedCount
     if (funcParamCount.has(callee) == 1) {
-        expectedCount = funcParamCount.get(callee)
+        expectedCount = parseInt(funcParamCount.getString(callee))
     }
     // Append defaults for missing args
     let fullArgs = providedArgs
