@@ -196,7 +196,8 @@ function skipWS() {
 function lexString() {
     advance()
     let value = ""
-    while (pos < srcLen && peek() != "\"") {
+    while (pos < srcLen) {
+        if (peek() == "\"") { break }
         if (peek() == "\\") {
             advance()
             if (pos >= srcLen) { println("lexer error: unterminated string"); exit(1) }
@@ -218,7 +219,8 @@ function lexString() {
 function lexSQString() {
     advance()
     let value = ""
-    while (pos < srcLen && peek() != "'") {
+    while (pos < srcLen) {
+        if (peek() == "'") { break }
         if (peek() == "\\") {
             advance()
             if (pos >= srcLen) { println("lexer error: unterminated string"); exit(1) }
@@ -242,7 +244,9 @@ function lexSQString() {
 function lexTemplate() {
     advance()
     let literal = ""
-    while (pos < srcLen && peek() != "`") {
+    while (pos < srcLen) {
+        if (peek() == "`") { break }
+        println("DBG: tmpl char=" + peek())
         if (peek() == "$" && peekNext() == "{") {
             if (literal.length() > 0) {
                 emit("TMPL_LIT", literal)
@@ -252,7 +256,8 @@ function lexTemplate() {
             advance()
             emit("TMPL_EXPR_START", "${")
             let depth = 1
-            while (pos < srcLen && depth > 0) {
+            while (pos < srcLen) {
+                if (depth <= 0) { break }
                 skipWS()
                 if (pos >= srcLen) { break }
                 const ch = peek()
