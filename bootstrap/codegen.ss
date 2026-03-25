@@ -943,6 +943,46 @@ function genBinary(id: int): string {
         return r
     }
 
+    // Short-circuit && and ||
+    if (op == "And") {
+        const resultA = nextReg()
+        emitIR("  " + resultA + " = alloca i32, align 4")
+        const leftA = genExpr(leftId)
+        emitIR("  store i32 " + leftA + ", ptr " + resultA + ", align 4")
+        const cmpA = nextReg()
+        emitIR("  " + cmpA + " = icmp ne i32 " + leftA + ", 0")
+        const thenA = nextLabel("and.rhs")
+        const mergeA = nextLabel("and.end")
+        emitIR("  br i1 " + cmpA + ", label %" + thenA + ", label %" + mergeA)
+        emitIR(thenA + ":")
+        const rightA = genExpr(rightId)
+        emitIR("  store i32 " + rightA + ", ptr " + resultA + ", align 4")
+        emitIR("  br label %" + mergeA)
+        emitIR(mergeA + ":")
+        const resA = nextReg()
+        emitIR("  " + resA + " = load i32, ptr " + resultA + ", align 4")
+        return resA
+    }
+    if (op == "Or") {
+        const resultO = nextReg()
+        emitIR("  " + resultO + " = alloca i32, align 4")
+        const leftO = genExpr(leftId)
+        emitIR("  store i32 " + leftO + ", ptr " + resultO + ", align 4")
+        const cmpO = nextReg()
+        emitIR("  " + cmpO + " = icmp ne i32 " + leftO + ", 0")
+        const elseO = nextLabel("or.rhs")
+        const mergeO = nextLabel("or.end")
+        emitIR("  br i1 " + cmpO + ", label %" + mergeO + ", label %" + elseO)
+        emitIR(elseO + ":")
+        const rightO = genExpr(rightId)
+        emitIR("  store i32 " + rightO + ", ptr " + resultO + ", align 4")
+        emitIR("  br label %" + mergeO)
+        emitIR(mergeO + ":")
+        const resO = nextReg()
+        emitIR("  " + resO + " = load i32, ptr " + resultO + ", align 4")
+        return resO
+    }
+
     let left = genExpr(leftId)
     let right = genExpr(rightId)
 
@@ -1005,8 +1045,7 @@ function genBinary(id: int): string {
     if (op == "Mul") { emitIR("  " + r + " = mul i32 " + left + ", " + right); return r }
     if (op == "Div") { emitIR("  " + r + " = sdiv i32 " + left + ", " + right); return r }
     if (op == "Mod") { emitIR("  " + r + " = srem i32 " + left + ", " + right); return r }
-    if (op == "And") { emitIR("  " + r + " = and i32 " + left + ", " + right); return r }
-    if (op == "Or") { emitIR("  " + r + " = or i32 " + left + ", " + right); return r }
+    // And/Or handled above with short-circuit
     // Integer comparison
     let cmpOp = ""
     if (op == "Eq") { cmpOp = "eq" }
