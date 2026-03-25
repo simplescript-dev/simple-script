@@ -52,6 +52,7 @@ let classFields = ""     // "ClassName" -> "field1,field2,..."
 let classFieldTypes = "" // "ClassName.field" -> "type"
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
+let classParents = ""    // "ClassName" -> "ParentClassName"
 let currentClassName = ""
 let breakLabel = ""
 let continueLabel = ""
@@ -63,6 +64,7 @@ function initFuncRetTypes() {
     classFieldTypes = Map()
     classMethods = Map()
     objClasses = Map()
+    classParents = Map()
     funcRetReady = 1
 }
 
@@ -1378,6 +1380,17 @@ function genMethodCall(id: int): string {
         className = currentClassName
     }
     if (className != "" && className != "Map") {
+        // Find actual class that has this method (walk parent chain)
+        let methodClass = className
+        while (methodClass != "") {
+            if (funcRetTypes.has(methodClass + "_" + method) == 1) { break }
+            if (classParents.has(methodClass) == 1) {
+                methodClass = classParents.getString(methodClass)
+            } else {
+                methodClass = className
+                break
+            }
+        }
         let callArgs = "ptr " + objVal
         if (argList != "") {
             const argParts = argList.split(",")
@@ -1391,15 +1404,15 @@ function genMethodCall(id: int): string {
             }
         }
         let mRetType = "ptr"
-        if (funcRetTypes.has(className + "_" + method) == 1) {
-            mRetType = ssTypeToLLVM(funcRetTypes.getString(className + "_" + method))
+        if (funcRetTypes.has(methodClass + "_" + method) == 1) {
+            mRetType = ssTypeToLLVM(funcRetTypes.getString(methodClass + "_" + method))
         }
         if (mRetType == "void") {
-            emitIR("  call void @" + className + "_" + method + "(" + callArgs + ")")
+            emitIR("  call void @" + methodClass + "_" + method + "(" + callArgs + ")")
             return "0"
         }
         const cr = nextReg()
-        emitIR("  " + cr + " = call " + mRetType + " @" + className + "_" + method + "(" + callArgs + ")")
+        emitIR("  " + cr + " = call " + mRetType + " @" + methodClass + "_" + method + "(" + callArgs + ")")
         return cr
     }
 
@@ -1586,8 +1599,19 @@ function inferType(id: int): string {
         let mClassName = ""
         if (nGetKind(mObjId) == "IDENT") { mClassName = getObjClass(nGetS1(mObjId)) }
         if (nGetKind(mObjId) == "THIS" && currentClassName != "") { mClassName = currentClassName }
-        if (mClassName != "" && funcRetTypes.has(mClassName + "_" + method) == 1) {
-            return funcRetTypes.getString(mClassName + "_" + method)
+        if (mClassName != "") {
+            // Look up in class and parent chain
+            let lookupClass = mClassName
+            while (lookupClass != "") {
+                if (funcRetTypes.has(lookupClass + "_" + method) == 1) {
+                    return funcRetTypes.getString(lookupClass + "_" + method)
+                }
+                if (classParents.has(lookupClass) == 1) {
+                    lookupClass = classParents.getString(lookupClass)
+                } else {
+                    lookupClass = ""
+                }
+            }
         }
         return "int"
     }
@@ -1655,6 +1679,10 @@ function getVarType(name: string): string {
 
 function registerClass(id: int) {
     const name = nGetS1(id)
+    const extendsName = nGetS2(id)
+    if (extendsName != "") {
+        classParents.set(name, extendsName)
+    }
     const paramList = nGetList(id)
     // Collect field names and types
     let fieldNames = ""
@@ -1667,6 +1695,24 @@ function registerClass(id: int) {
                 const fType = nGetS2(pId)
                 if (fieldNames == "") { fieldNames = fName } else { fieldNames = fieldNames + "," + fName }
                 classFieldTypes.set(name + "." + fName, fType)
+            }
+        }
+    }
+    // Prepend parent fields if extends
+    if (extendsName != "" && classFields.has(extendsName) == 1) {
+        const parentFields = classFields.getString(extendsName)
+        if (parentFields != "") {
+            if (fieldNames == "") {
+                fieldNames = parentFields
+            } else {
+                fieldNames = parentFields + "," + fieldNames
+            }
+            // Copy parent field types
+            const pfs = parentFields.split(",")
+            for (pf in pfs) {
+                if (classFieldTypes.has(extendsName + "." + pf) == 1) {
+                    classFieldTypes.set(name + "." + pf, classFieldTypes.getString(extendsName + "." + pf))
+                }
             }
         }
     }
