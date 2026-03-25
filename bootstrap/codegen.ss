@@ -53,6 +53,8 @@ let classFieldTypes = "" // "ClassName.field" -> "type"
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
+let funcDefaults = ""    // "funcName" -> "paramIdx:defaultNodeId,..."
+let funcParamCount = ""  // "funcName" -> param count
 let currentClassName = ""
 let breakLabel = ""
 let continueLabel = ""
@@ -65,6 +67,8 @@ function initFuncRetTypes() {
     classMethods = Map()
     objClasses = Map()
     classParents = Map()
+    funcDefaults = Map()
+    funcParamCount = Map()
     funcRetReady = 1
 }
 
@@ -290,9 +294,33 @@ function generateToFile(rootId: int, outFile: string) {
             if (sid <= 0) { continue }
             const sk = nGetKind(sid)
             if (sk == "FUNC_DECL") {
+                const fname = nGetS1(sid)
                 let fret = nGetS2(sid)
                 if (fret == "") { fret = "void" }
-                funcRetTypes.set(nGetS1(sid), fret)
+                funcRetTypes.set(fname, fret)
+                // Record param count and defaults
+                const fparams = nGetList(sid)
+                if (fparams != "") {
+                    const fps = fparams.split(",")
+                    let pCount = 0
+                    let defaults = ""
+                    for (fp in fps) {
+                        const fpId = parseInt(fp)
+                        if (fpId > 0 && nGetKind(fpId) == "PARAM") {
+                            const defId = nGetI1(fpId)
+                            if (defId > 0) {
+                                if (defaults == "") { defaults = pCount + ":" + defId } else { defaults = defaults + "," + pCount + ":" + defId }
+                            }
+                            pCount = pCount + 1
+                        }
+                    }
+                    funcParamCount.set(fname, pCount)
+                    if (defaults != "") {
+                        funcDefaults.set(fname, defaults)
+                    }
+                } else {
+                    funcParamCount.set(fname, 0)
+                }
             }
             if (sk == "CLASS_DECL") { registerClass(sid) }
         }
@@ -1168,18 +1196,51 @@ function genCall(id: int): string {
     }
 
     // General function call
-    // Check if function expects double params (math functions)
     const expectsDouble = callReturnType(callee) == "double"
-    let args = ""
+    // Collect provided args
+    let providedArgs = ""
+    let providedCount = 0
     if (argList != "") {
         const parts = argList.split(",")
-        let first = 1
         for (p in parts) {
             const argId = parseInt(p)
             if (argId > 0) {
+                if (providedArgs == "") { providedArgs = argId + "" } else { providedArgs = providedArgs + "," + argId }
+                providedCount = providedCount + 1
+            }
+        }
+    }
+    // Check if we need to fill in defaults
+    let expectedCount = providedCount
+    if (funcParamCount.has(callee) == 1) {
+        expectedCount = funcParamCount.get(callee)
+    }
+    // Append defaults for missing args
+    let fullArgs = providedArgs
+    if (providedCount < expectedCount && funcDefaults.has(callee) == 1) {
+        const defs = funcDefaults.getString(callee)
+        const defParts = defs.split(",")
+        for (dp in defParts) {
+            const colonPos = dp.indexOf(":")
+            if (colonPos > 0) {
+                const defIdx = parseInt(dp.substring(0, colonPos))
+                const defNodeId = dp.substring(colonPos + 1, dp.length() - colonPos - 1)
+                if (defIdx >= providedCount) {
+                    if (fullArgs == "") { fullArgs = defNodeId } else { fullArgs = fullArgs + "," + defNodeId }
+                }
+            }
+        }
+    }
+    // Generate args
+    let args = ""
+    if (fullArgs != "") {
+        const argParts = fullArgs.split(",")
+        let first = 1
+        for (ap in argParts) {
+            const argId = parseInt(ap)
+            if (argId > 0) {
                 let val = genExpr(argId)
                 let vType = inferType(argId)
-                // Auto-convert int to double for math functions
                 if (expectsDouble && (vType == "int" || vType == "auto")) {
                     const cvR = nextReg()
                     emitIR("  " + cvR + " = sitofp i32 " + val + " to double")
