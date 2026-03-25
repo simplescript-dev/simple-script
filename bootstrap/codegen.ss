@@ -738,7 +738,12 @@ function genExpr(id: int): string {
         const val = genExpr(nGetI1(id))
         const r = nextReg()
         if (op == "Neg") {
-            emitIR("  " + r + " = sub i32 0, " + val)
+            const uType = inferType(nGetI1(id))
+            if (uType == "double") {
+                emitIR("  " + r + " = fsub double 0.0, " + val)
+            } else {
+                emitIR("  " + r + " = sub i32 0, " + val)
+            }
         } else {
             emitIR("  " + r + " = icmp eq i32 " + val + ", 0")
             const r2 = nextReg()
@@ -856,6 +861,17 @@ function genBinary(id: int): string {
 
     const r = nextReg()
     if (blt == "double" || brt == "double") {
+        // Convert int operand to double if needed
+        if (blt != "double") {
+            const cvtR = nextReg()
+            emitIR("  " + cvtR + " = sitofp i32 " + left + " to double")
+            left = cvtR
+        }
+        if (brt != "double") {
+            const cvtR = nextReg()
+            emitIR("  " + cvtR + " = sitofp i32 " + right + " to double")
+            right = cvtR
+        }
         if (op == "Add") { emitIR("  " + r + " = fadd double " + left + ", " + right); return r }
         if (op == "Sub") { emitIR("  " + r + " = fsub double " + left + ", " + right); return r }
         if (op == "Mul") { emitIR("  " + r + " = fmul double " + left + ", " + right); return r }
@@ -1260,6 +1276,11 @@ function genExprAsString(id: int): string {
         emitIR("  " + r + " = call ptr @ym_double_to_string(double " + val + ")")
     } else if (vType == "i64") {
         emitIR("  " + r + " = call ptr @ym_i64_to_string(i64 " + val + ")")
+    } else if (vType == "ptr") {
+        // Object pointer → convert using i64_to_string (heuristic: if > 0x100000, treat as string pointer)
+        const castR = nextReg()
+        emitIR("  " + castR + " = ptrtoint ptr " + val + " to i64")
+        emitIR("  " + r + " = call ptr @ym_i64_to_string(i64 " + castR + ")")
     } else {
         emitIR("  " + r + " = call ptr @ym_int_to_string(i32 " + val + ")")
     }
