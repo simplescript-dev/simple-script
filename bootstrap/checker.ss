@@ -57,21 +57,6 @@ function lookupVar(name: string): string {
     return ""
 }
 
-function isVarConst(name: string): int {
-    let d = scopeDepth
-    while (d >= 0) {
-        const key = d + ":" + name
-        if (varNames.has(key) == 1) {
-            if (varConst.has(key) == 1) {
-                return varConst.get(key)
-            }
-            return 0
-        }
-        d = d - 1
-    }
-    return 0
-}
-
 function defineFunc(name: string, retType: string) {
     funcNames.set(name, retType)
 }

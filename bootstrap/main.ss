@@ -89,7 +89,7 @@ function lastIndexOf(s: string, sub: string): int {
 // ── Main ──────────────────────────────────────────────────────
 
 function main() {
-    // Initialize all modules upfront (avoids heap init ordering issues)
+    // Initialize all modules upfront (required — global Map vars need heap init before use)
     initTkMap()
     initParser()
     initCodegen()

@@ -280,13 +280,9 @@ function parseEnumDecl(): int {
     skipNL()
     let variants = ""
     while (curKind() != "RBRACE" && curKind() != "EOF") {
-        const v = pExpectIdent()
-        variants = listAppend(variants, 0)
-        // Store variant name; reuse a simple encoding
         const vId = newNode("ENUM_VARIANT")
-        nSetS1(vId, v)
-        variants = listAppend("", vId)
-        if (variants == "") { variants = vId + "" } else { variants = variants }
+        nSetS1(vId, pExpectIdent())
+        variants = listAppend(variants, vId)
         if (curKind() == "COMMA") { pAdvance() }
         skipNL()
     }
@@ -355,18 +351,14 @@ function parseSwitchBody(): int {
     return blockId
 }
 
-function parseVarDecl(): int {
+function parseVarDeclCore(): int {
     const varKind = curKind()
     pAdvance()
     const name = pExpectIdent()
     let typeAnn = ""
-    if (curKind() == "COLON") {
-        pAdvance()
-        typeAnn = parseTypeAnn()
-    }
+    if (curKind() == "COLON") { pAdvance(); typeAnn = parseTypeAnn() }
     pExpect("ASSIGN")
     const initId = parseExpr()
-    expectNLOrRB()
     const id = newNode("VAR_DECL")
     nSetS1(id, name)
     nSetS2(id, varKind)
@@ -375,23 +367,14 @@ function parseVarDecl(): int {
     return id
 }
 
-function parseVarDeclNoNL(): int {
-    const varKind = curKind()
-    pAdvance()
-    const name = pExpectIdent()
-    let typeAnn = ""
-    if (curKind() == "COLON") {
-        pAdvance()
-        typeAnn = parseTypeAnn()
-    }
-    pExpect("ASSIGN")
-    const initId = parseExpr()
-    const id = newNode("VAR_DECL")
-    nSetS1(id, name)
-    nSetS2(id, varKind)
-    nSetS3(id, typeAnn)
-    nSetI1(id, initId)
+function parseVarDecl(): int {
+    const id = parseVarDeclCore()
+    expectNLOrRB()
     return id
+}
+
+function parseVarDeclNoNL(): int {
+    return parseVarDeclCore()
 }
 
 function parseReturn(): int {
@@ -1011,138 +994,3 @@ function parseArgs(): string {
     return args
 }
 
-// ── AST debug printer ─────────────────────────────────────────
-
-function printAST(id: int, indent: int) {
-    let pad = ""
-    let i = 0
-    while (i < indent) {
-        pad = pad + "  "
-        i = i + 1
-    }
-    const kind = nGetKind(id)
-    if (kind == "PROGRAM") {
-        println(pad + "PROGRAM")
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "FUNC_DECL") {
-        println(pad + "FUNC_DECL " + nGetS1(id) + " -> " + nGetS2(id))
-        printList(nGetList(id), indent + 1)
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "VAR_DECL") {
-        println(pad + "VAR_DECL " + nGetS2(id) + " " + nGetS1(id) + ": " + nGetS3(id))
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "ASSIGN") {
-        println(pad + "ASSIGN " + nGetS1(id) + " " + nGetS2(id))
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "IF") {
-        println(pad + "IF")
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-        if (nGetI3(id) != 0) { printAST(nGetI3(id), indent + 1) }
-    } else if (kind == "WHILE") {
-        println(pad + "WHILE")
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-    } else if (kind == "FOR") {
-        println(pad + "FOR")
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-        printAST(nGetI3(id), indent + 1)
-        printAST(nGetI4(id), indent + 1)
-    } else if (kind == "FOR_IN") {
-        println(pad + "FOR_IN " + nGetS1(id))
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-    } else if (kind == "RETURN") {
-        println(pad + "RETURN")
-        if (nGetI1(id) != 0) { printAST(nGetI1(id), indent + 1) }
-    } else if (kind == "BLOCK") {
-        println(pad + "BLOCK")
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "EXPR_STMT") {
-        println(pad + "EXPR_STMT")
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "BINARY") {
-        println(pad + "BINARY " + nGetS1(id))
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-    } else if (kind == "UNARY") {
-        println(pad + "UNARY " + nGetS1(id))
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "CALL") {
-        println(pad + "CALL " + nGetS1(id))
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "METHOD_CALL") {
-        println(pad + "METHOD_CALL ." + nGetS1(id))
-        printAST(nGetI1(id), indent + 1)
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "MEMBER_ACCESS") {
-        println(pad + "MEMBER ." + nGetS1(id))
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "INDEX_ACCESS") {
-        println(pad + "INDEX_ACCESS")
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-    } else if (kind == "INT_LIT") {
-        println(pad + "INT " + nGetS1(id))
-    } else if (kind == "DOUBLE_LIT") {
-        println(pad + "DOUBLE " + nGetS1(id))
-    } else if (kind == "STRING_LIT") {
-        println(pad + "STRING \"" + nGetS1(id) + "\"")
-    } else if (kind == "TRUE_LIT") {
-        println(pad + "TRUE")
-    } else if (kind == "FALSE_LIT") {
-        println(pad + "FALSE")
-    } else if (kind == "IDENT") {
-        println(pad + "IDENT " + nGetS1(id))
-    } else if (kind == "TERNARY") {
-        println(pad + "TERNARY")
-        printAST(nGetI1(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-        printAST(nGetI3(id), indent + 1)
-    } else if (kind == "TEMPLATE_LIT") {
-        println(pad + "TEMPLATE_LIT")
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "TMPL_FRAG_LIT") {
-        println(pad + "FRAG_LIT \"" + nGetS1(id) + "\"")
-    } else if (kind == "TMPL_FRAG_EXPR") {
-        println(pad + "FRAG_EXPR")
-        printAST(nGetI1(id), indent + 1)
-    } else if (kind == "NEW_EXPR") {
-        println(pad + "NEW " + nGetS1(id))
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "ARRAY_LIT") {
-        println(pad + "ARRAY")
-        printList(nGetList(id), indent + 1)
-    } else if (kind == "CLASS_DECL") {
-        println(pad + "CLASS " + nGetS1(id) + " extends " + nGetS2(id))
-        printList(nGetList(id), indent + 1)
-        printAST(nGetI2(id), indent + 1)
-    } else if (kind == "POSTFIX_INC") {
-        println(pad + nGetS1(id) + "++")
-    } else if (kind == "POSTFIX_DEC") {
-        println(pad + nGetS1(id) + "--")
-    } else if (kind == "IMPORT") {
-        println(pad + "IMPORT {" + nGetS1(id) + "} from " + nGetS2(id))
-    } else if (kind == "BREAK") {
-        println(pad + "BREAK")
-    } else if (kind == "CONTINUE") {
-        println(pad + "CONTINUE")
-    } else if (kind == "GROUPING") {
-        println(pad + "GROUPING")
-        printAST(nGetI1(id), indent + 1)
-    } else {
-        println(pad + kind + " (id=" + id + ")")
-    }
-}
-
-function printList(listStr: string, indent: int) {
-    if (listStr == "") { return }
-    const parts = listStr.split(",")
-    for (p in parts) {
-        const childId = parseInt(p)
-        if (childId > 0) {
-            printAST(childId, indent)
-        }
-    }
-}

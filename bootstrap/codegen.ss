@@ -1051,43 +1051,26 @@ function genBinary(id: int): string {
     }
 
     // Short-circuit && and ||
-    if (op == "And") {
-        const resultA = nextReg()
-        emitIR("  " + resultA + " = alloca i32, align 4")
-        const leftA = genExpr(leftId)
-        emitIR("  store i32 " + leftA + ", ptr " + resultA + ", align 4")
-        const cmpA = nextReg()
-        emitIR("  " + cmpA + " = icmp ne i32 " + leftA + ", 0")
-        const thenA = nextLabel("and.rhs")
-        const mergeA = nextLabel("and.end")
-        emitIR("  br i1 " + cmpA + ", label %" + thenA + ", label %" + mergeA)
-        emitIR(thenA + ":")
-        const rightA = genExpr(rightId)
-        emitIR("  store i32 " + rightA + ", ptr " + resultA + ", align 4")
-        emitIR("  br label %" + mergeA)
-        emitIR(mergeA + ":")
-        const resA = nextReg()
-        emitIR("  " + resA + " = load i32, ptr " + resultA + ", align 4")
-        return resA
-    }
-    if (op == "Or") {
-        const resultO = nextReg()
-        emitIR("  " + resultO + " = alloca i32, align 4")
-        const leftO = genExpr(leftId)
-        emitIR("  store i32 " + leftO + ", ptr " + resultO + ", align 4")
-        const cmpO = nextReg()
-        emitIR("  " + cmpO + " = icmp ne i32 " + leftO + ", 0")
-        const elseO = nextLabel("or.rhs")
-        const mergeO = nextLabel("or.end")
-        emitIR("  br i1 " + cmpO + ", label %" + mergeO + ", label %" + elseO)
-        emitIR(elseO + ":")
-        const rightO = genExpr(rightId)
-        emitIR("  store i32 " + rightO + ", ptr " + resultO + ", align 4")
-        emitIR("  br label %" + mergeO)
-        emitIR(mergeO + ":")
-        const resO = nextReg()
-        emitIR("  " + resO + " = load i32, ptr " + resultO + ", align 4")
-        return resO
+    // Short-circuit && and ||
+    if (op == "And" || op == "Or") {
+        const scResult = nextReg()
+        emitIR("  " + scResult + " = alloca i32, align 4")
+        const scLeft = genExpr(leftId)
+        emitIR("  store i32 " + scLeft + ", ptr " + scResult + ", align 4")
+        const scCmp = nextReg()
+        emitIR("  " + scCmp + " = icmp ne i32 " + scLeft + ", 0")
+        const scRhs = nextLabel("sc.rhs")
+        const scEnd = nextLabel("sc.end")
+        // And: eval rhs if left is true; Or: eval rhs if left is false
+        if (op == "And") { emitIR("  br i1 " + scCmp + ", label %" + scRhs + ", label %" + scEnd) } else { emitIR("  br i1 " + scCmp + ", label %" + scEnd + ", label %" + scRhs) }
+        emitIR(scRhs + ":")
+        const scRight = genExpr(rightId)
+        emitIR("  store i32 " + scRight + ", ptr " + scResult + ", align 4")
+        emitIR("  br label %" + scEnd)
+        emitIR(scEnd + ":")
+        const scRes = nextReg()
+        emitIR("  " + scRes + " = load i32, ptr " + scResult + ", align 4")
+        return scRes
     }
 
     let left = genExpr(leftId)

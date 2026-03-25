@@ -195,11 +195,11 @@ function skipWS() {
 
 // ── String literals ───────────────────────────────────────────
 
-function lexString() {
+function lexStringWith(quote: string) {
     advance()
     let value = ""
     while (pos < srcLen) {
-        if (peek() == "\"") { break }
+        if (peek() == quote) { break }
         if (peek() == "\\") {
             advance()
             if (pos >= srcLen) { println("lexer error: unterminated string"); exit(1) }
@@ -218,28 +218,8 @@ function lexString() {
     emit("STRING", value)
 }
 
-function lexSQString() {
-    advance()
-    let value = ""
-    while (pos < srcLen) {
-        if (peek() == "'") { break }
-        if (peek() == "\\") {
-            advance()
-            if (pos >= srcLen) { println("lexer error: unterminated string"); exit(1) }
-            value = value + escapeChar(peek())
-            advance()
-        } else if (peek() == "\n") {
-            println("lexer error: unterminated string at line " + curLine)
-            exit(1)
-        } else {
-            value = value + peek()
-            advance()
-        }
-    }
-    if (pos >= srcLen) { println("lexer error: unterminated string"); exit(1) }
-    advance()
-    emit("STRING", value)
-}
+function lexString() { lexStringWith("\"") }
+function lexSQString() { lexStringWith("'") }
 
 // ── Template literal ──────────────────────────────────────────
 
