@@ -486,7 +486,14 @@ function genAssign(id: int) {
         const ln = llVarName(name)
         const r1 = nextReg()
         emitIR("  " + r1 + " = load " + llType + ", ptr %" + ln + ", align 8")
-        const r2 = genExpr(valId)
+        let r2 = genExpr(valId)
+        // Trunc i64 to i32 if needed
+        const r2Type = inferType(valId)
+        if (r2Type == "i64" && vType != "i64") {
+            const trR = nextReg()
+            emitIR("  " + trR + " = trunc i64 " + r2 + " to i32")
+            r2 = trR
+        }
         const r3 = nextReg()
         if (op == "PLUS_ASSIGN") {
             if (vType == "string") {
