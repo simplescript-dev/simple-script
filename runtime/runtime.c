@@ -447,6 +447,10 @@ void ym_exit(int code) {
     exit(code);
 }
 
+int ym_system(const char* cmd) {
+    return system(cmd);
+}
+
 // Math
 double ym_sqrt(double x) { return sqrt(x); }
 double ym_abs(double x) { return fabs(x); }

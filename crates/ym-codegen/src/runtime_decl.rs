@@ -90,6 +90,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function("ym_argGet", i8_ptr.fn_type(&[i32_type.into()], false), None);
         self.module.add_function("ym_timeMs", i64_type.fn_type(&[], false), None);
         self.module.add_function("ym_exit", void_type.fn_type(&[i32_type.into()], false), None);
+        self.module.add_function("ym_system", i32_type.fn_type(&[i8_ptr.into()], false), None);
 
         // Math
         let f1 = f64_type.fn_type(&[f64_type.into()], false);

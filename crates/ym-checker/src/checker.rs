@@ -78,6 +78,18 @@ impl Checker {
             params: vec![Type::Int],
             return_type: Type::Void,
         });
+        functions.insert("system".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("parseInt".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("parseDouble".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Double,
+        });
         functions.insert("Map".to_string(), FuncInfo {
             params: vec![],
             return_type: Type::Unknown,

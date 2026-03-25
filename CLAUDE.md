@@ -1,35 +1,106 @@
-# SimpleScript
+# CLAUDE.md
 
-SimpleScript 是一门面向现代软件开发的编译型语言。语法以 Java/TypeScript 为基础，编译到 LLVM IR 并静态链接 musl libc，产出高性能、小体积的原生二进制。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 项目结构
+## 项目概述
 
-```
-crates/
-  ym-lexer/      词法分析
-  ym-parser/     语法分析 (递归下降)
-  ym-checker/    类型检查
-  ym-codegen/    LLVM IR 生成 (inkwell)
-  ym-cli/        CLI 入口 (ss build / ss run)
-runtime/
-  runtime.c      C 运行时 (字符串、I/O、数组)
-spec/            语言规范 (70 个文件)
-tests/           测试用例
-examples/        示例程序
-```
+SimpleScript 是一门编译型语言，语法基于 Java/TypeScript，编译到 LLVM IR 并静态链接 musl libc，产出原生二进制。
 
 ## 构建与测试
 
 ```bash
-cargo build -p ym-cli              # 编译
-cargo run -p ym-cli --bin ss -- build file.ss -o output  # 编译 .ss 文件
-cargo run -p ym-cli --bin ss -- run file.ss              # 编译并运行
-cargo run -p ym-cli --bin ss -- build --release file.ss  # 优化构建
+# 构建编译器
+cargo build -p ym-cli
+
+# 编译 .ss 文件
+cargo run -p ym-cli --bin ss -- build file.ss -o output
+cargo run -p ym-cli --bin ss -- build --release file.ss    # 优化构建 (-O2 -s)
+cargo run -p ym-cli --bin ss -- build --emit-ir file.ss    # 输出 LLVM IR
+
+# 编译并运行
+cargo run -p ym-cli --bin ss -- run file.ss
+cargo run -p ym-cli --bin ss -- run --watch file.ss        # 文件变更自动重编译
+
+# 其他命令
+cargo run -p ym-cli --bin ss -- check file.ss   # 仅类型检查
+cargo run -p ym-cli --bin ss -- test tests/      # 运行 .ss 测试套件
+cargo run -p ym-cli --bin ss -- fmt file.ss      # 格式化
+cargo run -p ym-cli --bin ss -- repl             # 交互式 REPL
+cargo run -p ym-cli --bin ss -- new myapp        # 创建新项目 (ss.json + src/main.ss)
+cargo run -p ym-cli --bin ss -- clean            # 清理缓存 (/tmp/ss_*.o)
+
+# Rust 单元测试
+cargo test -p ym-lexer     # 词法分析测试
+cargo test -p ym-parser    # 语法分析测试
+cargo test                 # 全部 crate 测试
 ```
+
+`ss test` 会递归查找目录下所有 `.ss` 文件，编译运行，以退出码判定通过/失败。测试按 `tests/{mvp,phase2,phase3,phase4}/` 分阶段组织。
+
+## 编译器架构
+
+四阶段流水线，每阶段一个 crate：
+
+```
+.ss 源码 → Lexer (Vec<Token>) → Parser (Program/AST) → Checker (TypedProgram) → Codegen (LLVM IR) → musl-gcc 链接 → 静态二进制
+```
+
+### 核心数据流
+
+| 阶段 | crate | 入口函数 | 输入 → 输出 |
+|------|-------|---------|------------|
+| 词法 | `ym-lexer` | `tokenize()` | `&str` → `Vec<Token>` |
+| 语法 | `ym-parser` | `parse()` | `Vec<Token>` → `Program { stmts: Vec<Stmt> }` |
+| 类型 | `ym-checker` | `Checker::check()` | `&Program` → `TypedProgram { program, global_vars, functions }` |
+| 代码生成 | `ym-codegen` | `Codegen::compile()` | `&TypedProgram` → LLVM object file |
+
+### 关键类型
+
+- **Lexer**: `Token { kind: TokenKind, span: Span }`，`TemplateFragment::Literal | Expr` 处理模板字符串
+- **Parser**: `Stmt { kind: StmtKind, span }` / `Expr { kind: ExprKind, span }`，`TypeAnnotation` 枚举 (Int/Double/String/Bool/Void/Named)
+- **Checker**: `Type` 枚举用于类型推断，`FuncInfo { params, return_type }`，Levenshtein 距离提示拼写错误
+- **Codegen**: `Codegen<'ctx>` 持有 LLVM module/builder，`VarType` 枚举 (Int/Double/String/Bool/Object)，`ClassInfo` 存储类结构体元数据
+
+### Codegen 三趟编译 (codegen.rs)
+
+1. **前向声明**：注册所有函数签名和类定义，保存默认参数值
+2. **全局变量**：顶层 `const`/`let` 编译为 LLVM 全局变量 (`add_global()`)
+3. **函数/类体**：编译函数体和类方法，构造函数生成为 `ClassName_new()`
+
+codegen 拆分为模块：`codegen.rs`（主逻辑+语句）、`exprs.rs`（表达式编译）、`runtime_decl.rs`（运行时函数声明）、`helpers.rs`（值转换+变量加载）。
+
+### 运行时 (runtime/runtime.c)
+
+C 语言运行时，通过 `musl-gcc` 编译（缓存在 `/tmp/ss_runtime.o`），提供：
+- I/O：`ym_println`/`ym_print`/`ym_readLine`/`ym_readFile`/`ym_writeFile`
+- 字符串：19 个方法 (`ym_string_concat`/`ym_trim`/`ym_replace`/`ym_split`/`ym_join` 等)
+- 数组：堆分配 `long long*`（slot 0 = length），`ym_newArray`/`ym_arrayPush`/`ym_arraySort` 等
+- HashMap：`ym_mapNew`/`ym_mapSet`/`ym_mapGet` (string→i64)
+- 数学：`ym_sqrt`/`ym_abs`/`ym_pow`/`ym_random` 等
+- 类型转换：`ym_int_to_string`/`ym_parseInt`/`ym_parseDouble`
+
+运行时函数在 `runtime_decl.rs` 中前向声明为 LLVM 函数类型。
+
+### 类系统
+
+- 类编译为 LLVM struct，继承通过字段拼接（父类字段在前）
+- 构造函数 `ClassName_new()` 通过 `build_malloc()` 分配
+- 方法编译为全局函数 `ClassName_methodName(this, args...)`
+- 静态分派，无 vtable
+
+### 链接过程 (ym-cli/main.rs `compile()`)
+
+1. 解析 imports（递归，有环检测）
+2. 四阶段流水线生成 object file
+3. `musl-gcc` 编译 runtime.c（有缓存）
+4. `musl-gcc` 静态链接：object + runtime → 二进制
+5. Release 模式加 `-O2 -s`
+
+依赖：Inkwell 0.5 (LLVM 18)，Clap 4，thiserror 2。
 
 ## 语法设计原则
 
-- 语法只参考 Java 和 TypeScript，不引入 Go/Rust/Kotlin 的奇怪语法
+- 语法只参考 Java 和 TypeScript，不引入 Go/Rust/Kotlin 的语法
 - const/let (TypeScript 风格)，类型后置 (name: Type)
 - 顶层 const 编译为 LLVM 全局变量（不是 hack 到 main 里）
 - function 关键字，class/new/this/extends
