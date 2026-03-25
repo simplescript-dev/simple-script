@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 void ym_println(const char* s) {
     puts(s);
@@ -155,7 +157,7 @@ int ym_contains(const char* s, const char* sub) {
 
 char* ym_charAt(const char* s, int index) {
     size_t len = strlen(s);
-    if (index < 0 || (size_t)index >= len) return "";
+    if (index < 0 || (size_t)index >= len) return strdup("");
     char* result = (char*)malloc(2);
     result[0] = s[index];
     result[1] = '\0';
@@ -163,6 +165,7 @@ char* ym_charAt(const char* s, int index) {
 }
 
 char* ym_repeat(const char* s, int n) {
+    if (n <= 0) return strdup("");
     size_t slen = strlen(s);
     char* result = (char*)malloc(slen * n + 1);
     char* w = result;
@@ -251,7 +254,7 @@ char* ym_join(long long* arr, const char* delim) {
 
 char* ym_readFile(const char* path) {
     FILE* f = fopen(path, "rb");
-    if (!f) return "";
+    if (!f) return strdup("");
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -278,7 +281,7 @@ void ym_appendFile(const char* path, const char* content) {
 
 char* ym_substring(const char* s, int start, int len) {
     int slen = (int)strlen(s);
-    if (start < 0 || start >= slen) return "";
+    if (start < 0 || start >= slen) return strdup("");
     if (start + len > slen) len = slen - start;
     char* buf = (char*)malloc(len + 1);
     memcpy(buf, s + start, len);
@@ -442,7 +445,7 @@ int ym_argCount() {
 }
 
 char* ym_argGet(int index) {
-    if (index < 0 || index >= ym_argc) return "";
+    if (index < 0 || index >= ym_argc) return strdup("");
     return ym_argv[index];
 }
 
@@ -630,7 +633,7 @@ void ym_tcpClose(int fd) {
 
 char* ym_getenv(const char* name) {
     const char* val = getenv(name);
-    if (!val) return "";
+    if (!val) return strdup("");
     return strdup(val);
 }
 
@@ -639,9 +642,6 @@ long long ym_timeUnix() {
 }
 
 // ── File system ───────────────────────────────────────────────
-
-#include <sys/stat.h>
-#include <dirent.h>
 
 int ym_mkdir(const char* path) {
     return mkdir(path, 0755);

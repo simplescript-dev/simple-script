@@ -45,139 +45,60 @@ pub struct TypedProgram {
 impl Checker {
     pub fn new() -> Self {
         let mut functions = HashMap::new();
-        // Built-in: println(s: string) -> void
-        functions.insert("println".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Void,
-        });
-        functions.insert("print".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Void,
-        });
-        functions.insert("readLine".to_string(), FuncInfo {
-            params: vec![],
-            return_type: Type::String,
-        });
-        functions.insert("readFile".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::String,
-        });
-        functions.insert("writeFile".to_string(), FuncInfo {
-            params: vec![Type::String, Type::String],
-            return_type: Type::Void,
-        });
-        functions.insert("appendFile".to_string(), FuncInfo {
-            params: vec![Type::String, Type::String],
-            return_type: Type::Void,
-        });
-        functions.insert("args".to_string(), FuncInfo {
-            params: vec![],
-            return_type: Type::Int,
-        });
-        functions.insert("arg".to_string(), FuncInfo {
-            params: vec![Type::Int],
-            return_type: Type::String,
-        });
-        functions.insert("exit".to_string(), FuncInfo {
-            params: vec![Type::Int],
-            return_type: Type::Void,
-        });
-        functions.insert("system".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("tcpListen".to_string(), FuncInfo {
-            params: vec![Type::Int],
-            return_type: Type::Int,
-        });
-        functions.insert("tcpAccept".to_string(), FuncInfo {
-            params: vec![Type::Int],
-            return_type: Type::Int,
-        });
-        functions.insert("tcpRead".to_string(), FuncInfo {
-            params: vec![Type::Int, Type::Int],
-            return_type: Type::String,
-        });
-        functions.insert("tcpWrite".to_string(), FuncInfo {
-            params: vec![Type::Int, Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("tcpWriteBytes".to_string(), FuncInfo {
-            params: vec![Type::Int, Type::String, Type::Int],
-            return_type: Type::Int,
-        });
-        functions.insert("tcpClose".to_string(), FuncInfo {
-            params: vec![Type::Int],
-            return_type: Type::Void,
-        });
-        functions.insert("getenv".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::String,
-        });
-        functions.insert("timeUnix".to_string(), FuncInfo {
-            params: vec![],
-            return_type: Type::Unknown,
-        });
-        functions.insert("mkdir".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("mkdirp".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("fileExists".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("fileSize".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Unknown,
-        });
-        functions.insert("removeFile".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("renameFile".to_string(), FuncInfo {
-            params: vec![Type::String, Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("listDir".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::String,
-        });
-        functions.insert("sha256".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::String,
-        });
-        functions.insert("parseInt".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Int,
-        });
-        functions.insert("parseDouble".to_string(), FuncInfo {
-            params: vec![Type::String],
-            return_type: Type::Double,
-        });
-        functions.insert("Map".to_string(), FuncInfo {
-            params: vec![],
-            return_type: Type::Unknown,
-        });
+
+        // Group builtins by signature to reduce boilerplate
+        // () -> Void
+        // (handled individually due to variadic println)
+
+        // (String) -> Void
+        for name in ["println", "print"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::String], return_type: Type::Void });
+        }
+        // (String, String) -> Void
+        for name in ["writeFile", "appendFile"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::String, Type::String], return_type: Type::Void });
+        }
+        // (String) -> String
+        for name in ["readFile", "getenv", "listDir", "sha256"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::String], return_type: Type::String });
+        }
+        // (String) -> Int
+        for name in ["parseInt", "system", "mkdir", "mkdirp", "fileExists", "removeFile"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::String], return_type: Type::Int });
+        }
+        // (Int) -> Void
+        for name in ["exit", "tcpClose"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::Int], return_type: Type::Void });
+        }
+        // (Int) -> Int
+        for name in ["tcpListen", "tcpAccept"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::Int], return_type: Type::Int });
+        }
+        // (String, String) -> Int
+        functions.insert("renameFile".to_string(), FuncInfo { params: vec![Type::String, Type::String], return_type: Type::Int });
+        // (Int, Int) -> String
+        functions.insert("tcpRead".to_string(), FuncInfo { params: vec![Type::Int, Type::Int], return_type: Type::String });
+        // (Int, String) -> Int
+        functions.insert("tcpWrite".to_string(), FuncInfo { params: vec![Type::Int, Type::String], return_type: Type::Int });
+        // (Int, String, Int) -> Int
+        functions.insert("tcpWriteBytes".to_string(), FuncInfo { params: vec![Type::Int, Type::String, Type::Int], return_type: Type::Int });
+        // Remaining unique signatures
+        functions.insert("readLine".to_string(), FuncInfo { params: vec![], return_type: Type::String });
+        functions.insert("args".to_string(), FuncInfo { params: vec![], return_type: Type::Int });
+        functions.insert("arg".to_string(), FuncInfo { params: vec![Type::Int], return_type: Type::String });
+        functions.insert("parseDouble".to_string(), FuncInfo { params: vec![Type::String], return_type: Type::Double });
+        functions.insert("fileSize".to_string(), FuncInfo { params: vec![Type::String], return_type: Type::Unknown });
+        functions.insert("timeUnix".to_string(), FuncInfo { params: vec![], return_type: Type::Unknown });
+        functions.insert("Map".to_string(), FuncInfo { params: vec![], return_type: Type::Unknown });
+        // Math: (Double) -> Double
         for name in ["sqrt", "abs", "floor", "ceil", "round", "log", "sin", "cos"] {
-            functions.insert(name.to_string(), FuncInfo {
-                params: vec![Type::Double],
-                return_type: Type::Double,
-            });
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::Double], return_type: Type::Double });
         }
+        // Math: (Double, Double) -> Double
         for name in ["pow", "min", "max"] {
-            functions.insert(name.to_string(), FuncInfo {
-                params: vec![Type::Double, Type::Double],
-                return_type: Type::Double,
-            });
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::Double, Type::Double], return_type: Type::Double });
         }
-        functions.insert("random".to_string(), FuncInfo {
-            params: vec![],
-            return_type: Type::Double,
-        });
+        functions.insert("random".to_string(), FuncInfo { params: vec![], return_type: Type::Double });
 
         Self {
             scopes: vec![HashMap::new()],
