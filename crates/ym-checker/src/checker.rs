@@ -118,6 +118,38 @@ impl Checker {
             params: vec![],
             return_type: Type::Unknown,
         });
+        functions.insert("mkdir".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("mkdirp".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("fileExists".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("fileSize".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Unknown,
+        });
+        functions.insert("removeFile".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("renameFile".to_string(), FuncInfo {
+            params: vec![Type::String, Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("listDir".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::String,
+        });
+        functions.insert("sha256".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::String,
+        });
         functions.insert("parseInt".to_string(), FuncInfo {
             params: vec![Type::String],
             return_type: Type::Int,

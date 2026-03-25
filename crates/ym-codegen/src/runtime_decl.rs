@@ -103,6 +103,18 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function("ym_getenv", i8_ptr.fn_type(&[i8_ptr.into()], false), None);
         self.module.add_function("ym_timeUnix", i64_type.fn_type(&[], false), None);
 
+        // File system
+        self.module.add_function("ym_mkdir", i32_type.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_mkdirp", i32_type.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_fileExists", i32_type.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_fileSize", i64_type.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_removeFile", i32_type.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_renameFile", i32_type.fn_type(&[i8_ptr.into(), i8_ptr.into()], false), None);
+        self.module.add_function("ym_listDir", i8_ptr.fn_type(&[i8_ptr.into()], false), None);
+
+        // Crypto
+        self.module.add_function("ym_sha256", i8_ptr.fn_type(&[i8_ptr.into()], false), None);
+
         // Math
         let f1 = f64_type.fn_type(&[f64_type.into()], false);
         for name in ["ym_sqrt", "ym_abs", "ym_floor", "ym_ceil", "ym_round", "ym_log", "ym_sin", "ym_cos"] {
