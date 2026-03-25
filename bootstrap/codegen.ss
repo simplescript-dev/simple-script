@@ -1369,6 +1369,29 @@ function genMethodCall(id: int): string {
         emitIR("  " + r + " = call ptr @ym_trim(ptr " + objVal + ")")
         return r
     }
+    if (method == "repeat") {
+        const argId = parseInt(argList)
+        const n = genExpr(argId)
+        const r = nextReg()
+        emitIR("  " + r + " = call ptr @ym_repeat(ptr " + objVal + ", i32 " + n + ")")
+        return r
+    }
+    if (method == "padStart") {
+        const argParts = argList.split(",")
+        const widthVal = genExpr(parseInt(argParts[0]))
+        const padVal = genExpr(parseInt(argParts[1]))
+        const r = nextReg()
+        emitIR("  " + r + " = call ptr @ym_padStart(ptr " + objVal + ", i32 " + widthVal + ", ptr " + padVal + ")")
+        return r
+    }
+    if (method == "padEnd") {
+        const argParts = argList.split(",")
+        const widthVal = genExpr(parseInt(argParts[0]))
+        const padVal = genExpr(parseInt(argParts[1]))
+        const r = nextReg()
+        emitIR("  " + r + " = call ptr @ym_padEnd(ptr " + objVal + ", i32 " + widthVal + ", ptr " + padVal + ")")
+        return r
+    }
     if (method == "toUpperCase") {
         const r = nextReg()
         emitIR("  " + r + " = call ptr @ym_toUpperCase(ptr " + objVal + ")")
@@ -1572,6 +1595,13 @@ function genArrayLit(id: int): string {
 }
 
 function genTernary(id: int): string {
+    const vType = inferType(nGetI2(id))
+    const llType = ssTypeToLLVM(vType)
+
+    // Use alloca+store+load instead of phi to handle nested ternaries
+    const resultAlloca = nextReg()
+    emitIR("  " + resultAlloca + " = alloca " + llType + ", align 8")
+
     const condVal = genExpr(nGetI1(id))
     const thenLabel = nextLabel("tern.then")
     const elseLabel = nextLabel("tern.else")
@@ -1583,18 +1613,18 @@ function genTernary(id: int): string {
 
     emitIR(thenLabel + ":")
     const thenVal = genExpr(nGetI2(id))
+    emitIR("  store " + llType + " " + thenVal + ", ptr " + resultAlloca + ", align 8")
     emitIR("  br label %" + mergeLabel)
 
     emitIR(elseLabel + ":")
     const elseVal = genExpr(nGetI3(id))
+    emitIR("  store " + llType + " " + elseVal + ", ptr " + resultAlloca + ", align 8")
     emitIR("  br label %" + mergeLabel)
 
     emitIR(mergeLabel + ":")
-    const phi = nextReg()
-    const vType = inferType(nGetI2(id))
-    const llType = ssTypeToLLVM(vType)
-    emitIR("  " + phi + " = phi " + llType + " [" + thenVal + ", %" + thenLabel + "], [" + elseVal + ", %" + elseLabel + "]")
-    return phi
+    const result = nextReg()
+    emitIR("  " + result + " = load " + llType + ", ptr " + resultAlloca + ", align 8")
+    return result
 }
 
 // Convert any expression to string for println
@@ -1675,7 +1705,7 @@ function inferType(id: int): string {
     if (kind == "METHOD_CALL") {
         const method = nGetS1(id)
         if (method == "length" || method == "indexOf" || method == "has" || method == "size") { return "int" }
-        if (method == "charAt" || method == "substring" || method == "trim" || method == "toUpperCase" || method == "toLowerCase" || method == "replace" || method == "join") { return "string" }
+        if (method == "charAt" || method == "substring" || method == "trim" || method == "toUpperCase" || method == "toLowerCase" || method == "replace" || method == "join" || method == "repeat" || method == "padStart" || method == "padEnd") { return "string" }
         if (method == "split" || method == "push") { return "ptr" }
         if (method == "get") { return "i64" }
         if (method == "getString") { return "string" }
