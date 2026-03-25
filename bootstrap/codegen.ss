@@ -46,6 +46,13 @@ function llVarName(name: string): string {
     }
     return name
 }
+// Returns "%" + name or "@name" for globals
+function varRef(name: string): string {
+    const ln = llVarName(name)
+    if (ln.startsWith("@") == 1) { return ln }
+    return "%" + ln
+}
+
 let funcRetTypes = ""
 let funcRetReady = 0
 let classFields = ""     // "ClassName" -> "field1,field2,..."
@@ -210,6 +217,59 @@ function emitRuntimeDecls() {
 
 // ── Public API ────────────────────────────────────────────────
 
+// Shared codegen passes
+function registerAllDecls(rootId: int) {
+    const stmtList0 = nGetList(rootId)
+    if (stmtList0 == "") { return }
+    const parts0 = stmtList0.split(",")
+    for (p0 in parts0) {
+        const sid = parseInt(p0)
+        if (sid <= 0) { continue }
+        const sk = nGetKind(sid)
+        if (sk == "FUNC_DECL") {
+            const fname = nGetS1(sid)
+            let fret = nGetS2(sid)
+            if (fret == "") { fret = "void" }
+            funcRetTypes.set(fname, fret)
+            const fparams = nGetList(sid)
+            if (fparams != "") {
+                const fps = fparams.split(",")
+                let pCount = 0
+                let defaults = ""
+                for (fp in fps) {
+                    const fpId = parseInt(fp)
+                    if (fpId > 0 && nGetKind(fpId) == "PARAM") {
+                        const defId = nGetI1(fpId)
+                        if (defId > 0) {
+                            if (defaults == "") { defaults = pCount + ":" + defId } else { defaults = defaults + "," + pCount + ":" + defId }
+                        }
+                        pCount = pCount + 1
+                    }
+                }
+                funcParamCount.set(fname, pCount + "")
+                if (defaults != "") { funcDefaults.set(fname, defaults) }
+            } else {
+                funcParamCount.set(fname, "0")
+            }
+        }
+        if (sk == "CLASS_DECL") { registerClass(sid) }
+    }
+}
+
+function emitGlobalsAndCode(rootId: int) {
+    const sl1 = nGetList(rootId)
+    if (sl1 != "") {
+        const p1 = sl1.split(",")
+        for (x1 in p1) { const s1 = parseInt(x1); if (s1 > 0 && nGetKind(s1) == "VAR_DECL") { genGlobalVar(s1) } }
+    }
+    emitIR("")
+    const sl2 = nGetList(rootId)
+    if (sl2 != "") {
+        const p2 = sl2.split(",")
+        for (x2 in p2) { const s2 = parseInt(x2); if (s2 > 0 && nGetKind(s2) != "VAR_DECL") { genStmt(s2) } }
+    }
+}
+
 function generate(rootId: int): string {
     initCodegen()
     initFuncRetTypes()
@@ -218,57 +278,10 @@ function generate(rootId: int): string {
     strCount = 0
     regCount = 0
     labelCount = 0
-
     emitRuntimeDecls()
-
-    // Pass 0: register all user function return types + class info
-    const stmtList0 = nGetList(rootId)
-    if (stmtList0 != "") {
-        const parts0 = stmtList0.split(",")
-        for (p0 in parts0) {
-            const sid = parseInt(p0)
-            if (sid <= 0) { continue }
-            const sk = nGetKind(sid)
-            if (sk == "FUNC_DECL") {
-                const fname = nGetS1(sid)
-                let fret = nGetS2(sid)
-                if (fret == "") { fret = "void" }
-                funcRetTypes.set(fname, fret)
-            }
-            if (sk == "CLASS_DECL") {
-                registerClass(sid)
-            }
-        }
-    }
-
-    // Pass 1: emit global variables (top-level const/let with literal initializers)
-    const stmtList1 = nGetList(rootId)
-    if (stmtList1 != "") {
-        const parts1 = stmtList1.split(",")
-        for (p1 in parts1) {
-            const stmtId1 = parseInt(p1)
-            if (stmtId1 > 0 && nGetKind(stmtId1) == "VAR_DECL") {
-                genGlobalVar(stmtId1)
-            }
-        }
-    }
-    emitIR("")
-
-    // Pass 2: emit functions and classes
-    const stmtList = nGetList(rootId)
-    if (stmtList != "") {
-        const parts = stmtList.split(",")
-        for (p in parts) {
-            const stmtId = parseInt(p)
-            if (stmtId > 0 && nGetKind(stmtId) != "VAR_DECL") {
-                genStmt(stmtId)
-            }
-        }
-    }
-
-    // Prepend string constants
-    const header = "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strConsts + "\n"
-    return header + irBuf
+    registerAllDecls(rootId)
+    emitGlobalsAndCode(rootId)
+    return "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strConsts + "\n" + irBuf
 }
 
 function generateToFile(rootId: int, outFile: string) {
@@ -280,80 +293,11 @@ function generateToFile(rootId: int, outFile: string) {
     regCount = 0
     labelCount = 0
     irOutFile = outFile
-
-    // Clear output files
     writeFile(outFile, "")
     writeFile(outFile + ".str", "")
-
     emitRuntimeDecls()
-
-    // Pass 0: register functions + classes
-    const stmtList0 = nGetList(rootId)
-    if (stmtList0 != "") {
-        const parts0 = stmtList0.split(",")
-        for (p0 in parts0) {
-            const sid = parseInt(p0)
-            if (sid <= 0) { continue }
-            const sk = nGetKind(sid)
-            if (sk == "FUNC_DECL") {
-                const fname = nGetS1(sid)
-                let fret = nGetS2(sid)
-                if (fret == "") { fret = "void" }
-                funcRetTypes.set(fname, fret)
-                // Record param count and defaults
-                const fparams = nGetList(sid)
-                if (fparams != "") {
-                    const fps = fparams.split(",")
-                    let pCount = 0
-                    let defaults = ""
-                    for (fp in fps) {
-                        const fpId = parseInt(fp)
-                        if (fpId > 0 && nGetKind(fpId) == "PARAM") {
-                            const defId = nGetI1(fpId)
-                            if (defId > 0) {
-                                if (defaults == "") { defaults = pCount + ":" + defId } else { defaults = defaults + "," + pCount + ":" + defId }
-                            }
-                            pCount = pCount + 1
-                        }
-                    }
-                    funcParamCount.set(fname, pCount + "")
-                    if (defaults != "") {
-                        funcDefaults.set(fname, defaults)
-                    }
-                } else {
-                    funcParamCount.set(fname, "0")
-                }
-            }
-            if (sk == "CLASS_DECL") { registerClass(sid) }
-        }
-    }
-
-    // Pass 1: globals
-    const stmtList1 = nGetList(rootId)
-    if (stmtList1 != "") {
-        const parts1 = stmtList1.split(",")
-        for (p1 in parts1) {
-            const stmtId1 = parseInt(p1)
-            if (stmtId1 > 0 && nGetKind(stmtId1) == "VAR_DECL") {
-                genGlobalVar(stmtId1)
-            }
-        }
-    }
-    emitIR("")
-
-    // Pass 2: functions + classes
-    const stmtList = nGetList(rootId)
-    if (stmtList != "") {
-        const parts = stmtList.split(",")
-        for (p in parts) {
-            const stmtId = parseInt(p)
-            if (stmtId > 0 && nGetKind(stmtId) != "VAR_DECL") {
-                genStmt(stmtId)
-            }
-        }
-    }
-
-    // Assemble final file: header + string constants + IR body
+    registerAllDecls(rootId)
+    emitGlobalsAndCode(rootId)
     irOutFile = ""
     const strConstData = readFile(outFile + ".str")
     const body = readFile(outFile)
@@ -364,32 +308,13 @@ function generateToFile(rootId: int, outFile: string) {
 // ── Builtin function name mapping ─────────────────────────────
 
 function runtimeName(callee: string): string {
-    if (callee == "println") { return "ym_println" }
-    if (callee == "print") { return "ym_print" }
-    if (callee == "readLine") { return "ym_readLine" }
-    if (callee == "readFile") { return "ym_readFile" }
-    if (callee == "writeFile") { return "ym_writeFile" }
-    if (callee == "appendFile") { return "ym_appendFile" }
+    // Only 3 exceptions; everything else is ym_ + callee
     if (callee == "args") { return "ym_argCount" }
     if (callee == "arg") { return "ym_argGet" }
-    if (callee == "exit") { return "ym_exit" }
-    if (callee == "system") { return "ym_system" }
-    if (callee == "parseInt") { return "ym_parseInt" }
-    if (callee == "parseDouble") { return "ym_parseDouble" }
-    if (callee == "sqrt") { return "ym_sqrt" }
-    if (callee == "abs") { return "ym_abs" }
-    if (callee == "floor") { return "ym_floor" }
-    if (callee == "ceil") { return "ym_ceil" }
-    if (callee == "round") { return "ym_round" }
-    if (callee == "pow") { return "ym_pow" }
-    if (callee == "log") { return "ym_log" }
-    if (callee == "sin") { return "ym_sin" }
-    if (callee == "cos") { return "ym_cos" }
-    if (callee == "random") { return "ym_random" }
-    if (callee == "min") { return "ym_min" }
-    if (callee == "max") { return "ym_max" }
     if (callee == "Map") { return "ym_mapNew" }
-    if (callee == "timeMs") { return "ym_timeMs" }
+    // Check if ym_ prefixed function exists in known builtins
+    const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,"
+    if (builtins.contains("," + callee + ",") == 1) { return "ym_" + callee }
     return callee
 }
 
@@ -448,26 +373,13 @@ function genStmt(id: int) {
         }
         return
     }
-    if (kind == "POSTFIX_INC") {
-        const piName = llVarName(nGetS1(id))
-        let piRef = "%" + piName
-        if (piName.startsWith("@") == 1) { piRef = piName }
+    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
+        const pRef = varRef(nGetS1(id))
         const r1 = nextReg()
-        emitIR("  " + r1 + " = load i32, ptr " + piRef + ", align 4")
+        emitIR("  " + r1 + " = load i32, ptr " + pRef + ", align 4")
         const r2 = nextReg()
-        emitIR("  " + r2 + " = add i32 " + r1 + ", 1")
-        emitIR("  store i32 " + r2 + ", ptr " + piRef + ", align 4")
-        return
-    }
-    if (kind == "POSTFIX_DEC") {
-        const pdName = llVarName(nGetS1(id))
-        let pdRef = "%" + pdName
-        if (pdName.startsWith("@") == 1) { pdRef = pdName }
-        const r1 = nextReg()
-        emitIR("  " + r1 + " = load i32, ptr " + pdRef + ", align 4")
-        const r2 = nextReg()
-        emitIR("  " + r2 + " = sub i32 " + r1 + ", 1")
-        emitIR("  store i32 " + r2 + ", ptr " + pdRef + ", align 4")
+        if (kind == "POSTFIX_INC") { emitIR("  " + r2 + " = add i32 " + r1 + ", 1") } else { emitIR("  " + r2 + " = sub i32 " + r1 + ", 1") }
+        emitIR("  store i32 " + r2 + ", ptr " + pRef + ", align 4")
         return
     }
     if (kind == "CLASS_DECL") {
@@ -579,38 +491,11 @@ function genBlock(blockId: int) {
 function genGlobalVar(id: int) {
     const name = nGetS1(id)
     const initId = nGetI1(id)
-    const initKind = nGetKind(initId)
-
-    if (initKind == "INT_LIT") {
-        const val = nGetS1(initId)
-        emitIR("@" + name + " = global i32 " + val + ", align 4")
-        setVarType(name, "int")
-        // Register alias to self (globals use @name, not %name)
-        globalAliases.set(name, "@" + name)
-    } else if (initKind == "DOUBLE_LIT") {
-        const val = nGetS1(initId)
-        emitIR("@" + name + " = global double " + val + ", align 8")
-        setVarType(name, "double")
-        globalAliases.set(name, "@" + name)
-    } else if (initKind == "STRING_LIT") {
-        const strName = addStringConst(nGetS1(initId))
-        emitIR("@" + name + " = global ptr " + strName + ", align 8")
-        setVarType(name, "string")
-        globalAliases.set(name, "@" + name)
-    } else if (initKind == "TRUE_LIT") {
-        emitIR("@" + name + " = global i32 1, align 4")
-        setVarType(name, "int")
-        globalAliases.set(name, "@" + name)
-    } else if (initKind == "FALSE_LIT") {
-        emitIR("@" + name + " = global i32 0, align 4")
-        setVarType(name, "int")
-        globalAliases.set(name, "@" + name)
-    } else {
-        // Non-literal init (Map(), function call, etc.) — use a null global, initialize in main
-        emitIR("@" + name + " = global ptr null, align 8")
-        setVarType(name, "ptr")
-        globalAliases.set(name, "@" + name)
-    }
+    const ik = nGetKind(initId)
+    let gType = "ptr"
+    if (ik == "INT_LIT") { emitIR("@" + name + " = global i32 " + nGetS1(initId) + ", align 4"); gType = "int" } else if (ik == "DOUBLE_LIT") { emitIR("@" + name + " = global double " + nGetS1(initId) + ", align 8"); gType = "double" } else if (ik == "STRING_LIT") { emitIR("@" + name + " = global ptr " + addStringConst(nGetS1(initId)) + ", align 8"); gType = "string" } else if (ik == "TRUE_LIT") { emitIR("@" + name + " = global i32 1, align 4"); gType = "int" } else if (ik == "FALSE_LIT") { emitIR("@" + name + " = global i32 0, align 4"); gType = "int" } else { emitIR("@" + name + " = global ptr null, align 8") }
+    setVarType(name, gType)
+    globalAliases.set(name, "@" + name)
 }
 
 function genVarDecl(id: int) {
@@ -655,17 +540,10 @@ function genAssign(id: int) {
 
     if (op == "ASSIGN") {
         const val = genExpr(valId)
-        const aln = llVarName(name)
-        if (aln.startsWith("@") == 1) {
-            emitIR("  store " + llType + " " + val + ", ptr " + aln + ", align 8")
-        } else {
-            emitIR("  store " + llType + " " + val + ", ptr %" + aln + ", align 8")
-        }
+        emitIR("  store " + llType + " " + val + ", ptr " + varRef(name) + ", align 8")
     } else {
         // Compound: +=, -=, etc.
-        const ln = llVarName(name)
-        let lnRef = "%" + ln
-        if (ln.startsWith("@") == 1) { lnRef = ln }
+        const lnRef = varRef(name)
         const r1 = nextReg()
         emitIR("  " + r1 + " = load " + llType + ", ptr " + lnRef + ", align 8")
         let r2 = genExpr(valId)
@@ -921,11 +799,7 @@ function genExpr(id: int): string {
     if (kind == "INT_LIT") {
         return nGetS1(id)
     }
-    if (kind == "DOUBLE_LIT") {
-        // LLVM requires specific double format
-        const val = nGetS1(id)
-        return val
-    }
+    if (kind == "DOUBLE_LIT") { return nGetS1(id) }
     if (kind == "STRING_LIT") {
         const name = addStringConst(nGetS1(id))
         return name
@@ -936,14 +810,8 @@ function genExpr(id: int): string {
     if (kind == "IDENT") {
         const name = nGetS1(id)
         const vType = getVarType(name)
-        const llType = ssTypeToLLVM(vType)
-        const ln = llVarName(name)
         const r = nextReg()
-        if (ln.startsWith("@") == 1) {
-            emitIR("  " + r + " = load " + llType + ", ptr " + ln + ", align 8")
-        } else {
-            emitIR("  " + r + " = load " + llType + ", ptr %" + ln + ", align 8")
-        }
+        emitIR("  " + r + " = load " + ssTypeToLLVM(vType) + ", ptr " + varRef(name) + ", align 8")
         return r
     }
 
@@ -1019,9 +887,7 @@ function genExpr(id: int): string {
     }
 
     if (kind == "POSTFIX_INC") {
-        const pieName = llVarName(nGetS1(id))
-        let pieRef = "%" + pieName
-        if (pieName.startsWith("@") == 1) { pieRef = pieName }
+        const pieRef = varRef(nGetS1(id))
         const r1 = nextReg()
         emitIR("  " + r1 + " = load i32, ptr " + pieRef + ", align 4")
         const r2 = nextReg()
@@ -1323,25 +1189,11 @@ function genMethodCall(id: int): string {
         emitIR("  " + r + " = call ptr @ym_substring(ptr " + objVal + ", i32 " + startVal + ", i32 " + lenVal + ")")
         return r
     }
-    if (method == "contains") {
-        const argId = parseInt(argList)
-        const sub = genExpr(argId)
+    // Single ptr-arg bool methods → call i32 @ym_XXX(ptr, ptr)
+    if (method == "contains" || method == "startsWith" || method == "endsWith") {
+        const sub = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_contains(ptr " + objVal + ", ptr " + sub + ")")
-        return r
-    }
-    if (method == "startsWith") {
-        const argId = parseInt(argList)
-        const sub = genExpr(argId)
-        const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_startsWith(ptr " + objVal + ", ptr " + sub + ")")
-        return r
-    }
-    if (method == "endsWith") {
-        const argId = parseInt(argList)
-        const sub = genExpr(argId)
-        const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_endsWith(ptr " + objVal + ", ptr " + sub + ")")
+        emitIR("  " + r + " = call i32 @ym_" + method + "(ptr " + objVal + ", ptr " + sub + ")")
         return r
     }
     if (method == "replace") {
@@ -1352,56 +1204,33 @@ function genMethodCall(id: int): string {
         emitIR("  " + r + " = call ptr @ym_replace(ptr " + objVal + ", ptr " + oldVal + ", ptr " + newVal + ")")
         return r
     }
-    if (method == "split") {
-        const argId = parseInt(argList)
-        const delim = genExpr(argId)
+    // Single ptr-arg string methods → call ptr @ym_XXX(ptr, ptr)
+    if (method == "split" || method == "join") {
+        const delim = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_split(ptr " + objVal + ", ptr " + delim + ")")
+        emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ", ptr " + delim + ")")
         return r
     }
-    if (method == "join") {
-        const argId = parseInt(argList)
-        const delim = genExpr(argId)
+    // No-arg string methods → call ptr @ym_XXX(ptr obj)
+    if (method == "trim" || method == "toUpperCase" || method == "toLowerCase") {
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_join(ptr " + objVal + ", ptr " + delim + ")")
+        emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ")")
         return r
     }
-    if (method == "trim") {
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_trim(ptr " + objVal + ")")
-        return r
-    }
+    // Single int-arg string methods → call ptr @ym_XXX(ptr obj, i32 arg)
     if (method == "repeat") {
-        const argId = parseInt(argList)
-        const n = genExpr(argId)
+        const rn = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_repeat(ptr " + objVal + ", i32 " + n + ")")
+        emitIR("  " + r + " = call ptr @ym_repeat(ptr " + objVal + ", i32 " + rn + ")")
         return r
     }
-    if (method == "padStart") {
-        const argParts = argList.split(",")
-        const widthVal = genExpr(parseInt(argParts[0]))
-        const padVal = genExpr(parseInt(argParts[1]))
+    // Two-arg pad methods → call ptr @ym_XXX(ptr obj, i32 width, ptr pad)
+    if (method == "padStart" || method == "padEnd") {
+        const ap = argList.split(",")
+        const w = genExpr(parseInt(ap[0]))
+        const p = genExpr(parseInt(ap[1]))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_padStart(ptr " + objVal + ", i32 " + widthVal + ", ptr " + padVal + ")")
-        return r
-    }
-    if (method == "padEnd") {
-        const argParts = argList.split(",")
-        const widthVal = genExpr(parseInt(argParts[0]))
-        const padVal = genExpr(parseInt(argParts[1]))
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_padEnd(ptr " + objVal + ", i32 " + widthVal + ", ptr " + padVal + ")")
-        return r
-    }
-    if (method == "toUpperCase") {
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_toUpperCase(ptr " + objVal + ")")
-        return r
-    }
-    if (method == "toLowerCase") {
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_toLowerCase(ptr " + objVal + ")")
+        emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ", i32 " + w + ", ptr " + p + ")")
         return r
     }
     // Array methods
