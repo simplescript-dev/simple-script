@@ -786,7 +786,14 @@ function genExpr(id: int): string {
     }
 
     if (kind == "INDEX_ACCESS") {
-        const arrVal = genExpr(nGetI1(id))
+        let arrVal = genExpr(nGetI1(id))
+        // If array var is i64 (from for-in), inttoptr
+        const arrType = inferType(nGetI1(id))
+        if (arrType == "i64") {
+            const cvtR = nextReg()
+            emitIR("  " + cvtR + " = inttoptr i64 " + arrVal + " to ptr")
+            arrVal = cvtR
+        }
         const idxVal = genExpr(nGetI2(id))
         const r = nextReg()
         emitIR("  " + r + " = call i64 @ym_arrayGet(ptr " + arrVal + ", i32 " + idxVal + ")")
@@ -815,12 +822,15 @@ function genBinary(id: int): string {
     const brt = inferType(rightId)
 
     // String concatenation
-    if (op == "Add" && (blt == "string" || brt == "string")) {
-        const l = genExprAsString(leftId)
-        const rVal = genExprAsString(rightId)
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_string_concat(ptr " + l + ", ptr " + rVal + ")")
-        return r
+    if (op == "Add" && (blt == "string" || brt == "string" || blt == "i64" || brt == "i64")) {
+        // Check if at least one side is actually string
+        if (blt == "string" || brt == "string") {
+            const l = genExprAsString(leftId)
+            const rVal = genExprAsString(rightId)
+            const r = nextReg()
+            emitIR("  " + r + " = call ptr @ym_string_concat(ptr " + l + ", ptr " + rVal + ")")
+            return r
+        }
     }
 
     // String equality
@@ -1373,7 +1383,8 @@ function inferType(id: int): string {
     if (kind == "GROUPING") { return inferType(nGetI1(id)) }
     if (kind == "UNARY") { return inferType(nGetI1(id)) }
     if (kind == "TERNARY") { return inferType(nGetI2(id)) }
-    if (kind == "ARRAY_LIT" || kind == "INDEX_ACCESS") { return "ptr" }
+    if (kind == "ARRAY_LIT") { return "ptr" }
+    if (kind == "INDEX_ACCESS") { return "i64" }
     if (kind == "NEW_EXPR") { return "ptr" }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { return "int" }
     return "int"
