@@ -181,6 +181,7 @@ function emitRuntimeDecls() {
     emitIR("declare i32 @ym_mapSize(ptr)")
     emitIR("declare ptr @ym_mapKeys(ptr)")
     emitIR("declare void @ym_mapDelete(ptr, ptr)")
+    emitIR("declare ptr @malloc(i64)")
     emitIR("")
 }
 
@@ -1051,8 +1052,20 @@ function genMethodCall(id: int): string {
     if (method == "push") {
         const argId = parseInt(argList)
         const val = genExpr(argId)
+        const pushType = inferType(argId)
+        let val64p = val
+        if (pushType == "int" || pushType == "auto" || pushType == "") {
+            const sR = nextReg()
+            emitIR("  " + sR + " = sext i32 " + val + " to i64")
+            val64p = sR
+        }
+        if (pushType == "string" || pushType == "ptr") {
+            const cR = nextReg()
+            emitIR("  " + cR + " = ptrtoint ptr " + val + " to i64")
+            val64p = cR
+        }
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_arrayPush(ptr " + objVal + ", i64 " + val + ")")
+        emitIR("  " + r + " = call ptr @ym_arrayPush(ptr " + objVal + ", i64 " + val64p + ")")
         return r
     }
     // Map methods
@@ -1060,7 +1073,19 @@ function genMethodCall(id: int): string {
         const argParts = argList.split(",")
         const key = genExpr(parseInt(argParts[0]))
         const val = genExpr(parseInt(argParts[1]))
-        emitIR("  call void @ym_mapSet(ptr " + objVal + ", ptr " + key + ", i64 " + val + ")")
+        const valType = inferType(parseInt(argParts[1]))
+        let val64 = val
+        if (valType == "int" || valType == "auto" || valType == "") {
+            const sextR = nextReg()
+            emitIR("  " + sextR + " = sext i32 " + val + " to i64")
+            val64 = sextR
+        }
+        if (valType == "string" || valType == "ptr") {
+            const castR = nextReg()
+            emitIR("  " + castR + " = ptrtoint ptr " + val + " to i64")
+            val64 = castR
+        }
+        emitIR("  call void @ym_mapSet(ptr " + objVal + ", ptr " + key + ", i64 " + val64 + ")")
         return "0"
     }
     if (method == "get") {
@@ -1283,7 +1308,7 @@ function inferType(id: int): string {
         if (method == "length" || method == "indexOf" || method == "has" || method == "size") { return "int" }
         if (method == "charAt" || method == "substring" || method == "trim" || method == "toUpperCase" || method == "toLowerCase" || method == "replace" || method == "join") { return "string" }
         if (method == "split" || method == "push") { return "ptr" }
-        if (method == "get") { return "int" }
+        if (method == "get") { return "i64" }
         if (method == "getString") { return "string" }
         if (method == "contains" || method == "startsWith" || method == "endsWith") { return "int" }
         // Class method — look up return type
@@ -1452,10 +1477,6 @@ function genClassDecl(id: int) {
     }
     emitIR("  ret ptr " + mallocReg)
     emitIR("}")
-    emitIR("")
-
-    // Declare malloc
-    emitIR("declare ptr @malloc(i64)")
     emitIR("")
 
     // Emit methods: @ClassName_methodName(ptr %this, args...) -> retType
