@@ -246,7 +246,7 @@ function lexTemplate() {
     let literal = ""
     while (pos < srcLen) {
         if (peek() == "`") { break }
-        println("DBG: tmpl char=" + peek())
+        // template char processing
         if (peek() == "$" && peekNext() == "{") {
             if (literal.length() > 0) {
                 emit("TMPL_LIT", literal)
