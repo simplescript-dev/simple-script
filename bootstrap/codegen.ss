@@ -1032,9 +1032,22 @@ function genMethodCall(id: int): string {
     }
     if (method == "indexOf") {
         const argId = parseInt(argList)
+        const argType = inferType(argId)
         const sub = genExpr(argId)
         const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_indexOf(ptr " + objVal + ", ptr " + sub + ")")
+        if (argType == "int" || argType == "i64" || argType == "double") {
+            // Array indexOf
+            let val64 = sub
+            if (argType == "int") {
+                const sR = nextReg()
+                emitIR("  " + sR + " = sext i32 " + sub + " to i64")
+                val64 = sR
+            }
+            emitIR("  " + r + " = call i32 @ym_arrayIndexOf(ptr " + objVal + ", i64 " + val64 + ")")
+        } else {
+            // String indexOf
+            emitIR("  " + r + " = call i32 @ym_indexOf(ptr " + objVal + ", ptr " + sub + ")")
+        }
         return r
     }
     if (method == "substring") {
@@ -1304,19 +1317,25 @@ function genExprAsString(id: int): string {
         return sVal
     }
     const val = genExpr(id)
-    const r = nextReg()
     if (vType == "double") {
+        const r = nextReg()
         emitIR("  " + r + " = call ptr @ym_double_to_string(double " + val + ")")
-    } else if (vType == "i64") {
+        return r
+    }
+    if (vType == "i64") {
+        const r = nextReg()
         emitIR("  " + r + " = call ptr @ym_i64_to_string(i64 " + val + ")")
-    } else if (vType == "ptr") {
-        // Object pointer → convert using i64_to_string (heuristic: if > 0x100000, treat as string pointer)
+        return r
+    }
+    if (vType == "ptr") {
         const castR = nextReg()
         emitIR("  " + castR + " = ptrtoint ptr " + val + " to i64")
+        const r = nextReg()
         emitIR("  " + r + " = call ptr @ym_i64_to_string(i64 " + castR + ")")
-    } else {
-        emitIR("  " + r + " = call ptr @ym_int_to_string(i32 " + val + ")")
+        return r
     }
+    const r = nextReg()
+    emitIR("  " + r + " = call ptr @ym_int_to_string(i32 " + val + ")")
     return r
 }
 
