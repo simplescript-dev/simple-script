@@ -678,13 +678,29 @@ function genReturn(id: int) {
         const val = genExpr(valId)
         const vType = inferType(valId)
         const retLLType = ssTypeToLLVM(vType)
-        // Handle type mismatch: i64 returned from i32 function
-        if (retLLType == "i64" && currentFunc != "main") {
+        // Get declared return type
+        let declRet = "i32"
+        if (funcRetTypes.has(currentFunc) == 1) {
+            declRet = ssTypeToLLVM(funcRetTypes.getString(currentFunc))
+        }
+        if (currentFunc == "main") { declRet = "i32" }
+        // Convert if needed
+        if (retLLType == declRet) {
+            emitIR("  ret " + retLLType + " " + val)
+        } else if (retLLType == "i64" && declRet == "i32") {
             const trR = nextReg()
             emitIR("  " + trR + " = trunc i64 " + val + " to i32")
             emitIR("  ret i32 " + trR)
+        } else if (retLLType == "double" && declRet == "i32") {
+            const fpR = nextReg()
+            emitIR("  " + fpR + " = fptosi double " + val + " to i32")
+            emitIR("  ret i32 " + fpR)
+        } else if (retLLType == "i32" && declRet == "double") {
+            const siR = nextReg()
+            emitIR("  " + siR + " = sitofp i32 " + val + " to double")
+            emitIR("  ret double " + siR)
         } else {
-            emitIR("  ret " + retLLType + " " + val)
+            emitIR("  ret " + declRet + " " + val)
         }
     }
     terminated = 1
@@ -1152,6 +1168,8 @@ function genCall(id: int): string {
     }
 
     // General function call
+    // Check if function expects double params (math functions)
+    const expectsDouble = callReturnType(callee) == "double"
     let args = ""
     if (argList != "") {
         const parts = argList.split(",")
@@ -1159,8 +1177,15 @@ function genCall(id: int): string {
         for (p in parts) {
             const argId = parseInt(p)
             if (argId > 0) {
-                const val = genExpr(argId)
-                const vType = inferType(argId)
+                let val = genExpr(argId)
+                let vType = inferType(argId)
+                // Auto-convert int to double for math functions
+                if (expectsDouble && (vType == "int" || vType == "auto")) {
+                    const cvR = nextReg()
+                    emitIR("  " + cvR + " = sitofp i32 " + val + " to double")
+                    val = cvR
+                    vType = "double"
+                }
                 const llType = ssTypeToLLVM(vType)
                 if (first == 1) { first = 0 } else { args = args + ", " }
                 args = args + llType + " " + val
