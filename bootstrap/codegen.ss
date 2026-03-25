@@ -115,7 +115,12 @@ function addStringConst(value: string): string {
         i = i + 1
     }
     len = len + 1
-    strConsts = strConsts + name + " = constant [" + len + " x i8] c\"" + escaped + "\\00\"\n"
+    const line = name + " = constant [" + len + " x i8] c\"" + escaped + "\\00\"\n"
+    if (irOutFile != "") {
+        appendFile(irOutFile + ".str", line)
+    } else {
+        strConsts = strConsts + line
+    }
     return name
 }
 
@@ -267,8 +272,9 @@ function generateToFile(rootId: int, outFile: string) {
     labelCount = 0
     irOutFile = outFile
 
-    // Write header placeholder (will prepend string consts later)
+    // Clear output files
     writeFile(outFile, "")
+    writeFile(outFile + ".str", "")
 
     emitRuntimeDecls()
 
@@ -314,11 +320,12 @@ function generateToFile(rootId: int, outFile: string) {
         }
     }
 
-    // Now read back the file and prepend header + string constants
+    // Assemble final file: header + string constants + IR body
     irOutFile = ""
+    const strConstData = readFile(outFile + ".str")
     const body = readFile(outFile)
-    const header = "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strConsts + "\n"
-    writeFile(outFile, header + body)
+    const header = "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n"
+    writeFile(outFile, header + strConstData + "\n" + body)
 }
 
 // ── Builtin function name mapping ─────────────────────────────
@@ -409,20 +416,24 @@ function genStmt(id: int) {
     }
     if (kind == "POSTFIX_INC") {
         const piName = llVarName(nGetS1(id))
+        let piRef = "%" + piName
+        if (piName.startsWith("@") == 1) { piRef = piName }
         const r1 = nextReg()
-        emitIR("  " + r1 + " = load i32, ptr %" + piName + ", align 4")
+        emitIR("  " + r1 + " = load i32, ptr " + piRef + ", align 4")
         const r2 = nextReg()
         emitIR("  " + r2 + " = add i32 " + r1 + ", 1")
-        emitIR("  store i32 " + r2 + ", ptr %" + piName + ", align 4")
+        emitIR("  store i32 " + r2 + ", ptr " + piRef + ", align 4")
         return
     }
     if (kind == "POSTFIX_DEC") {
         const pdName = llVarName(nGetS1(id))
+        let pdRef = "%" + pdName
+        if (pdName.startsWith("@") == 1) { pdRef = pdName }
         const r1 = nextReg()
-        emitIR("  " + r1 + " = load i32, ptr %" + pdName + ", align 4")
+        emitIR("  " + r1 + " = load i32, ptr " + pdRef + ", align 4")
         const r2 = nextReg()
         emitIR("  " + r2 + " = sub i32 " + r1 + ", 1")
-        emitIR("  store i32 " + r2 + ", ptr %" + pdName + ", align 4")
+        emitIR("  store i32 " + r2 + ", ptr " + pdRef + ", align 4")
         return
     }
     if (kind == "CLASS_DECL") {
@@ -578,6 +589,14 @@ function genVarDecl(id: int) {
     const llType = ssTypeToLLVM(initType)
 
     const llName = allocVarName(name)
+    // Skip alloca for globals (already declared)
+    if (globalAliases.has(name) == 1) {
+        // Global var — no alloca needed, just store
+        const val = genExpr(initId)
+        const gn = globalAliases.getString(name)
+        emitIR("  store " + llType + " " + val + ", ptr " + gn + ", align 8")
+        return
+    }
     emitIR("  %" + llName + " = alloca " + llType + ", align 8")
     setVarType(name, initType)
 
@@ -603,12 +622,19 @@ function genAssign(id: int) {
 
     if (op == "ASSIGN") {
         const val = genExpr(valId)
-        emitIR("  store " + llType + " " + val + ", ptr %" + llVarName(name) + ", align 8")
+        const aln = llVarName(name)
+        if (aln.startsWith("@") == 1) {
+            emitIR("  store " + llType + " " + val + ", ptr " + aln + ", align 8")
+        } else {
+            emitIR("  store " + llType + " " + val + ", ptr %" + aln + ", align 8")
+        }
     } else {
         // Compound: +=, -=, etc.
         const ln = llVarName(name)
+        let lnRef = "%" + ln
+        if (ln.startsWith("@") == 1) { lnRef = ln }
         const r1 = nextReg()
-        emitIR("  " + r1 + " = load " + llType + ", ptr %" + ln + ", align 8")
+        emitIR("  " + r1 + " = load " + llType + ", ptr " + lnRef + ", align 8")
         let r2 = genExpr(valId)
         // Trunc i64 to i32 if needed
         const r2Type = inferType(valId)
@@ -633,7 +659,7 @@ function genAssign(id: int) {
         } else {
             emitIR("  " + r3 + " = srem i32 " + r1 + ", " + r2)
         }
-        emitIR("  store " + llType + " " + r3 + ", ptr %" + ln + ", align 8")
+        emitIR("  store " + llType + " " + r3 + ", ptr " + lnRef + ", align 8")
     }
 }
 
@@ -648,7 +674,15 @@ function genReturn(id: int) {
     } else {
         const val = genExpr(valId)
         const vType = inferType(valId)
-        emitIR("  ret " + ssTypeToLLVM(vType) + " " + val)
+        const retLLType = ssTypeToLLVM(vType)
+        // Handle type mismatch: i64 returned from i32 function
+        if (retLLType == "i64" && currentFunc != "main") {
+            const trR = nextReg()
+            emitIR("  " + trR + " = trunc i64 " + val + " to i32")
+            emitIR("  ret i32 " + trR)
+        } else {
+            emitIR("  ret " + retLLType + " " + val)
+        }
     }
     terminated = 1
 }
@@ -854,8 +888,13 @@ function genExpr(id: int): string {
         const name = nGetS1(id)
         const vType = getVarType(name)
         const llType = ssTypeToLLVM(vType)
+        const ln = llVarName(name)
         const r = nextReg()
-        emitIR("  " + r + " = load " + llType + ", ptr %" + llVarName(name) + ", align 8")
+        if (ln.startsWith("@") == 1) {
+            emitIR("  " + r + " = load " + llType + ", ptr " + ln + ", align 8")
+        } else {
+            emitIR("  " + r + " = load " + llType + ", ptr %" + ln + ", align 8")
+        }
         return r
     }
 
@@ -932,11 +971,13 @@ function genExpr(id: int): string {
 
     if (kind == "POSTFIX_INC") {
         const pieName = llVarName(nGetS1(id))
+        let pieRef = "%" + pieName
+        if (pieName.startsWith("@") == 1) { pieRef = pieName }
         const r1 = nextReg()
-        emitIR("  " + r1 + " = load i32, ptr %" + pieName + ", align 4")
+        emitIR("  " + r1 + " = load i32, ptr " + pieRef + ", align 4")
         const r2 = nextReg()
         emitIR("  " + r2 + " = add i32 " + r1 + ", 1")
-        emitIR("  store i32 " + r2 + ", ptr %" + pieName + ", align 4")
+        emitIR("  store i32 " + r2 + ", ptr " + pieRef + ", align 4")
         return r1
     }
 

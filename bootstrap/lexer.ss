@@ -32,8 +32,6 @@ function tokenize(source: string): string {
     curCol = 1
     tokenBuf = ""
     tokenCount = 0
-    tkKinds = Map()
-    tkValues = Map()
 
     while (pos < srcLen) {
         skipWS()
