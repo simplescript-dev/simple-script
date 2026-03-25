@@ -147,11 +147,13 @@ function isAlphaNum(ch: string): bool {
 function escapeChar(ch: string): string {
     if (ch == "n") { return "\n" }
     if (ch == "t") { return "\t" }
+    if (ch == "r") { return "\r" }
     if (ch == "\\") { return "\\" }
     if (ch == "\"") { return "\"" }
     if (ch == "'") { return "'" }
     if (ch == "`") { return "`" }
     if (ch == "$") { return "$" }
+    if (ch == "0") { return "" }
     return "\\" + ch
 }
 

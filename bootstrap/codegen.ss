@@ -108,6 +108,8 @@ function addStringConst(value: string): string {
         const ch = value.charAt(i)
         if (ch == "\n") {
             escaped = escaped + "\\0A"
+        } else if (ch == "\r") {
+            escaped = escaped + "\\0D"
         } else if (ch == "\t") {
             escaped = escaped + "\\09"
         } else if (ch == "\\") {

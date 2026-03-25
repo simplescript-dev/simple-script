@@ -93,6 +93,16 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function("ym_exit", void_type.fn_type(&[i32_type.into()], false), None);
         self.module.add_function("ym_system", i32_type.fn_type(&[i8_ptr.into()], false), None);
 
+        // TCP
+        self.module.add_function("ym_tcpListen", i32_type.fn_type(&[i32_type.into()], false), None);
+        self.module.add_function("ym_tcpAccept", i32_type.fn_type(&[i32_type.into()], false), None);
+        self.module.add_function("ym_tcpRead", i8_ptr.fn_type(&[i32_type.into(), i32_type.into()], false), None);
+        self.module.add_function("ym_tcpWrite", i32_type.fn_type(&[i32_type.into(), i8_ptr.into()], false), None);
+        self.module.add_function("ym_tcpWriteBytes", i32_type.fn_type(&[i32_type.into(), i8_ptr.into(), i32_type.into()], false), None);
+        self.module.add_function("ym_tcpClose", void_type.fn_type(&[i32_type.into()], false), None);
+        self.module.add_function("ym_getenv", i8_ptr.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_timeUnix", i64_type.fn_type(&[], false), None);
+
         // Math
         let f1 = f64_type.fn_type(&[f64_type.into()], false);
         for name in ["ym_sqrt", "ym_abs", "ym_floor", "ym_ceil", "ym_round", "ym_log", "ym_sin", "ym_cos"] {

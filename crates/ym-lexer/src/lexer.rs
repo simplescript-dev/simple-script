@@ -215,6 +215,8 @@ impl<'a> Lexer<'a> {
                 match self.peek() {
                     b'n' => value.push('\n'),
                     b't' => value.push('\t'),
+                    b'r' => value.push('\r'),
+                    b'0' => value.push('\0'),
                     b'\\' => value.push('\\'),
                     b'"' => value.push('"'),
                     _ => {
@@ -255,6 +257,8 @@ impl<'a> Lexer<'a> {
                 match self.peek() {
                     b'n' => value.push('\n'),
                     b't' => value.push('\t'),
+                    b'r' => value.push('\r'),
+                    b'0' => value.push('\0'),
                     b'\\' => value.push('\\'),
                     b'\'' => value.push('\''),
                     _ => {

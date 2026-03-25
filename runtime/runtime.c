@@ -3,6 +3,10 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
 void ym_println(const char* s) {
     puts(s);
@@ -578,4 +582,58 @@ void ym_mapDelete(HashMap* m, const char* key) {
         prev = e;
         e = e->next;
     }
+}
+
+// ── TCP Server ────────────────────────────────────────────────
+
+int ym_tcpListen(int port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    int opt = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) { close(fd); return -1; }
+    if (listen(fd, 128) < 0) { close(fd); return -1; }
+    return fd;
+}
+
+int ym_tcpAccept(int serverFd) {
+    struct sockaddr_in client;
+    socklen_t len = sizeof(client);
+    return accept(serverFd, (struct sockaddr*)&client, &len);
+}
+
+char* ym_tcpRead(int fd, int maxLen) {
+    char* buf = (char*)malloc(maxLen + 1);
+    int n = read(fd, buf, maxLen);
+    if (n <= 0) { buf[0] = '\0'; return buf; }
+    buf[n] = '\0';
+    return buf;
+}
+
+int ym_tcpWrite(int fd, const char* data) {
+    int len = strlen(data);
+    return write(fd, data, len);
+}
+
+int ym_tcpWriteBytes(int fd, const char* data, int len) {
+    return write(fd, data, len);
+}
+
+void ym_tcpClose(int fd) {
+    close(fd);
+}
+
+char* ym_getenv(const char* name) {
+    const char* val = getenv(name);
+    if (!val) return "";
+    return strdup(val);
+}
+
+long long ym_timeUnix() {
+    return (long long)time(NULL);
 }

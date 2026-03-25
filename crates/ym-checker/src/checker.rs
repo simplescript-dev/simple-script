@@ -86,6 +86,38 @@ impl Checker {
             params: vec![Type::String],
             return_type: Type::Int,
         });
+        functions.insert("tcpListen".to_string(), FuncInfo {
+            params: vec![Type::Int],
+            return_type: Type::Int,
+        });
+        functions.insert("tcpAccept".to_string(), FuncInfo {
+            params: vec![Type::Int],
+            return_type: Type::Int,
+        });
+        functions.insert("tcpRead".to_string(), FuncInfo {
+            params: vec![Type::Int, Type::Int],
+            return_type: Type::String,
+        });
+        functions.insert("tcpWrite".to_string(), FuncInfo {
+            params: vec![Type::Int, Type::String],
+            return_type: Type::Int,
+        });
+        functions.insert("tcpWriteBytes".to_string(), FuncInfo {
+            params: vec![Type::Int, Type::String, Type::Int],
+            return_type: Type::Int,
+        });
+        functions.insert("tcpClose".to_string(), FuncInfo {
+            params: vec![Type::Int],
+            return_type: Type::Void,
+        });
+        functions.insert("getenv".to_string(), FuncInfo {
+            params: vec![Type::String],
+            return_type: Type::String,
+        });
+        functions.insert("timeUnix".to_string(), FuncInfo {
+            params: vec![],
+            return_type: Type::Unknown,
+        });
         functions.insert("parseInt".to_string(), FuncInfo {
             params: vec![Type::String],
             return_type: Type::Int,
