@@ -1240,6 +1240,20 @@ function genMethodCall(id: int): string {
         emitIR("  " + r + " = call i32 @ym_contains(ptr " + objVal + ", ptr " + sub + ")")
         return r
     }
+    if (method == "startsWith") {
+        const argId = parseInt(argList)
+        const sub = genExpr(argId)
+        const r = nextReg()
+        emitIR("  " + r + " = call i32 @ym_startsWith(ptr " + objVal + ", ptr " + sub + ")")
+        return r
+    }
+    if (method == "endsWith") {
+        const argId = parseInt(argList)
+        const sub = genExpr(argId)
+        const r = nextReg()
+        emitIR("  " + r + " = call i32 @ym_endsWith(ptr " + objVal + ", ptr " + sub + ")")
+        return r
+    }
     if (method == "replace") {
         const argParts = argList.split(",")
         const oldVal = genExpr(parseInt(argParts[0]))
