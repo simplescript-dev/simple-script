@@ -859,7 +859,6 @@ function genBinary(id: int): string {
         right = trR
     }
 
-    const r = nextReg()
     if (blt == "double" || brt == "double") {
         // Convert int operand to double if needed
         if (blt != "double") {
@@ -872,6 +871,7 @@ function genBinary(id: int): string {
             emitIR("  " + cvtR + " = sitofp i32 " + right + " to double")
             right = cvtR
         }
+        const r = nextReg()
         if (op == "Add") { emitIR("  " + r + " = fadd double " + left + ", " + right); return r }
         if (op == "Sub") { emitIR("  " + r + " = fsub double " + left + ", " + right); return r }
         if (op == "Mul") { emitIR("  " + r + " = fmul double " + left + ", " + right); return r }
@@ -892,6 +892,7 @@ function genBinary(id: int): string {
             return r2
         }
     }
+    const r = nextReg()
     if (op == "Add") { emitIR("  " + r + " = add i32 " + left + ", " + right); return r }
     if (op == "Sub") { emitIR("  " + r + " = sub i32 " + left + ", " + right); return r }
     if (op == "Mul") { emitIR("  " + r + " = mul i32 " + left + ", " + right); return r }
@@ -990,7 +991,14 @@ function genMethodCall(id: int): string {
     const objId = nGetI1(id)
     const argList = nGetList(id)
 
-    const objVal = genExpr(objId)
+    let objVal = genExpr(objId)
+    // If object is i64 (e.g., from for-in or Map.get), convert to ptr for string/array methods
+    const objType = inferType(objId)
+    if (objType == "i64") {
+        const castR = nextReg()
+        emitIR("  " + castR + " = inttoptr i64 " + objVal + " to ptr")
+        objVal = castR
+    }
 
     // String methods
     if (method == "length") {
@@ -1268,7 +1276,15 @@ function genTernary(id: int): string {
 function genExprAsString(id: int): string {
     const vType = inferType(id)
     if (vType == "string") {
-        return genExpr(id)
+        const sVal = genExpr(id)
+        // If the actual LLVM value is i64 (e.g., from array), inttoptr
+        const sNodeKind = nGetKind(id)
+        if (sNodeKind == "IDENT" && getVarType(nGetS1(id)) == "i64") {
+            const castR = nextReg()
+            emitIR("  " + castR + " = inttoptr i64 " + sVal + " to ptr")
+            return castR
+        }
+        return sVal
     }
     const val = genExpr(id)
     const r = nextReg()
@@ -1313,10 +1329,11 @@ function inferType(id: int): string {
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
             return "int"
         }
-        // After trunc, i64 operands produce i32 results
+        // Check both operands for double
         const binLt = inferType(nGetI1(id))
+        const binRt = inferType(nGetI2(id))
+        if (binLt == "double" || binRt == "double") { return "double" }
         if (binLt == "i64") { return "int" }
-        if (binLt == "double") { return "double" }
         return binLt
     }
     if (kind == "CALL") {
