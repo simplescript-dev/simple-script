@@ -133,6 +133,7 @@ function emitRuntimeDecls() {
     emitIR("declare ptr @ym_readLine()")
     emitIR("declare ptr @ym_readFile(ptr)")
     emitIR("declare void @ym_writeFile(ptr, ptr)")
+    emitIR("declare void @ym_appendFile(ptr, ptr)")
     emitIR("declare ptr @ym_string_concat(ptr, ptr)")
     emitIR("declare ptr @ym_int_to_string(i32)")
     emitIR("declare ptr @ym_double_to_string(double)")
@@ -336,6 +337,7 @@ function runtimeName(callee: string): string {
     if (callee == "readLine") { return "ym_readLine" }
     if (callee == "readFile") { return "ym_readFile" }
     if (callee == "writeFile") { return "ym_writeFile" }
+    if (callee == "appendFile") { return "ym_appendFile" }
     if (callee == "args") { return "ym_argCount" }
     if (callee == "arg") { return "ym_argGet" }
     if (callee == "exit") { return "ym_exit" }
@@ -588,15 +590,14 @@ function genVarDecl(id: int) {
     const initType = inferType(initId)
     const llType = ssTypeToLLVM(initType)
 
-    const llName = allocVarName(name)
-    // Skip alloca for globals (already declared)
+    // Skip alloca for globals (already declared) — just store the init value
     if (globalAliases.has(name) == 1) {
-        // Global var — no alloca needed, just store
         const val = genExpr(initId)
         const gn = globalAliases.getString(name)
         emitIR("  store " + llType + " " + val + ", ptr " + gn + ", align 8")
         return
     }
+    const llName = allocVarName(name)
     emitIR("  %" + llName + " = alloca " + llType + ", align 8")
     setVarType(name, initType)
 
@@ -1005,9 +1006,20 @@ function genBinary(id: int): string {
     }
 
     // String equality
-    if ((op == "Eq" || op == "Ne") && blt == "string") {
-        const l = genExpr(leftId)
-        const rVal = genExpr(rightId)
+    if ((op == "Eq" || op == "Ne") && (blt == "string" || brt == "string")) {
+        let l = genExpr(leftId)
+        let rVal = genExpr(rightId)
+        // Convert i64 to ptr if needed
+        if (blt == "i64") {
+            const cvR = nextReg()
+            emitIR("  " + cvR + " = inttoptr i64 " + l + " to ptr")
+            l = cvR
+        }
+        if (brt == "i64") {
+            const cvR = nextReg()
+            emitIR("  " + cvR + " = inttoptr i64 " + rVal + " to ptr")
+            rVal = cvR
+        }
         const r = nextReg()
         if (op == "Eq") {
             emitIR("  " + r + " = call i32 @ym_string_eq(ptr " + l + ", ptr " + rVal + ")")
@@ -1288,7 +1300,14 @@ function genMethodCall(id: int): string {
     // Map methods
     if (method == "set") {
         const argParts = argList.split(",")
-        const key = genExpr(parseInt(argParts[0]))
+        let key = genExpr(parseInt(argParts[0]))
+        // Ensure key is ptr (might be i64 from for-in)
+        const keyType = inferType(parseInt(argParts[0]))
+        if (keyType == "i64") {
+            const kR = nextReg()
+            emitIR("  " + kR + " = inttoptr i64 " + key + " to ptr")
+            key = kR
+        }
         const val = genExpr(parseInt(argParts[1]))
         const valType = inferType(parseInt(argParts[1]))
         let val64 = val
@@ -1581,7 +1600,7 @@ function inferType(id: int): string {
 
 function callReturnType(callee: string): string {
     if (callee == "readLine" || callee == "readFile" || callee == "arg") { return "string" }
-    if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "exit") { return "void" }
+    if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "appendFile" || callee == "exit") { return "void" }
     if (callee == "parseInt" || callee == "args" || callee == "system") { return "int" }
     if (callee == "parseDouble" || callee == "sqrt" || callee == "abs" || callee == "floor" || callee == "ceil" || callee == "round" || callee == "pow" || callee == "log" || callee == "sin" || callee == "cos" || callee == "random" || callee == "min" || callee == "max") { return "double" }
     if (callee == "Map") { return "ptr" }
