@@ -345,6 +345,10 @@ impl<'a> Lexer<'a> {
                             b',' => self.single_token(TokenKind::Comma),
                             b':' => self.single_token(TokenKind::Colon),
                             b'.' => self.single_token(TokenKind::Dot),
+                            b'`' => self.lex_template()?,
+                            b'?' => self.single_token(TokenKind::Question),
+                            b'&' => self.lex_and()?,
+                            b'|' => self.lex_or()?,
                             _ => {
                                 return Err(LexError::UnexpectedChar {
                                     ch: ch as char,

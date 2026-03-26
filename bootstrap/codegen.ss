@@ -258,8 +258,7 @@ function generateToFile(rootId: int, outFile: string) {
     emitGlobalsAndCode(rootId)
     irOutFile = ""
     const body = readFile(outFile)
-    const strData = readFile(outFile + ".str")
-    writeFile(outFile, "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strData + "\n" + body)
+    writeFile(outFile, `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${readFile(`${outFile}.str`)}\n${body}`)
 }
 
 // ── Builtin function name mapping ─────────────────────────────
