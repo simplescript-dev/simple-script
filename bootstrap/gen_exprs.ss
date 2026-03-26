@@ -25,10 +25,7 @@ function genExpr(id: int): string {
         return r
     }
 
-    if (kind == "BINARY") {
-        return genBinary(id)
-    }
-
+    if (kind == "BINARY") { return genBinary(id) }
     if (kind == "UNARY") {
         const op = nGetS1(id)
         const val = genExpr(nGetI1(id))
@@ -49,37 +46,14 @@ function genExpr(id: int): string {
         return r
     }
 
-    if (kind == "CALL") {
-        return genCall(id)
-    }
-
-    if (kind == "METHOD_CALL") {
-        return genMethodCall(id)
-    }
-
-    if (kind == "MEMBER_ACCESS") {
-        return genMemberAccess(id)
-    }
-
-    if (kind == "NEW_EXPR") {
-        return genNewExpr(id)
-    }
-
-    if (kind == "GROUPING") {
-        return genExpr(nGetI1(id))
-    }
-
-    if (kind == "TERNARY") {
-        return genTernary(id)
-    }
-
-    if (kind == "TEMPLATE_LIT") {
-        return genTemplateLit(id)
-    }
-
-    if (kind == "ARRAY_LIT") {
-        return genArrayLit(id)
-    }
+    if (kind == "CALL") { return genCall(id) }
+    if (kind == "METHOD_CALL") { return genMethodCall(id) }
+    if (kind == "MEMBER_ACCESS") { return genMemberAccess(id) }
+    if (kind == "NEW_EXPR") { return genNewExpr(id) }
+    if (kind == "GROUPING") { return genExpr(nGetI1(id)) }
+    if (kind == "TERNARY") { return genTernary(id) }
+    if (kind == "TEMPLATE_LIT") { return genTemplateLit(id) }
+    if (kind == "ARRAY_LIT") { return genArrayLit(id) }
 
     if (kind == "INDEX_ACCESS") {
         let arrVal = genExpr(nGetI1(id))
@@ -179,25 +153,9 @@ function genBinary(id: int): string {
     let left = genExpr(leftId)
     let right = genExpr(rightId)
 
-    // Normalize i64 operands to i32 for integer arithmetic
-    if (blt == "i64" && brt != "i64") {
-        const trR = nextReg()
-        emitIR("  " + trR + " = trunc i64 " + left + " to i32")
-        left = trR
-    }
-    if (brt == "i64" && blt != "i64") {
-        const trR = nextReg()
-        emitIR("  " + trR + " = trunc i64 " + right + " to i32")
-        right = trR
-    }
-    if (blt == "i64" && brt == "i64") {
-        const trL = nextReg()
-        emitIR("  " + trL + " = trunc i64 " + left + " to i32")
-        left = trL
-        const trR = nextReg()
-        emitIR("  " + trR + " = trunc i64 " + right + " to i32")
-        right = trR
-    }
+    // Normalize i64 operands to i32
+    if (blt == "i64") { const tr = nextReg(); emitIR("  " + tr + " = trunc i64 " + left + " to i32"); left = tr }
+    if (brt == "i64") { const tr = nextReg(); emitIR("  " + tr + " = trunc i64 " + right + " to i32"); right = tr }
 
     if (blt == "double" || brt == "double") {
         // Convert int operand to double if needed
@@ -513,28 +471,15 @@ function genMethodCall(id: int): string {
         emitIR("  call void @ym_mapSet(ptr " + objVal + ", ptr " + key + ", i64 " + val64 + ")")
         return "0"
     }
-    if (method == "get") {
-        const argId = parseInt(argList)
-        const key = genExpr(argId)
+    if (method == "get" || method == "getString" || method == "has") {
+        const mkey = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call i64 @ym_mapGet(ptr " + objVal + ", ptr " + key + ")")
-        return r
-    }
-    if (method == "getString") {
-        const argId = parseInt(argList)
-        const key = genExpr(argId)
-        const r = nextReg()
-        emitIR("  " + r + " = call i64 @ym_mapGet(ptr " + objVal + ", ptr " + key + ")")
-        // Cast i64 to ptr (reinterpret)
-        const r2 = nextReg()
-        emitIR("  " + r2 + " = inttoptr i64 " + r + " to ptr")
-        return r2
-    }
-    if (method == "has") {
-        const argId = parseInt(argList)
-        const key = genExpr(argId)
-        const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_mapHas(ptr " + objVal + ", ptr " + key + ")")
+        if (method == "has") {
+            emitIR("  " + r + " = call i32 @ym_mapHas(ptr " + objVal + ", ptr " + mkey + ")")
+        } else {
+            emitIR("  " + r + " = call i64 @ym_mapGet(ptr " + objVal + ", ptr " + mkey + ")")
+            if (method == "getString") { const r2 = nextReg(); emitIR("  " + r2 + " = inttoptr i64 " + r + " to ptr"); return r2 }
+        }
         return r
     }
     // No-arg Map/Array methods

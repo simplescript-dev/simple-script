@@ -312,20 +312,12 @@ function parseSwitch(): int {
         } else {
             pExpect("CASE")
             const patId = newNode("SWITCH_PAT")
-            const pk = curKind()
-            if (pk == "INT") {
-                nSetS1(patId, "INT")
-                nSetS2(patId, curValue())
-                pAdvance()
-            } else if (pk == "STRING") {
-                nSetS1(patId, "STRING")
-                nSetS2(patId, curValue())
-                pAdvance()
-            } else {
-                nSetS1(patId, "IDENT")
-                nSetS2(patId, curValue())
-                pAdvance()
-            }
+            let patKind = "IDENT"
+            if (curKind() == "INT") { patKind = "INT" }
+            if (curKind() == "STRING") { patKind = "STRING" }
+            nSetS1(patId, patKind)
+            nSetS2(patId, curValue())
+            pAdvance()
             pExpect("THIN_ARROW")
             const bodyId = parseSwitchBody()
             const caseId = newNode("SWITCH_CASE")
@@ -605,25 +597,16 @@ function parseAssignOrExpr(): int {
         nSetI1(id, valId)
         return id
     }
-    // Postfix: i++, i--
-    if (nextTok == "PLUS_PLUS") {
+    if (nextTok == "PLUS_PLUS" || nextTok == "MINUS_MINUS") {
+        let pfKind = "POSTFIX_DEC"
+        if (nextTok == "PLUS_PLUS") { pfKind = "POSTFIX_INC" }
         pAdvance()
         pAdvance()
         expectNLOrRB()
         const id = newNode("EXPR_STMT")
-        const incId = newNode("POSTFIX_INC")
-        nSetS1(incId, name)
-        nSetI1(id, incId)
-        return id
-    }
-    if (nextTok == "MINUS_MINUS") {
-        pAdvance()
-        pAdvance()
-        expectNLOrRB()
-        const id = newNode("EXPR_STMT")
-        const decId = newNode("POSTFIX_DEC")
-        nSetS1(decId, name)
-        nSetI1(id, decId)
+        const pfId = newNode(pfKind)
+        nSetS1(pfId, name)
+        nSetI1(id, pfId)
         return id
     }
     // Expression statement
@@ -798,19 +781,13 @@ function parsePower(): int {
 }
 
 function parseUnary(): int {
-    if (curKind() == "MINUS") {
+    if (curKind() == "MINUS" || curKind() == "NOT") {
+        let opName = "Not"
+        if (curKind() == "MINUS") { opName = "Neg" }
         pAdvance()
         const operandId = parseUnary()
         const id = newNode("UNARY")
-        nSetS1(id, "Neg")
-        nSetI1(id, operandId)
-        return id
-    }
-    if (curKind() == "NOT") {
-        pAdvance()
-        const operandId = parseUnary()
-        const id = newNode("UNARY")
-        nSetS1(id, "Not")
+        nSetS1(id, opName)
         nSetI1(id, operandId)
         return id
     }
@@ -857,21 +834,12 @@ function parseAtom(): int {
     const k = curKind()
     const v = curValue()
 
-    if (k == "INT") {
+    if (k == "INT" || k == "DOUBLE" || k == "STRING") {
         pAdvance()
-        const id = newNode("INT_LIT")
-        nSetS1(id, v)
-        return id
-    }
-    if (k == "DOUBLE") {
-        pAdvance()
-        const id = newNode("DOUBLE_LIT")
-        nSetS1(id, v)
-        return id
-    }
-    if (k == "STRING") {
-        pAdvance()
-        const id = newNode("STRING_LIT")
+        let nk = "INT_LIT"
+        if (k == "DOUBLE") { nk = "DOUBLE_LIT" }
+        if (k == "STRING") { nk = "STRING_LIT" }
+        const id = newNode(nk)
         nSetS1(id, v)
         return id
     }
