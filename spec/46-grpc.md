@@ -8,7 +8,7 @@
 ## 定义服务
 
 ```simplescript
-import { GrpcService, GrpcMethod, GrpcStream } from "yummy/grpc"
+import { GrpcService, GrpcMethod, GrpcStream } from "ss/grpc"
 
 // 消息用普通 class 定义，编译器自动生成 protobuf 序列化
 class HelloRequest(name: string)
@@ -81,7 +81,7 @@ class ChatService {
 ## 客户端
 
 ```simplescript
-import { GrpcClient } from "yummy/grpc"
+import { GrpcClient } from "ss/grpc"
 
 function main() {
     const client = GrpcClient.connect<GreeterService>("localhost:50051")
@@ -97,7 +97,7 @@ function main() {
 ## 启动服务
 
 ```simplescript
-import { GrpcServer } from "yummy/grpc"
+import { GrpcServer } from "ss/grpc"
 
 function main() {
     const server = new GrpcServer(port: 50051)

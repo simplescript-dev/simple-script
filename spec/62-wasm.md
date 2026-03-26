@@ -9,7 +9,7 @@
 
 ```bash
 # 编译为 WASM 模块
-ym build --target wasm
+ss build --target wasm
 
 # 产物
 target/wasm/

@@ -24,7 +24,7 @@
   ✓ println
   ✓ LLVM IR 生成
   ✓ musl 静态链接
-  ✓ ym build / ym run
+  ✓ ss build / ss run
 ```
 
 ```simplescript
@@ -100,7 +100,7 @@ function main() {
 目标: 能写 Web 服务
 
 实现:
-  ✓ net/http (客户端) + yummy/web (服务器、路由、中间件)
+  ✓ net/http (客户端) + ss/web (服务器、路由、中间件)
   ✓ 注解系统 (@RestController, @GetMapping, ...)
   ✓ 依赖注入 (@Service, @Component, @Configuration)
   ✓ JSON 序列化 (@JsonProperty, ...)
@@ -114,13 +114,13 @@ function main() {
 目标: 能用于生产
 
 实现:
-  ✓ 包管理器 (ym add/publish, ss.json)
+  ✓ 包管理器 (ss add/publish, ss.json)
   ✓ 中央仓库
   ✓ C Interop (import .h)
   ✓ 交叉编译
   ✓ LSP (IDE 支持)
-  ✓ ym fmt / ym lint / ym test
-  ✓ ym doc (文档生成)
+  ✓ ss fmt / ss lint / ss test
+  ✓ ss doc (文档生成)
 ```
 
 ### Phase 8 — 自举

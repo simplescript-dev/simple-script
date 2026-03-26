@@ -9,7 +9,7 @@
 
 ```simplescript
 import { Request, Response } from "net/http"
-import { Cookie } from "yummy/web"
+import { Cookie } from "ss/web"
 
 @RestController
 class AuthController {
@@ -48,7 +48,7 @@ class AuthController {
 ## Session
 
 ```simplescript
-import { Session } from "yummy/web"
+import { Session } from "ss/web"
 
 @RestController
 class CartController {

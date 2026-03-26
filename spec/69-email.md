@@ -7,8 +7,8 @@
 ## 基本发送
 
 ```simplescript
-import { EmailSender, Email } from "yummy/email"
-import { Service } from "yummy/di"
+import { EmailSender, Email } from "ss/email"
+import { Service } from "ss/di"
 
 @Service
 class NotificationService(email: EmailSender) {
@@ -37,8 +37,8 @@ class NotificationService(email: EmailSender) {
 ## HTML 模板邮件
 
 ```simplescript
-import { EmailSender, TemplateEmail } from "yummy/email"
-import { Template } from "yummy/template"
+import { EmailSender, TemplateEmail } from "ss/email"
+import { Template } from "ss/template"
 
 @Service
 class NotificationService(email: EmailSender) {

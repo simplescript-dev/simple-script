@@ -74,19 +74,19 @@ dev/db             数据库接口
 其他所有模块必须显式 import。
 ```
 
-## 官方包 (yummy/ scope)
+## 官方包 (ss/ scope)
 
 ```
-yummy/web          Web 框架 (路由注解、中间件、SSE)
-yummy/di           依赖注入 (@Service, @Component, @Configuration)
-yummy/validation   校验 (@Valid, @NotBlank, @Email)
-yummy/cache        缓存 (@Cacheable, @CacheEvict)
-yummy/auth         认证鉴权 (@RequiresRole, JWT)
-yummy/cli          CLI 框架 (@Command, @Arg)
-yummy/config       配置管理 (@Config, @Value)
-yummy/schedule     定时任务 (@Scheduled)
-yummy/trace        链路追踪 (@Traced)
-yummy/aop          AOP 拦截器
+ss/web          Web 框架 (路由注解、中间件、SSE)
+ss/di           依赖注入 (@Service, @Component, @Configuration)
+ss/validation   校验 (@Valid, @NotBlank, @Email)
+ss/cache        缓存 (@Cacheable, @CacheEvict)
+ss/auth         认证鉴权 (@RequiresRole, JWT)
+ss/cli          CLI 框架 (@Command, @Arg)
+ss/config       配置管理 (@Config, @Value)
+ss/schedule     定时任务 (@Scheduled)
+ss/trace        链路追踪 (@Traced)
+ss/aop          AOP 拦截器
 ```
 
 ## io/print (prelude 自动导入)

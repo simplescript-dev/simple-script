@@ -66,7 +66,7 @@ function main() {
 ## SSE (Server-Sent Events)
 
 ```simplescript
-import { SSE, SseEmitter } from "yummy/web"
+import { SSE, SseEmitter } from "ss/web"
 
 @RestController
 class NotificationController {

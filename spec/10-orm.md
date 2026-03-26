@@ -52,7 +52,7 @@ class MyApp {
 
 ```bash
 # 数据库迁移是第三方包，不是语言内置
-ym add db-migrate
+ss add db-migrate
 ```
 
 ## 基本 CRUD
@@ -251,7 +251,7 @@ class OrderService(db: Database, userRepo: UserRepository) {
 ```simplescript
 import { Database, Table, Id, AutoIncrement, Column } from "dev/db"
 import { HttpServer, Request, Response } from "net/http"
-import { RestController, RequestMapping, GetMapping, PostMapping, PutMapping, DeleteMapping, PathVariable, RequestBody } from "yummy/web"
+import { RestController, RequestMapping, GetMapping, PostMapping, PutMapping, DeleteMapping, PathVariable, RequestBody } from "ss/web"
 
 @Table("todos")
 class Todo(

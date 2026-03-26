@@ -29,7 +29,7 @@ app:
 ## 类型安全配置类
 
 ```simplescript
-import { Config, Value } from "yummy/config"
+import { Config, Value } from "ss/config"
 
 @Config("server")
 class ServerConfig(

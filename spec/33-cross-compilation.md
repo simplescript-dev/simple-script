@@ -18,22 +18,22 @@ windows/x86_64
 
 ```bash
 # 当前平台编译
-ym build --release
+ss build --release
 
 # 指定目标平台
-ym build --release --target linux/x86_64
-ym build --release --target linux/aarch64
-ym build --release --target macos/aarch64
-ym build --release --target windows/x86_64
+ss build --release --target linux/x86_64
+ss build --release --target linux/aarch64
+ss build --release --target macos/aarch64
+ss build --release --target windows/x86_64
 
 # 一次编译所有平台
-ym build --release --target all
+ss build --release --target all
 ```
 
 ## 产物
 
 ```bash
-$ ym build --release
+$ ss build --release
 $ ls -lh target/release/
 
 my-app           1.2 MB    # 单文件静态二进制
@@ -47,7 +47,7 @@ my-app           1.2 MB    # 单文件静态二进制
 FROM simplescript:latest AS builder
 WORKDIR /app
 COPY . .
-RUN ym build --release
+RUN ss build --release
 
 # 最终镜像: FROM scratch，零依赖
 FROM scratch
@@ -100,10 +100,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: simplescript/setup-ym@v1
+      - uses: simplescript/setup-ss@v1
 
-      - run: ym test
-      - run: ym build --release
+      - run: ss test
+      - run: ss build --release
 
       - uses: actions/upload-artifact@v4
         with:
@@ -121,8 +121,8 @@ jobs:
 # - strip 符号表
 
 # 额外优化
-ym build --release --size         # 优化体积 (Os)
-ym build --release --speed        # 优化速度 (O3)
+ss build --release --size         # 优化体积 (Os)
+ss build --release --speed        # 优化速度 (O3)
 ```
 
 | 项目类型 | 预期体积 |

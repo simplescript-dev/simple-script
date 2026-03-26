@@ -7,7 +7,7 @@
 ## 定义事件
 
 ```simplescript
-import { Event } from "yummy/event"
+import { Event } from "ss/event"
 
 // 事件就是普通 class
 class UserCreatedEvent(userId: long, name: string, email: string) : Event
@@ -18,8 +18,8 @@ class UserDeletedEvent(userId: long) : Event
 ## 发布事件
 
 ```simplescript
-import { EventBus } from "yummy/event"
-import { Service } from "yummy/di"
+import { EventBus } from "ss/event"
+import { Service } from "ss/di"
 
 @Service
 class UserService(db: Database, eventBus: EventBus) {
@@ -38,8 +38,8 @@ class UserService(db: Database, eventBus: EventBus) {
 ## 监听事件
 
 ```simplescript
-import { EventListener } from "yummy/event"
-import { Service } from "yummy/di"
+import { EventListener } from "ss/event"
+import { Service } from "ss/di"
 
 @Service
 class NotificationService {
@@ -74,7 +74,7 @@ class AuditService {
 ## 异步事件
 
 ```simplescript
-import { AsyncEventListener } from "yummy/event"
+import { AsyncEventListener } from "ss/event"
 
 @Service
 class AnalyticsService {

@@ -40,8 +40,8 @@ GET /metrics
 ## 自定义指标
 
 ```simplescript
-import { Counter, Gauge, Histogram, Timer } from "yummy/metrics"
-import { Service } from "yummy/di"
+import { Counter, Gauge, Histogram, Timer } from "ss/metrics"
+import { Service } from "ss/di"
 
 @Service
 class OrderService(db: Database) {
@@ -77,7 +77,7 @@ class OrderService(db: Database) {
 ## 计时
 
 ```simplescript
-import { Timer } from "yummy/metrics"
+import { Timer } from "ss/metrics"
 
 @Service
 class ExternalApiClient {
@@ -131,7 +131,7 @@ health:
 
 ```
 内置 Grafana Dashboard JSON:
-  ym metrics dashboard > grafana.json
+  ss metrics dashboard > grafana.json
 
 包含面板:
   - HTTP 请求率与延迟

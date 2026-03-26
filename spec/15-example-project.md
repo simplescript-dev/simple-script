@@ -33,14 +33,14 @@ todo-api/
   "version": "0.1.0",
   "target": "bin",
   "dependencies": {
-    "yummy/web": "1.0.0",
-    "yummy/di": "1.0.0",
-    "yummy/validation": "1.0.0",
-    "yummy/cache": "1.0.0"
+    "ss/web": "1.0.0",
+    "ss/di": "1.0.0",
+    "ss/validation": "1.0.0",
+    "ss/cache": "1.0.0"
   },
   "scripts": {
-    "dev": "ym run --watch",
-    "prod": "ym build --release"
+    "dev": "ss run --watch",
+    "prod": "ss build --release"
   }
 }
 ```
@@ -61,7 +61,7 @@ database:
 ```simplescript
 import { Table, Id, AutoIncrement, CreatedAt, UpdatedAt } from "dev/db"
 import { JsonProperty, JsonIgnore } from "encoding/json"
-import { NotBlank, Size } from "yummy/validation"
+import { NotBlank, Size } from "ss/validation"
 
 @Table("todos")
 export class Todo(
@@ -87,7 +87,7 @@ export enum TodoFilter { All, Active, Done }
 ## src/config/app_config.ss
 
 ```simplescript
-import { Configuration } from "yummy/di"
+import { Configuration } from "ss/di"
 import { Database } from "dev/db"
 
 @Configuration
@@ -101,10 +101,10 @@ export class AppConfig {
 ## src/service/todo_service.ss
 
 ```simplescript
-import { Service } from "yummy/di"
+import { Service } from "ss/di"
 import { Database } from "dev/db"
 import { Transactional } from "dev/db/tx"
-import { Cacheable, CacheEvict } from "yummy/cache"
+import { Cacheable, CacheEvict } from "ss/cache"
 import { Todo, TodoFilter } from "../model/todo"
 
 @Service
@@ -160,7 +160,7 @@ export class TodoService(db: Database) {
 ```simplescript
 import { Response } from "net/http"
 import { RestController, RequestMapping, GetMapping, PostMapping, PutMapping, DeleteMapping,
-         PathVariable, RequestParam, RequestBody, Valid } from "yummy/web"
+         PathVariable, RequestParam, RequestBody, Valid } from "ss/web"
 import { TodoService } from "../service/todo_service"
 import { Todo, TodoFilter } from "../model/todo"
 
@@ -217,7 +217,7 @@ class CreateTodoRequest(
 ## src/main.ss
 
 ```simplescript
-import { Application } from "yummy/di"
+import { Application } from "ss/di"
 import { Slf4j } from "dev/log"
 
 @Slf4j
@@ -288,13 +288,13 @@ test("delete nonexistent returns error", () => {
 
 ```bash
 # 开发
-ym run --watch
+ss run --watch
 
 # 测试
-ym test
+ss test
 
 # 构建 release
-ym build --release
+ss build --release
 
 # 产物
 ls -lh target/release/todo-api

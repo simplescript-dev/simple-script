@@ -7,8 +7,8 @@
 ## 基本用法
 
 ```simplescript
-import { Scheduled, FixedRate, Cron } from "yummy/schedule"
-import { Service } from "yummy/di"
+import { Scheduled, FixedRate, Cron } from "ss/schedule"
+import { Service } from "ss/di"
 
 @Service
 class ScheduledTasks {
@@ -51,7 +51,7 @@ class ScheduledTasks {
 ## 动态调度
 
 ```simplescript
-import { TaskScheduler, Task } from "yummy/schedule"
+import { TaskScheduler, Task } from "ss/schedule"
 
 @Service
 class DynamicScheduler(scheduler: TaskScheduler) {

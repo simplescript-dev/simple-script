@@ -7,7 +7,7 @@
 ## 基本用法
 
 ```simplescript
-import { Command, Arg, Option } from "yummy/cli"
+import { Command, Arg, Option } from "ss/cli"
 
 @Command(name: "greet", description: "Say hello")
 class GreetCommand(
@@ -30,15 +30,15 @@ function main() {
 ```
 
 ```bash
-$ ym run -- Alice
+$ ss run -- Alice
 hello, Alice!
 
-$ ym run -- Alice -c 3
+$ ss run -- Alice -c 3
 hello, Alice!
 hello, Alice!
 hello, Alice!
 
-$ ym run -- --help
+$ ss run -- --help
 Usage: greet [OPTIONS] <name>
 
 Say hello
@@ -55,9 +55,9 @@ Options:
 ## 子命令
 
 ```simplescript
-import { Command, SubCommand, Arg, Option } from "yummy/cli"
+import { Command, SubCommand, Arg, Option } from "ss/cli"
 
-@Command(name: "ym", description: "SimpleScript package manager")
+@Command(name: "ss", description: "SimpleScript package manager")
 class YmCli {
 
     @SubCommand(name: "new", description: "Create a new project")
@@ -103,7 +103,7 @@ $ myapp build --release
 building in release mode...
 
 $ myapp --help
-Usage: ym <COMMAND>
+Usage: ss <COMMAND>
 
 Commands:
   new    Create a new project
@@ -117,7 +117,7 @@ Options:
 ## 交互式输入
 
 ```simplescript
-import { prompt, confirm, select } from "yummy/cli"
+import { prompt, confirm, select } from "ss/cli"
 
 function main() {
     const name = prompt("Project name:")?
@@ -133,7 +133,7 @@ function main() {
 ## 进度条 / 颜色输出
 
 ```simplescript
-import { style, ProgressBar } from "yummy/cli"
+import { style, ProgressBar } from "ss/cli"
 
 // 颜色输出
 println(style.green("✓ success"))
@@ -153,10 +153,10 @@ bar.finish("done!")
 ## 完整示例: 文件搜索工具
 
 ```simplescript
-import { Command, Arg, Option } from "yummy/cli"
+import { Command, Arg, Option } from "ss/cli"
 import { walkDir } from "io/fs"
 import { Regex } from "util/regex"
-import { style } from "yummy/cli"
+import { style } from "ss/cli"
 
 @Command(name: "ygrep", description: "Search files for a pattern")
 class YGrep(
@@ -201,7 +201,7 @@ function main() {
 ```
 
 ```bash
-$ ym build --release
+$ ss build --release
 $ ./ygrep "function main" src/
 src/main.ss:15:function main() {
 src/cli.ss:8:function main() {

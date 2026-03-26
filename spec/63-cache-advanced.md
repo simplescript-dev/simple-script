@@ -8,8 +8,8 @@
 ## 注解缓存
 
 ```simplescript
-import { Cacheable, CacheEvict, CachePut, CacheConfig } from "yummy/cache"
-import { Service } from "yummy/di"
+import { Cacheable, CacheEvict, CachePut, CacheConfig } from "ss/cache"
+import { Service } from "ss/di"
 
 @Service
 @CacheConfig(name: "users", ttl: 3600)
@@ -44,7 +44,7 @@ class UserService(db: Database) {
 ## 多级缓存
 
 ```simplescript
-import { Cache, LocalCache, RedisCache, MultiLevelCache } from "yummy/cache"
+import { Cache, LocalCache, RedisCache, MultiLevelCache } from "ss/cache"
 
 // L1: 本地内存 (毫秒级) + L2: Redis (跨实例共享)
 @Configuration
@@ -61,7 +61,7 @@ class CacheConfig {
 ## 手动操作缓存
 
 ```simplescript
-import { CacheManager } from "yummy/cache"
+import { CacheManager } from "ss/cache"
 
 @Service
 class ProductService(cache: CacheManager) {

@@ -7,7 +7,7 @@
 ## 服务注册与发现
 
 ```simplescript
-import { ServiceRegistry, ServiceDiscovery } from "yummy/discovery"
+import { ServiceRegistry, ServiceDiscovery } from "ss/discovery"
 
 // 注册服务
 @Application
@@ -35,7 +35,7 @@ class OrderService(discovery: ServiceDiscovery) {
 ## 熔断器
 
 ```simplescript
-import { CircuitBreaker } from "yummy/resilience"
+import { CircuitBreaker } from "ss/resilience"
 
 @Service
 class PaymentService {
@@ -51,7 +51,7 @@ class PaymentService {
 ## 重试
 
 ```simplescript
-import { Retry } from "yummy/resilience"
+import { Retry } from "ss/resilience"
 
 @Service
 class EmailService {
@@ -67,7 +67,7 @@ class EmailService {
 ## 限流
 
 ```simplescript
-import { RateLimit } from "yummy/resilience"
+import { RateLimit } from "ss/resilience"
 
 @RestController
 class ApiController {
@@ -84,7 +84,7 @@ class ApiController {
 ## 健康检查
 
 ```simplescript
-import { HealthCheck, Health } from "yummy/health"
+import { HealthCheck, Health } from "ss/health"
 
 @Service
 class AppHealth : HealthCheck {
@@ -106,7 +106,7 @@ class AppHealth : HealthCheck {
 ## 配置中心
 
 ```simplescript
-import { RemoteConfig } from "yummy/config"
+import { RemoteConfig } from "ss/config"
 
 // 从远程配置中心拉取配置
 @RemoteConfig(source: "consul://localhost:8500/my-app")
@@ -121,7 +121,7 @@ class AppConfig(
 ## 链路追踪
 
 ```simplescript
-import { Traced } from "yummy/trace"
+import { Traced } from "ss/trace"
 
 @Service
 class OrderService(userService: UserService, paymentService: PaymentService) {

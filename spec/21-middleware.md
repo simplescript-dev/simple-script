@@ -8,7 +8,7 @@
 
 ```simplescript
 import { HttpServer } from "net/http"
-import { cors, rateLimit, compress, requestId, timeout } from "yummy/web"
+import { cors, rateLimit, compress, requestId, timeout } from "ss/web"
 
 const server = new HttpServer(port: 8080)
 
@@ -23,7 +23,7 @@ server.use(timeout(Duration.seconds(30)))             // 超时
 ## 自定义中间件
 
 ```simplescript
-import { Middleware, Request, Response, Next } from "yummy/web"
+import { Middleware, Request, Response, Next } from "ss/web"
 
 // 实现 Middleware 接口
 class AuthMiddleware(authService: AuthService) : Middleware {
@@ -69,7 +69,7 @@ server.get("/api/public/info", (req) => Response.ok(info))
 ## AOP 拦截器 (注解方式)
 
 ```simplescript
-import { Before, After, Around } from "yummy/aop"
+import { Before, After, Around } from "ss/aop"
 
 // @Before — 方法执行前
 @Before("*Service.*")                  // 匹配所有 Service 的所有方法

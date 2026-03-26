@@ -7,13 +7,13 @@
 ## 安装
 
 ```bash
-ym add yummy/db-migrate
+ss add ss/db-migrate
 ```
 
 ## 定义迁移
 
 ```simplescript
-import { Migration, CreateTable, AddColumn, DropColumn, AddIndex } from "yummy/db-migrate"
+import { Migration, CreateTable, AddColumn, DropColumn, AddIndex } from "ss/db-migrate"
 
 // 每个迁移类有版本号和 up/down 方法
 class V001_CreateUsers : Migration {
@@ -78,16 +78,16 @@ class V003_AddUserPhone : Migration {
 
 ```bash
 # 执行所有未执行的迁移
-ym run migrate up
+ss run migrate up
 
 # 回滚上一次迁移
-ym run migrate down
+ss run migrate down
 
 # 回滚到指定版本
-ym run migrate down --to 001
+ss run migrate down --to 001
 
 # 查看迁移状态
-ym run migrate status
+ss run migrate status
 
 # 输出:
 # Version  Description          Status     Applied At
@@ -100,7 +100,7 @@ ym run migrate status
 
 ```bash
 # 只生成 SQL，不执行 (DBA 审核用)
-ym run migrate preview
+ss run migrate preview
 
 # 输出:
 # -- Migration V003: add phone column to users
@@ -135,7 +135,7 @@ class V004_ComplexMigration : Migration {
 ## 种子数据
 
 ```simplescript
-import { Seed } from "yummy/db-migrate"
+import { Seed } from "ss/db-migrate"
 
 class UserSeed : Seed {
     override function run(db: MigrationDb) {
@@ -151,5 +151,5 @@ class UserSeed : Seed {
 
 ```bash
 # 执行种子数据
-ym run migrate seed
+ss run migrate seed
 ```

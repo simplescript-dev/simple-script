@@ -21,7 +21,7 @@
 ## 全局异常处理器
 
 ```simplescript
-import { ExceptionHandler, ErrorResponse } from "yummy/web"
+import { ExceptionHandler, ErrorResponse } from "ss/web"
 
 @ExceptionHandler
 class GlobalErrorHandler {

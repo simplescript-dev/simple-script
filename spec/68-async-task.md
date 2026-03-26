@@ -8,7 +8,7 @@
 ## 简单后台任务
 
 ```simplescript
-import { Service } from "yummy/di"
+import { Service } from "ss/di"
 
 @Service
 class ReportService {
@@ -79,8 +79,8 @@ class ReportController(reportService: ReportService) {
 ## 持久化任务队列
 
 ```simplescript
-import { Job, JobQueue, JobHandler } from "yummy/jobs"
-import { Service } from "yummy/di"
+import { Job, JobQueue, JobHandler } from "ss/jobs"
+import { Service } from "ss/di"
 
 // 定义 Job
 class SendEmailJob(to: string, subject: string, body: string) : Job

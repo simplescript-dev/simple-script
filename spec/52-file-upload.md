@@ -7,7 +7,7 @@
 ## 基本上传
 
 ```simplescript
-import { RestController, PostMapping, MultipartFile } from "yummy/web"
+import { RestController, PostMapping, MultipartFile } from "ss/web"
 import { Response } from "net/http"
 import { writeFile } from "io/fs"
 
@@ -53,7 +53,7 @@ class UploadController {
 ## 文件校验
 
 ```simplescript
-import { MaxFileSize, AllowedTypes } from "yummy/web"
+import { MaxFileSize, AllowedTypes } from "ss/web"
 
 @RestController
 class UploadController {

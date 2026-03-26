@@ -63,7 +63,7 @@ logging:
 ## 链路追踪
 
 ```simplescript
-import { Traced } from "yummy/trace"
+import { Traced } from "ss/trace"
 
 @Slf4j
 @RestController

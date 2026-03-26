@@ -7,8 +7,8 @@
 ## 发送消息
 
 ```simplescript
-import { MessageSender, Topic } from "yummy/mq"
-import { Service } from "yummy/di"
+import { MessageSender, Topic } from "ss/mq"
+import { Service } from "ss/di"
 
 @Service
 class OrderService(db: Database, mq: MessageSender) {
@@ -31,8 +31,8 @@ class OrderService(db: Database, mq: MessageSender) {
 ## 消费消息
 
 ```simplescript
-import { MessageListener, Payload } from "yummy/mq"
-import { Service } from "yummy/di"
+import { MessageListener, Payload } from "ss/mq"
+import { Service } from "ss/di"
 
 @Service
 class PaymentConsumer {

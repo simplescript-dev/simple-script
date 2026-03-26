@@ -8,7 +8,7 @@
 ## 基本用法
 
 ```simplescript
-import { Template } from "yummy/template"
+import { Template } from "ss/template"
 
 function main() {
     const tmpl = Template.load("templates/hello.html")
@@ -38,10 +38,10 @@ function main() {
 
 ```html
 <!-- if -->
-<div ym-if="${user != null}">
+<div ss-if="${user != null}">
     <p>Welcome, ${user.name}</p>
 </div>
-<div ym-else>
+<div ss-else>
     <p>Please login</p>
 </div>
 ```
@@ -51,14 +51,14 @@ function main() {
 ```html
 <!-- for -->
 <ul>
-    <li ym-for="${item in items}">
+    <li ss-for="${item in items}">
         ${item.name} - ${item.price}
     </li>
 </ul>
 
 <!-- 带索引 -->
 <table>
-    <tr ym-for="${(index, user) in users}">
+    <tr ss-for="${(index, user) in users}">
         <td>${index + 1}</td>
         <td>${user.name}</td>
         <td>${user.email}</td>
@@ -74,18 +74,18 @@ function main() {
 <html>
 <head><title>${title}</title></head>
 <body>
-    <header ym-include="components/header.html"></header>
+    <header ss-include="components/header.html"></header>
     <main>
         ${content}
     </main>
-    <footer ym-include="components/footer.html"></footer>
+    <footer ss-include="components/footer.html"></footer>
 </body>
 </html>
 ```
 
 ```html
 <!-- templates/pages/home.html -->
-<div ym-layout="layout.html" ym-title="Home">
+<div ss-layout="layout.html" ss-title="Home">
     <h1>Welcome</h1>
     <p>This is the home page.</p>
 </div>
@@ -94,8 +94,8 @@ function main() {
 ## 与 Web 框架集成
 
 ```simplescript
-import { RestController, GetMapping } from "yummy/web"
-import { Template } from "yummy/template"
+import { RestController, GetMapping } from "ss/web"
+import { Template } from "ss/template"
 import { Response } from "net/http"
 
 @RestController

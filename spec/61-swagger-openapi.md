@@ -34,7 +34,7 @@ class UserController(userService: UserService) {
 ## 补充描述 (可选)
 
 ```simplescript
-import { Api, ApiOperation, ApiParam } from "yummy/openapi"
+import { Api, ApiOperation, ApiParam } from "ss/openapi"
 
 @Api(description: "用户管理接口")
 @RestController

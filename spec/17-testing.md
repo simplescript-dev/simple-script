@@ -147,7 +147,7 @@ bench("map lookup", () => {
 ```
 
 ```bash
-$ ym bench
+$ ss bench
 list sort 10000 items ... 2.34 ms/iter (±0.12)
 map lookup            ... 0.85 ns/iter (±0.03)
 ```
@@ -155,9 +155,9 @@ map lookup            ... 0.85 ns/iter (±0.03)
 ## 运行
 
 ```bash
-ym test                        # 全部
-ym test user                   # 匹配 "user"
-ym test --coverage             # 覆盖率
-ym test --watch                # 文件改动自动重跑
-ym bench                       # 基准测试
+ss test                        # 全部
+ss test user                   # 匹配 "user"
+ss test --coverage             # 覆盖率
+ss test --watch                # 文件改动自动重跑
+ss bench                       # 基准测试
 ```

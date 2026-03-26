@@ -30,7 +30,7 @@ const users = db.sql<User>("SELECT * FROM users WHERE name = '${name}'")
 ## 鉴权注解
 
 ```simplescript
-import { RequiresRole, RequiresPermission, Authenticated } from "yummy/auth"
+import { RequiresRole, RequiresPermission, Authenticated } from "ss/auth"
 
 @RestController
 class AdminController {
@@ -69,7 +69,7 @@ const decrypted = decrypt.aes(encrypted, key)
 const digest = hash.sha256("hello")
 
 // JWT
-import { Jwt } from "yummy/auth"
+import { Jwt } from "ss/auth"
 
 const token = Jwt.sign(Map.of(["userId", 123]), secret, expiry: Duration.hours(24))
 const claims = Jwt.verify(token, secret)?
@@ -91,7 +91,7 @@ const server = new HttpServer(
 ## 环境变量敏感信息
 
 ```simplescript
-import { Secret } from "yummy/config"
+import { Secret } from "ss/config"
 
 @Config("database")
 class DatabaseConfig(

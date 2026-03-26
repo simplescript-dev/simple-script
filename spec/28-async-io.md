@@ -30,7 +30,7 @@ try (const writer = File.writer("output.txt")?) {
 
 // 目录遍历
 for (entry in walkDir("src")?) {
-    if (entry.extension() == "ym") {
+    if (entry.extension() == "ss") {
         println(entry.path)
     }
 }

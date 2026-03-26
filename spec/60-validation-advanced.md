@@ -8,7 +8,7 @@
 
 ```simplescript
 import { Valid, NotBlank, NotNull, Email, Size, Min, Max,
-         Pattern, Positive, PositiveOrZero, Past, Future } from "yummy/validation"
+         Pattern, Positive, PositiveOrZero, Past, Future } from "ss/validation"
 
 class CreateUserRequest(
     @NotBlank
@@ -61,7 +61,7 @@ class UserController {
 ## 自定义校验注解
 
 ```simplescript
-import { Constraint, ConstraintValidator } from "yummy/validation"
+import { Constraint, ConstraintValidator } from "ss/validation"
 
 // 1. 定义注解
 @Constraint(validatedBy: PhoneValidator)
@@ -87,7 +87,7 @@ class ContactRequest(
 ## 分组校验
 
 ```simplescript
-import { Group } from "yummy/validation"
+import { Group } from "ss/validation"
 
 // 不同场景校验不同字段
 interface Create {}
@@ -134,7 +134,7 @@ class CreateOrderRequest(
 ## 手动校验
 
 ```simplescript
-import { Validator } from "yummy/validation"
+import { Validator } from "ss/validation"
 
 function processData(data: SomeData): Result<void, List<ValidationError>> {
     const errors = Validator.validate(data)

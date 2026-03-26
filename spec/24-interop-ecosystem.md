@@ -56,19 +56,19 @@ dev/log            结构化日志 (@Slf4j)
 dev/db             数据库通用接口、ORM (@Table, @Id, 查询构建器)
 ```
 
-## 官方包 (yummy/ scope)
+## 官方包 (ss/ scope)
 
 ```
-yummy/web          Web 框架 (路由注解、中间件、SSE)，依赖 net/http
-yummy/di           依赖注入 (@Service, @Component, @Configuration)
-yummy/validation   校验 (@Valid, @NotBlank, @Email)
-yummy/cache        缓存 (@Cacheable, @CacheEvict)
-yummy/auth         认证鉴权 (@RequiresRole, JWT)
-yummy/cli          CLI 框架 (@Command, @Arg)
-yummy/config       配置管理 (@Config, @Value)
-yummy/schedule     定时任务 (@Scheduled)
-yummy/trace        链路追踪 (@Traced)
-yummy/aop          AOP 拦截器
+ss/web          Web 框架 (路由注解、中间件、SSE)，依赖 net/http
+ss/di           依赖注入 (@Service, @Component, @Configuration)
+ss/validation   校验 (@Valid, @NotBlank, @Email)
+ss/cache        缓存 (@Cacheable, @CacheEvict)
+ss/auth         认证鉴权 (@RequiresRole, JWT)
+ss/cli          CLI 框架 (@Command, @Arg)
+ss/config       配置管理 (@Config, @Value)
+ss/schedule     定时任务 (@Scheduled)
+ss/trace        链路追踪 (@Traced)
+ss/aop          AOP 拦截器
 ```
 
 ## C 库生态直接可用
@@ -108,10 +108,10 @@ db-redis       Redis (hiredis)
 
 ```bash
 # 登录
-ym login
+ss login
 
 # 发布
-ym publish
+ss publish
 
 # 包的 ss.json
 {
@@ -128,8 +128,8 @@ ym publish
 
 ```bash
 # 编译为 .so / .a，给其他语言调用
-ym build --target lib-shared        # libmylib.so
-ym build --target lib-static        # libmylib.a
+ss build --target lib-shared        # libmylib.so
+ss build --target lib-static        # libmylib.a
 ```
 
 ```simplescript
@@ -152,7 +152,7 @@ function processData(input: string): string {
 FROM simplescript:latest AS builder
 WORKDIR /app
 COPY . .
-RUN ym build --release
+RUN ss build --release
 
 # 最终镜像: 只需要二进制，不需要运行时
 FROM scratch

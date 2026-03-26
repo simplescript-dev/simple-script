@@ -26,7 +26,7 @@
 | 42 | access-modifiers.md | 四级访问控制 |
 | 43 | null-safety-deep.md | 空安全详解、智能收窄 |
 | 44 | generics-constraints.md | 泛型约束详解 |
-| 45 | coding-conventions.md | 编码规范、ym fmt |
+| 45 | coding-conventions.md | 编码规范、ss fmt |
 
 ## 标准库
 
@@ -79,7 +79,7 @@
 | # | 文件 | 主题 |
 |---|------|------|
 | 05 | ffi.md | C 互操作 |
-| 07 | package.md | 包管理器 (ym) |
+| 07 | package.md | 包管理器 (ss) |
 | 09 | toolchain.md | 工具链 |
 | 12 | compiler.md | 编译器实现计划 |
 | 14 | cli-framework.md | CLI 框架 |

@@ -4,7 +4,7 @@
 
 ```simplescript
 import { Request, Response } from "net/http"
-import { Context } from "yummy/web"
+import { Context } from "ss/web"
 
 // 中间件可以在 Context 中传递数据
 class AuthMiddleware(authService: AuthService) : Middleware {
@@ -74,7 +74,7 @@ class ErrorHandler : Middleware {
 ## CORS 详细配置
 
 ```simplescript
-import { cors, CorsConfig } from "yummy/web"
+import { cors, CorsConfig } from "ss/web"
 
 server.use(cors(new CorsConfig(
     origins: List.of("https://example.com", "https://app.example.com"),
@@ -88,7 +88,7 @@ server.use(cors(new CorsConfig(
 ## 请求体大小限制
 
 ```simplescript
-import { bodyLimit } from "yummy/web"
+import { bodyLimit } from "ss/web"
 
 // 全局限制 10MB
 server.use(bodyLimit(10 * 1024 * 1024))
@@ -100,7 +100,7 @@ server.post("/upload", bodyLimit(100 * 1024 * 1024), uploadHandler)
 ## 静态文件服务
 
 ```simplescript
-import { staticFiles } from "yummy/web"
+import { staticFiles } from "ss/web"
 
 // 服务 public/ 目录下的静态文件
 server.use(staticFiles("public", prefix: "/static"))

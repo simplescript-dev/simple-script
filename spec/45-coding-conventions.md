@@ -2,7 +2,7 @@
 
 ## 设计理念
 
-> 唯一风格，无争议。`ym fmt` 自动格式化，不需要讨论代码风格。
+> 唯一风格，无争议。`ss fmt` 自动格式化，不需要讨论代码风格。
 
 ## 命名规范
 
@@ -49,8 +49,8 @@ import { HttpServer, Request, Response } from "net/http"
 import { readFile } from "io/fs"
 
 // 2. 官方包
-import { RestController, GetMapping } from "yummy/web"
-import { Service } from "yummy/di"
+import { RestController, GetMapping } from "ss/web"
+import { Service } from "ss/di"
 
 // 3. 第三方包
 import { Redis } from "zhangsan/redis"
@@ -129,17 +129,17 @@ function greet(name: string): string {
 }
 ```
 
-## ym fmt
+## ss fmt
 
 ```bash
 # 格式化单个文件
-ym fmt src/main.ss
+ss fmt src/main.ss
 
 # 格式化整个项目
-ym fmt
+ss fmt
 
 # 检查但不修改 (CI 用)
-ym fmt --check
+ss fmt --check
 ```
 
-`ym fmt` 的风格不可配置。一个项目、一种风格、零争议。
+`ss fmt` 的风格不可配置。一个项目、一种风格、零争议。

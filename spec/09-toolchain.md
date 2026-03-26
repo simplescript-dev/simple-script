@@ -2,49 +2,49 @@
 
 ## 设计理念
 
-> `ym` 一个命令覆盖所有开发环节。不需要额外装 linter、formatter、test runner。
+> `ss` 一个命令覆盖所有开发环节。不需要额外装 linter、formatter、test runner。
 > 来自 Cargo 的一体化 + Go 的工具链内置。
 
 ## 完整命令
 
 ```bash
 # === 项目 ===
-ym new my-app                  # 创建项目
-ym new my-lib --lib            # 创建库
-ym init                        # 在当前目录初始化项目
+ss new my-app                  # 创建项目
+ss new my-lib --lib            # 创建库
+ss init                        # 在当前目录初始化项目
 
 # === 构建 ===
-ym build                       # debug 构建
-ym build --release             # release 构建 (优化 + musl 静态链接)
-ym run                         # 构建并运行
-ym run --release               # release 模式运行
-ym run --watch                 # 文件改动自动重新运行
+ss build                       # debug 构建
+ss build --release             # release 构建 (优化 + musl 静态链接)
+ss run                         # 构建并运行
+ss run --release               # release 模式运行
+ss run --watch                 # 文件改动自动重新运行
 
 # === 测试 ===
-ym test                        # 运行所有测试
-ym test user                   # 运行匹配 "user" 的测试
-ym test --coverage             # 生成覆盖率报告
+ss test                        # 运行所有测试
+ss test user                   # 运行匹配 "user" 的测试
+ss test --coverage             # 生成覆盖率报告
 
 # === 代码质量 ===
-ym fmt                         # 格式化代码 (内置，无争议风格)
-ym lint                        # 静态分析
-ym check                       # 类型检查 (不生成二进制)
+ss fmt                         # 格式化代码 (内置，无争议风格)
+ss lint                        # 静态分析
+ss check                       # 类型检查 (不生成二进制)
 
 # === 依赖 ===
-ym add net/http                # 添加依赖 (username/package)
-ym add zhangsan/sqlite@3.0.0   # 指定版本
-ym remove zhangsan/sqlite      # 移除
-ym update                      # 更新所有依赖
-ym tree                        # 查看依赖树
+ss add net/http                # 添加依赖 (username/package)
+ss add zhangsan/sqlite@3.0.0   # 指定版本
+ss remove zhangsan/sqlite      # 移除
+ss update                      # 更新所有依赖
+ss tree                        # 查看依赖树
 
 # === 发布 ===
-ym publish                     # 发布包到中央仓库
-ym login                       # 登录仓库账号
+ss publish                     # 发布包到中央仓库
+ss login                       # 登录仓库账号
 
 # === 工具 ===
-ym doc                         # 生成文档
-ym bench                       # 性能基准测试
-ym clean                       # 清理构建产物
+ss doc                         # 生成文档
+ss bench                       # 性能基准测试
+ss clean                       # 清理构建产物
 ```
 
 ## 编译流程
@@ -81,9 +81,9 @@ ym clean                       # 清理构建产物
     "mock": "1.0.0"
   },
   "scripts": {
-    "dev": "ym run --watch",
-    "prod": "ym build --release",
-    "deploy": "ym build --release && scp target/release/my-app server:/app/"
+    "dev": "ss run --watch",
+    "prod": "ss build --release",
+    "deploy": "ss build --release && scp target/release/my-app server:/app/"
   },
   "compiler": {
     "target": "linux-x86_64",
@@ -117,7 +117,7 @@ my-app/
 ## IDE 支持
 
 ```
-ym lsp                     # 启动 Language Server Protocol 服务
+ss lsp                     # 启动 Language Server Protocol 服务
 
 支持:
   ✓ 代码补全
