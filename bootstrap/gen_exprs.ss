@@ -127,7 +127,23 @@ function genBinary(id: int): string {
         return r
     }
 
-    // Short-circuit && and ||
+    // String comparison (>, <, >=, <=) using strcmp
+    if ((op == "Lt" || op == "Gt" || op == "Le" || op == "Ge") && (blt == "string" || brt == "string")) {
+        const sl = genExpr(leftId)
+        const sr = genExpr(rightId)
+        const cmpR = nextReg()
+        emitIR("  " + cmpR + " = call i32 @ym_strcmp(ptr " + sl + ", ptr " + sr + ")")
+        let cmpOp = "slt"
+        if (op == "Gt") { cmpOp = "sgt" }
+        if (op == "Le") { cmpOp = "sle" }
+        if (op == "Ge") { cmpOp = "sge" }
+        const cmpBool = nextReg()
+        emitIR("  " + cmpBool + " = icmp " + cmpOp + " i32 " + cmpR + ", 0")
+        const r = nextReg()
+        emitIR("  " + r + " = zext i1 " + cmpBool + " to i32")
+        return r
+    }
+
     // Short-circuit && and ||
     if (op == "And" || op == "Or") {
         const scResult = nextReg()
@@ -779,7 +795,7 @@ function inferType(id: int): string {
 }
 
 function callReturnType(callee: string): string {
-    if (callee == "readLine" || callee == "readFile" || callee == "arg" || callee == "getenv" || callee == "listDir" || callee == "sha256" || callee == "tcpRead" || callee == "fromCharCode") { return "string" }
+    if (callee == "readLine" || callee == "readFile" || callee == "arg" || callee == "getenv" || callee == "listDir" || callee == "sha256" || callee == "tcpRead" || callee == "fromCharCode" || callee == "base64Encode" || callee == "base64Decode") { return "string" }
     if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "appendFile" || callee == "exit" || callee == "tcpClose") { return "void" }
     if (callee == "parseInt" || callee == "args" || callee == "system" || callee == "tcpListen" || callee == "tcpAccept" || callee == "tcpWrite" || callee == "mkdir" || callee == "mkdirp" || callee == "fileExists" || callee == "removeFile" || callee == "renameFile" || callee == "charCodeAt") { return "int" }
     if (callee == "parseDouble" || callee == "sqrt" || callee == "abs" || callee == "floor" || callee == "ceil" || callee == "round" || callee == "pow" || callee == "log" || callee == "sin" || callee == "cos" || callee == "random" || callee == "min" || callee == "max") { return "double" }

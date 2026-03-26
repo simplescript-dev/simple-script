@@ -66,6 +66,10 @@ impl Checker {
         for name in ["parseInt", "system", "mkdir", "mkdirp", "fileExists", "removeFile"] {
             functions.insert(name.to_string(), FuncInfo { params: vec![Type::String], return_type: Type::Int });
         }
+        // (String) -> String
+        for name in ["base64Encode", "base64Decode"] {
+            functions.insert(name.to_string(), FuncInfo { params: vec![Type::String], return_type: Type::String });
+        }
         // (String, Int) -> Int
         functions.insert("charCodeAt".to_string(), FuncInfo { params: vec![Type::String, Type::Int], return_type: Type::Int });
         // (Int) -> String

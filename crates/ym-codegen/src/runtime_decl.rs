@@ -100,6 +100,9 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function("ym_tcpWrite", i32_type.fn_type(&[i32_type.into(), i8_ptr.into()], false), None);
         self.module.add_function("ym_tcpWriteBytes", i32_type.fn_type(&[i32_type.into(), i8_ptr.into(), i32_type.into()], false), None);
         self.module.add_function("ym_tcpClose", void_type.fn_type(&[i32_type.into()], false), None);
+        self.module.add_function("ym_strcmp", i32_type.fn_type(&[i8_ptr.into(), i8_ptr.into()], false), None);
+        self.module.add_function("ym_base64Encode", i8_ptr.fn_type(&[i8_ptr.into()], false), None);
+        self.module.add_function("ym_base64Decode", i8_ptr.fn_type(&[i8_ptr.into()], false), None);
         self.module.add_function("ym_charCodeAt", i32_type.fn_type(&[i8_ptr.into(), i32_type.into()], false), None);
         self.module.add_function("ym_fromCharCode", i8_ptr.fn_type(&[i32_type.into()], false), None);
         self.module.add_function("ym_getenv", i8_ptr.fn_type(&[i8_ptr.into()], false), None);

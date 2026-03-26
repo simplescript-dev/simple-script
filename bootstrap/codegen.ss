@@ -185,6 +185,9 @@ function emitRuntimeDecls() {
     emitIR("declare ptr @ym_tcpRead(i32, i32)")
     emitIR("declare i32 @ym_tcpWrite(i32, ptr)")
     emitIR("declare i32 @ym_charCodeAt(ptr, i32)")
+    emitIR("declare i32 @ym_strcmp(ptr, ptr)")
+    emitIR("declare ptr @ym_base64Encode(ptr)")
+    emitIR("declare ptr @ym_base64Decode(ptr)")
     emitIR("declare ptr @ym_mapNew()")
     emitIR("declare void @ym_mapSet(ptr, ptr, i64)")
     emitIR("declare i64 @ym_mapGet(ptr, ptr)")
@@ -286,7 +289,7 @@ function runtimeName(callee: string): string {
     if (callee == "arg") { return "ym_argGet" }
     if (callee == "Map") { return "ym_mapNew" }
     // Check if ym_ prefixed function exists in known builtins
-    const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,"
+    const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp,"
     if (builtins.contains("," + callee + ",") == 1) { return "ym_" + callee }
     return callee
 }

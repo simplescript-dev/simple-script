@@ -75,6 +75,19 @@ function genStmt(id: int) {
         genSwitch(id)
         return
     }
+    if (kind == "INDEX_ASSIGN") {
+        // arr[i] = val — nGetS1=arrName, nGetI1=indexExpr, nGetI2=valueExpr
+        const arrPtr = nextReg()
+        emitIR("  " + arrPtr + " = load ptr, ptr " + varRef(nGetS1(id)) + ", align 8")
+        const idxVal = genExpr(nGetI1(id))
+        const valVal = genExpr(nGetI2(id))
+        const vt = inferType(nGetI2(id))
+        let v64 = valVal
+        if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR("  " + s + " = sext i32 " + valVal + " to i64"); v64 = s }
+        if (vt == "string" || vt == "ptr") { const c = nextReg(); emitIR("  " + c + " = ptrtoint ptr " + valVal + " to i64"); v64 = c }
+        emitIR("  call void @ym_arraySet(ptr " + arrPtr + ", i32 " + idxVal + ", i64 " + v64 + ")")
+        return
+    }
     if (kind == "CLASS_DECL") {
         genClassDecl(id)
         return

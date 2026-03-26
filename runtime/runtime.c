@@ -637,6 +637,56 @@ char* ym_getenv(const char* name) {
     return strdup(val);
 }
 
+int ym_strcmp(const char* a, const char* b) {
+    return strcmp(a, b);
+}
+
+// ── Base64 ────────────────────────────────────────────────────
+
+static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+char* ym_base64Encode(const char* data) {
+    size_t len = strlen(data);
+    size_t out_len = 4 * ((len + 2) / 3);
+    char* out = (char*)malloc(out_len + 1);
+    char* p = out;
+    for (size_t i = 0; i < len; i += 3) {
+        unsigned int n = ((unsigned char)data[i]) << 16;
+        if (i + 1 < len) n |= ((unsigned char)data[i+1]) << 8;
+        if (i + 2 < len) n |= (unsigned char)data[i+2];
+        *p++ = b64_table[(n >> 18) & 63];
+        *p++ = b64_table[(n >> 12) & 63];
+        *p++ = (i + 1 < len) ? b64_table[(n >> 6) & 63] : '=';
+        *p++ = (i + 2 < len) ? b64_table[n & 63] : '=';
+    }
+    *p = '\0';
+    return out;
+}
+
+char* ym_base64Decode(const char* data) {
+    size_t len = strlen(data);
+    size_t out_len = 3 * len / 4;
+    char* out = (char*)malloc(out_len + 1);
+    char* p = out;
+    for (size_t i = 0; i < len; i += 4) {
+        int a[4];
+        for (int j = 0; j < 4; j++) {
+            char c = (i+j < len) ? data[i+j] : '=';
+            if (c >= 'A' && c <= 'Z') a[j] = c - 'A';
+            else if (c >= 'a' && c <= 'z') a[j] = c - 'a' + 26;
+            else if (c >= '0' && c <= '9') a[j] = c - '0' + 52;
+            else if (c == '+') a[j] = 62;
+            else if (c == '/') a[j] = 63;
+            else a[j] = 0;
+        }
+        *p++ = (a[0] << 2) | (a[1] >> 4);
+        if (data[i+2] != '=') *p++ = ((a[1] & 0xf) << 4) | (a[2] >> 2);
+        if (data[i+3] != '=') *p++ = ((a[2] & 3) << 6) | a[3];
+    }
+    *p = '\0';
+    return out;
+}
+
 int ym_charCodeAt(const char* s, int index) {
     int len = (int)strlen(s);
     if (index < 0 || index >= len) return -1;
