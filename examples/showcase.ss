@@ -136,8 +136,8 @@ function main() {
     // 7. File I/O
     println("7. File I/O")
     const report = `SimpleScript Showcase Report\nGenerated successfully\nAll features working!`
-    writeFile("/tmp/ym_showcase.txt", report)
-    const readBack = readFile("/tmp/ym_showcase.txt")
+    writeFile("/tmp/ss_showcase.txt", report)
+    const readBack = readFile("/tmp/ss_showcase.txt")
     println(`   Wrote and read back ${readBack.length()} bytes`)
     println("")
 

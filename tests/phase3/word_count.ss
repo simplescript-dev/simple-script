@@ -34,15 +34,15 @@ function countWords(content: string): int {
 function main() {
     // Create a test file
     const text = "The quick brown fox\njumps over the lazy dog.\nSimpleScript is awesome!"
-    writeFile("/tmp/ym_wc_test.txt", text)
+    writeFile("/tmp/ss_wc_test.txt", text)
 
     // Read and analyze
-    const content = readFile("/tmp/ym_wc_test.txt")
+    const content = readFile("/tmp/ss_wc_test.txt")
     const lines = countLines(content)
     const words = countWords(content)
     const chars = content.length()
 
-    println(`File: /tmp/ym_wc_test.txt`)
+    println(`File: /tmp/ss_wc_test.txt`)
     println(`  Lines: ${lines}`)
     println(`  Words: ${words}`)
     println(`  Chars: ${chars}`)

@@ -72,12 +72,12 @@ codegen 拆分为模块：`codegen.rs`（主逻辑+语句）、`exprs.rs`（表�
 ### 运行时 (runtime/runtime.c)
 
 C 语言运行时，通过 `musl-gcc` 编译（缓存在 `/tmp/ss_runtime.o`），提供：
-- I/O：`ym_println`/`ym_print`/`ym_readLine`/`ym_readFile`/`ym_writeFile`
-- 字符串：19 个方法 (`ym_string_concat`/`ym_trim`/`ym_replace`/`ym_split`/`ym_join` 等)
-- 数组：堆分配 `long long*`（slot 0 = length），`ym_newArray`/`ym_arrayPush`/`ym_arraySort` 等
-- HashMap：`ym_mapNew`/`ym_mapSet`/`ym_mapGet` (string→i64)
-- 数学：`ym_sqrt`/`ym_abs`/`ym_pow`/`ym_random` 等
-- 类型转换：`ym_int_to_string`/`ym_parseInt`/`ym_parseDouble`
+- I/O：`ss_println`/`ss_print`/`ss_readLine`/`ss_readFile`/`ss_writeFile`
+- 字符串：19 个方法 (`ss_string_concat`/`ss_trim`/`ss_replace`/`ss_split`/`ss_join` 等)
+- 数组：堆分配 `long long*`（slot 0 = length），`ss_newArray`/`ss_arrayPush`/`ss_arraySort` 等
+- HashMap：`ss_mapNew`/`ss_mapSet`/`ss_mapGet` (string→i64)
+- 数学：`ss_sqrt`/`ss_abs`/`ss_pow`/`ss_random` 等
+- 类型转换：`ss_int_to_string`/`ss_parseInt`/`ss_parseDouble`
 
 运行时函数在 `runtime_decl.rs` 中前向声明为 LLVM 函数类型。
 

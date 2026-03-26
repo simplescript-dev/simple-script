@@ -1,5 +1,5 @@
 function main() {
-    const dbPath = "/tmp/ym_kv.txt"
+    const dbPath = "/tmp/ss_kv.txt"
 
     // Store entries as "key=value\n" format
     let db = ""
