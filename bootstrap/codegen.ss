@@ -247,7 +247,7 @@ function emitGlobalsAndCode(rootId: int) {
     }
 }
 
-function generate(rootId: int): string {
+function resetCodegen() {
     initCodegen()
     initFuncRetTypes()
     irBuf = ""
@@ -255,6 +255,10 @@ function generate(rootId: int): string {
     strCount = 0
     regCount = 0
     labelCount = 0
+}
+
+function generate(rootId: int): string {
+    resetCodegen()
     emitRuntimeDecls()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
@@ -262,13 +266,7 @@ function generate(rootId: int): string {
 }
 
 function generateToFile(rootId: int, outFile: string) {
-    initCodegen()
-    initFuncRetTypes()
-    irBuf = ""
-    strConsts = ""
-    strCount = 0
-    regCount = 0
-    labelCount = 0
+    resetCodegen()
     irOutFile = outFile
     writeFile(outFile, "")
     writeFile(outFile + ".str", "")
@@ -276,10 +274,8 @@ function generateToFile(rootId: int, outFile: string) {
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
     irOutFile = ""
-    const strConstData = readFile(outFile + ".str")
     const body = readFile(outFile)
-    const header = "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n"
-    writeFile(outFile, header + strConstData + "\n" + body)
+    writeFile(outFile, "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + readFile(outFile + ".str") + "\n" + body)
 }
 
 // ── Builtin function name mapping ─────────────────────────────
@@ -395,19 +391,14 @@ function genFuncDecl(id: int) {
         // Collect param types (MVP: all int for now)
         const paramList = nGetList(id)
         let paramStr = ""
-        let paramNames = ""
         if (paramList != "") {
             const parts = paramList.split(",")
             let idx = 0
             for (p in parts) {
                 const pId = parseInt(p)
                 if (pId > 0) {
-                    const pName = nGetS1(pId)
-                    const pType = nGetS2(pId)
-                    const llType = ssTypeToLLVM(pType)
                     if (idx > 0) { paramStr = paramStr + ", " }
-                    paramStr = paramStr + llType + " %" + pName + ".arg"
-                    if (paramNames == "") { paramNames = pId + "" } else { paramNames = paramNames + "," + pId }
+                    paramStr = paramStr + ssTypeToLLVM(nGetS2(pId)) + " %" + nGetS1(pId) + ".arg"
                     idx = idx + 1
                 }
             }
@@ -1250,17 +1241,13 @@ function genMethodCall(id: int): string {
         }
         return r
     }
-    if (method == "charCodeAt") {
-        const ccaIdx = genExpr(parseInt(argList))
+    // Single i32-arg methods: charAt(ptr→ptr), charCodeAt(ptr→i32), repeat(ptr→ptr)
+    if (method == "charAt" || method == "charCodeAt" || method == "repeat") {
+        const av = genExpr(parseInt(argList))
+        let retT = "ptr"
+        if (method == "charCodeAt") { retT = "i32" }
         const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_charCodeAt(ptr " + objVal + ", i32 " + ccaIdx + ")")
-        return r
-    }
-    if (method == "charAt") {
-        const argId = parseInt(argList)
-        const idx = genExpr(argId)
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_charAt(ptr " + objVal + ", i32 " + idx + ")")
+        emitIR("  " + r + " = call " + retT + " @ym_" + method + "(ptr " + objVal + ", i32 " + av + ")")
         return r
     }
     if (method == "indexOf") {
@@ -1316,13 +1303,6 @@ function genMethodCall(id: int): string {
     if (method == "trim" || method == "toUpperCase" || method == "toLowerCase") {
         const r = nextReg()
         emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ")")
-        return r
-    }
-    // Single int-arg string methods → call ptr @ym_XXX(ptr obj, i32 arg)
-    if (method == "repeat") {
-        const rn = genExpr(parseInt(argList))
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_repeat(ptr " + objVal + ", i32 " + rn + ")")
         return r
     }
     // Two-arg pad methods → call ptr @ym_XXX(ptr obj, i32 width, ptr pad)
@@ -1405,30 +1385,12 @@ function genMethodCall(id: int): string {
         emitIR("  " + r + " = call i32 @ym_mapHas(ptr " + objVal + ", ptr " + key + ")")
         return r
     }
-    if (method == "size") {
-        const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_mapSize(ptr " + objVal + ")")
-        return r
-    }
-    if (method == "keys") {
-        const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_mapKeys(ptr " + objVal + ")")
-        return r
-    }
-    if (method == "delete") {
-        const delKey = genExpr(parseInt(argList))
-        emitIR("  call void @ym_mapDelete(ptr " + objVal + ", ptr " + delKey + ")")
-        return "0"
-    }
-    // Array reverse/sort
-    if (method == "reverse") {
-        emitIR("  call void @ym_arrayReverse(ptr " + objVal + ")")
-        return objVal
-    }
-    if (method == "sort") {
-        emitIR("  call void @ym_arraySort(ptr " + objVal + ")")
-        return objVal
-    }
+    // No-arg Map/Array methods
+    if (method == "size") { const r = nextReg(); emitIR("  " + r + " = call i32 @ym_mapSize(ptr " + objVal + ")"); return r }
+    if (method == "keys") { const r = nextReg(); emitIR("  " + r + " = call ptr @ym_mapKeys(ptr " + objVal + ")"); return r }
+    if (method == "delete") { const dk = genExpr(parseInt(argList)); emitIR("  call void @ym_mapDelete(ptr " + objVal + ", ptr " + dk + ")"); return "0" }
+    if (method == "reverse") { emitIR("  call void @ym_arrayReverse(ptr " + objVal + ")"); return objVal }
+    if (method == "sort") { emitIR("  call void @ym_arraySort(ptr " + objVal + ")"); return objVal }
     if (method == "slice") {
         const slArgs = argList.split(",")
         const slStart = genExpr(parseInt(slArgs[0]))
