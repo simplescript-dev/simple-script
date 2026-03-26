@@ -85,7 +85,7 @@ function genStmt(id: int) {
         let v64 = valVal
         if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR("  " + s + " = sext i32 " + valVal + " to i64"); v64 = s }
         if (vt == "string" || vt == "ptr") { const c = nextReg(); emitIR("  " + c + " = ptrtoint ptr " + valVal + " to i64"); v64 = c }
-        emitIR("  call void @ym_arraySet(ptr " + arrPtr + ", i32 " + idxVal + ", i64 " + v64 + ")")
+        emitIR("  call void @ss_arraySet(ptr " + arrPtr + ", i32 " + idxVal + ", i64 " + v64 + ")")
         return
     }
     if (kind == "CLASS_DECL") {
@@ -106,7 +106,7 @@ function genFuncDecl(id: int) {
     if (name == "main") {
         emitIR("define i32 @main(i32 %0, ptr %1) {")
         emitIR("entry:")
-        emitIR("  call void @ym_initArgs(i32 %0, ptr %1)")
+        emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
         regCount = 2
     } else {
         // Collect param types (MVP: all int for now)
@@ -259,7 +259,7 @@ function genAssign(id: int) {
         const r3 = nextReg()
         if (op == "PLUS_ASSIGN") {
             if (vType == "string") {
-                emitIR("  " + r3 + " = call ptr @ym_string_concat(ptr " + r1 + ", ptr " + r2 + ")")
+                emitIR("  " + r3 + " = call ptr @ss_string_concat(ptr " + r1 + ", ptr " + r2 + ")")
             } else {
                 emitIR("  " + r3 + " = add i32 " + r1 + ", " + r2)
             }
@@ -404,7 +404,7 @@ function genForIn(id: int) {
 
     const arr = genExpr(iterableId)
     const lenReg = nextReg()
-    emitIR("  " + lenReg + " = call i32 @ym_arrayLen(ptr " + arr + ")")
+    emitIR("  " + lenReg + " = call i32 @ss_arrayLen(ptr " + arr + ")")
 
     // Index variable
     const idxAlloca = nextReg()
@@ -438,7 +438,7 @@ function genForIn(id: int) {
     emitIR(bodyLabel + ":")
     terminated = 0
     const elemVal = nextReg()
-    emitIR("  " + elemVal + " = call i64 @ym_arrayGet(ptr " + arr + ", i32 " + curIdx + ")")
+    emitIR("  " + elemVal + " = call i64 @ss_arrayGet(ptr " + arr + ", i32 " + curIdx + ")")
     emitIR("  store i64 " + elemVal + ", ptr %" + itemLLName + ", align 8")
 
     genBlock(bodyId)
@@ -541,7 +541,7 @@ function genSwitch(id: int) {
             if (patType == "STRING" || subjectType == "string") {
                 const patStr = addStringConst(patVal)
                 const cmp = nextReg()
-                emitIR("  " + cmp + " = call i32 @ym_string_eq(ptr " + subjectVal + ", ptr " + patStr + ")")
+                emitIR("  " + cmp + " = call i32 @ss_string_eq(ptr " + subjectVal + ", ptr " + patStr + ")")
                 const br = nextReg()
                 emitIR("  " + br + " = icmp ne i32 " + cmp + ", 0")
                 cmpResult = br

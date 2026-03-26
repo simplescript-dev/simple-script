@@ -66,7 +66,7 @@ function genExpr(id: int): string {
         }
         const idxVal = genExpr(nGetI2(id))
         const r = nextReg()
-        emitIR("  " + r + " = call i64 @ym_arrayGet(ptr " + arrVal + ", i32 " + idxVal + ")")
+        emitIR("  " + r + " = call i64 @ss_arrayGet(ptr " + arrVal + ", i32 " + idxVal + ")")
         return r
     }
 
@@ -98,7 +98,7 @@ function genBinary(id: int): string {
             const l = genExprAsString(leftId)
             const rVal = genExprAsString(rightId)
             const r = nextReg()
-            emitIR("  " + r + " = call ptr @ym_string_concat(ptr " + l + ", ptr " + rVal + ")")
+            emitIR("  " + r + " = call ptr @ss_string_concat(ptr " + l + ", ptr " + rVal + ")")
             return r
         }
     }
@@ -120,9 +120,9 @@ function genBinary(id: int): string {
         }
         const r = nextReg()
         if (op == "Eq") {
-            emitIR("  " + r + " = call i32 @ym_string_eq(ptr " + l + ", ptr " + rVal + ")")
+            emitIR("  " + r + " = call i32 @ss_string_eq(ptr " + l + ", ptr " + rVal + ")")
         } else {
-            emitIR("  " + r + " = call i32 @ym_string_ne(ptr " + l + ", ptr " + rVal + ")")
+            emitIR("  " + r + " = call i32 @ss_string_ne(ptr " + l + ", ptr " + rVal + ")")
         }
         return r
     }
@@ -132,7 +132,7 @@ function genBinary(id: int): string {
         const sl = genExpr(leftId)
         const sr = genExpr(rightId)
         const cmpR = nextReg()
-        emitIR("  " + cmpR + " = call i32 @ym_strcmp(ptr " + sl + ", ptr " + sr + ")")
+        emitIR("  " + cmpR + " = call i32 @ss_strcmp(ptr " + sl + ", ptr " + sr + ")")
         let cmpOp = "slt"
         if (op == "Gt") { cmpOp = "sgt" }
         if (op == "Le") { cmpOp = "sle" }
@@ -258,9 +258,9 @@ function genCall(id: int): string {
                 } else {
                     const space = addStringConst(" ")
                     const r1 = nextReg()
-                    emitIR("  " + r1 + " = call ptr @ym_string_concat(ptr " + result + ", ptr " + space + ")")
+                    emitIR("  " + r1 + " = call ptr @ss_string_concat(ptr " + result + ", ptr " + space + ")")
                     const r2 = nextReg()
-                    emitIR("  " + r2 + " = call ptr @ym_string_concat(ptr " + r1 + ", ptr " + argStr + ")")
+                    emitIR("  " + r2 + " = call ptr @ss_string_concat(ptr " + r1 + ", ptr " + argStr + ")")
                     result = r2
                 }
             }
@@ -361,9 +361,9 @@ function genMethodCall(id: int): string {
         // Heuristic: if object is from split/newArray (ptr type), use arrayLen
         const origType = inferType(objId)
         if (origType == "ptr" || origType == "i64") {
-            emitIR("  " + r + " = call i32 @ym_arrayLen(ptr " + objVal + ")")
+            emitIR("  " + r + " = call i32 @ss_arrayLen(ptr " + objVal + ")")
         } else {
-            emitIR("  " + r + " = call i32 @ym_stringLength(ptr " + objVal + ")")
+            emitIR("  " + r + " = call i32 @ss_stringLength(ptr " + objVal + ")")
         }
         return r
     }
@@ -373,7 +373,7 @@ function genMethodCall(id: int): string {
         let retT = "ptr"
         if (method == "charCodeAt") { retT = "i32" }
         const r = nextReg()
-        emitIR("  " + r + " = call " + retT + " @ym_" + method + "(ptr " + objVal + ", i32 " + av + ")")
+        emitIR("  " + r + " = call " + retT + " @ss_" + method + "(ptr " + objVal + ", i32 " + av + ")")
         return r
     }
     if (method == "indexOf") {
@@ -388,11 +388,11 @@ function genMethodCall(id: int): string {
                 val64 = sR
             }
             const r = nextReg()
-            emitIR("  " + r + " = call i32 @ym_arrayIndexOf(ptr " + objVal + ", i64 " + val64 + ")")
+            emitIR("  " + r + " = call i32 @ss_arrayIndexOf(ptr " + objVal + ", i64 " + val64 + ")")
             return r
         }
         const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_indexOf(ptr " + objVal + ", ptr " + sub + ")")
+        emitIR("  " + r + " = call i32 @ss_indexOf(ptr " + objVal + ", ptr " + sub + ")")
         return r
     }
     if (method == "substring") {
@@ -400,14 +400,14 @@ function genMethodCall(id: int): string {
         const startVal = genExpr(parseInt(argParts[0]))
         const lenVal = genExpr(parseInt(argParts[1]))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_substring(ptr " + objVal + ", i32 " + startVal + ", i32 " + lenVal + ")")
+        emitIR("  " + r + " = call ptr @ss_substring(ptr " + objVal + ", i32 " + startVal + ", i32 " + lenVal + ")")
         return r
     }
-    // Single ptr-arg bool methods → call i32 @ym_XXX(ptr, ptr)
+    // Single ptr-arg bool methods → call i32 @ss_XXX(ptr, ptr)
     if (method == "contains" || method == "startsWith" || method == "endsWith") {
         const sub = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call i32 @ym_" + method + "(ptr " + objVal + ", ptr " + sub + ")")
+        emitIR("  " + r + " = call i32 @ss_" + method + "(ptr " + objVal + ", ptr " + sub + ")")
         return r
     }
     if (method == "replace") {
@@ -415,29 +415,29 @@ function genMethodCall(id: int): string {
         const oldVal = genExpr(parseInt(argParts[0]))
         const newVal = genExpr(parseInt(argParts[1]))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_replace(ptr " + objVal + ", ptr " + oldVal + ", ptr " + newVal + ")")
+        emitIR("  " + r + " = call ptr @ss_replace(ptr " + objVal + ", ptr " + oldVal + ", ptr " + newVal + ")")
         return r
     }
-    // Single ptr-arg string methods → call ptr @ym_XXX(ptr, ptr)
+    // Single ptr-arg string methods → call ptr @ss_XXX(ptr, ptr)
     if (method == "split" || method == "join") {
         const delim = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ", ptr " + delim + ")")
+        emitIR("  " + r + " = call ptr @ss_" + method + "(ptr " + objVal + ", ptr " + delim + ")")
         return r
     }
-    // No-arg string methods → call ptr @ym_XXX(ptr obj)
+    // No-arg string methods → call ptr @ss_XXX(ptr obj)
     if (method == "trim" || method == "toUpperCase" || method == "toLowerCase") {
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ")")
+        emitIR("  " + r + " = call ptr @ss_" + method + "(ptr " + objVal + ")")
         return r
     }
-    // Two-arg pad methods → call ptr @ym_XXX(ptr obj, i32 width, ptr pad)
+    // Two-arg pad methods → call ptr @ss_XXX(ptr obj, i32 width, ptr pad)
     if (method == "padStart" || method == "padEnd") {
         const ap = argList.split(",")
         const w = genExpr(parseInt(ap[0]))
         const p = genExpr(parseInt(ap[1]))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_" + method + "(ptr " + objVal + ", i32 " + w + ", ptr " + p + ")")
+        emitIR("  " + r + " = call ptr @ss_" + method + "(ptr " + objVal + ", i32 " + w + ", ptr " + p + ")")
         return r
     }
     // Array methods
@@ -457,7 +457,7 @@ function genMethodCall(id: int): string {
             val64p = cR
         }
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_arrayPush(ptr " + objVal + ", i64 " + val64p + ")")
+        emitIR("  " + r + " = call ptr @ss_arrayPush(ptr " + objVal + ", i64 " + val64p + ")")
         return r
     }
     // Map methods
@@ -484,38 +484,38 @@ function genMethodCall(id: int): string {
             emitIR("  " + castR + " = ptrtoint ptr " + val + " to i64")
             val64 = castR
         }
-        emitIR("  call void @ym_mapSet(ptr " + objVal + ", ptr " + key + ", i64 " + val64 + ")")
+        emitIR("  call void @ss_mapSet(ptr " + objVal + ", ptr " + key + ", i64 " + val64 + ")")
         return "0"
     }
     if (method == "get" || method == "getString" || method == "has") {
         const mkey = genExpr(parseInt(argList))
         const r = nextReg()
         if (method == "has") {
-            emitIR("  " + r + " = call i32 @ym_mapHas(ptr " + objVal + ", ptr " + mkey + ")")
+            emitIR("  " + r + " = call i32 @ss_mapHas(ptr " + objVal + ", ptr " + mkey + ")")
         } else {
-            emitIR("  " + r + " = call i64 @ym_mapGet(ptr " + objVal + ", ptr " + mkey + ")")
+            emitIR("  " + r + " = call i64 @ss_mapGet(ptr " + objVal + ", ptr " + mkey + ")")
             if (method == "getString") { const r2 = nextReg(); emitIR("  " + r2 + " = inttoptr i64 " + r + " to ptr"); return r2 }
         }
         return r
     }
     // No-arg Map/Array methods
-    if (method == "size") { const r = nextReg(); emitIR("  " + r + " = call i32 @ym_mapSize(ptr " + objVal + ")"); return r }
-    if (method == "keys") { const r = nextReg(); emitIR("  " + r + " = call ptr @ym_mapKeys(ptr " + objVal + ")"); return r }
-    if (method == "delete") { const dk = genExpr(parseInt(argList)); emitIR("  call void @ym_mapDelete(ptr " + objVal + ", ptr " + dk + ")"); return "0" }
-    if (method == "reverse") { emitIR("  call void @ym_arrayReverse(ptr " + objVal + ")"); return objVal }
-    if (method == "sort") { emitIR("  call void @ym_arraySort(ptr " + objVal + ")"); return objVal }
+    if (method == "size") { const r = nextReg(); emitIR("  " + r + " = call i32 @ss_mapSize(ptr " + objVal + ")"); return r }
+    if (method == "keys") { const r = nextReg(); emitIR("  " + r + " = call ptr @ss_mapKeys(ptr " + objVal + ")"); return r }
+    if (method == "delete") { const dk = genExpr(parseInt(argList)); emitIR("  call void @ss_mapDelete(ptr " + objVal + ", ptr " + dk + ")"); return "0" }
+    if (method == "reverse") { emitIR("  call void @ss_arrayReverse(ptr " + objVal + ")"); return objVal }
+    if (method == "sort") { emitIR("  call void @ss_arraySort(ptr " + objVal + ")"); return objVal }
     if (method == "slice") {
         const slArgs = argList.split(",")
         const slStart = genExpr(parseInt(slArgs[0]))
         const slEnd = genExpr(parseInt(slArgs[1]))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_arraySlice(ptr " + objVal + ", i32 " + slStart + ", i32 " + slEnd + ")")
+        emitIR("  " + r + " = call ptr @ss_arraySlice(ptr " + objVal + ", i32 " + slStart + ", i32 " + slEnd + ")")
         return r
     }
     if (method == "concat") {
         const otherArr = genExpr(parseInt(argList))
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_arrayConcat(ptr " + objVal + ", ptr " + otherArr + ")")
+        emitIR("  " + r + " = call ptr @ss_arrayConcat(ptr " + objVal + ", ptr " + otherArr + ")")
         return r
     }
 
@@ -590,7 +590,7 @@ function genTemplateLit(id: int): string {
                 result = fragStr
             } else {
                 const r = nextReg()
-                emitIR("  " + r + " = call ptr @ym_string_concat(ptr " + result + ", ptr " + fragStr + ")")
+                emitIR("  " + r + " = call ptr @ss_string_concat(ptr " + result + ", ptr " + fragStr + ")")
                 result = r
             }
         }
@@ -608,7 +608,7 @@ function genArrayLit(id: int): string {
         }
     }
     const arrReg = nextReg()
-    emitIR("  " + arrReg + " = call ptr @ym_newArray(i32 " + count + ")")
+    emitIR("  " + arrReg + " = call ptr @ss_newArray(i32 " + count + ")")
 
     if (elemList != "") {
         let idx = 0
@@ -621,11 +621,11 @@ function genArrayLit(id: int): string {
                 if (vType == "string") {
                     const castReg = nextReg()
                     emitIR("  " + castReg + " = ptrtoint ptr " + val + " to i64")
-                    emitIR("  call void @ym_arraySet(ptr " + arrReg + ", i32 " + idx + ", i64 " + castReg + ")")
+                    emitIR("  call void @ss_arraySet(ptr " + arrReg + ", i32 " + idx + ", i64 " + castReg + ")")
                 } else {
                     const extReg = nextReg()
                     emitIR("  " + extReg + " = sext i32 " + val + " to i64")
-                    emitIR("  call void @ym_arraySet(ptr " + arrReg + ", i32 " + idx + ", i64 " + extReg + ")")
+                    emitIR("  call void @ss_arraySet(ptr " + arrReg + ", i32 " + idx + ", i64 " + extReg + ")")
                 }
                 idx = idx + 1
             }
@@ -684,23 +684,23 @@ function genExprAsString(id: int): string {
     const val = genExpr(id)
     if (vType == "double") {
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_double_to_string(double " + val + ")")
+        emitIR("  " + r + " = call ptr @ss_double_to_string(double " + val + ")")
         return r
     }
     if (vType == "i64") {
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_i64_to_string(i64 " + val + ")")
+        emitIR("  " + r + " = call ptr @ss_i64_to_string(i64 " + val + ")")
         return r
     }
     if (vType == "ptr") {
         const castR = nextReg()
         emitIR("  " + castR + " = ptrtoint ptr " + val + " to i64")
         const r = nextReg()
-        emitIR("  " + r + " = call ptr @ym_i64_to_string(i64 " + castR + ")")
+        emitIR("  " + r + " = call ptr @ss_i64_to_string(i64 " + castR + ")")
         return r
     }
     const r = nextReg()
-    emitIR("  " + r + " = call ptr @ym_int_to_string(i32 " + val + ")")
+    emitIR("  " + r + " = call ptr @ss_int_to_string(i32 " + val + ")")
     return r
 }
 

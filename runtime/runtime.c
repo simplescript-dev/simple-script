@@ -10,11 +10,11 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-void ym_println(const char* s) {
+void ss_println(const char* s) {
     puts(s);
 }
 
-char* ym_string_concat(const char* a, const char* b) {
+char* ss_string_concat(const char* a, const char* b) {
     size_t la = strlen(a);
     size_t lb = strlen(b);
     char* result = (char*)malloc(la + lb + 1);
@@ -24,29 +24,29 @@ char* ym_string_concat(const char* a, const char* b) {
     return result;
 }
 
-char* ym_int_to_string(int value) {
+char* ss_int_to_string(int value) {
     char* buf = (char*)malloc(32);
     snprintf(buf, 32, "%d", value);
     return buf;
 }
 
-char* ym_double_to_string(double value) {
+char* ss_double_to_string(double value) {
     char* buf = (char*)malloc(64);
     snprintf(buf, 64, "%g", value);
     return buf;
 }
 
-char* ym_bool_to_string(int value) {
+char* ss_bool_to_string(int value) {
     const char* s = value ? "true" : "false";
     return strdup(s);
 }
 
-void ym_print(const char* s) {
+void ss_print(const char* s) {
     fputs(s, stdout);
     fflush(stdout);
 }
 
-char* ym_readLine() {
+char* ss_readLine() {
     char* buf = (char*)malloc(1024);
     if (fgets(buf, 1024, stdin) == NULL) {
         buf[0] = '\0';
@@ -59,38 +59,38 @@ char* ym_readLine() {
     return buf;
 }
 
-int ym_parseInt(const char* s) {
+int ss_parseInt(const char* s) {
     return atoi(s);
 }
 
-double ym_parseDouble(const char* s) {
+double ss_parseDouble(const char* s) {
     return atof(s);
 }
 
-int ym_stringLength(const char* s) {
+int ss_stringLength(const char* s) {
     return (int)strlen(s);
 }
 
-int ym_string_eq(const char* a, const char* b) {
+int ss_string_eq(const char* a, const char* b) {
     return strcmp(a, b) == 0;
 }
 
-int ym_string_ne(const char* a, const char* b) {
+int ss_string_ne(const char* a, const char* b) {
     return strcmp(a, b) != 0;
 }
 
-int ym_startsWith(const char* s, const char* prefix) {
+int ss_startsWith(const char* s, const char* prefix) {
     return strncmp(s, prefix, strlen(prefix)) == 0;
 }
 
-int ym_endsWith(const char* s, const char* suffix) {
+int ss_endsWith(const char* s, const char* suffix) {
     size_t slen = strlen(s);
     size_t suflen = strlen(suffix);
     if (suflen > slen) return 0;
     return strcmp(s + slen - suflen, suffix) == 0;
 }
 
-char* ym_trim(const char* s) {
+char* ss_trim(const char* s) {
     while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
     size_t len = strlen(s);
     while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r')) len--;
@@ -100,7 +100,7 @@ char* ym_trim(const char* s) {
     return result;
 }
 
-char* ym_replace(const char* s, const char* old, const char* new_str) {
+char* ss_replace(const char* s, const char* old, const char* new_str) {
     size_t slen = strlen(s);
     size_t oldlen = strlen(old);
     size_t newlen = strlen(new_str);
@@ -138,14 +138,14 @@ static char* change_case(const char* s, char lo, char hi, int delta) {
     r[len] = '\0';
     return r;
 }
-char* ym_toUpperCase(const char* s) { return change_case(s, 'a', 'z', -32); }
-char* ym_toLowerCase(const char* s) { return change_case(s, 'A', 'Z', 32); }
+char* ss_toUpperCase(const char* s) { return change_case(s, 'a', 'z', -32); }
+char* ss_toLowerCase(const char* s) { return change_case(s, 'A', 'Z', 32); }
 
-int ym_contains(const char* s, const char* sub) {
+int ss_contains(const char* s, const char* sub) {
     return strstr(s, sub) != NULL;
 }
 
-char* ym_charAt(const char* s, int index) {
+char* ss_charAt(const char* s, int index) {
     size_t len = strlen(s);
     if (index < 0 || (size_t)index >= len) return strdup("");
     char* result = (char*)malloc(2);
@@ -154,7 +154,7 @@ char* ym_charAt(const char* s, int index) {
     return result;
 }
 
-char* ym_repeat(const char* s, int n) {
+char* ss_repeat(const char* s, int n) {
     if (n <= 0) return strdup("");
     size_t slen = strlen(s);
     char* result = (char*)malloc(slen * n + 1);
@@ -177,11 +177,11 @@ static char* pad_impl(const char* s, int width, const char* pad, int left) {
     r[width] = '\0';
     return r;
 }
-char* ym_padStart(const char* s, int width, const char* pad) { return pad_impl(s, width, pad, 1); }
-char* ym_padEnd(const char* s, int width, const char* pad) { return pad_impl(s, width, pad, 0); }
+char* ss_padStart(const char* s, int width, const char* pad) { return pad_impl(s, width, pad, 1); }
+char* ss_padEnd(const char* s, int width, const char* pad) { return pad_impl(s, width, pad, 0); }
 
 // split(s, delim) — returns array of strings
-long long* ym_split(const char* s, const char* delim) {
+long long* ss_split(const char* s, const char* delim) {
     size_t dlen = strlen(delim);
     // Count parts
     int count = 1;
@@ -209,7 +209,7 @@ long long* ym_split(const char* s, const char* delim) {
     return arr;
 }
 
-char* ym_join(long long* arr, const char* delim) {
+char* ss_join(long long* arr, const char* delim) {
     int len = (int)arr[0];
     if (len == 0) return strdup("");
     size_t dlen = strlen(delim);
@@ -231,7 +231,7 @@ char* ym_join(long long* arr, const char* delim) {
     return result;
 }
 
-char* ym_readFile(const char* path) {
+char* ss_readFile(const char* path) {
     FILE* f = fopen(path, "rb");
     if (!f) return strdup("");
     fseek(f, 0, SEEK_END);
@@ -244,21 +244,21 @@ char* ym_readFile(const char* path) {
     return buf;
 }
 
-void ym_writeFile(const char* path, const char* content) {
+void ss_writeFile(const char* path, const char* content) {
     FILE* f = fopen(path, "w");
     if (!f) return;
     fputs(content, f);
     fclose(f);
 }
 
-void ym_appendFile(const char* path, const char* content) {
+void ss_appendFile(const char* path, const char* content) {
     FILE* f = fopen(path, "a");
     if (!f) return;
     fputs(content, f);
     fclose(f);
 }
 
-char* ym_substring(const char* s, int start, int len) {
+char* ss_substring(const char* s, int start, int len) {
     int slen = (int)strlen(s);
     if (start < 0 || start >= slen) return strdup("");
     if (start + len > slen) len = slen - start;
@@ -268,13 +268,13 @@ char* ym_substring(const char* s, int start, int len) {
     return buf;
 }
 
-int ym_indexOf(const char* s, const char* sub) {
+int ss_indexOf(const char* s, const char* sub) {
     const char* p = strstr(s, sub);
     if (!p) return -1;
     return (int)(p - s);
 }
 
-char* ym_arrayToString(long long* arr) {
+char* ss_arrayToString(long long* arr) {
     int len = (int)arr[0];
     size_t cap = len * 24 + 4;
     char* result = (char*)malloc(cap);
@@ -307,7 +307,7 @@ char* ym_arrayToString(long long* arr) {
 }
 
 // Heuristic i64 to string
-char* ym_i64_to_string(long long value) {
+char* ss_i64_to_string(long long value) {
     // Heuristic: values > 0x100000 are likely pointers on 64-bit
     if (value > 0x100000) {
         return (char*)(size_t)value;
@@ -318,25 +318,25 @@ char* ym_i64_to_string(long long value) {
 }
 
 // Array operations — slot 0 stores length, data starts at slot 1
-long long* ym_newArray(int size) {
+long long* ss_newArray(int size) {
     long long* arr = (long long*)calloc(size + 1, sizeof(long long));
     arr[0] = size;  // length stored at index 0
     return arr;
 }
 
-long long ym_arrayGet(long long* arr, int index) {
+long long ss_arrayGet(long long* arr, int index) {
     return arr[index + 1];  // data offset by 1
 }
 
-void ym_arraySet(long long* arr, int index, long long value) {
+void ss_arraySet(long long* arr, int index, long long value) {
     arr[index + 1] = value;  // data offset by 1
 }
 
-int ym_arrayLen(long long* arr) {
+int ss_arrayLen(long long* arr) {
     return (int)arr[0];
 }
 
-long long* ym_arrayPush(long long* arr, long long value) {
+long long* ss_arrayPush(long long* arr, long long value) {
     int len = (int)arr[0];
     // Reallocate with one more slot
     long long* new_arr = (long long*)realloc(arr, (len + 2) * sizeof(long long));
@@ -345,7 +345,7 @@ long long* ym_arrayPush(long long* arr, long long value) {
     return new_arr;
 }
 
-void ym_arrayReverse(long long* arr) {
+void ss_arrayReverse(long long* arr) {
     int len = (int)arr[0];
     for (int i = 0; i < len / 2; i++) {
         long long tmp = arr[i + 1];
@@ -354,7 +354,7 @@ void ym_arrayReverse(long long* arr) {
     }
 }
 
-int ym_arrayIndexOf(long long* arr, long long value) {
+int ss_arrayIndexOf(long long* arr, long long value) {
     int len = (int)arr[0];
     for (int i = 0; i < len; i++) {
         if (arr[i + 1] == value) return i;
@@ -362,16 +362,16 @@ int ym_arrayIndexOf(long long* arr, long long value) {
     return -1;
 }
 
-long long ym_arrayFirst(long long* arr) {
+long long ss_arrayFirst(long long* arr) {
     return arr[0] > 0 ? arr[1] : 0;
 }
 
-long long ym_arrayLast(long long* arr) {
+long long ss_arrayLast(long long* arr) {
     int len = (int)arr[0];
     return len > 0 ? arr[len] : 0;
 }
 
-long long* ym_arraySlice(long long* arr, int start, int end) {
+long long* ss_arraySlice(long long* arr, int start, int end) {
     int len = (int)arr[0];
     if (start < 0) start = 0;
     if (end > len) end = len;
@@ -394,12 +394,12 @@ static int cmp_asc(const void* a, const void* b) {
     return (va > vb) - (va < vb);
 }
 
-void ym_arraySort(long long* arr) {
+void ss_arraySort(long long* arr) {
     int len = (int)arr[0];
     if (len > 1) qsort(arr + 1, len, sizeof(long long), cmp_asc);
 }
 
-long long* ym_arrayConcat(long long* a, long long* b) {
+long long* ss_arrayConcat(long long* a, long long* b) {
     int la = (int)a[0], lb = (int)b[0];
     long long* result = (long long*)calloc(la + lb + 1, sizeof(long long));
     result[0] = la + lb;
@@ -408,55 +408,55 @@ long long* ym_arrayConcat(long long* a, long long* b) {
     return result;
 }
 
-// ym_mapKeys and ym_mapDelete defined after HashMap
+// ss_mapKeys and ss_mapDelete defined after HashMap
 
 // Command line args (set by main wrapper)
-static int ym_argc = 0;
-static char** ym_argv = NULL;
+static int ss_argc = 0;
+static char** ss_argv = NULL;
 
-void ym_initArgs(int argc, char** argv) {
-    ym_argc = argc;
-    ym_argv = argv;
+void ss_initArgs(int argc, char** argv) {
+    ss_argc = argc;
+    ss_argv = argv;
 }
 
-int ym_argCount() {
-    return ym_argc;
+int ss_argCount() {
+    return ss_argc;
 }
 
-char* ym_argGet(int index) {
-    if (index < 0 || index >= ym_argc) return strdup("");
-    return ym_argv[index];
+char* ss_argGet(int index) {
+    if (index < 0 || index >= ss_argc) return strdup("");
+    return ss_argv[index];
 }
 
 // Time
-long long ym_timeMs() {
+long long ss_timeMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 // Process
-void ym_exit(int code) {
+void ss_exit(int code) {
     exit(code);
 }
 
-int ym_system(const char* cmd) {
+int ss_system(const char* cmd) {
     return system(cmd);
 }
 
 // Math
-double ym_sqrt(double x) { return sqrt(x); }
-double ym_abs(double x) { return fabs(x); }
-double ym_floor(double x) { return floor(x); }
-double ym_ceil(double x) { return ceil(x); }
-double ym_round(double x) { return round(x); }
-double ym_pow(double base, double exp) { return pow(base, exp); }
-double ym_log(double x) { return log(x); }
-double ym_sin(double x) { return sin(x); }
-double ym_cos(double x) { return cos(x); }
-double ym_random() { return (double)rand() / RAND_MAX; }
-double ym_min(double a, double b) { return a < b ? a : b; }
-double ym_max(double a, double b) { return a > b ? a : b; }
+double ss_sqrt(double x) { return sqrt(x); }
+double ss_abs(double x) { return fabs(x); }
+double ss_floor(double x) { return floor(x); }
+double ss_ceil(double x) { return ceil(x); }
+double ss_round(double x) { return round(x); }
+double ss_pow(double base, double exp) { return pow(base, exp); }
+double ss_log(double x) { return log(x); }
+double ss_sin(double x) { return sin(x); }
+double ss_cos(double x) { return cos(x); }
+double ss_random() { return (double)rand() / RAND_MAX; }
+double ss_min(double a, double b) { return a < b ? a : b; }
+double ss_max(double a, double b) { return a > b ? a : b; }
 
 // HashMap — simple chained hash map for string keys
 #define MAP_BUCKETS 64
@@ -478,7 +478,7 @@ static unsigned int hash_str(const char* s) {
     return h % MAP_BUCKETS;
 }
 
-HashMap* ym_mapNew() {
+HashMap* ss_mapNew() {
     HashMap* m = (HashMap*)calloc(1, sizeof(HashMap));
     return m;
 }
@@ -489,7 +489,7 @@ static MapEntry* find_entry(HashMap* m, const char* key) {
     return NULL;
 }
 
-void ym_mapSet(HashMap* m, const char* key, long long value) {
+void ss_mapSet(HashMap* m, const char* key, long long value) {
     MapEntry* e = find_entry(m, key);
     if (e) { e->value = value; return; }
     unsigned int idx = hash_str(key);
@@ -501,18 +501,18 @@ void ym_mapSet(HashMap* m, const char* key, long long value) {
     m->size++;
 }
 
-long long ym_mapGet(HashMap* m, const char* key) {
+long long ss_mapGet(HashMap* m, const char* key) {
     MapEntry* e = find_entry(m, key);
     return e ? e->value : 0;
 }
 
-int ym_mapHas(HashMap* m, const char* key) { return find_entry(m, key) != NULL; }
+int ss_mapHas(HashMap* m, const char* key) { return find_entry(m, key) != NULL; }
 
-int ym_mapSize(HashMap* m) {
+int ss_mapSize(HashMap* m) {
     return m->size;
 }
 
-char* ym_mapKeys(HashMap* m) {
+char* ss_mapKeys(HashMap* m) {
     int total_len = 0;
     for (int i = 0; i < MAP_BUCKETS; i++) {
         MapEntry* e = m->buckets[i];
@@ -535,7 +535,7 @@ char* ym_mapKeys(HashMap* m) {
     return result;
 }
 
-void ym_mapDelete(HashMap* m, const char* key) {
+void ss_mapDelete(HashMap* m, const char* key) {
     unsigned int idx = hash_str(key);
     MapEntry* e = m->buckets[idx];
     MapEntry* prev = NULL;
@@ -555,7 +555,7 @@ void ym_mapDelete(HashMap* m, const char* key) {
 
 // ── TCP Server ────────────────────────────────────────────────
 
-int ym_tcpListen(int port) {
+int ss_tcpListen(int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     int opt = 1;
@@ -570,13 +570,13 @@ int ym_tcpListen(int port) {
     return fd;
 }
 
-int ym_tcpAccept(int serverFd) {
+int ss_tcpAccept(int serverFd) {
     struct sockaddr_in client;
     socklen_t len = sizeof(client);
     return accept(serverFd, (struct sockaddr*)&client, &len);
 }
 
-char* ym_tcpRead(int fd, int maxLen) {
+char* ss_tcpRead(int fd, int maxLen) {
     char* buf = (char*)malloc(maxLen + 1);
     int n = read(fd, buf, maxLen);
     if (n <= 0) { buf[0] = '\0'; return buf; }
@@ -584,26 +584,26 @@ char* ym_tcpRead(int fd, int maxLen) {
     return buf;
 }
 
-int ym_tcpWrite(int fd, const char* data) {
+int ss_tcpWrite(int fd, const char* data) {
     int len = strlen(data);
     return write(fd, data, len);
 }
 
-int ym_tcpWriteBytes(int fd, const char* data, int len) {
+int ss_tcpWriteBytes(int fd, const char* data, int len) {
     return write(fd, data, len);
 }
 
-void ym_tcpClose(int fd) {
+void ss_tcpClose(int fd) {
     close(fd);
 }
 
-char* ym_getenv(const char* name) {
+char* ss_getenv(const char* name) {
     const char* val = getenv(name);
     if (!val) return strdup("");
     return strdup(val);
 }
 
-int ym_strcmp(const char* a, const char* b) {
+int ss_strcmp(const char* a, const char* b) {
     return strcmp(a, b);
 }
 
@@ -611,7 +611,7 @@ int ym_strcmp(const char* a, const char* b) {
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-char* ym_base64Encode(const char* data) {
+char* ss_base64Encode(const char* data) {
     size_t len = strlen(data);
     size_t out_len = 4 * ((len + 2) / 3);
     char* out = (char*)malloc(out_len + 1);
@@ -629,7 +629,7 @@ char* ym_base64Encode(const char* data) {
     return out;
 }
 
-char* ym_base64Decode(const char* data) {
+char* ss_base64Decode(const char* data) {
     size_t len = strlen(data);
     size_t out_len = 3 * len / 4;
     char* out = (char*)malloc(out_len + 1);
@@ -653,30 +653,30 @@ char* ym_base64Decode(const char* data) {
     return out;
 }
 
-int ym_charCodeAt(const char* s, int index) {
+int ss_charCodeAt(const char* s, int index) {
     int len = (int)strlen(s);
     if (index < 0 || index >= len) return -1;
     return (unsigned char)s[index];
 }
 
-char* ym_fromCharCode(int code) {
+char* ss_fromCharCode(int code) {
     char* buf = (char*)malloc(2);
     buf[0] = (char)code;
     buf[1] = '\0';
     return buf;
 }
 
-long long ym_timeUnix() {
+long long ss_timeUnix() {
     return (long long)time(NULL);
 }
 
 // ── File system ───────────────────────────────────────────────
 
-int ym_mkdir(const char* path) {
+int ss_mkdir(const char* path) {
     return mkdir(path, 0755);
 }
 
-int ym_mkdirp(const char* path) {
+int ss_mkdirp(const char* path) {
     char tmp[1024];
     snprintf(tmp, sizeof(tmp), "%s", path);
     size_t len = strlen(tmp);
@@ -691,26 +691,26 @@ int ym_mkdirp(const char* path) {
     return mkdir(tmp, 0755);
 }
 
-int ym_fileExists(const char* path) {
+int ss_fileExists(const char* path) {
     struct stat st;
     return stat(path, &st) == 0;
 }
 
-long long ym_fileSize(const char* path) {
+long long ss_fileSize(const char* path) {
     struct stat st;
     if (stat(path, &st) != 0) return -1;
     return (long long)st.st_size;
 }
 
-int ym_removeFile(const char* path) {
+int ss_removeFile(const char* path) {
     return remove(path);
 }
 
-int ym_renameFile(const char* oldPath, const char* newPath) {
+int ss_renameFile(const char* oldPath, const char* newPath) {
     return rename(oldPath, newPath);
 }
 
-char* ym_listDir(const char* path) {
+char* ss_listDir(const char* path) {
     DIR* dir = opendir(path);
     if (!dir) return strdup("");
     struct dirent* entry;
@@ -772,7 +772,7 @@ static void sha256_transform(unsigned int state[8], const unsigned char block[64
     state[4]+=e; state[5]+=f; state[6]+=g; state[7]+=h;
 }
 
-char* ym_sha256(const char* data) {
+char* ss_sha256(const char* data) {
     size_t len = strlen(data);
     unsigned int state[8] = {
         0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,

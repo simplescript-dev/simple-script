@@ -111,7 +111,7 @@ impl<'ctx> Codegen<'ctx> {
                 // Array methods
                 if class_name == "__int_array__" || class_name == "__str_array__" {
                     if method == "length" {
-                        let func = self.module.get_function("ym_arrayLen").unwrap();
+                        let func = self.module.get_function("ss_arrayLen").unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into()], "len")
                             ?
                             .try_as_basic_value().left().unwrap();
@@ -120,31 +120,31 @@ impl<'ctx> Codegen<'ctx> {
                     if method == "push" {
                         let arg_val = self.compile_expr(&args[0])?;
                         let arg64 = self.to_i64(arg_val)?;
-                        let func = self.module.get_function("ym_arrayPush").unwrap();
+                        let func = self.module.get_function("ss_arrayPush").unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into(), arg64.into()], "push")?
                             .try_as_basic_value().left().unwrap();
                         return Ok(result);
                     }
                     if method == "join" {
                         let delim = self.compile_expr(&args[0])?;
-                        let func = self.module.get_function("ym_join").unwrap();
+                        let func = self.module.get_function("ss_join").unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into(), delim.into()], "join")?
                             .try_as_basic_value().left().unwrap();
                         return Ok(result);
                     }
                     if method == "reverse" {
-                        let func = self.module.get_function("ym_arrayReverse").unwrap();
+                        let func = self.module.get_function("ss_arrayReverse").unwrap();
                         self.builder.build_call(func, &[obj_val.into()], "")?;
                         return Ok(obj_val);
                     }
                     if method == "sort" {
-                        let func = self.module.get_function("ym_arraySort").unwrap();
+                        let func = self.module.get_function("ss_arraySort").unwrap();
                         self.builder.build_call(func, &[obj_val.into()], "")?;
                         return Ok(obj_val);
                     }
                     if method == "concat" {
                         let other = self.compile_expr(&args[0])?;
-                        let func = self.module.get_function("ym_arrayConcat").unwrap();
+                        let func = self.module.get_function("ss_arrayConcat").unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into(), other.into()], "cat")?
                             .try_as_basic_value().left().unwrap();
                         return Ok(result);
@@ -152,7 +152,7 @@ impl<'ctx> Codegen<'ctx> {
                     if method == "indexOf" {
                         let search_val = self.compile_expr(&args[0])?;
                         let search64 = self.to_i64(search_val)?;
-                        let func = self.module.get_function("ym_arrayIndexOf").unwrap();
+                        let func = self.module.get_function("ss_arrayIndexOf").unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into(), search64.into()], "idx")?
                             .try_as_basic_value().left().unwrap();
                         return Ok(result);
@@ -160,7 +160,7 @@ impl<'ctx> Codegen<'ctx> {
                     if method == "includes" {
                         let search_val = self.compile_expr(&args[0])?;
                         let search64 = self.to_i64(search_val)?;
-                        let func = self.module.get_function("ym_arrayIndexOf").unwrap();
+                        let func = self.module.get_function("ss_arrayIndexOf").unwrap();
                         let idx = self.builder.build_call(func, &[obj_val.into(), search64.into()], "idx")?
                             .try_as_basic_value().left().unwrap();
                         let zero = self.context.i32_type().const_int(0, false);
@@ -169,7 +169,7 @@ impl<'ctx> Codegen<'ctx> {
                         return Ok(result.into());
                     }
                     if method == "first" || method == "last" {
-                        let fn_name = if method == "first" { "ym_arrayFirst" } else { "ym_arrayLast" };
+                        let fn_name = if method == "first" { "ss_arrayFirst" } else { "ss_arrayLast" };
                         let func = self.module.get_function(fn_name).unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into()], method)?
                             .try_as_basic_value().left().unwrap();
@@ -188,7 +188,7 @@ impl<'ctx> Codegen<'ctx> {
                         let end = self.compile_expr(&args[1])?;
                         let s32 = self.to_i32(start)?;
                         let e32 = self.to_i32(end)?;
-                        let func = self.module.get_function("ym_arraySlice").unwrap();
+                        let func = self.module.get_function("ss_arraySlice").unwrap();
                         let result = self.builder.build_call(func, &[obj_val.into(), s32.into(), e32.into()], "slice")?
                             .try_as_basic_value().left().unwrap();
                         return Ok(result);
@@ -198,7 +198,7 @@ impl<'ctx> Codegen<'ctx> {
                 // map.getString(key) — returns string from map
                 if method == "getString" {
                     let key_val = self.compile_expr(&args[0])?;
-                    let func = self.module.get_function("ym_mapGet").unwrap();
+                    let func = self.module.get_function("ss_mapGet").unwrap();
                     let i64_val = self.builder.build_call(func, &[obj_val.into(), key_val.into()], "get")
                         ?
                         .try_as_basic_value().left().unwrap();
@@ -243,11 +243,11 @@ impl<'ctx> Codegen<'ctx> {
             ExprKind::ArrayLit(elements) => {
                 let i32_type = self.context.i32_type();
                 let size = i32_type.const_int(elements.len() as u64, false);
-                let new_array_fn = self.module.get_function("ym_newArray").unwrap();
+                let new_array_fn = self.module.get_function("ss_newArray").unwrap();
                 let arr_ptr = self.builder.build_call(new_array_fn, &[size.into()], "arr")?
                     .try_as_basic_value().left().unwrap();
 
-                let array_set_fn = self.module.get_function("ym_arraySet").unwrap();
+                let array_set_fn = self.module.get_function("ss_arraySet").unwrap();
                 for (i, elem) in elements.iter().enumerate() {
                     let val = self.compile_expr(elem)?;
                     let idx = i32_type.const_int(i as u64, false);
@@ -266,7 +266,7 @@ impl<'ctx> Codegen<'ctx> {
                 let arr_ptr = self.compile_expr(object)?;
                 let idx = self.compile_expr(index)?;
                 let idx32 = self.to_i32(idx)?;
-                let array_get_fn = self.module.get_function("ym_arrayGet").unwrap();
+                let array_get_fn = self.module.get_function("ss_arrayGet").unwrap();
                 let val64 = self.builder.build_call(array_get_fn, &[arr_ptr.into(), idx32.into()], "elem")?
                     .try_as_basic_value().left().unwrap();
 
@@ -300,14 +300,14 @@ impl<'ctx> Codegen<'ctx> {
     fn try_string_method(&mut self, obj_val: BasicValueEnum<'ctx>, method: &str, args: &[Expr]) -> Result<Option<BasicValueEnum<'ctx>>, CodegenError> {
         // toString() on int/double values
         if method == "toString" && obj_val.is_int_value() {
-            let func = self.module.get_function("ym_int_to_string").unwrap();
+            let func = self.module.get_function("ss_int_to_string").unwrap();
             let result = self.builder.build_call(func, &[obj_val.into()], "itos")
                 ?
                 .try_as_basic_value().left().unwrap();
             return Ok(Some(result));
         }
         if method == "toString" && obj_val.is_float_value() {
-            let func = self.module.get_function("ym_double_to_string").unwrap();
+            let func = self.module.get_function("ss_double_to_string").unwrap();
             let result = self.builder.build_call(func, &[obj_val.into()], "dtos")
                 ?
                 .try_as_basic_value().left().unwrap();
@@ -315,33 +315,33 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let runtime_fn = match method {
-            "length" => "ym_stringLength",
-            "indexOf" => "ym_indexOf",
-            "substring" => "ym_substring",
-            "toInt" => "ym_parseInt",
-            "toDouble" => "ym_parseDouble",
-            "toString" => "ym_int_to_string",
-            "startsWith" => "ym_startsWith",
-            "endsWith" => "ym_endsWith",
-            "contains" => "ym_contains",
-            "trim" => "ym_trim",
-            "replace" => "ym_replace",
-            "toUpperCase" => "ym_toUpperCase",
-            "toLowerCase" => "ym_toLowerCase",
-            "charAt" => "ym_charAt",
-            "repeat" => "ym_repeat",
-            "padStart" => "ym_padStart",
-            "padEnd" => "ym_padEnd",
-            "split" => "ym_split",
+            "length" => "ss_stringLength",
+            "indexOf" => "ss_indexOf",
+            "substring" => "ss_substring",
+            "toInt" => "ss_parseInt",
+            "toDouble" => "ss_parseDouble",
+            "toString" => "ss_int_to_string",
+            "startsWith" => "ss_startsWith",
+            "endsWith" => "ss_endsWith",
+            "contains" => "ss_contains",
+            "trim" => "ss_trim",
+            "replace" => "ss_replace",
+            "toUpperCase" => "ss_toUpperCase",
+            "toLowerCase" => "ss_toLowerCase",
+            "charAt" => "ss_charAt",
+            "repeat" => "ss_repeat",
+            "padStart" => "ss_padStart",
+            "padEnd" => "ss_padEnd",
+            "split" => "ss_split",
             // Map methods
-            "set" => "ym_mapSet",
-            "get" => "ym_mapGet",
-            "has" => "ym_mapHas",
-            "size" => "ym_mapSize",
-            "keys" => "ym_mapKeys",
-            "delete" => "ym_mapDelete",
+            "set" => "ss_mapSet",
+            "get" => "ss_mapGet",
+            "has" => "ss_mapHas",
+            "size" => "ss_mapSize",
+            "keys" => "ss_mapKeys",
+            "delete" => "ss_mapDelete",
             // Array methods
-            "push" => "ym_arrayPush",
+            "push" => "ss_arrayPush",
             _ => return Ok(None),
         };
 
@@ -352,7 +352,7 @@ impl<'ctx> Codegen<'ctx> {
         for (i, arg) in args.iter().enumerate() {
             let v = self.compile_expr(arg)?;
             // mapSet/arrayPush: value arg needs i64 conversion
-            if (runtime_fn == "ym_mapSet" && i == 1) || (runtime_fn == "ym_arrayPush" && i == 0) {
+            if (runtime_fn == "ss_mapSet" && i == 1) || (runtime_fn == "ss_arrayPush" && i == 0) {
                 call_args.push(self.to_i64(v)?.into());
             } else {
                 call_args.push(v.into());
@@ -472,9 +472,9 @@ impl<'ctx> Codegen<'ctx> {
         // String operations
         if lhs.is_pointer_value() && rhs.is_pointer_value() {
             let fn_name = match op {
-                BinOp::Add => "ym_string_concat",
-                BinOp::Eq => "ym_string_eq",
-                BinOp::Ne => "ym_string_ne",
+                BinOp::Add => "ss_string_concat",
+                BinOp::Eq => "ss_string_eq",
+                BinOp::Ne => "ss_string_ne",
                 _ => return Err(CodegenError::General(format!("unsupported string op: {:?}", op))),
             };
             let func = self.module.get_function(fn_name).unwrap();
@@ -493,7 +493,7 @@ impl<'ctx> Codegen<'ctx> {
         if matches!(op, BinOp::Add) && (lhs.is_pointer_value() || rhs.is_pointer_value()) {
             let l_str = self.value_to_string(lhs)?;
             let r_str = self.value_to_string(rhs)?;
-            let concat_fn = self.module.get_function("ym_string_concat").unwrap();
+            let concat_fn = self.module.get_function("ss_string_concat").unwrap();
             let result = self.builder.build_call(concat_fn, &[l_str.into(), r_str.into()], "concat")
                 ?
                 .try_as_basic_value().left().unwrap();
@@ -522,7 +522,7 @@ impl<'ctx> Codegen<'ctx> {
                 BinOp::Div => self.builder.build_float_div(l, r, "fdiv")?.into(),
                 BinOp::Mod => self.builder.build_float_rem(l, r, "frem")?.into(),
                 BinOp::Pow => {
-                    let pow_fn = self.module.get_function("ym_pow").unwrap();
+                    let pow_fn = self.module.get_function("ss_pow").unwrap();
                     self.builder.build_call(pow_fn, &[l.into(), r.into()], "pow")?
                         .try_as_basic_value().left().unwrap()
                 }
@@ -567,7 +567,7 @@ impl<'ctx> Codegen<'ctx> {
                 let f64_type = self.context.f64_type();
                 let lf = self.builder.build_signed_int_to_float(l, f64_type, "itof")?;
                 let rf = self.builder.build_signed_int_to_float(r, f64_type, "itof")?;
-                let pow_fn = self.module.get_function("ym_pow").unwrap();
+                let pow_fn = self.module.get_function("ss_pow").unwrap();
                 let result = self.builder.build_call(pow_fn, &[lf.into(), rf.into()], "pow")?
                     .try_as_basic_value().left().unwrap();
                 self.builder.build_float_to_signed_int(result.into_float_value(), l.get_type(), "ftoi")?.into()
@@ -593,65 +593,65 @@ impl<'ctx> Codegen<'ctx> {
     fn compile_call(&mut self, callee: &str, args: &[Expr]) -> Result<BasicValueEnum<'ctx>, CodegenError> {
         // Map builtin names to runtime function names
         let runtime_name = match callee {
-            "println" => "ym_println",
-            "print" => "ym_print",
-            "readLine" => "ym_readLine",
-            "readFile" => "ym_readFile",
-            "writeFile" => "ym_writeFile",
-            "appendFile" => "ym_appendFile",
-            "args" => "ym_argCount",
-            "arg" => "ym_argGet",
-            "exit" => "ym_exit",
-            "parseInt" => "ym_parseInt",
-            "parseDouble" => "ym_parseDouble",
-            "system" => "ym_system",
-            "tcpListen" => "ym_tcpListen",
-            "tcpAccept" => "ym_tcpAccept",
-            "tcpRead" => "ym_tcpRead",
-            "tcpWrite" => "ym_tcpWrite",
-            "tcpWriteBytes" => "ym_tcpWriteBytes",
-            "tcpClose" => "ym_tcpClose",
-            "charCodeAt" => "ym_charCodeAt",
-            "base64Encode" => "ym_base64Encode",
-            "base64Decode" => "ym_base64Decode",
-            "fromCharCode" => "ym_fromCharCode",
-            "getenv" => "ym_getenv",
-            "timeUnix" => "ym_timeUnix",
-            "mkdir" => "ym_mkdir",
-            "mkdirp" => "ym_mkdirp",
-            "fileExists" => "ym_fileExists",
-            "fileSize" => "ym_fileSize",
-            "removeFile" => "ym_removeFile",
-            "renameFile" => "ym_renameFile",
-            "listDir" => "ym_listDir",
-            "sha256" => "ym_sha256",
-            "sqrt" => "ym_sqrt",
-            "abs" => "ym_abs",
-            "floor" => "ym_floor",
-            "ceil" => "ym_ceil",
-            "round" => "ym_round",
-            "pow" => "ym_pow",
-            "log" => "ym_log",
-            "sin" => "ym_sin",
-            "cos" => "ym_cos",
-            "random" => "ym_random",
-            "min" => "ym_min",
-            "max" => "ym_max",
-            "Map" => "ym_mapNew",
+            "println" => "ss_println",
+            "print" => "ss_print",
+            "readLine" => "ss_readLine",
+            "readFile" => "ss_readFile",
+            "writeFile" => "ss_writeFile",
+            "appendFile" => "ss_appendFile",
+            "args" => "ss_argCount",
+            "arg" => "ss_argGet",
+            "exit" => "ss_exit",
+            "parseInt" => "ss_parseInt",
+            "parseDouble" => "ss_parseDouble",
+            "system" => "ss_system",
+            "tcpListen" => "ss_tcpListen",
+            "tcpAccept" => "ss_tcpAccept",
+            "tcpRead" => "ss_tcpRead",
+            "tcpWrite" => "ss_tcpWrite",
+            "tcpWriteBytes" => "ss_tcpWriteBytes",
+            "tcpClose" => "ss_tcpClose",
+            "charCodeAt" => "ss_charCodeAt",
+            "base64Encode" => "ss_base64Encode",
+            "base64Decode" => "ss_base64Decode",
+            "fromCharCode" => "ss_fromCharCode",
+            "getenv" => "ss_getenv",
+            "timeUnix" => "ss_timeUnix",
+            "mkdir" => "ss_mkdir",
+            "mkdirp" => "ss_mkdirp",
+            "fileExists" => "ss_fileExists",
+            "fileSize" => "ss_fileSize",
+            "removeFile" => "ss_removeFile",
+            "renameFile" => "ss_renameFile",
+            "listDir" => "ss_listDir",
+            "sha256" => "ss_sha256",
+            "sqrt" => "ss_sqrt",
+            "abs" => "ss_abs",
+            "floor" => "ss_floor",
+            "ceil" => "ss_ceil",
+            "round" => "ss_round",
+            "pow" => "ss_pow",
+            "log" => "ss_log",
+            "sin" => "ss_sin",
+            "cos" => "ss_cos",
+            "random" => "ss_random",
+            "min" => "ss_min",
+            "max" => "ss_max",
+            "Map" => "ss_mapNew",
             other => other,
         };
 
         let function = self.module.get_function(runtime_name)
             .ok_or(CodegenError::UndefinedFunc(callee.to_string()))?;
 
-        let is_print = runtime_name == "ym_println" || runtime_name == "ym_print";
+        let is_print = runtime_name == "ss_println" || runtime_name == "ss_print";
         if is_print && args.len() >= 1 {
             let space = self.build_global_string(" ");
             let first_str = self.compile_print_arg(&args[0])?;
             let mut result = first_str;
             for arg in &args[1..] {
                 let arg_str = self.compile_print_arg(arg)?;
-                let concat_fn = self.module.get_function("ym_string_concat").unwrap();
+                let concat_fn = self.module.get_function("ss_string_concat").unwrap();
                 result = self.builder.build_call(concat_fn, &[result.into(), space.into()], "sp")?
                     .try_as_basic_value().left().unwrap();
                 result = self.builder.build_call(concat_fn, &[result.into(), arg_str.into()], "cat")?
@@ -663,12 +663,12 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Auto-convert args
-        let is_math = runtime_name.starts_with("ym_sqrt") || runtime_name.starts_with("ym_abs")
-            || runtime_name.starts_with("ym_floor") || runtime_name.starts_with("ym_ceil")
-            || runtime_name.starts_with("ym_round") || runtime_name.starts_with("ym_pow")
-            || runtime_name.starts_with("ym_log") || runtime_name.starts_with("ym_sin")
-            || runtime_name.starts_with("ym_cos") || runtime_name.starts_with("ym_min")
-            || runtime_name.starts_with("ym_max");
+        let is_math = runtime_name.starts_with("ss_sqrt") || runtime_name.starts_with("ss_abs")
+            || runtime_name.starts_with("ss_floor") || runtime_name.starts_with("ss_ceil")
+            || runtime_name.starts_with("ss_round") || runtime_name.starts_with("ss_pow")
+            || runtime_name.starts_with("ss_log") || runtime_name.starts_with("ss_sin")
+            || runtime_name.starts_with("ss_cos") || runtime_name.starts_with("ss_min")
+            || runtime_name.starts_with("ss_max");
         let compiled_args: Vec<BasicMetadataValueEnum> = args.iter()
             .map(|a| {
                 let v = self.compile_expr(a)?;
@@ -717,7 +717,7 @@ impl<'ctx> Codegen<'ctx> {
 
         for frag in &fragments[1..] {
             let next = self.compile_template_fragment(frag)?;
-            let concat_fn = self.module.get_function("ym_string_concat").unwrap();
+            let concat_fn = self.module.get_function("ss_string_concat").unwrap();
             result = self.builder.build_call(
                 concat_fn,
                 &[result.into(), next.into()],

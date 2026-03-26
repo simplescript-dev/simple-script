@@ -291,7 +291,7 @@ impl<'ctx> Codegen<'ctx> {
                 let idx32 = self.to_i32(idx)?;
                 let val = self.compile_expr(value)?;
                 let val64 = self.to_i64(val)?;
-                let array_set_fn = self.module.get_function("ym_arraySet").unwrap();
+                let array_set_fn = self.module.get_function("ss_arraySet").unwrap();
                 self.builder.build_call(array_set_fn, &[arr_ptr.into(), idx32.into(), val64.into()], "")?;
                 Ok(())
             }
@@ -599,9 +599,9 @@ impl<'ctx> Codegen<'ctx> {
 
         self.push_scope();
 
-        // For main: call ym_initArgs(argc, argv)
+        // For main: call ss_initArgs(argc, argv)
         if name == "main" {
-            let init_args_fn = self.module.get_function("ym_initArgs").unwrap();
+            let init_args_fn = self.module.get_function("ss_initArgs").unwrap();
             let argc = function.get_nth_param(0).unwrap();
             let argv = function.get_nth_param(1).unwrap();
             self.builder.build_call(init_args_fn, &[argc.into(), argv.into()], "")
@@ -714,7 +714,7 @@ impl<'ctx> Codegen<'ctx> {
                 // String += uses concat
                 if matches!(op, AssignOp::PlusAssign) && current.is_pointer_value() {
                     let rhs_str = self.value_to_string(rhs)?;
-                    let concat = self.module.get_function("ym_string_concat").unwrap();
+                    let concat = self.module.get_function("ss_string_concat").unwrap();
                     self.builder.build_call(concat, &[current.into(), rhs_str.into()], "concat")?
                         .try_as_basic_value().left().unwrap()
                 } else {
@@ -837,7 +837,7 @@ impl<'ctx> Codegen<'ctx> {
         let arr_val = self.compile_expr(iterable)?;
 
         // Get length
-        let len_fn = self.module.get_function("ym_arrayLen").unwrap();
+        let len_fn = self.module.get_function("ss_arrayLen").unwrap();
         let len = self.builder.build_call(len_fn, &[arr_val.into()], "len")
             ?
             .try_as_basic_value().left().unwrap().into_int_value();
@@ -882,7 +882,7 @@ impl<'ctx> Codegen<'ctx> {
 
         // Body: item = arr[idx]
         self.builder.position_at_end(body_bb);
-        let get_fn = self.module.get_function("ym_arrayGet").unwrap();
+        let get_fn = self.module.get_function("ss_arrayGet").unwrap();
         let elem = self.builder.build_call(get_fn, &[arr_val.into(), idx.into()], "elem")?
             .try_as_basic_value().left().unwrap();
         // Convert i64 to appropriate type

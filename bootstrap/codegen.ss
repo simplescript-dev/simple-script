@@ -133,49 +133,49 @@ function emitDeclGroup(ret: string, params: string, names: string) {
 
 function emitRuntimeDecls() {
     emitIR("; Runtime declarations")
-    emitDeclGroup("void", "ptr", "ym_println,ym_print,ym_arrayReverse,ym_arraySort")
-    emitDeclGroup("void", "ptr, ptr", "ym_writeFile,ym_appendFile,ym_mapDelete")
-    emitDeclGroup("ptr", "ptr", "ym_readFile,ym_trim,ym_toUpperCase,ym_toLowerCase,ym_getenv,ym_listDir,ym_sha256,ym_arrayToString,ym_mapKeys")
-    emitDeclGroup("ptr", "ptr, ptr", "ym_string_concat,ym_split,ym_join,ym_arrayConcat")
-    emitDeclGroup("i32", "ptr, ptr", "ym_string_eq,ym_string_ne,ym_startsWith,ym_endsWith,ym_contains,ym_indexOf,ym_mapHas")
-    emitDeclGroup("i32", "ptr", "ym_parseInt,ym_stringLength,ym_arrayLen,ym_system,ym_mkdir,ym_mkdirp,ym_fileExists,ym_removeFile,ym_mapSize")
-    emitDeclGroup("double", "double", "ym_sqrt,ym_abs,ym_floor,ym_ceil,ym_round,ym_log,ym_sin,ym_cos")
-    emitDeclGroup("double", "double, double", "ym_pow,ym_min,ym_max")
-    emitDeclGroup("i32", "i32", "ym_tcpListen,ym_tcpAccept")
-    emitDeclGroup("i64", "ptr", "ym_arrayFirst,ym_arrayLast,ym_fileSize")
-    emitDeclGroup("ptr", "i32", "ym_int_to_string,ym_newArray,ym_argGet,ym_fromCharCode")
-    emitDeclGroup("void", "i32", "ym_exit,ym_tcpClose")
+    emitDeclGroup("void", "ptr", "ss_println,ss_print,ss_arrayReverse,ss_arraySort")
+    emitDeclGroup("void", "ptr, ptr", "ss_writeFile,ss_appendFile,ss_mapDelete")
+    emitDeclGroup("ptr", "ptr", "ss_readFile,ss_trim,ss_toUpperCase,ss_toLowerCase,ss_getenv,ss_listDir,ss_sha256,ss_arrayToString,ss_mapKeys")
+    emitDeclGroup("ptr", "ptr, ptr", "ss_string_concat,ss_split,ss_join,ss_arrayConcat")
+    emitDeclGroup("i32", "ptr, ptr", "ss_string_eq,ss_string_ne,ss_startsWith,ss_endsWith,ss_contains,ss_indexOf,ss_mapHas")
+    emitDeclGroup("i32", "ptr", "ss_parseInt,ss_stringLength,ss_arrayLen,ss_system,ss_mkdir,ss_mkdirp,ss_fileExists,ss_removeFile,ss_mapSize")
+    emitDeclGroup("double", "double", "ss_sqrt,ss_abs,ss_floor,ss_ceil,ss_round,ss_log,ss_sin,ss_cos")
+    emitDeclGroup("double", "double, double", "ss_pow,ss_min,ss_max")
+    emitDeclGroup("i32", "i32", "ss_tcpListen,ss_tcpAccept")
+    emitDeclGroup("i64", "ptr", "ss_arrayFirst,ss_arrayLast,ss_fileSize")
+    emitDeclGroup("ptr", "i32", "ss_int_to_string,ss_newArray,ss_argGet,ss_fromCharCode")
+    emitDeclGroup("void", "i32", "ss_exit,ss_tcpClose")
     // Unique signatures
-    emitIR("declare ptr @ym_readLine()")
-    emitIR("declare ptr @ym_double_to_string(double)")
-    emitIR("declare ptr @ym_i64_to_string(i64)")
-    emitIR("declare double @ym_parseDouble(ptr)")
-    emitIR("declare double @ym_random()")
-    emitIR("declare ptr @ym_replace(ptr, ptr, ptr)")
-    emitIR("declare ptr @ym_charAt(ptr, i32)")
-    emitIR("declare ptr @ym_repeat(ptr, i32)")
-    emitIR("declare ptr @ym_substring(ptr, i32, i32)")
-    emitIR("declare ptr @ym_padStart(ptr, i32, ptr)")
-    emitIR("declare ptr @ym_padEnd(ptr, i32, ptr)")
-    emitIR("declare i64 @ym_arrayGet(ptr, i32)")
-    emitIR("declare void @ym_arraySet(ptr, i32, i64)")
-    emitIR("declare ptr @ym_arrayPush(ptr, i64)")
-    emitIR("declare i32 @ym_arrayIndexOf(ptr, i64)")
-    emitIR("declare ptr @ym_arraySlice(ptr, i32, i32)")
-    emitIR("declare void @ym_initArgs(i32, ptr)")
-    emitIR("declare i32 @ym_argCount()")
-    emitIR("declare i64 @ym_timeMs()")
-    emitIR("declare i64 @ym_timeUnix()")
-    emitIR("declare i32 @ym_renameFile(ptr, ptr)")
-    emitIR("declare ptr @ym_tcpRead(i32, i32)")
-    emitIR("declare i32 @ym_tcpWrite(i32, ptr)")
-    emitIR("declare i32 @ym_charCodeAt(ptr, i32)")
-    emitIR("declare i32 @ym_strcmp(ptr, ptr)")
-    emitIR("declare ptr @ym_base64Encode(ptr)")
-    emitIR("declare ptr @ym_base64Decode(ptr)")
-    emitIR("declare ptr @ym_mapNew()")
-    emitIR("declare void @ym_mapSet(ptr, ptr, i64)")
-    emitIR("declare i64 @ym_mapGet(ptr, ptr)")
+    emitIR("declare ptr @ss_readLine()")
+    emitIR("declare ptr @ss_double_to_string(double)")
+    emitIR("declare ptr @ss_i64_to_string(i64)")
+    emitIR("declare double @ss_parseDouble(ptr)")
+    emitIR("declare double @ss_random()")
+    emitIR("declare ptr @ss_replace(ptr, ptr, ptr)")
+    emitIR("declare ptr @ss_charAt(ptr, i32)")
+    emitIR("declare ptr @ss_repeat(ptr, i32)")
+    emitIR("declare ptr @ss_substring(ptr, i32, i32)")
+    emitIR("declare ptr @ss_padStart(ptr, i32, ptr)")
+    emitIR("declare ptr @ss_padEnd(ptr, i32, ptr)")
+    emitIR("declare i64 @ss_arrayGet(ptr, i32)")
+    emitIR("declare void @ss_arraySet(ptr, i32, i64)")
+    emitIR("declare ptr @ss_arrayPush(ptr, i64)")
+    emitIR("declare i32 @ss_arrayIndexOf(ptr, i64)")
+    emitIR("declare ptr @ss_arraySlice(ptr, i32, i32)")
+    emitIR("declare void @ss_initArgs(i32, ptr)")
+    emitIR("declare i32 @ss_argCount()")
+    emitIR("declare i64 @ss_timeMs()")
+    emitIR("declare i64 @ss_timeUnix()")
+    emitIR("declare i32 @ss_renameFile(ptr, ptr)")
+    emitIR("declare ptr @ss_tcpRead(i32, i32)")
+    emitIR("declare i32 @ss_tcpWrite(i32, ptr)")
+    emitIR("declare i32 @ss_charCodeAt(ptr, i32)")
+    emitIR("declare i32 @ss_strcmp(ptr, ptr)")
+    emitIR("declare ptr @ss_base64Encode(ptr)")
+    emitIR("declare ptr @ss_base64Decode(ptr)")
+    emitIR("declare ptr @ss_mapNew()")
+    emitIR("declare void @ss_mapSet(ptr, ptr, i64)")
+    emitIR("declare i64 @ss_mapGet(ptr, ptr)")
     emitIR("declare ptr @malloc(i64)")
     emitIR("")
 }
@@ -264,13 +264,13 @@ function generateToFile(rootId: int, outFile: string) {
 // ── Builtin function name mapping ─────────────────────────────
 
 function runtimeName(callee: string): string {
-    // Only 3 exceptions; everything else is ym_ + callee
-    if (callee == "args") { return "ym_argCount" }
-    if (callee == "arg") { return "ym_argGet" }
-    if (callee == "Map") { return "ym_mapNew" }
-    // Check if ym_ prefixed function exists in known builtins
+    // Only 3 exceptions; everything else is ss_ + callee
+    if (callee == "args") { return "ss_argCount" }
+    if (callee == "arg") { return "ss_argGet" }
+    if (callee == "Map") { return "ss_mapNew" }
+    // Check if ss_ prefixed function exists in known builtins
     const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp,"
-    if (builtins.contains("," + callee + ",") == 1) { return "ym_" + callee }
+    if (builtins.contains("," + callee + ",") == 1) { return "ss_" + callee }
     return callee
 }
 

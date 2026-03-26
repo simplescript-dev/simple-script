@@ -381,7 +381,7 @@ fn run_once(file: &Path, output: &Path, release: bool) {
 
 fn run_tests(dir: &Path) {
     let mut files: Vec<PathBuf> = Vec::new();
-    collect_ym_files(dir, &mut files);
+    collect_ss_files(dir, &mut files);
     files.sort();
 
     if files.is_empty() {
@@ -437,12 +437,12 @@ fn run_tests(dir: &Path) {
     }
 }
 
-fn collect_ym_files(dir: &Path, files: &mut Vec<PathBuf>) {
+fn collect_ss_files(dir: &Path, files: &mut Vec<PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                collect_ym_files(&path, files);
+                collect_ss_files(&path, files);
             } else if path.extension().is_some_and(|e| e == "ss") {
                 // Skip interactive tests
                 let name = path.file_name().unwrap().to_str().unwrap();

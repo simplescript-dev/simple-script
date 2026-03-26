@@ -10,7 +10,7 @@ impl<'ctx> Codegen<'ctx> {
             if let Some(tag) = self.var_class.get(name).cloned() {
                 if tag == "__int_array__" || tag == "__str_array__" {
                     let arr = self.compile_expr(arg)?;
-                    let func = self.module.get_function("ym_arrayToString").unwrap();
+                    let func = self.module.get_function("ss_arrayToString").unwrap();
                     return Ok(self.builder.build_call(func, &[arr.into()], "ats")?
                         .try_as_basic_value().left().unwrap());
                 }
@@ -36,16 +36,16 @@ impl<'ctx> Codegen<'ctx> {
         } else if val.is_int_value() {
             let int_val = val.into_int_value();
             if int_val.get_type().get_bit_width() == 64 {
-                let i64s = self.module.get_function("ym_i64_to_string").unwrap();
+                let i64s = self.module.get_function("ss_i64_to_string").unwrap();
                 Ok(self.builder.build_call(i64s, &[val.into()], "i64s")?
                     .try_as_basic_value().left().unwrap())
             } else {
-                let i2s = self.module.get_function("ym_int_to_string").unwrap();
+                let i2s = self.module.get_function("ss_int_to_string").unwrap();
                 Ok(self.builder.build_call(i2s, &[val.into()], "i2s")?
                     .try_as_basic_value().left().unwrap())
             }
         } else if val.is_float_value() {
-            let d2s = self.module.get_function("ym_double_to_string").unwrap();
+            let d2s = self.module.get_function("ss_double_to_string").unwrap();
             Ok(self.builder.build_call(d2s, &[val.into()], "d2s")?
                 .try_as_basic_value().left().unwrap())
         } else {
