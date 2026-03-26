@@ -268,14 +268,30 @@ function generateToFile(rootId: int, outFile: string) {
 
 // ── Builtin function name mapping ─────────────────────────────
 
+let builtinMap = ""
+let builtinMapReady = 0
+
+function initBuiltinMap() {
+    if (builtinMapReady == 1) { return }
+    builtinMap = Map()
+    // Exceptions (name doesn't match ss_ + callee)
+    builtinMap.set("args", "ss_argCount")
+    builtinMap.set("arg", "ss_argGet")
+    builtinMap.set("Map", "ss_mapNew")
+    // All standard builtins: ss_ + callee
+    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
+    const parts = names.split(",")
+    for (n in parts) {
+        builtinMap.set(n, `ss_${n}`)
+    }
+    builtinMapReady = 1
+}
+
 function runtimeName(callee: string): string {
-    // Only 3 exceptions; everything else is ss_ + callee
-    if (callee == "args") { return "ss_argCount" }
-    if (callee == "arg") { return "ss_argGet" }
-    if (callee == "Map") { return "ss_mapNew" }
-    // Check if ss_ prefixed function exists in known builtins
-    const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp,"
-    if (builtins.contains(`,${callee},`) == 1) { return `ss_${callee}` }
+    initBuiltinMap()
+    if (builtinMap.has(callee) == 1) {
+        return builtinMap.getString(callee)
+    }
     return callee
 }
 
