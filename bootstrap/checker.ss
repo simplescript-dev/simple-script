@@ -75,31 +75,13 @@ function check(rootId: int): int {
         exit(1)
     }
     const stmtList = nGetList(rootId)
-    // Pass 1: register all function declarations
+    // Pass 1: register function declarations
     if (stmtList != "") {
-        const parts = stmtList.split(",")
-        for (p in parts) {
-            const stmtId = parseInt(p)
-            if (stmtId > 0) {
-                const sk = nGetKind(stmtId)
-                if (sk == "FUNC_DECL") {
-                    const fname = nGetS1(stmtId)
-                    const retType = nGetS2(stmtId)
-                    defineFunc(fname, retType)
-                }
-            }
-        }
+        const p1 = stmtList.split(",")
+        for (p in p1) { const s = parseInt(p); if (s > 0 && nGetKind(s) == "FUNC_DECL") { defineFunc(nGetS1(s), nGetS2(s)) } }
     }
     // Pass 2: check all statements
-    if (stmtList != "") {
-        const parts = stmtList.split(",")
-        for (p in parts) {
-            const stmtId = parseInt(p)
-            if (stmtId > 0) {
-                checkStmt(stmtId)
-            }
-        }
-    }
+    checkStmtList(stmtList)
     return 1
 }
 
@@ -226,14 +208,7 @@ function checkStmt(id: int) {
         checkBlock(nGetI2(id))
         return
     }
-    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
-        const name = nGetS1(id)
-        if (lookupVar(name) == "") {
-            println("checker error: undefined variable '" + name + "'")
-            exit(1)
-        }
-        return
-    }
+    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { checkExpr(id); return }
     // IMPORT, INTERFACE_DECL, ENUM_DECL, BREAK, CONTINUE — no checks needed
 }
 

@@ -141,93 +141,53 @@ function addStringConst(value: string): string {
 
 // ── Runtime declarations ──────────────────────────────────────
 
+function emitDeclGroup(ret: string, params: string, names: string) {
+    const parts = names.split(",")
+    for (n in parts) { emitIR("declare " + ret + " @" + n + "(" + params + ")") }
+}
+
 function emitRuntimeDecls() {
     emitIR("; Runtime declarations")
-    emitIR("declare void @ym_println(ptr)")
-    emitIR("declare void @ym_print(ptr)")
+    emitDeclGroup("void", "ptr", "ym_println,ym_print,ym_arrayReverse,ym_arraySort")
+    emitDeclGroup("void", "ptr, ptr", "ym_writeFile,ym_appendFile,ym_mapDelete")
+    emitDeclGroup("ptr", "ptr", "ym_readFile,ym_trim,ym_toUpperCase,ym_toLowerCase,ym_getenv,ym_listDir,ym_sha256,ym_arrayToString,ym_mapKeys")
+    emitDeclGroup("ptr", "ptr, ptr", "ym_string_concat,ym_split,ym_join,ym_arrayConcat")
+    emitDeclGroup("i32", "ptr, ptr", "ym_string_eq,ym_string_ne,ym_startsWith,ym_endsWith,ym_contains,ym_indexOf,ym_mapHas")
+    emitDeclGroup("i32", "ptr", "ym_parseInt,ym_stringLength,ym_arrayLen,ym_system,ym_mkdir,ym_mkdirp,ym_fileExists,ym_removeFile,ym_mapSize")
+    emitDeclGroup("double", "double", "ym_sqrt,ym_abs,ym_floor,ym_ceil,ym_round,ym_log,ym_sin,ym_cos")
+    emitDeclGroup("double", "double, double", "ym_pow,ym_min,ym_max")
+    emitDeclGroup("i32", "i32", "ym_tcpListen,ym_tcpAccept")
+    emitDeclGroup("i64", "ptr", "ym_arrayFirst,ym_arrayLast,ym_fileSize")
+    emitDeclGroup("ptr", "i32", "ym_int_to_string,ym_newArray,ym_argGet,ym_fromCharCode")
+    emitDeclGroup("void", "i32", "ym_exit,ym_tcpClose")
+    // Unique signatures
     emitIR("declare ptr @ym_readLine()")
-    emitIR("declare ptr @ym_readFile(ptr)")
-    emitIR("declare void @ym_writeFile(ptr, ptr)")
-    emitIR("declare void @ym_appendFile(ptr, ptr)")
-    emitIR("declare ptr @ym_string_concat(ptr, ptr)")
-    emitIR("declare ptr @ym_int_to_string(i32)")
     emitIR("declare ptr @ym_double_to_string(double)")
     emitIR("declare ptr @ym_i64_to_string(i64)")
-    emitIR("declare i32 @ym_string_eq(ptr, ptr)")
-    emitIR("declare i32 @ym_string_ne(ptr, ptr)")
-    emitIR("declare i32 @ym_parseInt(ptr)")
     emitIR("declare double @ym_parseDouble(ptr)")
-    emitIR("declare i32 @ym_stringLength(ptr)")
-    emitIR("declare ptr @ym_trim(ptr)")
-    emitIR("declare ptr @ym_toUpperCase(ptr)")
-    emitIR("declare ptr @ym_toLowerCase(ptr)")
-    emitIR("declare i32 @ym_startsWith(ptr, ptr)")
-    emitIR("declare i32 @ym_endsWith(ptr, ptr)")
-    emitIR("declare i32 @ym_contains(ptr, ptr)")
+    emitIR("declare double @ym_random()")
     emitIR("declare ptr @ym_replace(ptr, ptr, ptr)")
     emitIR("declare ptr @ym_charAt(ptr, i32)")
     emitIR("declare ptr @ym_repeat(ptr, i32)")
     emitIR("declare ptr @ym_substring(ptr, i32, i32)")
-    emitIR("declare i32 @ym_indexOf(ptr, ptr)")
     emitIR("declare ptr @ym_padStart(ptr, i32, ptr)")
     emitIR("declare ptr @ym_padEnd(ptr, i32, ptr)")
-    emitIR("declare ptr @ym_split(ptr, ptr)")
-    emitIR("declare ptr @ym_join(ptr, ptr)")
-    emitIR("declare ptr @ym_newArray(i32)")
     emitIR("declare i64 @ym_arrayGet(ptr, i32)")
     emitIR("declare void @ym_arraySet(ptr, i32, i64)")
-    emitIR("declare i32 @ym_arrayLen(ptr)")
     emitIR("declare ptr @ym_arrayPush(ptr, i64)")
-    emitIR("declare void @ym_arrayReverse(ptr)")
-    emitIR("declare void @ym_arraySort(ptr)")
     emitIR("declare i32 @ym_arrayIndexOf(ptr, i64)")
     emitIR("declare ptr @ym_arraySlice(ptr, i32, i32)")
-    emitIR("declare ptr @ym_arrayConcat(ptr, ptr)")
-    emitIR("declare ptr @ym_arrayToString(ptr)")
-    emitIR("declare i64 @ym_arrayFirst(ptr)")
-    emitIR("declare i64 @ym_arrayLast(ptr)")
     emitIR("declare void @ym_initArgs(i32, ptr)")
     emitIR("declare i32 @ym_argCount()")
-    emitIR("declare ptr @ym_argGet(i32)")
     emitIR("declare i64 @ym_timeMs()")
-    emitIR("declare void @ym_exit(i32)")
-    emitIR("declare i32 @ym_system(ptr)")
-    emitIR("declare i32 @ym_tcpListen(i32)")
-    emitIR("declare i32 @ym_tcpAccept(i32)")
+    emitIR("declare i64 @ym_timeUnix()")
+    emitIR("declare i32 @ym_renameFile(ptr, ptr)")
     emitIR("declare ptr @ym_tcpRead(i32, i32)")
     emitIR("declare i32 @ym_tcpWrite(i32, ptr)")
-    emitIR("declare void @ym_tcpClose(i32)")
-    emitIR("declare ptr @ym_getenv(ptr)")
-    emitIR("declare i64 @ym_timeUnix()")
-    emitIR("declare i32 @ym_mkdir(ptr)")
-    emitIR("declare i32 @ym_mkdirp(ptr)")
-    emitIR("declare i32 @ym_fileExists(ptr)")
-    emitIR("declare i64 @ym_fileSize(ptr)")
-    emitIR("declare i32 @ym_removeFile(ptr)")
-    emitIR("declare i32 @ym_renameFile(ptr, ptr)")
-    emitIR("declare ptr @ym_listDir(ptr)")
-    emitIR("declare ptr @ym_sha256(ptr)")
     emitIR("declare i32 @ym_charCodeAt(ptr, i32)")
-    emitIR("declare ptr @ym_fromCharCode(i32)")
-    emitIR("declare double @ym_sqrt(double)")
-    emitIR("declare double @ym_abs(double)")
-    emitIR("declare double @ym_floor(double)")
-    emitIR("declare double @ym_ceil(double)")
-    emitIR("declare double @ym_round(double)")
-    emitIR("declare double @ym_log(double)")
-    emitIR("declare double @ym_sin(double)")
-    emitIR("declare double @ym_cos(double)")
-    emitIR("declare double @ym_pow(double, double)")
-    emitIR("declare double @ym_min(double, double)")
-    emitIR("declare double @ym_max(double, double)")
-    emitIR("declare double @ym_random()")
     emitIR("declare ptr @ym_mapNew()")
     emitIR("declare void @ym_mapSet(ptr, ptr, i64)")
     emitIR("declare i64 @ym_mapGet(ptr, ptr)")
-    emitIR("declare i32 @ym_mapHas(ptr, ptr)")
-    emitIR("declare i32 @ym_mapSize(ptr)")
-    emitIR("declare ptr @ym_mapKeys(ptr)")
-    emitIR("declare void @ym_mapDelete(ptr, ptr)")
     emitIR("declare ptr @malloc(i64)")
     emitIR("")
 }
@@ -2033,45 +1993,30 @@ function genNewExpr(id: int): string {
     return r
 }
 
+function emitFieldLoad(className: string, objReg: string, field: string): string {
+    const idx = getFieldIndex(className, field)
+    if (idx < 0) { return objReg }
+    const fType = classFieldTypes.getString(className + "." + field)
+    const gepReg = nextReg()
+    emitIR("  " + gepReg + " = getelementptr %" + className + ", ptr " + objReg + ", i32 0, i32 " + idx)
+    const loadReg = nextReg()
+    emitIR("  " + loadReg + " = load " + ssTypeToLLVM(fType) + ", ptr " + gepReg + ", align 8")
+    return loadReg
+}
+
 function genMemberAccess(id: int): string {
     const member = nGetS1(id)
     const objId = nGetI1(id)
     const objKind = nGetKind(objId)
-
-    // this.field
     if (objKind == "THIS") {
         const thisReg = nextReg()
         emitIR("  " + thisReg + " = load ptr, ptr %this, align 8")
-        const idx = getFieldIndex(currentClassName, member)
-        if (idx >= 0) {
-            const fType = classFieldTypes.getString(currentClassName + "." + member)
-            const llType = ssTypeToLLVM(fType)
-            const gepReg = nextReg()
-            emitIR("  " + gepReg + " = getelementptr %" + currentClassName + ", ptr " + thisReg + ", i32 0, i32 " + idx)
-            const loadReg = nextReg()
-            emitIR("  " + loadReg + " = load " + llType + ", ptr " + gepReg + ", align 8")
-            return loadReg
-        }
-        return thisReg
+        return emitFieldLoad(currentClassName, thisReg, member)
     }
-
-    // obj.field — need to know object's class
     const objVal = genExpr(objId)
     if (objKind == "IDENT") {
-        const varName = nGetS1(objId)
-        const className = getObjClass(varName)
-        if (className != "") {
-            const idx = getFieldIndex(className, member)
-            if (idx >= 0) {
-                const fType = classFieldTypes.getString(className + "." + member)
-                const llType = ssTypeToLLVM(fType)
-                const gepReg = nextReg()
-                emitIR("  " + gepReg + " = getelementptr %" + className + ", ptr " + objVal + ", i32 0, i32 " + idx)
-                const loadReg = nextReg()
-                emitIR("  " + loadReg + " = load " + llType + ", ptr " + gepReg + ", align 8")
-                return loadReg
-            }
-        }
+        const cn = getObjClass(nGetS1(objId))
+        if (cn != "") { return emitFieldLoad(cn, objVal, member) }
     }
     return objVal
 }
