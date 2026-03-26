@@ -31,7 +31,7 @@ function initVarAliases() {
 function allocVarName(name: string): string {
     initVarAliases()
     varCounter = varCounter + 1
-    const llName = name + "." + varCounter
+    const llName = `${name}.${varCounter}`
     varAliases.set(name, llName)
     return llName
 }
@@ -50,7 +50,7 @@ function llVarName(name: string): string {
 function varRef(name: string): string {
     const ln = llVarName(name)
     if (ln.startsWith("@") == 1) { return ln }
-    return "%" + ln
+    return `%${ln}`
 }
 
 let funcRetTypes = ""
@@ -87,24 +87,24 @@ function initCodegen() {
 
 function emitIR(s: string) {
     if (irOutFile != "") {
-        appendFile(irOutFile, s + "\n")
+        appendFile(irOutFile, `${s}\n`)
     } else {
-        irBuf = irBuf + s + "\n"
+        irBuf = `${irBuf}${s}\n`
     }
 }
 
 function nextReg(): string {
     regCount = regCount + 1
-    return "%" + regCount
+    return `%${regCount}`
 }
 
 function nextLabel(prefix: string): string {
     labelCount = labelCount + 1
-    return prefix + "." + labelCount
+    return `${prefix}.${labelCount}`
 }
 
 function addStringConst(value: string): string {
-    const name = "@.str." + strCount
+    const name = `@.str.${strCount}`
     strCount = strCount + 1
     // Escape the string for LLVM IR c"..." format
     let escaped = ""
@@ -115,9 +115,9 @@ function addStringConst(value: string): string {
         if (ch == "\n") { escaped = escaped + "\\0A" } else if (ch == "\r") { escaped = escaped + "\\0D" } else if (ch == "\t") { escaped = escaped + "\\09" } else if (ch == "\\") { escaped = escaped + "\\5C" } else if (ch == "\"") { escaped = escaped + "\\22" } else { escaped = escaped + ch }
         i = i + 1
     }
-    const line = name + " = constant [" + (sLen + 1) + " x i8] c\"" + escaped + "\\00\"\n"
+    const line = `${name} = constant [${sLen + 1} x i8] c"${escaped}\\00"\n`
     if (irOutFile != "") {
-        appendFile(irOutFile + ".str", line)
+        appendFile(`${irOutFile}.str`, line)
     } else {
         strConsts = strConsts + line
     }
@@ -206,12 +206,12 @@ function registerAllDecls(rootId: int) {
                     if (fpId > 0 && nGetKind(fpId) == "PARAM") {
                         const defId = nGetI1(fpId)
                         if (defId > 0) {
-                            if (defaults == "") { defaults = pCount + ":" + defId } else { defaults = defaults + "," + pCount + ":" + defId }
+                            if (defaults == "") { defaults = `${pCount}:${defId}` } else { defaults = `${defaults},${pCount}:${defId}` }
                         }
                         pCount = pCount + 1
                     }
                 }
-                funcParamCount.set(fname, pCount + "")
+                funcParamCount.set(fname, `${pCount}`)
                 if (defaults != "") { funcDefaults.set(fname, defaults) }
             } else {
                 funcParamCount.set(fname, "0")
@@ -245,20 +245,21 @@ function generate(rootId: int): string {
     emitRuntimeDecls()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
-    return "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strConsts + "\n" + irBuf
+    return `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${strConsts}\n${irBuf}`
 }
 
 function generateToFile(rootId: int, outFile: string) {
     resetCodegen()
     irOutFile = outFile
     writeFile(outFile, "")
-    writeFile(outFile + ".str", "")
+    writeFile(`${outFile}.str`, "")
     emitRuntimeDecls()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
     irOutFile = ""
     const body = readFile(outFile)
-    writeFile(outFile, "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + readFile(outFile + ".str") + "\n" + body)
+    const strData = readFile(outFile + ".str")
+    writeFile(outFile, "; ModuleID = 'simplescript'\nsource_filename = \"simplescript\"\n\n" + strData + "\n" + body)
 }
 
 // ── Builtin function name mapping ─────────────────────────────
@@ -270,7 +271,7 @@ function runtimeName(callee: string): string {
     if (callee == "Map") { return "ss_mapNew" }
     // Check if ss_ prefixed function exists in known builtins
     const builtins = ",println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,timeUnix,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp,"
-    if (builtins.contains("," + callee + ",") == 1) { return "ss_" + callee }
+    if (builtins.contains(`,${callee},`) == 1) { return `ss_${callee}` }
     return callee
 }
 
