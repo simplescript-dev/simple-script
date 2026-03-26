@@ -193,7 +193,24 @@ function genGlobalVar(id: int) {
     const initId = nGetI1(id)
     const ik = nGetKind(initId)
     let gType = "ptr"
-    if (ik == "INT_LIT") { emitIR(`@${name} = global i32 ${nGetS1(initId)}, align 4`); gType = "int" } else if (ik == "DOUBLE_LIT") { emitIR(`@${name} = global double ${nGetS1(initId)}, align 8`); gType = "double" } else if (ik == "STRING_LIT") { emitIR(`@${name} = global ptr ${addStringConst(nGetS1(initId))}, align 8`); gType = "string" } else if (ik == "TRUE_LIT") { emitIR(`@${name} = global i32 1, align 4`); gType = "int" } else if (ik == "FALSE_LIT") { emitIR(`@${name} = global i32 0, align 4`); gType = "int" } else { emitIR(`@${name} = global ptr null, align 8`) }
+    if (ik == "INT_LIT") {
+        emitIR(`@${name} = global i32 ${nGetS1(initId)}, align 4`)
+        gType = "int"
+    } else if (ik == "DOUBLE_LIT") {
+        emitIR(`@${name} = global double ${nGetS1(initId)}, align 8`)
+        gType = "double"
+    } else if (ik == "STRING_LIT") {
+        emitIR(`@${name} = global ptr ${addStringConst(nGetS1(initId))}, align 8`)
+        gType = "string"
+    } else if (ik == "TRUE_LIT") {
+        emitIR(`@${name} = global i32 1, align 4`)
+        gType = "int"
+    } else if (ik == "FALSE_LIT") {
+        emitIR(`@${name} = global i32 0, align 4`)
+        gType = "int"
+    } else {
+        emitIR(`@${name} = global ptr null, align 8`)
+    }
     setVarType(name, gType)
     globalAliases.set(name, `@${name}`)
 }

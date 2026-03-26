@@ -702,14 +702,14 @@ function inferType(id: int): string {
     }
     if (kind == "METHOD_CALL") {
         const method = nGetS1(id)
-        if (method == "length" || method == "indexOf" || method == "has" || method == "size") { return "int" }
-        if (method == "charAt" || method == "substring" || method == "trim" || method == "toUpperCase" || method == "toLowerCase" || method == "replace" || method == "join" || method == "repeat" || method == "padStart" || method == "padEnd") { return "string" }
-        if (method == "split" || method == "push" || method == "slice" || method == "concat" || method == "reverse" || method == "sort") { return "ptr" }
-        if (method == "keys") { return "string" }
-        if (method == "delete") { return "void" }
+        const intMethods = ",length,indexOf,has,size,contains,startsWith,endsWith,charCodeAt,"
+        const strMethods = ",charAt,substring,trim,toUpperCase,toLowerCase,replace,join,repeat,padStart,padEnd,keys,getString,"
+        const ptrMethods = ",split,push,slice,concat,reverse,sort,"
+        if (intMethods.contains(`,${method},`) == 1) { return "int" }
+        if (strMethods.contains(`,${method},`) == 1) { return "string" }
+        if (ptrMethods.contains(`,${method},`) == 1) { return "ptr" }
         if (method == "get") { return "i64" }
-        if (method == "getString") { return "string" }
-        if (method == "contains" || method == "startsWith" || method == "endsWith") { return "int" }
+        if (method == "delete") { return "void" }
         // Class method — look up return type
         const mObjId = nGetI1(id)
         let mClassName = ""
@@ -753,12 +753,17 @@ function inferType(id: int): string {
 }
 
 function callReturnType(callee: string): string {
-    if (callee == "readLine" || callee == "readFile" || callee == "arg" || callee == "getenv" || callee == "listDir" || callee == "sha256" || callee == "tcpRead" || callee == "fromCharCode" || callee == "base64Encode" || callee == "base64Decode") { return "string" }
-    if (callee == "println" || callee == "print" || callee == "writeFile" || callee == "appendFile" || callee == "exit" || callee == "tcpClose") { return "void" }
-    if (callee == "parseInt" || callee == "args" || callee == "system" || callee == "tcpListen" || callee == "tcpAccept" || callee == "tcpWrite" || callee == "mkdir" || callee == "mkdirp" || callee == "fileExists" || callee == "removeFile" || callee == "renameFile" || callee == "charCodeAt") { return "int" }
-    if (callee == "parseDouble" || callee == "sqrt" || callee == "abs" || callee == "floor" || callee == "ceil" || callee == "round" || callee == "pow" || callee == "log" || callee == "sin" || callee == "cos" || callee == "random" || callee == "min" || callee == "max") { return "double" }
+    const strFns = ",readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,"
+    const voidFns = ",println,print,writeFile,appendFile,exit,tcpClose,"
+    const intFns = ",parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,"
+    const dblFns = ",parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,"
+    const i64Fns = ",timeMs,timeUnix,fileSize,"
+    if (strFns.contains(`,${callee},`) == 1) { return "string" }
+    if (voidFns.contains(`,${callee},`) == 1) { return "void" }
+    if (intFns.contains(`,${callee},`) == 1) { return "int" }
+    if (dblFns.contains(`,${callee},`) == 1) { return "double" }
+    if (i64Fns.contains(`,${callee},`) == 1) { return "i64" }
     if (callee == "Map") { return "ptr" }
-    if (callee == "timeMs" || callee == "timeUnix" || callee == "fileSize") { return "i64" }
     // User-defined function
     if (funcRetTypes.has(callee) == 1) {
         return funcRetTypes.getString(callee)

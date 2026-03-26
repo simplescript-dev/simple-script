@@ -112,7 +112,12 @@ function addStringConst(value: string): string {
     const sLen = value.length()
     while (i < sLen) {
         const ch = value.charAt(i)
-        if (ch == "\n") { escaped = escaped + "\\0A" } else if (ch == "\r") { escaped = escaped + "\\0D" } else if (ch == "\t") { escaped = escaped + "\\09" } else if (ch == "\\") { escaped = escaped + "\\5C" } else if (ch == "\"") { escaped = escaped + "\\22" } else { escaped = escaped + ch }
+        if (ch == "\n") { escaped = escaped + "\\0A"
+        } else if (ch == "\r") { escaped = escaped + "\\0D"
+        } else if (ch == "\t") { escaped = escaped + "\\09"
+        } else if (ch == "\\") { escaped = escaped + "\\5C"
+        } else if (ch == "\"") { escaped = escaped + "\\22"
+        } else { escaped = escaped + ch }
         i = i + 1
     }
     const line = `${name} = constant [${sLen + 1} x i8] c"${escaped}\\00"\n`
