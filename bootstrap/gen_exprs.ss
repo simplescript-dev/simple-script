@@ -20,9 +20,7 @@ function genExpr(id: int): string {
     if (kind == "IDENT") {
         const name = nGetS1(id)
         const vType = getVarType(name)
-        const r = nextReg()
-        emitIR(`  ${r} = load ${ssTypeToLLVM(vType)}, ptr ${varRef(name)}, align 8`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = load ${ssTypeToLLVM(vType)}, ptr ${varRef(name)}, align 8`); return r
     }
 
     if (kind == "BINARY") { return genBinary(id) }
@@ -65,9 +63,7 @@ function genExpr(id: int): string {
             arrVal = cvtR
         }
         const idxVal = genExpr(nGetI2(id))
-        const r = nextReg()
-        emitIR(`  ${r} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idxVal})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idxVal})`); return r
     }
 
     if (kind == "POSTFIX_INC") {
@@ -97,9 +93,7 @@ function genBinary(id: int): string {
         if (blt == "string" || brt == "string") {
             const l = genExprAsString(leftId)
             const rVal = genExprAsString(rightId)
-            const r = nextReg()
-            emitIR(`  ${r} = call ptr @ss_string_concat(ptr ${l}, ptr ${rVal})`)
-            return r
+            const r = nextReg(); emitIR(`  ${r} = call ptr @ss_string_concat(ptr ${l}, ptr ${rVal})`); return r
         }
     }
 
@@ -139,9 +133,7 @@ function genBinary(id: int): string {
         if (op == "Ge") { cmpOp = "sge" }
         const cmpBool = nextReg()
         emitIR(`  ${cmpBool} = icmp ${cmpOp} i32 ${cmpR}, 0`)
-        const r = nextReg()
-        emitIR(`  ${r} = zext i1 ${cmpBool} to i32`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = zext i1 ${cmpBool} to i32`); return r
     }
 
     // Short-circuit && and ||
@@ -336,9 +328,7 @@ function genCall(id: int): string {
         emitIR(`  call void @${rtName}(${args})`)
         return "0"
     }
-    const r = nextReg()
-    emitIR(`  ${r} = call ${llRetType} @${rtName}(${args})`)
-    return r
+    const r = nextReg(); emitIR(`  ${r} = call ${llRetType} @${rtName}(${args})`); return r
 }
 
 function genMethodCall(id: int): string {
@@ -372,9 +362,7 @@ function genMethodCall(id: int): string {
         const av = genExpr(parseInt(argList))
         let retT = "ptr"
         if (method == "charCodeAt") { retT = "i32" }
-        const r = nextReg()
-        emitIR(`  ${r} = call ${retT} @ss_${method}(ptr ${objVal}, i32 ${av})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ${retT} @ss_${method}(ptr ${objVal}, i32 ${av})`); return r
     }
     if (method == "indexOf") {
         const argId = parseInt(argList)
@@ -387,58 +375,42 @@ function genMethodCall(id: int): string {
                 emitIR(`  ${sR} = sext i32 ${sub} to i64`)
                 val64 = sR
             }
-            const r = nextReg()
-            emitIR(`  ${r} = call i32 @ss_arrayIndexOf(ptr ${objVal}, i64 ${val64})`)
-            return r
+            const r = nextReg(); emitIR(`  ${r} = call i32 @ss_arrayIndexOf(ptr ${objVal}, i64 ${val64})`); return r
         }
-        const r = nextReg()
-        emitIR(`  ${r} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`); return r
     }
     if (method == "substring") {
         const argParts = argList.split(",")
         const startVal = genExpr(parseInt(argParts[0]))
         const lenVal = genExpr(parseInt(argParts[1]))
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_substring(ptr ${objVal}, i32 ${startVal}, i32 ${lenVal})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_substring(ptr ${objVal}, i32 ${startVal}, i32 ${lenVal})`); return r
     }
     // Single ptr-arg bool methods → call i32 @ss_XXX(ptr, ptr)
     if (method == "contains" || method == "startsWith" || method == "endsWith") {
         const sub = genExpr(parseInt(argList))
-        const r = nextReg()
-        emitIR(`  ${r} = call i32 @ss_${method}(ptr ${objVal}, ptr ${sub})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call i32 @ss_${method}(ptr ${objVal}, ptr ${sub})`); return r
     }
     if (method == "replace") {
         const argParts = argList.split(",")
         const oldVal = genExpr(parseInt(argParts[0]))
         const newVal = genExpr(parseInt(argParts[1]))
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_replace(ptr ${objVal}, ptr ${oldVal}, ptr ${newVal})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_replace(ptr ${objVal}, ptr ${oldVal}, ptr ${newVal})`); return r
     }
     // Single ptr-arg string methods -> call ptr @ss_XXX(ptr, ptr)
     if (method == "split" || method == "join") {
         const delim = genExpr(parseInt(argList))
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal}, ptr ${delim})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal}, ptr ${delim})`); return r
     }
     // No-arg string methods -> call ptr @ss_XXX(ptr obj)
     if (method == "trim" || method == "toUpperCase" || method == "toLowerCase") {
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal})`); return r
     }
     // Two-arg pad methods -> call ptr @ss_XXX(ptr obj, i32 width, ptr pad)
     if (method == "padStart" || method == "padEnd") {
         const ap = argList.split(",")
         const w = genExpr(parseInt(ap[0]))
         const p = genExpr(parseInt(ap[1]))
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal}, i32 ${w}, ptr ${p})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal}, i32 ${w}, ptr ${p})`); return r
     }
     // Array methods
     if (method == "push") {
@@ -456,9 +428,7 @@ function genMethodCall(id: int): string {
             emitIR(`  ${cR} = ptrtoint ptr ${val} to i64`)
             val64p = cR
         }
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_arrayPush(ptr ${objVal}, i64 ${val64p})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_arrayPush(ptr ${objVal}, i64 ${val64p})`); return r
     }
     // Map methods
     if (method == "set") {
@@ -508,15 +478,11 @@ function genMethodCall(id: int): string {
         const slArgs = argList.split(",")
         const slStart = genExpr(parseInt(slArgs[0]))
         const slEnd = genExpr(parseInt(slArgs[1]))
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_arraySlice(ptr ${objVal}, i32 ${slStart}, i32 ${slEnd})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_arraySlice(ptr ${objVal}, i32 ${slStart}, i32 ${slEnd})`); return r
     }
     if (method == "concat") {
         const otherArr = genExpr(parseInt(argList))
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_arrayConcat(ptr ${objVal}, ptr ${otherArr})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_arrayConcat(ptr ${objVal}, ptr ${otherArr})`); return r
     }
 
     // Class method call: obj.method(args) → ClassName_method(obj, args)
@@ -683,25 +649,17 @@ function genExprAsString(id: int): string {
     }
     const val = genExpr(id)
     if (vType == "double") {
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_double_to_string(double ${val})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_double_to_string(double ${val})`); return r
     }
     if (vType == "i64") {
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_i64_to_string(i64 ${val})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_i64_to_string(i64 ${val})`); return r
     }
     if (vType == "ptr") {
         const castR = nextReg()
         emitIR(`  ${castR} = ptrtoint ptr ${val} to i64`)
-        const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_i64_to_string(i64 ${castR})`)
-        return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_i64_to_string(i64 ${castR})`); return r
     }
-    const r = nextReg()
-    emitIR(`  ${r} = call ptr @ss_int_to_string(i32 ${val})`)
-    return r
+    const r = nextReg(); emitIR(`  ${r} = call ptr @ss_int_to_string(i32 ${val})`); return r
 }
 
 // ── Type inference (simplified) ───────────────────────────────

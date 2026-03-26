@@ -683,10 +683,7 @@ function parseOr(): int {
     while (curKind() == "OR") {
         pAdvance()
         const right = parseAndExpr()
-        const id = newNode("BINARY")
-        nSetS1(id, "Or")
-        nSetI1(id, left)
-        nSetI2(id, right)
+        const id = newNode("BINARY"); nSetS1(id, "Or"); nSetI1(id, left); nSetI2(id, right)
         left = id
     }
     return left
@@ -697,10 +694,7 @@ function parseAndExpr(): int {
     while (curKind() == "AND") {
         pAdvance()
         const right = parseEquality()
-        const id = newNode("BINARY")
-        nSetS1(id, "And")
-        nSetI1(id, left)
-        nSetI2(id, right)
+        const id = newNode("BINARY"); nSetS1(id, "And"); nSetI1(id, left); nSetI2(id, right)
         left = id
     }
     return left
@@ -771,10 +765,7 @@ function parsePower(): int {
     if (curKind() == "POWER") {
         pAdvance()
         const right = parsePower()
-        const id = newNode("BINARY")
-        nSetS1(id, "Pow")
-        nSetI1(id, left)
-        nSetI2(id, right)
+        const id = newNode("BINARY"); nSetS1(id, "Pow"); nSetI1(id, left); nSetI2(id, right)
         left = id
     }
     return left

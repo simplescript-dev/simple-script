@@ -60,8 +60,7 @@ function genStmt(id: int) {
     }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
         const pRef = varRef(nGetS1(id))
-        const r1 = nextReg()
-        emitIR(`  ${r1} = load i32, ptr ${pRef}, align 4`)
+        const r1 = nextReg(); emitIR(`  ${r1} = load i32, ptr ${pRef}, align 4`)
         const r2 = nextReg()
         if (kind == "POSTFIX_INC") { emitIR(`  ${r2} = add i32 ${r1}, 1`) } else { emitIR(`  ${r2} = sub i32 ${r1}, 1`) }
         emitIR(`  store i32 ${r2}, ptr ${pRef}, align 4`)
@@ -77,8 +76,7 @@ function genStmt(id: int) {
     }
     if (kind == "INDEX_ASSIGN") {
         // arr[i] = val — nGetS1=arrName, nGetI1=indexExpr, nGetI2=valueExpr
-        const arrPtr = nextReg()
-        emitIR(`  ${arrPtr} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
+        const arrPtr = nextReg(); emitIR(`  ${arrPtr} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
         const idxVal = genExpr(nGetI1(id))
         const valVal = genExpr(nGetI2(id))
         const vt = inferType(nGetI2(id))
@@ -246,14 +244,12 @@ function genAssign(id: int) {
     } else {
         // Compound: +=, -=, etc.
         const lnRef = varRef(name)
-        const r1 = nextReg()
-        emitIR(`  ${r1} = load ${llType}, ptr ${lnRef}, align 8`)
+        const r1 = nextReg(); emitIR(`  ${r1} = load ${llType}, ptr ${lnRef}, align 8`)
         let r2 = genExpr(valId)
         // Trunc i64 to i32 if needed
         const r2Type = inferType(valId)
         if (r2Type == "i64" && vType != "i64") {
-            const trR = nextReg()
-            emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
+            const trR = nextReg(); emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
             r2 = trR
         }
         const r3 = nextReg()
@@ -298,16 +294,13 @@ function genReturn(id: int) {
         if (retLLType == declRet) {
             emitIR(`  ret ${retLLType} ${val}`)
         } else if (retLLType == "i64" && declRet == "i32") {
-            const trR = nextReg()
-            emitIR(`  ${trR} = trunc i64 ${val} to i32`)
+            const trR = nextReg(); emitIR(`  ${trR} = trunc i64 ${val} to i32`)
             emitIR(`  ret i32 ${trR}`)
         } else if (retLLType == "double" && declRet == "i32") {
-            const fpR = nextReg()
-            emitIR(`  ${fpR} = fptosi double ${val} to i32`)
+            const fpR = nextReg(); emitIR(`  ${fpR} = fptosi double ${val} to i32`)
             emitIR(`  ret i32 ${fpR}`)
         } else if (retLLType == "i32" && declRet == "double") {
-            const siR = nextReg()
-            emitIR(`  ${siR} = sitofp i32 ${val} to double`)
+            const siR = nextReg(); emitIR(`  ${siR} = sitofp i32 ${val} to double`)
             emitIR(`  ret double ${siR}`)
         } else {
             emitIR(`  ret ${declRet} ${val}`)
@@ -327,8 +320,7 @@ function genIf(id: int) {
     const mergeLabel = nextLabel("if.merge")
 
     // Convert condition to i1 if needed
-    const r = nextReg()
-    emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
 
     if (elseId > 0) {
         emitIR(`  br i1 ${r}, label %${thenLabel}, label %${elseLabel}`)
@@ -377,8 +369,7 @@ function genFor(id: int) {
 
     emitIR(`${condLabel}:`)
     const condVal = genExpr(condId)
-    const r = nextReg()
-    emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
     emitIR(`  br i1 ${r}, label %${bodyLabel}, label %${afterLabel}`)
 
     emitIR(`${bodyLabel}:`)
@@ -403,12 +394,10 @@ function genForIn(id: int) {
     const bodyId = nGetI2(id)
 
     const arr = genExpr(iterableId)
-    const lenReg = nextReg()
-    emitIR(`  ${lenReg} = call i32 @ss_arrayLen(ptr ${arr})`)
+    const lenReg = nextReg(); emitIR(`  ${lenReg} = call i32 @ss_arrayLen(ptr ${arr})`)
 
     // Index variable
-    const idxAlloca = nextReg()
-    emitIR(`  ${idxAlloca} = alloca i32, align 4`)
+    const idxAlloca = nextReg(); emitIR(`  ${idxAlloca} = alloca i32, align 4`)
     emitIR(`  store i32 0, ptr ${idxAlloca}, align 4`)
 
     // Item variable
@@ -429,16 +418,13 @@ function genForIn(id: int) {
     emitIR(`  br label %${condLabel}`)
 
     emitIR(`${condLabel}:`)
-    const curIdx = nextReg()
-    emitIR(`  ${curIdx} = load i32, ptr ${idxAlloca}, align 4`)
-    const cmp = nextReg()
-    emitIR(`  ${cmp} = icmp slt i32 ${curIdx}, ${lenReg}`)
+    const curIdx = nextReg(); emitIR(`  ${curIdx} = load i32, ptr ${idxAlloca}, align 4`)
+    const cmp = nextReg(); emitIR(`  ${cmp} = icmp slt i32 ${curIdx}, ${lenReg}`)
     emitIR(`  br i1 ${cmp}, label %${bodyLabel}, label %${afterLabel}`)
 
     emitIR(`${bodyLabel}:`)
     terminated = 0
-    const elemVal = nextReg()
-    emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${arr}, i32 ${curIdx})`)
+    const elemVal = nextReg(); emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${arr}, i32 ${curIdx})`)
     emitIR(`  store i64 ${elemVal}, ptr %${itemLLName}, align 8`)
 
     genBlock(bodyId)
@@ -446,10 +432,8 @@ function genForIn(id: int) {
 
     emitIR(`${updateLabel2}:`)
     terminated = 0
-    const nextIdx = nextReg()
-    emitIR(`  ${nextIdx} = load i32, ptr ${idxAlloca}, align 4`)
-    const incIdx = nextReg()
-    emitIR(`  ${incIdx} = add i32 ${nextIdx}, 1`)
+    const nextIdx = nextReg(); emitIR(`  ${nextIdx} = load i32, ptr ${idxAlloca}, align 4`)
+    const incIdx = nextReg(); emitIR(`  ${incIdx} = add i32 ${nextIdx}, 1`)
     emitIR(`  store i32 ${incIdx}, ptr ${idxAlloca}, align 4`)
     emitIR(`  br label %${condLabel}`)
 
@@ -476,8 +460,7 @@ function genWhile(id: int) {
 
     emitIR(`${condLabel}:`)
     const condVal = genExpr(condId)
-    const r = nextReg()
-    emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
     emitIR(`  br i1 ${r}, label %${bodyLabel}, label %${afterLabel}`)
 
     emitIR(`${bodyLabel}:`)
@@ -508,8 +491,7 @@ function genDoWhile(id: int) {
     if (terminated == 0) { emitIR(`  br label %${condLabel}`) }
     emitIR(`${condLabel}:`)
     const condVal = genExpr(condId)
-    const r = nextReg()
-    emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
     emitIR(`  br i1 ${r}, label %${bodyLabel}, label %${afterLabel}`)
     emitIR(`${afterLabel}:`)
     terminated = 0
@@ -540,14 +522,11 @@ function genSwitch(id: int) {
             let cmpResult = ""
             if (patType == "STRING" || subjectType == "string") {
                 const patStr = addStringConst(patVal)
-                const cmp = nextReg()
-                emitIR(`  ${cmp} = call i32 @ss_string_eq(ptr ${subjectVal}, ptr ${patStr})`)
-                const br = nextReg()
-                emitIR(`  ${br} = icmp ne i32 ${cmp}, 0`)
+                const cmp = nextReg(); emitIR(`  ${cmp} = call i32 @ss_string_eq(ptr ${subjectVal}, ptr ${patStr})`)
+                const br = nextReg(); emitIR(`  ${br} = icmp ne i32 ${cmp}, 0`)
                 cmpResult = br
             } else {
-                const cmp = nextReg()
-                emitIR(`  ${cmp} = icmp eq i32 ${subjectVal}, ${patVal}`)
+                const cmp = nextReg(); emitIR(`  ${cmp} = icmp eq i32 ${subjectVal}, ${patVal}`)
                 cmpResult = cmp
             }
             emitIR(`  br i1 ${cmpResult}, label %${thenLabel}, label %${nextLabel2}`)
