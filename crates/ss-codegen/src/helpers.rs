@@ -59,7 +59,8 @@ impl<'ctx> Codegen<'ctx> {
         let llvm_type: inkwell::types::BasicTypeEnum = match var_type {
             VarType::Int | VarType::Bool => self.context.i32_type().into(),
             VarType::Double => self.context.f64_type().into(),
-            VarType::String | VarType::Object => self.context.ptr_type(AddressSpace::default()).into(),
+            VarType::String => self.context.ptr_type(AddressSpace::default()).into(),
+            VarType::Object => self.context.i64_type().into(),
         };
         Ok(self.builder.build_load(llvm_type, ptr, name)?)
     }

@@ -848,20 +848,10 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.build_store(idx_ptr, i32_type.const_int(0, false))
 ?;
 
-        // Detect string vs int array
-        let is_str_array = if let ExprKind::Ident(n) = &iterable.kind {
-            self.var_class.get(n).map(|c| c == "__str_array__").unwrap_or(false)
-        } else { false };
-
-        // Item variable: ptr for string arrays, i32 for int arrays
-        let (item_ptr, item_vt) = if is_str_array {
-            let p = self.builder.build_alloca(self.context.ptr_type(AddressSpace::default()), item_name)?;
-            (p, VarType::String)
-        } else {
-            let p = self.builder.build_alloca(i32_type, item_name)?;
-            (p, VarType::Int)
-        };
-        self.set_var(item_name, item_ptr, item_vt);
+        // Item variable: always i64 (array elements are i64 — may be int or string pointer)
+        let i64_type = self.context.i64_type();
+        let item_ptr = self.builder.build_alloca(i64_type, item_name)?;
+        self.set_var(item_name, item_ptr, VarType::Object);
 
         let cond_bb = self.context.append_basic_block(function, "forin.cond");
         let body_bb = self.context.append_basic_block(function, "forin.body");
@@ -885,13 +875,8 @@ impl<'ctx> Codegen<'ctx> {
         let get_fn = self.module.get_function("ss_arrayGet").unwrap();
         let elem = self.builder.build_call(get_fn, &[arr_val.into(), idx.into()], "elem")?
             .try_as_basic_value().left().unwrap();
-        // Convert i64 to appropriate type
-        let store_val: BasicValueEnum = if is_str_array {
-            self.builder.build_int_to_ptr(elem.into_int_value(), self.context.ptr_type(AddressSpace::default()), "itop")?.into()
-        } else {
-            self.builder.build_int_truncate(elem.into_int_value(), i32_type, "trunc")?.into()
-        };
-        self.builder.build_store(item_ptr, store_val)?;
+        // Store i64 element directly (no truncation — preserves string pointers)
+        self.builder.build_store(item_ptr, elem)?;
 
         self.loop_stack.push(LoopContext { break_bb: after_bb, continue_bb: update_bb });
         for s in body { self.compile_stmt(s)?; }
