@@ -108,29 +108,14 @@ function addStringConst(value: string): string {
     strCount = strCount + 1
     // Escape the string for LLVM IR c"..." format
     let escaped = ""
-    let len = 0
     let i = 0
     const sLen = value.length()
     while (i < sLen) {
         const ch = value.charAt(i)
-        if (ch == "\n") {
-            escaped = escaped + "\\0A"
-        } else if (ch == "\r") {
-            escaped = escaped + "\\0D"
-        } else if (ch == "\t") {
-            escaped = escaped + "\\09"
-        } else if (ch == "\\") {
-            escaped = escaped + "\\5C"
-        } else if (ch == "\"") {
-            escaped = escaped + "\\22"
-        } else {
-            escaped = escaped + ch
-        }
-        len = len + 1
+        if (ch == "\n") { escaped = escaped + "\\0A" } else if (ch == "\r") { escaped = escaped + "\\0D" } else if (ch == "\t") { escaped = escaped + "\\09" } else if (ch == "\\") { escaped = escaped + "\\5C" } else if (ch == "\"") { escaped = escaped + "\\22" } else { escaped = escaped + ch }
         i = i + 1
     }
-    len = len + 1
-    const line = name + " = constant [" + len + " x i8] c\"" + escaped + "\\00\"\n"
+    const line = name + " = constant [" + (sLen + 1) + " x i8] c\"" + escaped + "\\00\"\n"
     if (irOutFile != "") {
         appendFile(irOutFile + ".str", line)
     } else {
@@ -237,17 +222,12 @@ function registerAllDecls(rootId: int) {
 }
 
 function emitGlobalsAndCode(rootId: int) {
-    const sl1 = nGetList(rootId)
-    if (sl1 != "") {
-        const p1 = sl1.split(",")
-        for (x1 in p1) { const s1 = parseInt(x1); if (s1 > 0 && nGetKind(s1) == "VAR_DECL") { genGlobalVar(s1) } }
-    }
+    const sl = nGetList(rootId)
+    if (sl == "") { return }
+    const parts = sl.split(",")
+    for (x1 in parts) { const s1 = parseInt(x1); if (s1 > 0 && nGetKind(s1) == "VAR_DECL") { genGlobalVar(s1) } }
     emitIR("")
-    const sl2 = nGetList(rootId)
-    if (sl2 != "") {
-        const p2 = sl2.split(",")
-        for (x2 in p2) { const s2 = parseInt(x2); if (s2 > 0 && nGetKind(s2) != "VAR_DECL") { genStmt(s2) } }
-    }
+    for (x2 in parts) { const s2 = parseInt(x2); if (s2 > 0 && nGetKind(s2) != "VAR_DECL") { genStmt(s2) } }
 }
 
 function resetCodegen() {

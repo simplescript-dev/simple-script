@@ -131,25 +131,15 @@ char* ym_replace(const char* s, const char* old, const char* new_str) {
     return result;
 }
 
-char* ym_toUpperCase(const char* s) {
+static char* change_case(const char* s, char lo, char hi, int delta) {
     size_t len = strlen(s);
-    char* result = (char*)malloc(len + 1);
-    for (size_t i = 0; i < len; i++) {
-        result[i] = (s[i] >= 'a' && s[i] <= 'z') ? s[i] - 32 : s[i];
-    }
-    result[len] = '\0';
-    return result;
+    char* r = (char*)malloc(len + 1);
+    for (size_t i = 0; i < len; i++) r[i] = (s[i] >= lo && s[i] <= hi) ? s[i] + delta : s[i];
+    r[len] = '\0';
+    return r;
 }
-
-char* ym_toLowerCase(const char* s) {
-    size_t len = strlen(s);
-    char* result = (char*)malloc(len + 1);
-    for (size_t i = 0; i < len; i++) {
-        result[i] = (s[i] >= 'A' && s[i] <= 'Z') ? s[i] + 32 : s[i];
-    }
-    result[len] = '\0';
-    return result;
-}
+char* ym_toUpperCase(const char* s) { return change_case(s, 'a', 'z', -32); }
+char* ym_toLowerCase(const char* s) { return change_case(s, 'A', 'Z', 32); }
 
 int ym_contains(const char* s, const char* sub) {
     return strstr(s, sub) != NULL;
@@ -177,29 +167,18 @@ char* ym_repeat(const char* s, int n) {
     return result;
 }
 
-char* ym_padStart(const char* s, int width, const char* pad) {
-    int slen = (int)strlen(s);
+static char* pad_impl(const char* s, int width, const char* pad, int left) {
+    int slen = (int)strlen(s), plen = (int)strlen(pad);
     if (slen >= width) return strdup(s);
-    int plen = (int)strlen(pad);
-    char* result = (char*)malloc(width + 1);
+    char* r = (char*)malloc(width + 1);
     int fill = width - slen;
-    for (int i = 0; i < fill; i++) result[i] = pad[i % plen];
-    memcpy(result + fill, s, slen);
-    result[width] = '\0';
-    return result;
+    if (left) { for (int i = 0; i < fill; i++) r[i] = pad[i % plen]; memcpy(r + fill, s, slen); }
+    else { memcpy(r, s, slen); for (int i = 0; i < fill; i++) r[slen + i] = pad[i % plen]; }
+    r[width] = '\0';
+    return r;
 }
-
-char* ym_padEnd(const char* s, int width, const char* pad) {
-    int slen = (int)strlen(s);
-    if (slen >= width) return strdup(s);
-    int plen = (int)strlen(pad);
-    char* result = (char*)malloc(width + 1);
-    memcpy(result, s, slen);
-    int fill = width - slen;
-    for (int i = 0; i < fill; i++) result[slen + i] = pad[i % plen];
-    result[width] = '\0';
-    return result;
-}
+char* ym_padStart(const char* s, int width, const char* pad) { return pad_impl(s, width, pad, 1); }
+char* ym_padEnd(const char* s, int width, const char* pad) { return pad_impl(s, width, pad, 0); }
 
 // split(s, delim) — returns array of strings
 long long* ym_split(const char* s, const char* delim) {
@@ -504,16 +483,16 @@ HashMap* ym_mapNew() {
     return m;
 }
 
+static MapEntry* find_entry(HashMap* m, const char* key) {
+    MapEntry* e = m->buckets[hash_str(key)];
+    while (e) { if (strcmp(e->key, key) == 0) return e; e = e->next; }
+    return NULL;
+}
+
 void ym_mapSet(HashMap* m, const char* key, long long value) {
+    MapEntry* e = find_entry(m, key);
+    if (e) { e->value = value; return; }
     unsigned int idx = hash_str(key);
-    MapEntry* e = m->buckets[idx];
-    while (e) {
-        if (strcmp(e->key, key) == 0) {
-            e->value = value;
-            return;
-        }
-        e = e->next;
-    }
     MapEntry* ne = (MapEntry*)malloc(sizeof(MapEntry));
     ne->key = strdup(key);
     ne->value = value;
@@ -523,24 +502,11 @@ void ym_mapSet(HashMap* m, const char* key, long long value) {
 }
 
 long long ym_mapGet(HashMap* m, const char* key) {
-    unsigned int idx = hash_str(key);
-    MapEntry* e = m->buckets[idx];
-    while (e) {
-        if (strcmp(e->key, key) == 0) return e->value;
-        e = e->next;
-    }
-    return 0;
+    MapEntry* e = find_entry(m, key);
+    return e ? e->value : 0;
 }
 
-int ym_mapHas(HashMap* m, const char* key) {
-    unsigned int idx = hash_str(key);
-    MapEntry* e = m->buckets[idx];
-    while (e) {
-        if (strcmp(e->key, key) == 0) return 1;
-        e = e->next;
-    }
-    return 0;
-}
+int ym_mapHas(HashMap* m, const char* key) { return find_entry(m, key) != NULL; }
 
 int ym_mapSize(HashMap* m) {
     return m->size;
