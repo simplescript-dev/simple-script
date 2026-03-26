@@ -1,6 +1,6 @@
 use inkwell::values::{BasicValueEnum, BasicMetadataValueEnum, PointerValue};
 use inkwell::AddressSpace;
-use ym_parser::*;
+use ss_parser::*;
 use crate::codegen::{Codegen, CodegenError, VarType};
 
 impl<'ctx> Codegen<'ctx> {

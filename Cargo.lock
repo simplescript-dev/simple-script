@@ -238,6 +238,51 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "ss-checker"
+version = "0.1.0"
+dependencies = [
+ "ss-parser",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "ss-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "inkwell",
+ "ss-checker",
+ "ss-codegen",
+ "ss-lexer",
+ "ss-parser",
+]
+
+[[package]]
+name = "ss-codegen"
+version = "0.1.0"
+dependencies = [
+ "inkwell",
+ "ss-checker",
+ "ss-parser",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "ss-lexer"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "ss-parser"
+version = "0.1.0"
+dependencies = [
+ "ss-lexer",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,49 +364,4 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
-]
-
-[[package]]
-name = "ym-checker"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.18",
- "ym-parser",
-]
-
-[[package]]
-name = "ym-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "inkwell",
- "ym-checker",
- "ym-codegen",
- "ym-lexer",
- "ym-parser",
-]
-
-[[package]]
-name = "ym-codegen"
-version = "0.1.0"
-dependencies = [
- "inkwell",
- "thiserror 2.0.18",
- "ym-checker",
- "ym-parser",
-]
-
-[[package]]
-name = "ym-lexer"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ym-parser"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.18",
- "ym-lexer",
 ]

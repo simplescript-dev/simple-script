@@ -10,7 +10,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::AddressSpace;
 use inkwell::OptimizationLevel;
 
-use ym_parser::*;
+use ss_parser::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CodegenError {
@@ -45,7 +45,7 @@ pub struct Codegen<'ctx> {
     pub(crate) current_class: Option<String>,
     pub(crate) loop_stack: Vec<LoopContext<'ctx>>,
     pub(crate) classes: HashMap<String, ClassInfo<'ctx>>,
-    pub(crate) func_defaults: HashMap<String, Vec<Option<ym_parser::Expr>>>,
+    pub(crate) func_defaults: HashMap<String, Vec<Option<ss_parser::Expr>>>,
     pub(crate) str_counter: usize,
 }
 
@@ -182,7 +182,7 @@ impl<'ctx> Codegen<'ctx> {
                 };
                 self.module.add_function(name, fn_type, None);
                 // Store default param values
-                let defaults: Vec<Option<ym_parser::Expr>> = params.iter()
+                let defaults: Vec<Option<ss_parser::Expr>> = params.iter()
                     .map(|p| p.default.clone())
                     .collect();
                 self.func_defaults.insert(name.clone(), defaults);

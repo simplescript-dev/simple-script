@@ -1,8 +1,7 @@
 [package]
-name = "ym-parser"
+name = "ss-lexer"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ym-lexer = { path = "../ym-lexer" }
 thiserror = "2"

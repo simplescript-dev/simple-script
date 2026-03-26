@@ -1,4 +1,4 @@
-use ym_lexer::{Token, TokenKind, TemplateFragment};
+use ss_lexer::{Token, TokenKind, TemplateFragment};
 use crate::ast::*;
 use crate::parser::{Parser, ParseError};
 
@@ -344,7 +344,7 @@ impl Parser {
                         tokens.into_iter()
                             .chain(std::iter::once(Token {
                                 kind: TokenKind::Eof,
-                                span: ym_lexer::Span { start: 0, end: 0, line: 0, col: 0 },
+                                span: ss_lexer::Span { start: 0, end: 0, line: 0, col: 0 },
                             }))
                             .collect()
                     );

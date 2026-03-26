@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use ym_parser::*;
+use ss_parser::*;
 use crate::types::Type;
 
 #[derive(Debug, thiserror::Error)]

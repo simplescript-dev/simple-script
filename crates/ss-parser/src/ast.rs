@@ -1,4 +1,4 @@
-use ym_lexer::Span;
+use ss_lexer::Span;
 
 #[derive(Debug, Clone)]
 pub struct Program {

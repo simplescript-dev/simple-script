@@ -1,5 +1,5 @@
 [package]
-name = "ym-cli"
+name = "ss-cli"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,9 +8,9 @@ name = "ss"
 path = "src/main.rs"
 
 [dependencies]
-ym-lexer = { path = "../ym-lexer" }
-ym-parser = { path = "../ym-parser" }
-ym-checker = { path = "../ym-checker" }
-ym-codegen = { path = "../ym-codegen" }
+ss-lexer = { path = "../ss-lexer" }
+ss-parser = { path = "../ss-parser" }
+ss-checker = { path = "../ss-checker" }
+ss-codegen = { path = "../ss-codegen" }
 clap = { version = "4", features = ["derive"] }
 inkwell = { version = "0.5", features = ["llvm18-0"] }

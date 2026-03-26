@@ -518,21 +518,21 @@ fn extract_line_number(err: &str) -> Option<u32> {
 
 fn emit_llvm_ir(source_path: &Path) -> Result<String, String> {
     let source = resolve_imports(source_path)?;
-    let tokens = ym_lexer::tokenize(&source).map_err(|e| format!("{e}"))?;
-    let program = ym_parser::parse(tokens).map_err(|e| format!("{e}"))?;
-    let mut checker = ym_checker::Checker::new();
+    let tokens = ss_lexer::tokenize(&source).map_err(|e| format!("{e}"))?;
+    let program = ss_parser::parse(tokens).map_err(|e| format!("{e}"))?;
+    let mut checker = ss_checker::Checker::new();
     checker.check(&program).map_err(|e| format!("{e}"))?;
     let context = inkwell::context::Context::create();
-    let mut codegen = ym_codegen::Codegen::new(&context);
+    let mut codegen = ss_codegen::Codegen::new(&context);
     codegen.compile(&program).map_err(|e| format!("{e}"))?;
     Ok(codegen.print_ir())
 }
 
 fn check_only(source_path: &Path) -> Result<(), String> {
     let source = resolve_imports(source_path)?;
-    let tokens = ym_lexer::tokenize(&source).map_err(|e| format!("{e}"))?;
-    let program = ym_parser::parse(tokens).map_err(|e| format!("{e}"))?;
-    let mut checker = ym_checker::Checker::new();
+    let tokens = ss_lexer::tokenize(&source).map_err(|e| format!("{e}"))?;
+    let program = ss_parser::parse(tokens).map_err(|e| format!("{e}"))?;
+    let mut checker = ss_checker::Checker::new();
     checker.check(&program).map_err(|e| format!("{e}"))?;
     Ok(())
 }
@@ -598,21 +598,21 @@ fn compile(source_path: &Path, output_path: &Path, release: bool) -> Result<(), 
     let source = resolve_imports(source_path)?;
 
     // 2. Lex
-    let tokens = ym_lexer::tokenize(&source)
+    let tokens = ss_lexer::tokenize(&source)
         .map_err(|e| format!("{e}"))?;
 
     // 3. Parse
-    let program = ym_parser::parse(tokens)
+    let program = ss_parser::parse(tokens)
         .map_err(|e| format!("{e}"))?;
 
     // 4. Type check
-    let mut checker = ym_checker::Checker::new();
+    let mut checker = ss_checker::Checker::new();
     let _typed = checker.check(&program)
         .map_err(|e| format!("{e}"))?;
 
     // 5. Codegen
     let context = inkwell::context::Context::create();
-    let mut codegen = ym_codegen::Codegen::new(&context);
+    let mut codegen = ss_codegen::Codegen::new(&context);
     codegen.compile(&program)
         .map_err(|e| format!("{e}"))?;
 

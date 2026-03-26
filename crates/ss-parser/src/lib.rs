@@ -5,7 +5,7 @@ mod expr_parser;
 pub use ast::*;
 pub use parser::{Parser, ParseError};
 
-pub fn parse(tokens: Vec<ym_lexer::Token>) -> Result<Program, ParseError> {
+pub fn parse(tokens: Vec<ss_lexer::Token>) -> Result<Program, ParseError> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -24,7 +24,7 @@ mod tests {
         println(`hello, ${name}! count=${count}`)
     }
 }"#;
-        let tokens = ym_lexer::tokenize(source).unwrap();
+        let tokens = ss_lexer::tokenize(source).unwrap();
         let program = parse(tokens).unwrap();
 
         assert_eq!(program.stmts.len(), 1);
@@ -48,7 +48,7 @@ mod tests {
         println("non-positive")
     }
 }"#;
-        let tokens = ym_lexer::tokenize(source).unwrap();
+        let tokens = ss_lexer::tokenize(source).unwrap();
         let program = parse(tokens).unwrap();
         assert_eq!(program.stmts.len(), 1);
     }
@@ -60,7 +60,7 @@ mod tests {
     const y = (1 + 2) * 3
     const z = a && b || c
 }"#;
-        let tokens = ym_lexer::tokenize(source).unwrap();
+        let tokens = ss_lexer::tokenize(source).unwrap();
         let program = parse(tokens).unwrap();
         assert_eq!(program.stmts.len(), 1);
         match &program.stmts[0].kind {

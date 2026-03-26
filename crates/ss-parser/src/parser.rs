@@ -1,4 +1,4 @@
-use ym_lexer::{Token, TokenKind};
+use ss_lexer::{Token, TokenKind};
 use crate::ast::*;
 
 #[derive(Debug, thiserror::Error)]
@@ -502,7 +502,7 @@ impl Parser {
         })
     }
 
-    fn parse_for_in(&mut self, span: ym_lexer::Span) -> Result<Stmt, ParseError> {
+    fn parse_for_in(&mut self, span: ss_lexer::Span) -> Result<Stmt, ParseError> {
         let item = self.expect_ident()?;
         self.advance(); // skip "in"
         let iterable = self.parse_expr()?;

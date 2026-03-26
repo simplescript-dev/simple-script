@@ -10,28 +10,28 @@ SimpleScript 是一门编译型语言，语法基于 Java/TypeScript，编译到
 
 ```bash
 # 构建编译器
-cargo build -p ym-cli
+cargo build -p ss-cli
 
 # 编译 .ss 文件
-cargo run -p ym-cli --bin ss -- build file.ss -o output
-cargo run -p ym-cli --bin ss -- build --release file.ss    # 优化构建 (-O2 -s)
-cargo run -p ym-cli --bin ss -- build --emit-ir file.ss    # 输出 LLVM IR
+cargo run -p ss-cli --bin ss -- build file.ss -o output
+cargo run -p ss-cli --bin ss -- build --release file.ss    # 优化构建 (-O2 -s)
+cargo run -p ss-cli --bin ss -- build --emit-ir file.ss    # 输出 LLVM IR
 
 # 编译并运行
-cargo run -p ym-cli --bin ss -- run file.ss
-cargo run -p ym-cli --bin ss -- run --watch file.ss        # 文件变更自动重编译
+cargo run -p ss-cli --bin ss -- run file.ss
+cargo run -p ss-cli --bin ss -- run --watch file.ss        # 文件变更自动重编译
 
 # 其他命令
-cargo run -p ym-cli --bin ss -- check file.ss   # 仅类型检查
-cargo run -p ym-cli --bin ss -- test tests/      # 运行 .ss 测试套件
-cargo run -p ym-cli --bin ss -- fmt file.ss      # 格式化
-cargo run -p ym-cli --bin ss -- repl             # 交互式 REPL
-cargo run -p ym-cli --bin ss -- new myapp        # 创建新项目 (ss.json + src/main.ss)
-cargo run -p ym-cli --bin ss -- clean            # 清理缓存 (/tmp/ss_*.o)
+cargo run -p ss-cli --bin ss -- check file.ss   # 仅类型检查
+cargo run -p ss-cli --bin ss -- test tests/      # 运行 .ss 测试套件
+cargo run -p ss-cli --bin ss -- fmt file.ss      # 格式化
+cargo run -p ss-cli --bin ss -- repl             # 交互式 REPL
+cargo run -p ss-cli --bin ss -- new myapp        # 创建新项目 (ss.json + src/main.ss)
+cargo run -p ss-cli --bin ss -- clean            # 清理缓存 (/tmp/ss_*.o)
 
 # Rust 单元测试
-cargo test -p ym-lexer     # 词法分析测试
-cargo test -p ym-parser    # 语法分析测试
+cargo test -p ss-lexer     # 词法分析测试
+cargo test -p ss-parser    # 语法分析测试
 cargo test                 # 全部 crate 测试
 ```
 
@@ -49,10 +49,10 @@ cargo test                 # 全部 crate 测试
 
 | 阶段 | crate | 入口函数 | 输入 → 输出 |
 |------|-------|---------|------------|
-| 词法 | `ym-lexer` | `tokenize()` | `&str` → `Vec<Token>` |
-| 语法 | `ym-parser` | `parse()` | `Vec<Token>` → `Program { stmts: Vec<Stmt> }` |
-| 类型 | `ym-checker` | `Checker::check()` | `&Program` → `TypedProgram { program, global_vars, functions }` |
-| 代码生成 | `ym-codegen` | `Codegen::compile()` | `&TypedProgram` → LLVM object file |
+| 词法 | `ss-lexer` | `tokenize()` | `&str` → `Vec<Token>` |
+| 语法 | `ss-parser` | `parse()` | `Vec<Token>` → `Program { stmts: Vec<Stmt> }` |
+| 类型 | `ss-checker` | `Checker::check()` | `&Program` → `TypedProgram { program, global_vars, functions }` |
+| 代码生成 | `ss-codegen` | `Codegen::compile()` | `&TypedProgram` → LLVM object file |
 
 ### 关键类型
 
@@ -88,7 +88,7 @@ C 语言运行时，通过 `musl-gcc` 编译（缓存在 `/tmp/ss_runtime.o`）�
 - 方法编译为全局函数 `ClassName_methodName(this, args...)`
 - 静态分派，无 vtable
 
-### 链接过程 (ym-cli/main.rs `compile()`)
+### 链接过程 (ss-cli/main.rs `compile()`)
 
 1. 解析 imports（递归，有环检测）
 2. 四阶段流水线生成 object file
