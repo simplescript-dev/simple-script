@@ -5,6 +5,9 @@ import { tokenize, initTkMap } from "./lexer"
 import { parse, initParser } from "./parser"
 import { check } from "./checker"
 import { generate, generateToFile, initCodegen, initFuncRetTypes, initVarAliases } from "./codegen"
+import { genStmt } from "./gen_stmts"
+import { genExpr } from "./gen_exprs"
+import { registerClass } from "./gen_class"
 
 // ── Import resolution ─────────────────────────────────────────
 
