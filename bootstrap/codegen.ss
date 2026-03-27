@@ -289,6 +289,8 @@ function initBuiltinMap() {
 
 function runtimeName(callee: string): string {
     initBuiltinMap()
+    // User-defined functions take priority over builtins
+    if (funcRetTypes.has(callee) == 1) { return callee }
     if (builtinMap.has(callee) == 1) {
         return builtinMap.getString(callee)
     }
