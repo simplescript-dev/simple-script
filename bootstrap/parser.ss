@@ -389,6 +389,7 @@ function parseIf(): int {
     pExpect("RPAREN")
     skipNL()
     const thenId = parseBlock()
+    skipNL()
     let elseId = 0
     if (curKind() == "ELSE") {
         pAdvance()
