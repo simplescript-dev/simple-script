@@ -1,8 +1,0 @@
-[package]
-name = "ss-checker"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ss-parser = { path = "../ss-parser" }
-thiserror = "2"
