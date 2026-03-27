@@ -780,6 +780,8 @@ function ssTypeToLLVM(t: string): string {
     if (t == "void") { return "void" }
     if (t == "ptr") { return "ptr" }
     if (t == "i64") { return "i64" }
+    // Generic types (Array<string>, Map<string,int>, etc.) → ptr
+    if (t.contains("<") == 1) { return "ptr" }
     // Class type names → ptr
     if (classFields.has(t) == 1) { return "ptr" }
     return "i32"

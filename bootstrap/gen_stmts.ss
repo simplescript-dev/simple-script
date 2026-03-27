@@ -235,6 +235,11 @@ function genVarDecl(id: int) {
     emitIR(`  %${llName} = alloca ${llType}, align 8`)
     setVarType(name, initType)
 
+    // Track generic type annotation (e.g., Array<string>)
+    if (typeAnn.contains("<") == 1) {
+        setVarType(name, typeAnn)
+    }
+
     // Track object class for method dispatch
     if (nGetKind(initId) == "NEW_EXPR") {
         setObjClass(name, nGetS1(initId))
@@ -417,10 +422,18 @@ function genForIn(id: int) {
     const idxAlloca = nextReg(); emitIR(`  ${idxAlloca} = alloca i32, align 4`)
     emitIR(`  store i32 0, ptr ${idxAlloca}, align 4`)
 
-    // Item variable
+    // Item variable — infer element type from iterable's type annotation
+    let itemType = "i64"
+    if (nGetKind(iterableId) == "IDENT") {
+        const arrType = getVarType(nGetS1(iterableId))
+        if (arrType.contains("<string>") == 1) { itemType = "string" }
+        if (arrType.contains("<int>") == 1) { itemType = "int" }
+        if (arrType.contains("<double>") == 1) { itemType = "double" }
+    }
     const itemLLName = allocVarName(itemName)
-    emitIR(`  %${itemLLName} = alloca i64, align 8`)
-    setVarType(itemName, "i64")
+    const itemLLType = ssTypeToLLVM(itemType)
+    emitIR(`  %${itemLLName} = alloca ${itemLLType}, align 8`)
+    setVarType(itemName, itemType)
 
     const condLabel = nextLabel("forin.cond")
     const bodyLabel = nextLabel("forin.body")
@@ -442,7 +455,16 @@ function genForIn(id: int) {
     emitIR(`${bodyLabel}:`)
     terminated = 0
     const elemVal = nextReg(); emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${arr}, i32 ${curIdx})`)
-    emitIR(`  store i64 ${elemVal}, ptr %${itemLLName}, align 8`)
+    // Convert i64 element to item type
+    if (itemType == "string") {
+        const elemPtr = nextReg(); emitIR(`  ${elemPtr} = inttoptr i64 ${elemVal} to ptr`)
+        emitIR(`  store ptr ${elemPtr}, ptr %${itemLLName}, align 8`)
+    } else if (itemType == "int") {
+        const elemI32 = nextReg(); emitIR(`  ${elemI32} = trunc i64 ${elemVal} to i32`)
+        emitIR(`  store i32 ${elemI32}, ptr %${itemLLName}, align 8`)
+    } else {
+        emitIR(`  store i64 ${elemVal}, ptr %${itemLLName}, align 8`)
+    }
 
     genBlock(bodyId)
     if (terminated == 0) { emitIR(`  br label %${updateLabel2}`) }

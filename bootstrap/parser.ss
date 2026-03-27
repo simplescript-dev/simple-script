@@ -653,6 +653,17 @@ function parseTypeAnn(): string {
     if (k == "IDENT") {
         const name = curValue()
         pAdvance()
+        // Generic type: Name<T, U, ...>
+        if (curKind() == "LT") {
+            pAdvance()
+            let typeArgs = parseTypeAnn()
+            while (curKind() == "COMMA") {
+                pAdvance()
+                typeArgs = typeArgs + "," + parseTypeAnn()
+            }
+            pExpect("GT")
+            return name + "<" + typeArgs + ">"
+        }
         return name
     }
     println("parse error: expected type, found " + k)

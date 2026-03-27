@@ -848,10 +848,23 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.build_store(idx_ptr, i32_type.const_int(0, false))
 ?;
 
-        // Item variable: always i64 (array elements are i64 — may be int or string pointer)
-        let i64_type = self.context.i64_type();
-        let item_ptr = self.builder.build_alloca(i64_type, item_name)?;
-        self.set_var(item_name, item_ptr, VarType::Object);
+        // Detect string array: check var_class tag or array literal with string elements
+        let is_str_array = if let ExprKind::Ident(n) = &iterable.kind {
+            self.var_class.get(n).map(|c| c == "__str_array__").unwrap_or(false)
+        } else if let ExprKind::ArrayLit(elems) = &iterable.kind {
+            elems.first().map(|e| matches!(e.kind, ExprKind::StringLit(_))).unwrap_or(false)
+        } else if let ExprKind::MethodCall { method, .. } = &iterable.kind {
+            method == "split"
+        } else { false };
+
+        let (item_ptr, item_vt) = if is_str_array {
+            let p = self.builder.build_alloca(self.context.ptr_type(AddressSpace::default()), item_name)?;
+            (p, VarType::String)
+        } else {
+            let p = self.builder.build_alloca(i32_type, item_name)?;
+            (p, VarType::Int)
+        };
+        self.set_var(item_name, item_ptr, item_vt);
 
         let cond_bb = self.context.append_basic_block(function, "forin.cond");
         let body_bb = self.context.append_basic_block(function, "forin.body");
