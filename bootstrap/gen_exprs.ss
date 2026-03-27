@@ -35,6 +35,8 @@ function genExpr(id: int): string {
             } else {
                 emitIR(`  ${r} = sub i32 0, ${val}`)
             }
+        } else if (op == "BitNot") {
+            emitIR(`  ${r} = xor i32 ${val}, -1`)
         } else {
             emitIR(`  ${r} = icmp eq i32 ${val}, 0`)
             const r2 = nextReg()
@@ -204,6 +206,13 @@ function genBinary(id: int): string {
     if (op == "Mul") { emitIR(`  ${r} = mul i32 ${left}, ${right}`); return r }
     if (op == "Div") { emitIR(`  ${r} = sdiv i32 ${left}, ${right}`); return r }
     if (op == "Mod") { emitIR(`  ${r} = srem i32 ${left}, ${right}`); return r }
+    // Bitwise operations
+    if (op == "BitAnd") { emitIR(`  ${r} = and i32 ${left}, ${right}`); return r }
+    if (op == "BitOr") { emitIR(`  ${r} = or i32 ${left}, ${right}`); return r }
+    if (op == "BitXor") { emitIR(`  ${r} = xor i32 ${left}, ${right}`); return r }
+    if (op == "Shl") { emitIR(`  ${r} = shl i32 ${left}, ${right}`); return r }
+    if (op == "Shr") { emitIR(`  ${r} = ashr i32 ${left}, ${right}`); return r }
+    if (op == "UShr") { emitIR(`  ${r} = lshr i32 ${left}, ${right}`); return r }
     // And/Or handled above with short-circuit
     // Integer comparison
     let cmpOp = ""

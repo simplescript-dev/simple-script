@@ -61,6 +61,8 @@ function tokenize(source: string): string {
         if (ch == ">") { lexGt(); continue }
         if (ch == "&") { lexAnd(); continue }
         if (ch == "|") { lexOr(); continue }
+        if (ch == "^") { lexCaret(); continue }
+        if (ch == "~") { lexTilde(); continue }
         if (ch == "(") { emit("LPAREN", "("); advance(); continue }
         if (ch == ")") { emit("RPAREN", ")"); advance(); continue }
         if (ch == "{") { emit("LBRACE", "{"); advance(); continue }
@@ -272,6 +274,8 @@ function lexTemplate() {
                 } else if (ch == ">") { lexGt()
                 } else if (ch == "&") { lexAnd()
                 } else if (ch == "|") { lexOr()
+                } else if (ch == "^") { lexCaret()
+                } else if (ch == "~") { lexTilde()
                 } else {
                     println(`lexer error: unexpected '${ch}' in template`)
                     exit(1)
@@ -429,25 +433,40 @@ function lexBang() {
 function lexLt() {
     advance()
     if (pos < srcLen && peek() == "=") { advance(); emit("LE", "<="); return }
+    if (pos < srcLen && peek() == "<") { advance(); emit("SHL", "<<"); return }
     emit("LT", "<")
 }
 
 function lexGt() {
     advance()
     if (pos < srcLen && peek() == "=") { advance(); emit("GE", ">="); return }
+    if (pos < srcLen && peek() == ">") {
+        advance()
+        if (pos < srcLen && peek() == ">") { advance(); emit("USHR", ">>>"); return }
+        emit("SHR", ">>")
+        return
+    }
     emit("GT", ">")
 }
 
 function lexAnd() {
     advance()
     if (pos < srcLen && peek() == "&") { advance(); emit("AND", "&&"); return }
-    println("lexer error: expected '&&' at line " + curLine)
-    exit(1)
+    emit("BIT_AND", "&")
 }
 
 function lexOr() {
     advance()
     if (pos < srcLen && peek() == "|") { advance(); emit("OR", "||"); return }
-    println("lexer error: expected '||' at line " + curLine)
-    exit(1)
+    emit("BIT_OR", "|")
+}
+
+function lexCaret() {
+    advance()
+    emit("BIT_XOR", "^")
+}
+
+function lexTilde() {
+    advance()
+    emit("BIT_NOT", "~")
 }

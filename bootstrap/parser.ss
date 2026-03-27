@@ -701,11 +701,44 @@ function parseOr(): int {
 }
 
 function parseAndExpr(): int {
-    let left = parseEquality()
+    let left = parseBitOr()
     while (curKind() == "AND") {
         pAdvance()
-        const right = parseEquality()
+        const right = parseBitOr()
         const id = newNode("BINARY"); nSetS1(id, "And"); nSetI1(id, left); nSetI2(id, right)
+        left = id
+    }
+    return left
+}
+
+function parseBitOr(): int {
+    let left = parseBitXor()
+    while (curKind() == "BIT_OR") {
+        pAdvance()
+        const right = parseBitXor()
+        const id = newNode("BINARY"); nSetS1(id, "BitOr"); nSetI1(id, left); nSetI2(id, right)
+        left = id
+    }
+    return left
+}
+
+function parseBitXor(): int {
+    let left = parseBitAnd()
+    while (curKind() == "BIT_XOR") {
+        pAdvance()
+        const right = parseBitAnd()
+        const id = newNode("BINARY"); nSetS1(id, "BitXor"); nSetI1(id, left); nSetI2(id, right)
+        left = id
+    }
+    return left
+}
+
+function parseBitAnd(): int {
+    let left = parseEquality()
+    while (curKind() == "BIT_AND") {
+        pAdvance()
+        const right = parseEquality()
+        const id = newNode("BINARY"); nSetS1(id, "BitAnd"); nSetI1(id, left); nSetI2(id, right)
         left = id
     }
     return left
@@ -742,13 +775,28 @@ function parseComparison(): int {
 }
 
 function parseAdditive(): int {
-    let left = parseMultiplicative()
+    let left = parseShift()
     while (curKind() == "PLUS" || curKind() == "MINUS") {
         const op = curKind()
         pAdvance()
         const right = parseMultiplicative()
         const id = newNode("BINARY")
         if (op == "PLUS") { nSetS1(id, "Add") } else { nSetS1(id, "Sub") }
+        nSetI1(id, left)
+        nSetI2(id, right)
+        left = id
+    }
+    return left
+}
+
+function parseShift(): int {
+    let left = parseMultiplicative()
+    while (curKind() == "SHL" || curKind() == "SHR" || curKind() == "USHR") {
+        const op = curKind()
+        pAdvance()
+        const right = parseMultiplicative()
+        const id = newNode("BINARY")
+        if (op == "SHL") { nSetS1(id, "Shl") } else if (op == "SHR") { nSetS1(id, "Shr") } else { nSetS1(id, "UShr") }
         nSetI1(id, left)
         nSetI2(id, right)
         left = id
@@ -783,9 +831,10 @@ function parsePower(): int {
 }
 
 function parseUnary(): int {
-    if (curKind() == "MINUS" || curKind() == "NOT") {
+    if (curKind() == "MINUS" || curKind() == "NOT" || curKind() == "BIT_NOT") {
         let opName = "Not"
         if (curKind() == "MINUS") { opName = "Neg" }
+        if (curKind() == "BIT_NOT") { opName = "BitNot" }
         pAdvance()
         const operandId = parseUnary()
         const id = newNode("UNARY")
