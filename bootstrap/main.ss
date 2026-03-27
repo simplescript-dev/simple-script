@@ -13,6 +13,7 @@ import { registerClass } from "./gen_class"
 
 let visitedImports = ""
 let visitedReady = 0
+let projectRoot = ""
 
 function initVisited() {
     if (visitedReady == 1) { return }
@@ -20,20 +21,53 @@ function initVisited() {
     visitedReady = 1
 }
 
+function findProjectRoot(startPath: string): string {
+    // Walk up from startPath looking for ss.json or bootstrap/
+    let dir = ""
+    const slash = lastIndexOf(startPath, "/")
+    if (slash >= 0) {
+        dir = startPath.substring(0, slash)
+    } else {
+        dir = "."
+    }
+    // Check dir, then parent, grandparent, etc.
+    let d = dir
+    let tries = 0
+    while (tries < 6) {
+        if (fileExists(`${d}/ss.json`) == 1 || fileExists(`${d}/bootstrap`) == 1) {
+            return d
+        }
+        // Go up one level
+        const up = lastIndexOf(d, "/")
+        if (up > 0) {
+            d = d.substring(0, up)
+        } else {
+            // No more slashes — try "." (cwd) as last resort
+            if (d != ".") {
+                d = "."
+            } else {
+                break
+            }
+        }
+        tries = tries + 1
+    }
+    return "."
+}
+
 function resolveImports(filePath: string): string {
     initVisited()
+    projectRoot = findProjectRoot(filePath)
     return resolveInner(filePath)
 }
 
 function resolveInner(filePath: string): string {
-    // Prevent circular imports
     if (visitedImports.has(filePath) == 1) { return "" }
     visitedImports.set(filePath, 1)
 
     const source = readFile(filePath)
     if (source == "") { return "" }
 
-    // Extract base directory from file path
+    // Base directory for relative imports
     let baseDir = ""
     const lastSlash = lastIndexOf(filePath, "/")
     if (lastSlash >= 0) {
@@ -47,7 +81,13 @@ function resolveInner(filePath: string): string {
         if (line.startsWith("import ") == 1) {
             const importPath = extractImportPath(line)
             if (importPath != "") {
-                let fullPath = baseDir + importPath
+                let fullPath = ""
+                if (importPath.startsWith("@/") == 1) {
+                    // @/ = project root
+                    fullPath = projectRoot + "/" + importPath.substring(2, importPath.length() - 2)
+                } else {
+                    fullPath = baseDir + importPath
+                }
                 if (fullPath.endsWith(".ss") == 0) {
                     fullPath = fullPath + ".ss"
                 }
