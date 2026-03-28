@@ -272,8 +272,10 @@ function genBinary(id: int): string {
 
 function genCall(id: int): string {
     const callee = nGetS1(id)
-    const rtName = runtimeName(callee)
     const argList = nGetList(id)
+    // Resolve overloaded function name
+    const resolvedName = resolveOverload(callee, argList)
+    const rtName = runtimeName(resolvedName != callee ? resolvedName : callee)
 
     // Special case: println with auto-conversion
     if (callee == "println" || callee == "print") {
@@ -308,8 +310,9 @@ function genCall(id: int): string {
         return "0"
     }
 
-    // General function call
-    const expectsDouble = callReturnType(callee) == "double"
+    // General function call — use resolved name for return type lookup
+    const effectiveName = resolvedName != callee ? resolvedName : callee
+    const expectsDouble = callReturnType(effectiveName) == "double"
     // Collect provided args
     let providedArgs = ""
     let providedCount = 0
@@ -367,8 +370,8 @@ function genCall(id: int): string {
         }
     }
 
-    // Determine return type
-    const retType = callReturnType(callee)
+    // Determine return type (use resolved overload name)
+    const retType = callReturnType(effectiveName)
     const llRetType = ssTypeToLLVM(retType)
 
     // Indirect call: if callee is a function pointer variable (fn or i64)
@@ -1228,4 +1231,72 @@ function getVarType(name: string): string {
         return varTypes.getString(globalKey)
     }
     return ""
+}
+
+// ── Method overloading: type signature ───────────────────────
+
+function typeSig(ssType: string): string {
+    if (ssType == "int" || ssType == "bool" || ssType == "auto" || ssType == "") { return "i" }
+    if (ssType == "double") { return "d" }
+    if (ssType == "string") { return "s" }
+    if (ssType == "fn") { return "f" }
+    if (ssType == "void") { return "v" }
+    if (ssType.contains("<") == 1) { return "p" }
+    // Class name → use full name
+    return ssType
+}
+
+function paramSig(paramList: string): string {
+    if (paramList == "") { return "" }
+    let sig = ""
+    const parts = paramList.split(",")
+    for (p in parts) {
+        const pId = parseInt(p)
+        if (pId > 0 && nGetKind(pId) == "PARAM") {
+            if (sig != "") { sig = `${sig}_` }
+            sig = `${sig}${typeSig(nGetS2(pId))}`
+        }
+    }
+    return sig
+}
+
+function argsSig(argList: string): string {
+    if (argList == "") { return "" }
+    let sig = ""
+    const parts = argList.split(",")
+    for (p in parts) {
+        const argId = parseInt(p)
+        if (argId > 0) {
+            const aType = inferType(argId)
+            if (sig != "") { sig = `${sig}_` }
+            // For IDENT with class type, use class name
+            if (nGetKind(argId) == "IDENT") {
+                const objClass = getObjClass(nGetS1(argId))
+                if (objClass != "" && objClass != "Map") {
+                    sig = `${sig}${objClass}`
+                    continue
+                }
+            }
+            if (nGetKind(argId) == "NEW_EXPR") {
+                sig = `${sig}${nGetS1(argId)}`
+                continue
+            }
+            sig = `${sig}${typeSig(aType)}`
+        }
+    }
+    return sig
+}
+
+function resolveOverload(baseName: string, argList: string): string {
+    // Only resolve overloads for functions with multiple signatures
+    if (overloadReady == 0) { return baseName }
+    if (overloadCount.has(baseName) == 0) { return baseName }
+    if (parseInt(overloadCount.getString(baseName)) <= 1) { return baseName }
+    // This function IS overloaded — find the right signature
+    const sig = argsSig(argList)
+    if (sig != "") {
+        const mangled = `${baseName}_${sig}`
+        if (funcRetTypes.has(mangled) == 1) { return mangled }
+    }
+    return baseName
 }

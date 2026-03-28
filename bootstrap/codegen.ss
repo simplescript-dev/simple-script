@@ -68,6 +68,8 @@ let breakLabel = ""
 let continueLabel = ""
 let enumValues = ""
 let enumReady = 0
+let overloadCount = ""
+let overloadReady = 0
 
 function initFuncRetTypes() {
     if (funcRetReady == 1) { return }
@@ -152,6 +154,19 @@ function registerAllDecls(rootId: int) {
             let fret = nGetS2(sid)
             if (fret == "") { fret = "void" }
             funcRetTypes.set(fname, fret)
+            // Register mangled name + track overload count
+            const fSig = paramSig(nGetList(sid))
+            if (fSig != "") {
+                funcRetTypes.set(`${fname}_${fSig}`, fret)
+                funcParamCount.set(`${fname}_${fSig}`, funcParamCount.getString(fname) ?? "0")
+            }
+            if (overloadReady == 0) { overloadCount = new Map(); overloadReady = 1 }
+            if (overloadCount.has(fname) == 1) {
+                const cnt = parseInt(overloadCount.getString(fname))
+                overloadCount.set(fname, `${cnt + 1}`)
+            } else {
+                overloadCount.set(fname, "1")
+            }
             const fparams = nGetList(sid)
             if (fparams != "") {
                 const fps = fparams.split(",")

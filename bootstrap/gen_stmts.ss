@@ -108,9 +108,11 @@ function genStmt(id: int) {
 
     if (kind == "FUNC_DECL") {
         const fname = nGetS1(id)
-        // Skip duplicate function declarations (from merged imports)
-        if (fname != "main" && funcRetTypes.has(`${fname}_generated`) == 1) { return }
-        funcRetTypes.set(`${fname}_generated`, "1")
+        const fSig = paramSig(nGetList(id))
+        // Use mangled key for duplicate detection (supports overloading)
+        const genKey = fSig != "" ? `${fname}_${fSig}_generated` : `${fname}_generated`
+        if (fname != "main" && funcRetTypes.has(genKey) == 1) { return }
+        funcRetTypes.set(genKey, "1")
         genFuncDecl(id)
         return
     }
@@ -214,10 +216,22 @@ function genStmt(id: int) {
     // IMPORT, INTERFACE_DECL — skip
 }
 
+function isOverloaded(fname: string): int {
+    if (overloadReady == 0) { return 0 }
+    if (overloadCount.has(fname) == 0) { return 0 }
+    return parseInt(overloadCount.getString(fname)) > 1 ? 1 : 0
+}
+
 function genFuncDecl(id: int) {
     const name = nGetS1(id)
+    // Use mangled name if function is overloaded
+    let llName = name
+    if (isOverloaded(name) == 1) {
+        const fSig = paramSig(nGetList(id))
+        if (fSig != "") { llName = `${name}_${fSig}` }
+    }
     regCount = 0
-    currentFunc = name
+    currentFunc = llName
     terminated = 0
     varAliases = Map()
 
@@ -247,7 +261,7 @@ function genFuncDecl(id: int) {
         let retType = nGetS2(id)
         if (retType == "") { retType = "void" }
         const llRetType = ssTypeToLLVM(retType)
-        emitIR(`define ${llRetType} @${name}(${paramStr}) {`)
+        emitIR(`define ${llRetType} @${llName}(${paramStr}) {`)
         emitIR("entry:")
         // Alloca params and store argument values
         if (paramList != "") {

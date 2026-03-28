@@ -57,6 +57,11 @@ function registerClass(id: int) {
                     let mRet = nGetS2(mId)
                     if (mRet == "") { mRet = "void" }
                     funcRetTypes.set(`${name}_${mName}`, mRet)
+                    // Mangled name for overloading
+                    const mSig = paramSig(nGetList(mId))
+                    if (mSig != "") {
+                        funcRetTypes.set(`${name}_${mName}_${mSig}`, mRet)
+                    }
                 }
             }
         }
