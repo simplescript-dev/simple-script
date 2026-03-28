@@ -461,16 +461,24 @@ function genMethodCall(id: int): string {
                 }
             }
         }
+        // Resolve overloaded static method
+        let sResolved = `${sMethodClass}_${method}`
+        if (isOverloaded(sResolved) == 1) {
+            const sSig = argsSig(argList)
+            if (sSig != "" && funcRetTypes.has(`${sResolved}_${sSig}`) == 1) {
+                sResolved = `${sResolved}_${sSig}`
+            }
+        }
         let sRetType = "ptr"
-        if (funcRetTypes.has(`${sMethodClass}_${method}`) == 1) {
-            sRetType = ssTypeToLLVM(funcRetTypes.getString(`${sMethodClass}_${method}`))
+        if (funcRetTypes.has(sResolved) == 1) {
+            sRetType = ssTypeToLLVM(funcRetTypes.getString(sResolved))
         }
         if (sRetType == "void") {
-            emitIR(`  call void @${sMethodClass}_${method}(${sArgs})`)
+            emitIR(`  call void @${sResolved}(${sArgs})`)
             return "0"
         }
         const sr = nextReg()
-        emitIR(`  ${sr} = call ${sRetType} @${sMethodClass}_${method}(${sArgs})`)
+        emitIR(`  ${sr} = call ${sRetType} @${sResolved}(${sArgs})`)
         return sr
     }
 

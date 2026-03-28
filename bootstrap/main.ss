@@ -414,8 +414,16 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     if (userSource == "") { println(`error: cannot read ${inputFile}`); exit(1) }
     const prelude = readFile(findPrelude())
     const source = prelude + "\n" + userSource
+    // Count prelude lines for error reporting offset
+    let preludeLines = 0
+    let pi = 0
+    while (pi < prelude.length()) {
+        if (prelude.charAt(pi) == "\n") { preludeLines = preludeLines + 1 }
+        pi = pi + 1
+    }
 
     const tokens = tokenize(source)
+    setLineOffset(preludeLines + 1)
     const root = parse(tokens)
     const llFile = "/tmp/ss_bootstrap.ll"
     generateToFile(root, llFile)

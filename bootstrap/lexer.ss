@@ -12,12 +12,14 @@ let tokenBuf = ""
 let tokenCount = 0
 let tkKinds = ""
 let tkValues = ""
+let tkLines = ""
 let tkMapReady = 0
 
 function initTkMap() {
     if (tkMapReady == 1) { return }
     tkKinds = Map()
     tkValues = Map()
+    tkLines = Map()
     tkMapReady = 1
 }
 
@@ -120,7 +122,12 @@ function emit(kind: string, value: string) {
     const idx = tokenCount + ""
     tkKinds.set(idx, kind)
     tkValues.set(idx, value)
+    tkLines.set(idx, `${curLine}`)
     tokenCount = tokenCount + 1
+}
+
+function tkLine(index: int): int {
+    return parseInt(tkLines.getString(`${index}`))
 }
 
 function advance(): string {

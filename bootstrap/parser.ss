@@ -84,9 +84,21 @@ function pAdvance() {
     }
 }
 
+let lineOffset = 0
+
+function setLineOffset(offset: int) {
+    lineOffset = offset
+}
+
+function curLineNum(): int {
+    const raw = tkLine(tPos)
+    const adjusted = raw - lineOffset
+    return adjusted > 0 ? adjusted : raw
+}
+
 function pExpect(kind: string) {
     if (curKind() != kind) {
-        println("parse error: expected " + kind + ", found " + curKind() + " '" + curValue() + "'")
+        println(`parse error at line ${curLineNum()}: expected ${kind}, found ${curKind()} '${curValue()}'`)
         exit(1)
     }
     pAdvance()
@@ -94,7 +106,7 @@ function pExpect(kind: string) {
 
 function pExpectIdent(): string {
     if (curKind() != "IDENT") {
-        println("parse error: expected identifier, found " + curKind())
+        println(`parse error at line ${curLineNum()}: expected identifier, found ${curKind()}`)
         exit(1)
     }
     const name = curValue()
@@ -113,7 +125,7 @@ function expectNLOrRB() {
     if (k == "NEWLINE") { pAdvance(); return }
     if (k == "RBRACE" || k == "EOF") { return }
     if (k == "SEMICOLON") { pAdvance(); return }
-    println("parse error: expected newline or '}', found " + k)
+    println(`parse error at line ${curLineNum()}: expected newline or '}', found ${k}`)
     exit(1)
 }
 
@@ -773,7 +785,7 @@ function parseTypeAnn(): string {
         }
         return name
     }
-    println("parse error: expected type, found " + k)
+    println(`parse error at line ${curLineNum()}: expected type, found ${k}`)
     exit(1)
     return ""
 }
@@ -966,7 +978,9 @@ function parseUnary(): int {
 function parsePrimary(): int {
     let expr = parseAtom()
     // Postfix: .member, .method(), [index], ?.member
-    while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN") {
+    // Support multiline chaining: NEWLINE followed by DOT continues the chain
+    while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN" || (curKind() == "NEWLINE" && tkKind(tkGet(tokens, tPos + 1)) == "DOT")) {
+        if (curKind() == "NEWLINE") { pAdvance() }
         if (curKind() == "LBRACKET") {
             pAdvance()
             const indexId = parseExpr()
@@ -1181,7 +1195,7 @@ function parseAtom(): int {
         nSetList(id, elems)
         return id
     }
-    println("parse error: unexpected token " + k + " '" + v + "'")
+    println(`parse error at line ${curLineNum()}: unexpected token ${k} '${v}'`)
     exit(1)
     return 0
 }
