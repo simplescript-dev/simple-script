@@ -483,6 +483,51 @@ function genMethodCall(id: int): string {
         objVal = castR
     }
 
+    // Class method priority: if object is a class instance with this method, skip built-in dispatch
+    let earlyClass = ""
+    if (nGetKind(objId) == "IDENT") {
+        earlyClass = getObjClass(nGetS1(objId))
+    }
+    // Infer class from expression return type (chained calls like JSON.create().put())
+    if (earlyClass == "") {
+        const exprType = inferType(objId)
+        if (exprType != "" && classFields.has(exprType) == 1) {
+            earlyClass = exprType
+        }
+    }
+    if (earlyClass != "" && earlyClass != "Map") {
+        if (funcRetTypes.has(`${earlyClass}_${method}`) == 1) {
+            // Jump to class method dispatch (handled below after built-in checks)
+            let ecArgs = `ptr ${objVal}`
+            if (argList != "") {
+                const ecParts = argList.split(",")
+                for (ecp in ecParts) {
+                    const ecId = parseInt(ecp)
+                    if (ecId > 0) {
+                        const ecVal = genExpr(ecId)
+                        const ecType = inferType(ecId)
+                        ecArgs = `${ecArgs}, ${ssTypeToLLVM(ecType)} ${ecVal}`
+                    }
+                }
+            }
+            let ecResolved = `${earlyClass}_${method}`
+            if (isOverloaded(ecResolved) == 1) {
+                const ecSig = argsSig(argList)
+                if (ecSig != "" && funcRetTypes.has(`${ecResolved}_${ecSig}`) == 1) {
+                    ecResolved = `${ecResolved}_${ecSig}`
+                }
+            }
+            let ecRet = ssTypeToLLVM(funcRetTypes.getString(ecResolved) ?? "int")
+            if (ecRet == "void") {
+                emitIR(`  call void @${ecResolved}(${ecArgs})`)
+                return "0"
+            }
+            const ecR = nextReg()
+            emitIR(`  ${ecR} = call ${ecRet} @${ecResolved}(${ecArgs})`)
+            return ecR
+        }
+    }
+
     // String methods
     if (method == "length") {
         const r = nextReg()
