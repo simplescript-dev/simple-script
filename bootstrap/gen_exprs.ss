@@ -612,7 +612,13 @@ function genMethodCall(id: int): string {
         return "0"
     }
     if (method == "get" || method == "getString" || method == "has") {
-        const mkey = genExpr(parseInt(argList))
+        let mkey = genExpr(parseInt(argList))
+        const mkeyType = inferType(parseInt(argList))
+        if (mkeyType == "i64") {
+            const cvR = nextReg()
+            emitIR(`  ${cvR} = inttoptr i64 ${mkey} to ptr`)
+            mkey = cvR
+        }
         const r = nextReg()
         if (method == "has") {
             emitIR(`  ${r} = call i32 @ss_mapHas(ptr ${objVal}, ptr ${mkey})`)

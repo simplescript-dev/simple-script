@@ -12,6 +12,7 @@ let scopeId = 0
 let varNames = ""     // "scopeId:name" -> "type"
 let varConst = ""     // "scopeId:name" -> 1 if const
 let funcNames = ""    // "funcName" -> "retType"
+let ifaceMethods = ""
 let funcReady = 0
 
 function initChecker() {
@@ -19,6 +20,7 @@ function initChecker() {
     varNames = Map()
     varConst = Map()
     funcNames = Map()
+    ifaceMethods = Map()
     scopeDepth = 0
     scopeId = 0
     // Built-in functions
@@ -57,6 +59,41 @@ function lookupVar(name: string): string {
     return ""
 }
 
+function checkInterfaceImpl(className: string, implList: string, classMethods: string) {
+    // Scan comma-separated interface names without for-in (avoids i64/ptr issue)
+    let remaining = implList
+    while (remaining != "") {
+        let iface = remaining
+        const commaIdx = remaining.indexOf(",")
+        if (commaIdx >= 0) {
+            iface = remaining.substring(0, commaIdx)
+            remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
+        } else {
+            remaining = ""
+        }
+        if (ifaceMethods.has(iface) == 1) {
+            const required = ifaceMethods.getString(iface)
+            if (required != "") {
+                let remReq = required
+                while (remReq != "") {
+                    let req = remReq
+                    const ci = remReq.indexOf(",")
+                    if (ci >= 0) {
+                        req = remReq.substring(0, ci)
+                        remReq = remReq.substring(ci + 1, remReq.length() - ci - 1)
+                    } else {
+                        remReq = ""
+                    }
+                    if (classMethods.contains(`,${req},`) == 0) {
+                        println(`checker error: class '${className}' missing method '${req}' required by interface '${iface}'`)
+                        exit(1)
+                    }
+                }
+            }
+        }
+    }
+}
+
 function defineFunc(name: string, retType: string) {
     funcNames.set(name, retType)
 }
@@ -75,10 +112,30 @@ function check(rootId: int): int {
         exit(1)
     }
     const stmtList = nGetList(rootId)
-    // Pass 1: register function declarations
+    // Pass 1: register function declarations + interface definitions
     if (stmtList != "") {
         const p1 = stmtList.split(",")
-        for (p in p1) { const s = parseInt(p); if (s > 0 && nGetKind(s) == "FUNC_DECL") { defineFunc(nGetS1(s), nGetS2(s)) } }
+        for (p in p1) {
+            const s = parseInt(p)
+            if (s <= 0) { continue }
+            if (nGetKind(s) == "FUNC_DECL") { defineFunc(nGetS1(s), nGetS2(s)) }
+            if (nGetKind(s) == "INTERFACE_DECL") {
+                const ifName = nGetS1(s)
+                const ml = nGetList(s)
+                let methodNames = ""
+                if (ml != "") {
+                    const ms = ml.split(",")
+                    for (m in ms) {
+                        const mId = parseInt(m)
+                        if (mId > 0) {
+                            if (methodNames == "") { methodNames = nGetS1(mId) }
+                            else { methodNames = `${methodNames},${nGetS1(mId)}` }
+                        }
+                    }
+                }
+                ifaceMethods.set(ifName, methodNames)
+            }
+        }
     }
     // Pass 2: check all statements
     checkStmtList(stmtList)
@@ -101,8 +158,28 @@ function checkStmt(id: int) {
         return
     }
     if (kind == "CLASS_DECL") {
-        // Check methods
+        const className = nGetS1(id)
+        const implList = nGetS3(id)
         const methodsBlockId = nGetI2(id)
+        // Collect class method names
+        let classMethods = ","
+        if (methodsBlockId > 0) {
+            const ml = nGetList(methodsBlockId)
+            if (ml != "") {
+                const ms = ml.split(",")
+                for (m in ms) {
+                    const mId = parseInt(m)
+                    if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
+                        classMethods = `${classMethods}${nGetS1(mId)},`
+                    }
+                }
+            }
+        }
+        // Verify interface implementations (uses contains to avoid i64/ptr bootstrap issue)
+        if (implList != "") {
+            checkInterfaceImpl(className, implList, classMethods)
+        }
+        // Check method bodies
         if (methodsBlockId > 0) {
             const methodList = nGetList(methodsBlockId)
             checkStmtList(methodList)
