@@ -384,6 +384,24 @@ function parseSwitchBody(): int {
 function parseVarDeclCore(): int {
     const varKind = curKind()
     pAdvance()
+    // Array destructuring: const [a, b, c] = expr
+    if (curKind() == "LBRACKET") {
+        pAdvance()
+        let names = ""
+        while (curKind() != "RBRACKET" && curKind() != "EOF") {
+            const n = pExpectIdent()
+            if (names == "") { names = n } else { names = `${names},${n}` }
+            if (curKind() == "COMMA") { pAdvance() }
+        }
+        pExpect("RBRACKET")
+        pExpect("ASSIGN")
+        const initId = parseExpr()
+        const id = newNode("DESTRUCTURE_ARRAY")
+        nSetS1(id, names)
+        nSetS2(id, varKind)
+        nSetI1(id, initId)
+        return id
+    }
     const name = pExpectIdent()
     let typeAnn = ""
     if (curKind() == "COLON") { pAdvance(); typeAnn = parseTypeAnn() }

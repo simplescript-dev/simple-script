@@ -1,6 +1,23 @@
 // Statement generation for bootstrap codegen
 // ── Statement generation ──────────────────────────────────────
 
+function genDestructureArray(id: int) {
+    const names = nGetS1(id)
+    const initId = nGetI1(id)
+    const arrVal = genExpr(initId)
+    const parts = names.split(",")
+    let idx = 0
+    for (n in parts) {
+        const llName = allocVarName(n)
+        emitIR(`  %${llName} = alloca i64, align 8`)
+        const elemR = nextReg()
+        emitIR(`  ${elemR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idx})`)
+        emitIR(`  store i64 ${elemR}, ptr %${llName}, align 8`)
+        setVarType(n, "i64")
+        idx = idx + 1
+    }
+}
+
 function genTryCatch(id: int) {
     const tryBody = nGetI1(id)
     const catchBody = nGetI2(id)
@@ -99,6 +116,10 @@ function genStmt(id: int) {
     }
     if (kind == "VAR_DECL") {
         genVarDecl(id)
+        return
+    }
+    if (kind == "DESTRUCTURE_ARRAY") {
+        genDestructureArray(id)
         return
     }
     if (kind == "ASSIGN") {
