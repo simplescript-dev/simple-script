@@ -900,10 +900,13 @@ function genArrayLit(id: int): string {
             if (elemId > 0) {
                 const val = genExpr(elemId)
                 const vType = inferType(elemId)
-                if (vType == "string") {
+                const llElemType = ssTypeToLLVM(vType)
+                if (llElemType == "ptr") {
                     const castReg = nextReg()
                     emitIR(`  ${castReg} = ptrtoint ptr ${val} to i64`)
                     emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${castReg})`)
+                } else if (llElemType == "i64") {
+                    emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${val})`)
                 } else {
                     const extReg = nextReg()
                     emitIR(`  ${extReg} = sext i32 ${val} to i64`)
@@ -952,7 +955,8 @@ function genTernary(id: int): string {
 // Convert any expression to string for println
 function genExprAsString(id: int): string {
     const vType = inferType(id)
-    if (vType == "string") {
+    const llType = ssTypeToLLVM(vType)
+    if (vType == "string" || (llType == "ptr" && vType != "ptr")) {
         const sVal = genExpr(id)
         // If the actual LLVM value is i64 (e.g., from array), inttoptr
         const sNodeKind = nGetKind(id)
@@ -1109,6 +1113,8 @@ function ssTypeToLLVM(t: string): string {
     if (t.contains("<") == 1) { return "ptr" }
     // Class type names → ptr
     if (classFields.has(t) == 1) { return "ptr" }
+    // Generic type params (single uppercase letter like T, U, V) → ptr (erased)
+    if (t.length() == 1 && charCodeAt(t, 0) >= 65 && charCodeAt(t, 0) <= 90) { return "ptr" }
     return "i32"
 }
 

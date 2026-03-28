@@ -178,6 +178,13 @@ function parseFuncDecl(): int {
     if (curKind() == "OVERRIDE") { pAdvance() }
     pExpect("FUNCTION")
     const name = pExpectIdent()
+    // Optional generic type params: function name<T, U>(...)
+    if (curKind() == "LT") {
+        pAdvance()
+        pExpectIdent()
+        while (curKind() == "COMMA") { pAdvance(); pExpectIdent() }
+        pExpect("GT")
+    }
     pExpect("LPAREN")
     const params = parseParams()
     pExpect("RPAREN")

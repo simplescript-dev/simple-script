@@ -452,6 +452,9 @@ function genReturn(id: int) {
         } else if (retLLType == "i64" && declRet == "i32") {
             const trR = nextReg(); emitIR(`  ${trR} = trunc i64 ${val} to i32`)
             emitIR(`  ret i32 ${trR}`)
+        } else if (retLLType == "i64" && declRet == "ptr") {
+            const cvR = nextReg(); emitIR(`  ${cvR} = inttoptr i64 ${val} to ptr`)
+            emitIR(`  ret ptr ${cvR}`)
         } else if (retLLType == "double" && declRet == "i32") {
             const fpR = nextReg(); emitIR(`  ${fpR} = fptosi double ${val} to i32`)
             emitIR(`  ret i32 ${fpR}`)
