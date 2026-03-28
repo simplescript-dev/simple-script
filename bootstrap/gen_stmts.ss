@@ -269,7 +269,13 @@ function genVarDecl(id: int) {
         setObjClass(name, "Map")
     }
 
-    const val = genExpr(initId)
+    let val = genExpr(initId)
+    const valLLType = ssTypeToLLVM(inferType(initId))
+    if (valLLType == "i64" && llType == "i32") {
+        const trR = nextReg()
+        emitIR(`  ${trR} = trunc i64 ${val} to i32`)
+        val = trR
+    }
     emitIR(`  store ${llType} ${val}, ptr %${llName}, align 8`)
 }
 
@@ -282,7 +288,13 @@ function genAssign(id: int) {
     const llType = ssTypeToLLVM(vType)
 
     if (op == "ASSIGN") {
-        const val = genExpr(valId)
+        let val = genExpr(valId)
+        const valType = inferType(valId)
+        if (ssTypeToLLVM(valType) == "i64" && llType == "i32") {
+            const trR = nextReg()
+            emitIR(`  ${trR} = trunc i64 ${val} to i32`)
+            val = trR
+        }
         emitIR(`  store ${llType} ${val}, ptr ${varRef(name)}, align 8`)
     } else {
         // Compound: +=, -=, etc.

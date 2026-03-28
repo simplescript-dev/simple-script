@@ -498,6 +498,31 @@ function genMethodCall(id: int): string {
         const fn = preludeName(`ss_${method}`)
         const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, i32 ${w}, ptr ${p})`); return r
     }
+    // Higher-order array methods: map, filter, reduce, forEach
+    if (method == "map" || method == "filter" || method == "forEach") {
+        const cbVal = genExpr(parseInt(argList))
+        const fn = preludeName(`ss_${method}`)
+        const r = nextReg()
+        emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, i64 ${cbVal})`)
+        return r
+    }
+    if (method == "reduce") {
+        const rArgs = argList.split(",")
+        const cbVal = genExpr(parseInt(rArgs[0]))
+        const initVal = genExpr(parseInt(rArgs[1]))
+        let initI64 = initVal
+        if (inferType(parseInt(rArgs[1])) == "int") {
+            const sR = nextReg()
+            emitIR(`  ${sR} = sext i32 ${initVal} to i64`)
+            initI64 = sR
+        }
+        const fn = preludeName("ss_reduce")
+        const r64 = nextReg()
+        emitIR(`  ${r64} = call i64 @${fn}(ptr ${objVal}, i64 ${cbVal}, i64 ${initI64})`)
+        const r = nextReg()
+        emitIR(`  ${r} = trunc i64 ${r64} to i32`)
+        return r
+    }
     // Array methods
     if (method == "push") {
         const argId = parseInt(argList)
@@ -885,14 +910,14 @@ function inferType(id: int): string {
     }
     if (kind == "METHOD_CALL") {
         const method = nGetS1(id)
-        const intMethods = ",length,indexOf,has,size,contains,startsWith,endsWith,charCodeAt,"
+        const intMethods = ",length,indexOf,has,size,contains,startsWith,endsWith,charCodeAt,reduce,"
         const strMethods = ",charAt,substring,trim,toUpperCase,toLowerCase,replace,join,repeat,padStart,padEnd,keys,getString,"
-        const ptrMethods = ",split,push,slice,concat,reverse,sort,"
+        const ptrMethods = ",split,push,slice,concat,reverse,sort,map,filter,"
         if (intMethods.contains(`,${method},`) == 1) { return "int" }
         if (strMethods.contains(`,${method},`) == 1) { return "string" }
         if (ptrMethods.contains(`,${method},`) == 1) { return "ptr" }
         if (method == "get") { return "i64" }
-        if (method == "delete") { return "void" }
+        if (method == "delete" || method == "forEach") { return "void" }
         // Class method — look up return type
         const mObjId = nGetI1(id)
         let mClassName = ""

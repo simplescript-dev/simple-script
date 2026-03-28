@@ -1,5 +1,45 @@
 // Runtime prelude — pure SS implementations of string/array methods
-// Names use _ss_ prefix to avoid conflict with C runtime declarations
+// _ss_ prefix avoids conflict with C runtime declarations
+
+// ── Higher-order array methods ────────────────────────────────
+
+function _ss_map(arr: Array<int>, callback: fn): Array<int> {
+    const len = arr.length()
+    let result = []
+    for (let i = 0; i < len; i++) {
+        result = result.push(callback(arr[i]))
+    }
+    return result
+}
+
+function _ss_filter(arr: Array<int>, predicate: fn): Array<int> {
+    const len = arr.length()
+    let result = []
+    for (let i = 0; i < len; i++) {
+        if (predicate(arr[i]) == 1) {
+            result = result.push(arr[i])
+        }
+    }
+    return result
+}
+
+function _ss_reduce(arr: Array<int>, callback: fn, initial: int): int {
+    let acc = initial
+    const len = arr.length()
+    for (let i = 0; i < len; i++) {
+        acc = callback(acc, arr[i])
+    }
+    return acc
+}
+
+function _ss_forEach(arr: Array<int>, callback: fn) {
+    const len = arr.length()
+    for (let i = 0; i < len; i++) {
+        callback(arr[i])
+    }
+}
+
+// ── String methods ────────────────────────────────────────────
 
 function _ss_trim(s: string): string {
     let start = 0
