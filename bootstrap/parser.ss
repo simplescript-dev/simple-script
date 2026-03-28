@@ -690,6 +690,12 @@ function parseParams(): string {
     while (curKind() != "EOF") {
         skipNL()
         const pName = pExpectIdent()
+        // Optional param: name?: type (equivalent to name: type = default)
+        let isOptional = 0
+        if (curKind() == "QUESTION") {
+            isOptional = 1
+            pAdvance()
+        }
         pExpect("COLON")
         const pType = parseTypeAnn()
         let defId = 0
@@ -701,6 +707,7 @@ function parseParams(): string {
         nSetS1(pId, pName)
         nSetS2(pId, pType)
         nSetI1(pId, defId)
+        nSetI2(pId, isOptional)
         params = listAppend(params, pId)
         if (curKind() == "COMMA") { pAdvance() } else { break }
     }

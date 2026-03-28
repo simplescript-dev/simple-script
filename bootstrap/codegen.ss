@@ -160,7 +160,22 @@ function registerAllDecls(rootId: int) {
                 for (fp in fps) {
                     const fpId = parseInt(fp)
                     if (fpId > 0 && nGetKind(fpId) == "PARAM") {
-                        const defId = nGetI1(fpId)
+                        let defId = nGetI1(fpId)
+                        // ? optional param without explicit default → generate default node
+                        if (defId <= 0 && nGetI2(fpId) > 0) {
+                            const pType = nGetS2(fpId)
+                            if (pType == "string") {
+                                defId = newNode("STRING_LIT")
+                                nSetS1(defId, "")
+                            } else if (pType == "double") {
+                                defId = newNode("DOUBLE_LIT")
+                                nSetS1(defId, "0.0")
+                            } else {
+                                defId = newNode("INT_LIT")
+                                nSetS1(defId, "0")
+                            }
+                            nSetI1(fpId, defId)
+                        }
                         if (defId > 0) {
                             if (defaults == "") { defaults = `${pCount}:${defId}` } else { defaults = `${defaults},${pCount}:${defId}` }
                         }
