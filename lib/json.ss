@@ -1,186 +1,286 @@
-// JSON library for SimpleScript
-// Design: Jackson-style JsonNode tree with Rust-like value enum
+// SimpleScript JSON Library — JavaScript-style API
 //
 // Usage:
-//   const root = jsonParse('{"name": "Alice", "age": 30}')
-//   root.getString("name")   → "Alice"
-//   root.getInt("age")       → 30
-//   root.get("name").asString() → "Alice"
+//   const data = JSON.parse('{"name":"Alice","age":30}')
+//   data.getString("name")   → "Alice"
+//   data.getInt("age")       → 30
 //
-// Internal: each node is an int ID, properties in global Maps.
-// Types: "object", "array", "string", "number", "bool", "null"
+//   const obj = JSON.create().put("name", "Alice").put("age", 30)
+//   JSON.stringify(obj)      → {"name":"Alice","age":30}
 
-let jnType = ""        // nodeId → type tag
-let jnStr = ""         // nodeId → string value (also stores object field list)
-let jnInt = ""         // nodeId → int value (as string)
-let jnArr = ""         // nodeId → comma-separated child IDs
+// ── Internal storage ─────────────────────────────────────────
+
+let jnType = ""
+let jnStr = ""
+let jnInt = ""
+let jnArr = ""
 let jnNextId = 1
 let jnReady = 0
 
 function initJson() {
     if (jnReady == 1) { return }
-    jnType = Map()
-    jnStr = Map()
-    jnInt = Map()
-    jnArr = Map()
+    jnType = new Map()
+    jnStr = new Map()
+    jnInt = new Map()
+    jnArr = new Map()
     jnReady = 1
 }
-
-// ── Node creation ─────────────────────────────────────────────
 
 function jnNew(nodeType: string): int {
     initJson()
     const id = jnNextId
     jnNextId = jnNextId + 1
-    jnType.set(id + "", nodeType)
+    jnType.set(`${id}`, nodeType)
     return id
 }
 
-function jnNewString(val: string): int {
-    const id = jnNew("string")
-    jnStr.set(id + "", val)
-    return id
-}
+// ── JsonNode wrapper ─────────────────────────────────────────
 
-function jnNewInt(val: int): int {
-    const id = jnNew("number")
-    jnInt.set(id + "", val + "")
-    return id
-}
-
-function jnNewBool(val: int): int {
-    const id = jnNew("bool")
-    jnInt.set(id + "", val + "")
-    return id
-}
-
-function jnNewNull(): int {
-    return jnNew("null")
-}
-
-function jnNewObject(): int {
-    return jnNew("object")
-}
-
-function jnNewArray(): int {
-    const id = jnNew("array")
-    jnArr.set(id + "", "")
-    return id
-}
-
-// ── Node modification ─────────────────────────────────────────
-
-function jnSetField(objId: int, key: string, childId: int) {
-    const existing = jnStr.getString(objId + "")
-    if (existing == "") {
-        jnStr.set(objId + "", `${key}:${childId}`)
-    } else {
-        jnStr.set(objId + "", `${existing},${key}:${childId}`)
+class JsonNode(nodeId: int) {
+    function type(): string {
+        return jnType.getString(`${this.nodeId}`)
     }
-}
 
-function jnAddElement(arrId: int, childId: int) {
-    const existing = jnArr.getString(arrId + "")
-    if (existing == "") {
-        jnArr.set(arrId + "", childId + "")
-    } else {
-        jnArr.set(arrId + "", `${existing},${childId}`)
+    function getString(key: string): string {
+        const childId = jnGetField(this.nodeId, key)
+        if (childId <= 0) { return "" }
+        return jnStr.getString(`${childId}`)
     }
-}
 
-// ── Node access ───────────────────────────────────────────────
+    function getInt(key: string): int {
+        const childId = jnGetField(this.nodeId, key)
+        if (childId <= 0) { return 0 }
+        return parseInt(jnInt.getString(`${childId}`))
+    }
 
-function jnGetType(id: int): string {
-    initJson()
-    if (id <= 0) { return "null" }
-    const key = id + ""
-    if (jnType.has(key) == 1) { return jnType.getString(key) }
-    return "null"
-}
+    function get(key: string): JsonNode {
+        const childId = jnGetField(this.nodeId, key)
+        return new JsonNode(childId)
+    }
 
-function jnAsString(id: int): string {
-    if (jnGetType(id) == "string") { return jnStr.getString(id + "") }
-    return ""
-}
-
-function jnAsInt(id: int): int {
-    if (jnGetType(id) == "number") { return parseInt(jnInt.getString(id + "")) }
-    return 0
-}
-
-function jnAsBool(id: int): int {
-    if (jnGetType(id) == "bool") { return parseInt(jnInt.getString(id + "")) }
-    return 0
-}
-
-function jnIsNull(id: int): int {
-    return jnGetType(id) == "null"
-}
-
-// Get child by key from object node
-function jnGet(objId: int, key: string): int {
-    if (jnGetType(objId) != "object") { return 0 }
-    const fields = jnStr.getString(objId + "")
-    if (fields == "") { return 0 }
-    // Parse "key1:id1,key2:id2,..." — find matching key
-    const pairs = fields.split(",")
-    for (pair in pairs) {
-        const colonPos = pair.indexOf(":")
-        if (colonPos >= 0) {
-            const k = pair.substring(0, colonPos)
-            if (k == key) {
-                return parseInt(pair.substring(colonPos + 1, pair.length() - colonPos - 1))
+    function get(index: int): JsonNode {
+        const arrStr = jnArr.getString(`${this.nodeId}`)
+        if (arrStr == "") { return new JsonNode(0) }
+        let remaining = arrStr
+        let i = 0
+        while (remaining != "") {
+            let part = remaining
+            const commaIdx = remaining.indexOf(",")
+            if (commaIdx >= 0) {
+                part = remaining.substring(0, commaIdx)
+                remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
+            } else {
+                remaining = ""
             }
+            if (i == index) { return new JsonNode(parseInt(part)) }
+            i = i + 1
+        }
+        return new JsonNode(0)
+    }
+
+    function size(): int {
+        const t = this.type()
+        if (t == "array") {
+            const arrStr = jnArr.getString(`${this.nodeId}`)
+            if (arrStr == "") { return 0 }
+            let count = 1
+            let remaining = arrStr
+            while (remaining != "") {
+                const ci = remaining.indexOf(",")
+                if (ci < 0) { break }
+                count = count + 1
+                remaining = remaining.substring(ci + 1, remaining.length() - ci - 1)
+            }
+            return count
+        }
+        return 0
+    }
+
+    function asString(): string {
+        return jnStr.getString(`${this.nodeId}`)
+    }
+
+    function asInt(): int {
+        return parseInt(jnInt.getString(`${this.nodeId}`))
+    }
+
+    // Builder methods (object)
+    function put(key: string, value: string): JsonNode {
+        const childId = jnNew("string")
+        jnStr.set(`${childId}`, value)
+        jnSetField(this.nodeId, key, childId)
+        return this
+    }
+
+    function put(key: string, value: int): JsonNode {
+        const childId = jnNew("number")
+        jnInt.set(`${childId}`, `${value}`)
+        jnSetField(this.nodeId, key, childId)
+        return this
+    }
+
+    // Builder methods (array)
+    function add(value: string): JsonNode {
+        const childId = jnNew("string")
+        jnStr.set(`${childId}`, value)
+        jnAddElement(this.nodeId, childId)
+        return this
+    }
+
+    function add(value: int): JsonNode {
+        const childId = jnNew("number")
+        jnInt.set(`${childId}`, `${value}`)
+        jnAddElement(this.nodeId, childId)
+        return this
+    }
+}
+
+// ── JSON static methods ──────────────────────────────────────
+
+class JSON()
+
+function JSON_parse(source: string): JsonNode {
+    initJson()
+    const id = jpParse(source)
+    return new JsonNode(id)
+}
+
+function JSON_stringify(node: JsonNode): string {
+    return jnStringify(node.nodeId)
+}
+
+function JSON_create(): JsonNode {
+    const id = jnNew("object")
+    jnStr.set(`${id}`, "")
+    return new JsonNode(id)
+}
+
+function JSON_create(key: string, value: string): JsonNode {
+    const id = jnNew("object")
+    jnStr.set(`${id}`, "")
+    const childId = jnNew("string")
+    jnStr.set(`${childId}`, value)
+    jnSetField(id, key, childId)
+    return new JsonNode(id)
+}
+
+function JSON_createArray(): JsonNode {
+    const id = jnNew("array")
+    return new JsonNode(id)
+}
+
+// ── Internal helpers ─────────────────────────────────────────
+
+function jnGetField(objId: int, key: string): int {
+    const fieldList = jnStr.getString(`${objId}`)
+    if (fieldList == "") { return 0 }
+    let remaining = fieldList
+    while (remaining != "") {
+        let entry = remaining
+        const commaIdx = remaining.indexOf(",")
+        if (commaIdx >= 0) {
+            entry = remaining.substring(0, commaIdx)
+            remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
+        } else {
+            remaining = ""
+        }
+        const colonIdx = entry.indexOf(":")
+        if (colonIdx >= 0) {
+            const fKey = entry.substring(0, colonIdx)
+            const fVal = entry.substring(colonIdx + 1, entry.length() - colonIdx - 1)
+            if (fKey == key) { return parseInt(fVal) }
         }
     }
     return 0
 }
 
-// Convenience: get string field directly
-function jnGetString(objId: int, key: string): string {
-    return jnAsString(jnGet(objId, key))
-}
-
-// Convenience: get int field directly
-function jnGetInt(objId: int, key: string): int {
-    return jnAsInt(jnGet(objId, key))
-}
-
-// Get array length
-function jnArrayLen(arrId: int): int {
-    if (jnGetType(arrId) != "array") { return 0 }
-    const items = jnArr.getString(arrId + "")
-    if (items == "") { return 0 }
-    let count = 1
-    let i = 0
-    while (i < items.length()) {
-        if (items.charAt(i) == ",") { count = count + 1 }
-        i = i + 1
+function jnSetField(objId: int, key: string, childId: int) {
+    const existing = jnStr.getString(`${objId}`)
+    if (existing == "") {
+        jnStr.set(`${objId}`, `${key}:${childId}`)
+    } else {
+        jnStr.set(`${objId}`, `${existing},${key}:${childId}`)
     }
-    return count
 }
 
-// Get array element by index
-function jnArrayGet(arrId: int, index: int): int {
-    if (jnGetType(arrId) != "array") { return 0 }
-    const items = jnArr.getString(arrId + "")
-    if (items == "") { return 0 }
-    const parts = items.split(",")
-    let i = 0
-    for (p in parts) {
-        if (i == index) { return parseInt(p) }
-        i = i + 1
+function jnAddElement(arrId: int, childId: int) {
+    const existing = jnArr.getString(`${arrId}`)
+    if (existing == "") {
+        jnArr.set(`${arrId}`, `${childId}`)
+    } else {
+        jnArr.set(`${arrId}`, `${existing},${childId}`)
     }
-    return 0
 }
 
-// ── Parser ────────────────────────────────────────────────────
+function jnStringify(id: int): string {
+    if (id <= 0) { return "null" }
+    const t = jnType.getString(`${id}`)
+    if (t == "string") {
+        return `"${jnStr.getString(`${id}`)}"`
+    }
+    if (t == "number") {
+        return jnInt.getString(`${id}`)
+    }
+    if (t == "bool") {
+        return parseInt(jnInt.getString(`${id}`)) == 1 ? "true" : "false"
+    }
+    if (t == "null") { return "null" }
+    if (t == "object") {
+        let result = "{"
+        const fieldList = jnStr.getString(`${id}`)
+        if (fieldList != "") {
+            let first = 1
+            let remaining = fieldList
+            while (remaining != "") {
+                let entry = remaining
+                const commaIdx = remaining.indexOf(",")
+                if (commaIdx >= 0) {
+                    entry = remaining.substring(0, commaIdx)
+                    remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
+                } else {
+                    remaining = ""
+                }
+                const colonIdx = entry.indexOf(":")
+                if (colonIdx >= 0) {
+                    const fKey = entry.substring(0, colonIdx)
+                    const fVal = entry.substring(colonIdx + 1, entry.length() - colonIdx - 1)
+                    if (first == 1) { first = 0 } else { result = `${result},` }
+                    result = `${result}"${fKey}":${jnStringify(parseInt(fVal))}`
+                }
+            }
+        }
+        return `${result}}`
+    }
+    if (t == "array") {
+        let result = "["
+        const arrStr = jnArr.getString(`${id}`)
+        if (arrStr != "") {
+            let first = 1
+            let remaining = arrStr
+            while (remaining != "") {
+                let part = remaining
+                const commaIdx = remaining.indexOf(",")
+                if (commaIdx >= 0) {
+                    part = remaining.substring(0, commaIdx)
+                    remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
+                } else {
+                    remaining = ""
+                }
+                if (first == 1) { first = 0 } else { result = `${result},` }
+                result = `${result}${jnStringify(parseInt(part))}`
+            }
+        }
+        return `${result}]`
+    }
+    return "null"
+}
 
-let jpSrc = "."
+// ── Parser ───────────────────────────────────────────────────
+
+let jpSrc = ""
 let jpPos = 0
 
-function jsonParse(source: string): int {
-    initJson()
+function jpParse(source: string): int {
     jpSrc = source
     jpPos = 0
     jpSkipWS()
@@ -190,29 +290,67 @@ function jsonParse(source: string): int {
 function jpSkipWS() {
     while (jpPos < jpSrc.length()) {
         const ch = jpSrc.charAt(jpPos)
-        if (ch == " " || ch == "\n" || ch == "\t" || ch == "\r") {
-            jpPos = jpPos + 1
-        } else {
-            break
-        }
+        if (ch != " " && ch != "\t" && ch != "\n" && ch != "\r") { break }
+        jpPos = jpPos + 1
     }
 }
 
-function jpPeek(): string {
-    if (jpPos >= jpSrc.length()) { return "" }
-    return jpSrc.charAt(jpPos)
-}
-
 function jpParseValue(): int {
-    jpSkipWS()
-    const ch = jpPeek()
-    if (ch == "\"") { return jpParseString() }
+    if (jpPos >= jpSrc.length()) { return 0 }
+    const ch = jpSrc.charAt(jpPos)
     if (ch == "{") { return jpParseObject() }
     if (ch == "[") { return jpParseArray() }
-    if (ch == "t") { jpPos = jpPos + 4; return jnNewBool(1) }
-    if (ch == "f") { jpPos = jpPos + 5; return jnNewBool(0) }
-    if (ch == "n") { jpPos = jpPos + 4; return jnNewNull() }
+    if (ch == "\"") { return jpParseString() }
+    if (ch == "t") { jpPos = jpPos + 4; const id = jnNew("bool"); jnInt.set(`${id}`, "1"); return id }
+    if (ch == "f") { jpPos = jpPos + 5; const id = jnNew("bool"); jnInt.set(`${id}`, "0"); return id }
+    if (ch == "n") { jpPos = jpPos + 4; return jnNew("null") }
     return jpParseNumber()
+}
+
+function jpParseObject(): int {
+    jpPos = jpPos + 1
+    jpSkipWS()
+    const id = jnNew("object")
+    jnStr.set(`${id}`, "")
+    if (jpPos < jpSrc.length() && jpSrc.charAt(jpPos) == "}") {
+        jpPos = jpPos + 1
+        return id
+    }
+    while (jpPos < jpSrc.length()) {
+        jpSkipWS()
+        const keyId = jpParseString()
+        const key = jnStr.getString(`${keyId}`)
+        jpSkipWS()
+        jpPos = jpPos + 1
+        jpSkipWS()
+        const valId = jpParseValue()
+        jnSetField(id, key, valId)
+        jpSkipWS()
+        if (jpPos >= jpSrc.length()) { break }
+        if (jpSrc.charAt(jpPos) == "}") { jpPos = jpPos + 1; break }
+        jpPos = jpPos + 1
+    }
+    return id
+}
+
+function jpParseArray(): int {
+    jpPos = jpPos + 1
+    jpSkipWS()
+    const id = jnNew("array")
+    if (jpPos < jpSrc.length() && jpSrc.charAt(jpPos) == "]") {
+        jpPos = jpPos + 1
+        return id
+    }
+    while (jpPos < jpSrc.length()) {
+        jpSkipWS()
+        const elemId = jpParseValue()
+        jnAddElement(id, elemId)
+        jpSkipWS()
+        if (jpPos >= jpSrc.length()) { break }
+        if (jpSrc.charAt(jpPos) == "]") { jpPos = jpPos + 1; break }
+        jpPos = jpPos + 1
+    }
+    return id
 }
 
 function jpParseString(): int {
@@ -220,141 +358,35 @@ function jpParseString(): int {
     let result = ""
     while (jpPos < jpSrc.length()) {
         const ch = jpSrc.charAt(jpPos)
-        jpPos = jpPos + 1
-        if (ch == "\"") { return jnNewString(result) }
+        if (ch == "\"") { jpPos = jpPos + 1; break }
         if (ch == "\\") {
-            const esc = jpSrc.charAt(jpPos)
             jpPos = jpPos + 1
-            if (esc == "\"") { result = result + "\"" }
-            else if (esc == "\\") { result = result + "\\" }
-            else if (esc == "n") { result = result + "\n" }
+            const esc = jpSrc.charAt(jpPos)
+            if (esc == "n") { result = result + "\n" }
             else if (esc == "t") { result = result + "\t" }
-            else if (esc == "r") { result = result + "\r" }
-            else if (esc == "/") { result = result + "/" }
+            else if (esc == "\\") { result = result + "\\" }
+            else if (esc == "\"") { result = result + "\"" }
             else { result = result + esc }
         } else {
             result = result + ch
         }
+        jpPos = jpPos + 1
     }
-    return jnNewString(result)
+    const id = jnNew("string")
+    jnStr.set(`${id}`, result)
+    return id
 }
 
 function jpParseNumber(): int {
-    let start = jpPos
-    if (jpPeek() == "-") { jpPos = jpPos + 1 }
+    const start = jpPos
+    if (jpPos < jpSrc.length() && jpSrc.charAt(jpPos) == "-") { jpPos = jpPos + 1 }
     while (jpPos < jpSrc.length()) {
         const ch = jpSrc.charAt(jpPos)
-        if ("0123456789".contains(ch) == 1) {
-            jpPos = jpPos + 1
-        } else {
-            break
-        }
-    }
-    // Skip decimal and exponent for now (treat as int)
-    if (jpPeek() == ".") {
+        if (ch != "0" && ch != "1" && ch != "2" && ch != "3" && ch != "4" && ch != "5" && ch != "6" && ch != "7" && ch != "8" && ch != "9" && ch != ".") { break }
         jpPos = jpPos + 1
-        while (jpPos < jpSrc.length() && "0123456789".contains(jpSrc.charAt(jpPos)) == 1) {
-            jpPos = jpPos + 1
-        }
     }
     const numStr = jpSrc.substring(start, jpPos - start)
-    return jnNewInt(parseInt(numStr))
-}
-
-function jpParseObject(): int {
-    jpPos = jpPos + 1
-    jpSkipWS()
-    const objId = jnNewObject()
-    while (jpPeek() != "}" && jpPeek() != "") {
-        jpSkipWS()
-        // Parse key — reuse jpParseString but extract the string value
-        const keyNode = jpParseString()
-        const key = jnAsString(keyNode)
-        jpSkipWS()
-        if (jpPeek() == ":") { jpPos = jpPos + 1 }
-        // Parse value
-        const valId = jpParseValue()
-        jnSetField(objId, key, valId)
-        jpSkipWS()
-        if (jpPeek() == ",") { jpPos = jpPos + 1 }
-    }
-    if (jpPeek() == "}") { jpPos = jpPos + 1 }
-    return objId
-}
-
-function jpParseArray(): int {
-    jpPos = jpPos + 1
-    jpSkipWS()
-    const arrId = jnNewArray()
-    while (jpPeek() != "]" && jpPeek() != "") {
-        const valId = jpParseValue()
-        jnAddElement(arrId, valId)
-        jpSkipWS()
-        if (jpPeek() == ",") { jpPos = jpPos + 1 }
-    }
-    if (jpPeek() == "]") { jpPos = jpPos + 1 }
-    return arrId
-}
-
-// ── Builder (JSON stringify) ──────────────────────────────────
-
-function jsonStringify(id: int): string {
-    const t = jnGetType(id)
-    if (t == "null") { return "null" }
-    if (t == "bool") {
-        if (jnAsBool(id) == 1) { return "true" }
-        return "false"
-    }
-    if (t == "number") { return jnAsInt(id) + "" }
-    if (t == "string") { return `"${jsonEscape(jnAsString(id))}"` }
-    if (t == "array") {
-        let result = "["
-        const items = jnArr.getString(id + "")
-        if (items != "") {
-            const parts = items.split(",")
-            let first = 1
-            for (p in parts) {
-                if (first == 0) { result = result + "," }
-                first = 0
-                result = result + jsonStringify(parseInt(p))
-            }
-        }
-        return result + "]"
-    }
-    if (t == "object") {
-        let result = "{"
-        const fields = jnStr.getString(id + "")
-        if (fields != "") {
-            const pairs = fields.split(",")
-            let first = 1
-            for (pair in pairs) {
-                const colonPos = pair.indexOf(":")
-                if (colonPos >= 0) {
-                    const k = pair.substring(0, colonPos)
-                    const vId = parseInt(pair.substring(colonPos + 1, pair.length() - colonPos - 1))
-                    if (first == 0) { result = result + "," }
-                    first = 0
-                    result = result + `"${jsonEscape(k)}":${jsonStringify(vId)}`
-                }
-            }
-        }
-        return result + "}"
-    }
-    return "null"
-}
-
-function jsonEscape(s: string): string {
-    let result = ""
-    let i = 0
-    while (i < s.length()) {
-        const ch = s.charAt(i)
-        if (ch == "\"") { result = result + "\\\"" }
-        else if (ch == "\\") { result = result + "\\\\" }
-        else if (ch == "\n") { result = result + "\\n" }
-        else if (ch == "\t") { result = result + "\\t" }
-        else if (ch == "\r") { result = result + "\\r" }
-        else { result = result + ch }
-        i = i + 1
-    }
-    return result
+    const id = jnNew("number")
+    jnInt.set(`${id}`, numStr)
+    return id
 }

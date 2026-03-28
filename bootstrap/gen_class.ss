@@ -62,6 +62,15 @@ function registerClass(id: int) {
                     if (mSig != "") {
                         funcRetTypes.set(`${name}_${mName}_${mSig}`, mRet)
                     }
+                    // Track overload count
+                    if (overloadReady == 0) { overloadCount = new Map(); overloadReady = 1 }
+                    const mFullName = `${name}_${mName}`
+                    if (overloadCount.has(mFullName) == 1) {
+                        const mc = parseInt(overloadCount.getString(mFullName))
+                        overloadCount.set(mFullName, `${mc + 1}`)
+                    } else {
+                        overloadCount.set(mFullName, "1")
+                    }
                 }
             }
         }
@@ -139,6 +148,92 @@ function genClassDecl(id: int) {
             }
         }
     }
+
+    // Auto-generate toJson() for all classes
+    genAutoToJson(name, fieldStr)
+}
+
+function genAutoToJson(className: string, fieldStr: string) {
+    if (fieldStr == "") { return }
+    funcRetTypes.set(`${className}_toJson`, "string")
+
+    regCount = 0
+    emitIR(`define ptr @${className}_toJson(ptr %this.ptr) {`)
+    emitIR("entry:")
+    emitIR("  %this = alloca ptr, align 8")
+    emitIR("  store ptr %this.ptr, ptr %this, align 8")
+
+    // Build JSON string: {"field1":value1,"field2":value2}
+    let resultReg = addStringConst("{")
+    const fields = fieldStr.split(",")
+    let fieldIdx = 0
+    for (f in fields) {
+        const fType = classFieldTypes.getString(`${className}.${f}`)
+        const llFType = ssTypeToLLVM(fType)
+
+        // Add comma separator
+        if (fieldIdx > 0) {
+            const commaStr = addStringConst(",")
+            const cR = nextReg()
+            emitIR(`  ${cR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${commaStr})`)
+            resultReg = cR
+        }
+
+        // Add "fieldName":
+        const keyStr = addStringConst(`"${f}":`)
+        const kR = nextReg()
+        emitIR(`  ${kR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${keyStr})`)
+        resultReg = kR
+
+        // Load field value
+        const thisR = nextReg()
+        emitIR(`  ${thisR} = load ptr, ptr %this, align 8`)
+        const gepR = nextReg()
+        emitIR(`  ${gepR} = getelementptr %${className}, ptr ${thisR}, i32 0, i32 ${fieldIdx}`)
+        const valR = nextReg()
+        emitIR(`  ${valR} = load ${llFType}, ptr ${gepR}, align 8`)
+
+        // Convert to string and add
+        if (fType == "string") {
+            // Wrap in quotes: "value"
+            const quoteStr = addStringConst("\"")
+            const q1 = nextReg()
+            emitIR(`  ${q1} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${quoteStr})`)
+            const q2 = nextReg()
+            emitIR(`  ${q2} = call ptr @ss_string_concat(ptr ${q1}, ptr ${valR})`)
+            const q3 = nextReg()
+            emitIR(`  ${q3} = call ptr @ss_string_concat(ptr ${q2}, ptr ${quoteStr})`)
+            resultReg = q3
+        } else if (fType == "int") {
+            const numStr = nextReg()
+            emitIR(`  ${numStr} = call ptr @ss_int_to_string(i32 ${valR})`)
+            const nR = nextReg()
+            emitIR(`  ${nR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${numStr})`)
+            resultReg = nR
+        } else if (fType == "double") {
+            const dblStr = nextReg()
+            emitIR(`  ${dblStr} = call ptr @ss_double_to_string(double ${valR})`)
+            const dR = nextReg()
+            emitIR(`  ${dR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${dblStr})`)
+            resultReg = dR
+        } else {
+            // Nested object — call its toJson
+            const nestedJson = nextReg()
+            emitIR(`  ${nestedJson} = call ptr @${fType}_toJson(ptr ${valR})`)
+            const njR = nextReg()
+            emitIR(`  ${njR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${nestedJson})`)
+            resultReg = njR
+        }
+        fieldIdx = fieldIdx + 1
+    }
+
+    // Close with }
+    const closeStr = addStringConst("}")
+    const finalR = nextReg()
+    emitIR(`  ${finalR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${closeStr})`)
+    emitIR(`  ret ptr ${finalR}`)
+    emitIR("}")
+    emitIR("")
 }
 
 function genClassMethod(className: string, id: int) {
@@ -163,13 +258,20 @@ function genClassMethod(className: string, id: int) {
         }
     }
 
+    // Use mangled name if method is overloaded
+    let llMethodName = `${className}_${mName}`
+    if (isOverloaded(`${className}_${mName}`) == 1) {
+        const mSig = paramSig(paramList)
+        if (mSig != "") { llMethodName = `${className}_${mName}_${mSig}` }
+    }
+
     regCount = 0
     terminated = 0
-    currentFunc = `${className}_${mName}`
+    currentFunc = llMethodName
     currentClassName = className
     varAliases = Map()
 
-    emitIR(`define ${llRetType} @${className}_${mName}(${paramStr}) {`)
+    emitIR(`define ${llRetType} @${llMethodName}(${paramStr}) {`)
     emitIR("entry:")
 
     // Alloca this
