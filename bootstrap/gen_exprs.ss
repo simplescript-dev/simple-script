@@ -366,8 +366,8 @@ function genCall(id: int): string {
     const retType = callReturnType(callee)
     const llRetType = ssTypeToLLVM(retType)
 
-    // Indirect call: if callee is a function pointer variable
-    if (getVarType(callee) == "fn") {
+    // Indirect call: if callee is a function pointer variable (fn or i64)
+    if (getVarType(callee) == "fn" || getVarType(callee) == "i64") {
         const fpVal = nextReg()
         emitIR(`  ${fpVal} = load i64, ptr ${varRef(callee)}, align 8`)
         const fpPtr = nextReg()
@@ -1025,7 +1025,7 @@ function inferType(id: int): string {
     if (kind == "CALL") {
         const callee = nGetS1(id)
         if (callee == "Map") { return "ptr" }
-        if (getVarType(callee) == "fn") { return "i64" }
+        if (getVarType(callee) == "fn" || getVarType(callee) == "i64") { return "i64" }
         return callReturnType(callee)
     }
     if (kind == "METHOD_CALL") {
