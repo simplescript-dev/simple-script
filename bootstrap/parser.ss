@@ -140,9 +140,45 @@ function parse(tokenBuf: string): int {
 
 function parseStmt(): int {
     skipNL()
+    // Collect annotations: @Name or @Name("arg")
+    let annotations = ""
+    while (curKind() == "ANNOTATION") {
+        const aName = curValue()
+        pAdvance()
+        let aArg = ""
+        if (curKind() == "LPAREN") {
+            pAdvance()
+            if (curKind() == "STRING") {
+                aArg = curValue()
+                pAdvance()
+            }
+            pExpect("RPAREN")
+        }
+        const aId = newNode("ANNOTATION")
+        nSetS1(aId, aName)
+        nSetS2(aId, aArg)
+        annotations = listAppend(annotations, aId)
+        skipNL()
+    }
     const k = curKind()
-    if (k == "FUNCTION" || k == "OVERRIDE") { return parseFuncDecl() }
-    if (k == "CLASS") { return parseClassDecl() }
+    if (k == "FUNCTION" || k == "OVERRIDE") {
+        const fId = parseFuncDecl()
+        if (annotations != "") {
+            const annListNode = newNode("ANNOTATION_LIST")
+            nSetList(annListNode, annotations)
+            nSetI4(fId, annListNode)
+        }
+        return fId
+    }
+    if (k == "CLASS") {
+        const cId = parseClassDecl()
+        if (annotations != "") {
+            const annListNode = newNode("ANNOTATION_LIST")
+            nSetList(annListNode, annotations)
+            nSetI4(cId, annListNode)
+        }
+        return cId
+    }
     if (k == "INTERFACE") { return parseInterfaceDecl() }
     if (k == "ENUM") { return parseEnumDecl() }
     if (k == "SWITCH") { return parseSwitch() }

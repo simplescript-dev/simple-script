@@ -63,6 +63,7 @@ function tokenize(source: string): string {
         if (ch == "|") { lexOr(); continue }
         if (ch == "^") { lexCaret(); continue }
         if (ch == "~") { lexTilde(); continue }
+        if (ch == "@") { lexAnnotation(); continue }
         if (ch == "(") { emit("LPAREN", "("); advance(); continue }
         if (ch == ")") { emit("RPAREN", ")"); advance(); continue }
         if (ch == "{") { emit("LBRACE", "{"); advance(); continue }
@@ -474,6 +475,16 @@ function lexQuestion() {
     if (pos < srcLen && peek() == "?") { advance(); emit("NULLISH", "??"); return }
     if (pos < srcLen && peek() == ".") { advance(); emit("OPT_CHAIN", "?."); return }
     emit("QUESTION", "?")
+}
+
+function lexAnnotation() {
+    advance()
+    let name = ""
+    while (pos < srcLen && isAlphaNum(peek())) {
+        name = name + peek()
+        advance()
+    }
+    emit("ANNOTATION", name)
 }
 
 function lexCaret() {
