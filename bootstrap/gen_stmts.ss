@@ -1,6 +1,75 @@
 // Statement generation for bootstrap codegen
 // ── Statement generation ──────────────────────────────────────
 
+function genTryCatch(id: int) {
+    const tryBody = nGetI1(id)
+    const catchBody = nGetI2(id)
+    const errName = nGetS1(id)
+
+    const tryLabel = nextLabel("try")
+    const catchLabel = nextLabel("catch")
+    const endLabel = nextLabel("try.end")
+
+    // Push exception handler: increment depth, get jmpbuf slot
+    const depthR = nextReg()
+    emitIR(`  ${depthR} = load i32, ptr @ss_exc_depth`)
+    const newDepth = nextReg()
+    emitIR(`  ${newDepth} = add i32 ${depthR}, 1`)
+    emitIR(`  store i32 ${newDepth}, ptr @ss_exc_depth`)
+    const offset = nextReg()
+    emitIR(`  ${offset} = mul i32 ${depthR}, 200`)
+    const off64 = nextReg()
+    emitIR(`  ${off64} = sext i32 ${offset} to i64`)
+    const bufPtr = nextReg()
+    emitIR(`  ${bufPtr} = getelementptr i8, ptr @ss_jmpbuf, i64 ${off64}`)
+
+    // setjmp returns 0 normally, non-zero when longjmp is called
+    const sjRet = nextReg()
+    emitIR(`  ${sjRet} = call i32 @setjmp(ptr ${bufPtr})`)
+    const isExc = nextReg()
+    emitIR(`  ${isExc} = icmp ne i32 ${sjRet}, 0`)
+    emitIR(`  br i1 ${isExc}, label %${catchLabel}, label %${tryLabel}`)
+
+    // Try block
+    emitIR(`${tryLabel}:`)
+    const savedTerm = terminated
+    terminated = 0
+    genBlock(tryBody)
+    if (terminated == 0) {
+        // Pop handler and skip catch
+        const d2 = nextReg()
+        emitIR(`  ${d2} = load i32, ptr @ss_exc_depth`)
+        const d3 = nextReg()
+        emitIR(`  ${d3} = sub i32 ${d2}, 1`)
+        emitIR(`  store i32 ${d3}, ptr @ss_exc_depth`)
+        emitIR(`  br label %${endLabel}`)
+    }
+
+    // Catch block
+    emitIR(`${catchLabel}:`)
+    terminated = 0
+    // Pop handler
+    const d4 = nextReg()
+    emitIR(`  ${d4} = load i32, ptr @ss_exc_depth`)
+    const d5 = nextReg()
+    emitIR(`  ${d5} = sub i32 ${d4}, 1`)
+    emitIR(`  store i32 ${d5}, ptr @ss_exc_depth`)
+    // Bind error variable
+    const errLLName = allocVarName(errName)
+    emitIR(`  %${errLLName} = alloca ptr, align 8`)
+    const excMsg = nextReg()
+    emitIR(`  ${excMsg} = load ptr, ptr @ss_exc_msg`)
+    emitIR(`  store ptr ${excMsg}, ptr %${errLLName}, align 8`)
+    setVarType(errName, "string")
+    genBlock(catchBody)
+    if (terminated == 0) {
+        emitIR(`  br label %${endLabel}`)
+    }
+
+    emitIR(`${endLabel}:`)
+    terminated = savedTerm
+}
+
 function registerEnum(id: int) {
     if (enumReady == 0) { enumValues = Map(); enumReady = 1 }
     const eName = nGetS1(id)
@@ -108,6 +177,17 @@ function genStmt(id: int) {
     }
     if (kind == "ENUM_DECL") {
         registerEnum(id)
+        return
+    }
+    if (kind == "TRY") {
+        genTryCatch(id)
+        return
+    }
+    if (kind == "THROW") {
+        const msgVal = genExpr(nGetI1(id))
+        emitIR(`  call void @ss_throw(ptr ${msgVal})`)
+        emitIR("  unreachable")
+        terminated = 1
         return
     }
     // IMPORT, INTERFACE_DECL — skip

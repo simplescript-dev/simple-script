@@ -370,6 +370,9 @@ function keywordKind(text: string): string {
     if (text == "case") { return "CASE" }
     if (text == "default") { return "DEFAULT" }
     if (text == "null") { return "NULL" }
+    if (text == "try") { return "TRY" }
+    if (text == "catch") { return "CATCH" }
+    if (text == "throw") { return "THROW" }
     if (text == "import") { return "IMPORT" }
     if (text == "from") { return "FROM" }
     if (text == "in") { return "IN" }

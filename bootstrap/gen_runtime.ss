@@ -13,6 +13,7 @@ function emitRuntimeDefs() {
     emitRuntimeFS()
     emitRuntimeNet()
     emitRuntimeMap()
+    emitRuntimeExceptions()
 }
 
 // ── libc declarations ─────────────────────────────────────────
@@ -56,6 +57,9 @@ function emitLibcDecls() {
     emitIR("declare double @sin(double)")
     emitIR("declare double @cos(double)")
     emitIR("declare i32 @rand()")
+    // Exception handling (setjmp/longjmp)
+    emitIR("declare i32 @setjmp(ptr)")
+    emitIR("declare void @longjmp(ptr, i32)")
     // Process
     emitIR("declare void @exit(i32)")
     emitIR("declare i32 @system(ptr)")
@@ -93,6 +97,11 @@ function emitRuntimeGlobals() {
     emitIR("@stdout = external global ptr")
     emitIR("@ss_argc = internal global i32 0, align 4")
     emitIR("@ss_argv = internal global ptr null, align 8")
+    // Exception handling: jmp_buf stack (200 bytes per level, max 16 deep)
+    emitIR("@ss_jmpbuf = internal global [3200 x i8] zeroinitializer, align 16")
+    emitIR("@ss_exc_depth = internal global i32 0, align 4")
+    emitIR("@ss_exc_msg = internal global ptr null, align 8")
+    emitIR(`@.rt.str.uncaught = private constant [21 x i8] c"uncaught exception: \\00"`)
     // Format strings (use @.rt. prefix to avoid collision with user string consts)
     emitIR(`@.rt.fmt.d = private constant [3 x i8] c"%d\\00"`)
     emitIR(`@.rt.fmt.g = private constant [3 x i8] c"%g\\00"`)
@@ -1371,6 +1380,32 @@ function emitRuntimeMap() {
     emitIR("  %fterm = getelementptr i8, ptr %buf, i64 %fpos")
     emitIR("  store i8 0, ptr %fterm")
     emitIR("  ret ptr %buf")
+    emitIR("}")
+    emitIR("")
+}
+
+// ── Exception handling ────────────────────────────────────────
+
+function emitRuntimeExceptions() {
+    // ss_throw: store message, longjmp if handler exists, else print+exit
+    emitIR("define void @ss_throw(ptr %msg) {")
+    emitIR("entry:")
+    emitIR("  store ptr %msg, ptr @ss_exc_msg")
+    emitIR("  %depth = load i32, ptr @ss_exc_depth")
+    emitIR("  %has_handler = icmp sgt i32 %depth, 0")
+    emitIR("  br i1 %has_handler, label %do_jump, label %no_handler")
+    emitIR("do_jump:")
+    emitIR("  %d1 = sub i32 %depth, 1")
+    emitIR("  %offset = mul i32 %d1, 200")
+    emitIR("  %off64 = sext i32 %offset to i64")
+    emitIR("  %bufptr = getelementptr i8, ptr @ss_jmpbuf, i64 %off64")
+    emitIR("  call void @longjmp(ptr %bufptr, i32 1)")
+    emitIR("  unreachable")
+    emitIR("no_handler:")
+    emitIR("  %_1 = call ptr @ss_string_concat(ptr @.rt.str.uncaught, ptr %msg)")
+    emitIR("  call i32 @puts(ptr %_1)")
+    emitIR("  call void @exit(i32 1)")
+    emitIR("  unreachable")
     emitIR("}")
     emitIR("")
 }

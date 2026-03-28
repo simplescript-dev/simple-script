@@ -162,6 +162,8 @@ function parseStmt(): int {
         expectNLOrRB()
         return newNode("CONTINUE")
     }
+    if (k == "TRY") { return parseTryCatch() }
+    if (k == "THROW") { return parseThrow() }
     if (k == "IMPORT") { return parseImport() }
     if (k == "IDENT") { return parseAssignOrExpr() }
     // Fallback: expression statement
@@ -299,6 +301,34 @@ function parseEnumDecl(): int {
     const id = newNode("ENUM_DECL")
     nSetS1(id, name)
     nSetList(id, variants)
+    return id
+}
+
+// try { ... } catch (e) { ... }
+function parseTryCatch(): int {
+    pExpect("TRY")
+    const tryBody = parseBlock()
+    skipNL()
+    pExpect("CATCH")
+    pExpect("LPAREN")
+    const errName = pExpectIdent()
+    pExpect("RPAREN")
+    const catchBody = parseBlock()
+    const id = newNode("TRY")
+    nSetI1(id, tryBody)
+    nSetI2(id, catchBody)
+    nSetS1(id, errName)
+    return id
+}
+
+// throw("message") or throw(expr)
+function parseThrow(): int {
+    pExpect("THROW")
+    pExpect("LPAREN")
+    const msgId = parseExpr()
+    pExpect("RPAREN")
+    const id = newNode("THROW")
+    nSetI1(id, msgId)
     return id
 }
 
