@@ -216,13 +216,19 @@ function genAutoToJson(className: string, fieldStr: string) {
             const dR = nextReg()
             emitIR(`  ${dR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${dblStr})`)
             resultReg = dR
-        } else {
-            // Nested object — call its toJson
+        } else if (classFields.has(fType) == 1 && fType.contains("<") == 0) {
+            // Nested POJO — call its toJson
             const nestedJson = nextReg()
             emitIR(`  ${nestedJson} = call ptr @${fType}_toJson(ptr ${valR})`)
             const njR = nextReg()
             emitIR(`  ${njR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${nestedJson})`)
             resultReg = njR
+        } else {
+            // Unknown type (Map, generic, etc.) — output as string representation
+            const objStr = addStringConst("\"[object]\"")
+            const oR = nextReg()
+            emitIR(`  ${oR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${objStr})`)
+            resultReg = oR
         }
         fieldIdx = fieldIdx + 1
     }
