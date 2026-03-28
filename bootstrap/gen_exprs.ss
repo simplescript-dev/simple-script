@@ -661,6 +661,28 @@ function genMethodCall(id: int): string {
     if (nGetKind(objId2) == "THIS" && currentClassName != "") {
         className = currentClassName
     }
+    // Infer class from function return type (e.g., ResponseEntity_ok() returns ResponseEntity)
+    if (className == "" && nGetKind(objId2) == "CALL") {
+        const calleeRet = funcRetTypes.getString(nGetS1(objId2)) ?? ""
+        if (calleeRet != "" && classFields.has(calleeRet) == 1) {
+            className = calleeRet
+        }
+    }
+    // Infer class from chained method calls (e.g., foo.bar().baz())
+    if (className == "" && nGetKind(objId2) == "METHOD_CALL") {
+        const chainMethod = nGetS1(objId2)
+        const chainObj = nGetI1(objId2)
+        let chainClass = ""
+        if (nGetKind(chainObj) == "IDENT") { chainClass = getObjClass(nGetS1(chainObj)) }
+        if (nGetKind(chainObj) == "CALL") {
+            const cr = funcRetTypes.getString(nGetS1(chainObj)) ?? ""
+            if (cr != "" && classFields.has(cr) == 1) { chainClass = cr }
+        }
+        if (chainClass != "") {
+            const chainRet = funcRetTypes.getString(`${chainClass}_${chainMethod}`) ?? ""
+            if (chainRet != "" && classFields.has(chainRet) == 1) { className = chainRet }
+        }
+    }
     if (className != "" && className != "Map") {
         // Find actual class that has this method (walk parent chain)
         let methodClass = className

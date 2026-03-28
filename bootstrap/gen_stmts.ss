@@ -292,6 +292,8 @@ function genFuncDecl(id: int) {
             emitIR("  ret double 0.0")
         } else if (retType == "void" || retType == "") {
             emitIR("  ret void")
+        } else if (ssTypeToLLVM(retType) == "ptr") {
+            emitIR("  ret ptr null")
         } else {
             emitIR("  ret i32 0")
         }
