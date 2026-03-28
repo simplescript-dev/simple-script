@@ -8,6 +8,7 @@ import { generate, generateToFile, initCodegen, initFuncRetTypes, initVarAliases
 import { genStmt } from "./gen_stmts"
 import { genExpr } from "./gen_exprs"
 import { registerClass } from "./gen_class"
+import { emitRuntimeDefs } from "./gen_runtime"
 
 // ── Import resolution ─────────────────────────────────────────
 
@@ -264,8 +265,9 @@ function runTestDir(dir: string, p: int, f: int, t: int) {
     for (entry in parts) {
         const path = dir + "/" + entry
         if (entry.endsWith(".ss") == 1) {
-            // Skip interactive tests
+            // Skip interactive tests and library-only files
             if (entry == "guess_game.ss" || entry == "ygrep.ss") { continue }
+            if (entry != "main.ss" && dir.endsWith("/import") == 1) { continue }
             const outBin = "/tmp/ss_test_bin"
             const rc1 = system(`bin/ss build ${path} -o ${outBin} 2>/dev/null`)
             if (rc1 != 0) {
@@ -323,8 +325,10 @@ function cmdClean() {
 // ── Compile pipeline ──────────────────────────────────────────
 
 function compile(inputFile: string, outputFile: string, release: int, emitIr: int) {
-    const source = resolveImports(inputFile)
-    if (source == "") { println(`error: cannot read ${inputFile}`); exit(1) }
+    const userSource = resolveImports(inputFile)
+    if (userSource == "") { println(`error: cannot read ${inputFile}`); exit(1) }
+    const prelude = readFile(findPrelude())
+    const source = prelude + "\n" + userSource
 
     const tokens = tokenize(source)
     const root = parse(tokens)
@@ -339,16 +343,9 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
         exit(1)
     }
 
-    const rtSrc = findRuntime()
-    const runtimeO = "/tmp/ss_bootstrap_runtime.o"
-    if (system(`musl-gcc -c -O2 ${rtSrc} -o ${runtimeO}`) != 0) {
-        println("error: runtime compilation failed")
-        exit(1)
-    }
-
     let linkFlags = "-static"
     if (release == 1) { linkFlags = "-static -O2 -s" }
-    if (system(`musl-gcc ${linkFlags} ${objFile} ${runtimeO} -o ${outputFile} -lm`) != 0) {
+    if (system(`musl-gcc ${linkFlags} ${objFile} -o ${outputFile} -lm`) != 0) {
         println("error: linking failed")
         exit(1)
     }
@@ -356,12 +353,8 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     println("compiled: " + outputFile)
 }
 
-function findRuntime(): string {
-    if (fileExists("runtime/runtime.c") == 1) { return "runtime/runtime.c" }
-    if (fileExists("../runtime/runtime.c") == 1) { return "../runtime/runtime.c" }
-    const envRt = getenv("SS_RUNTIME")
-    if (envRt != "") { return envRt }
-    println("error: cannot find runtime.c (set SS_RUNTIME env var)")
-    exit(1)
+function findPrelude(): string {
+    if (fileExists("bootstrap/prelude.ss") == 1) { return "bootstrap/prelude.ss" }
+    if (fileExists("../bootstrap/prelude.ss") == 1) { return "../bootstrap/prelude.ss" }
     return ""
 }

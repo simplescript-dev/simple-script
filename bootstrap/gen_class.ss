@@ -249,6 +249,13 @@ function genMemberAccess(id: int): string {
     const member = nGetS1(id)
     const objId = nGetI1(id)
     const objKind = nGetKind(objId)
+    // Enum value access: EnumName.Variant → integer constant
+    if (objKind == "IDENT" && enumReady == 1) {
+        const enumKey = `${nGetS1(objId)}.${member}`
+        if (enumValues.has(enumKey) == 1) {
+            return enumValues.getString(enumKey)
+        }
+    }
     if (objKind == "THIS") {
         const thisReg = nextReg()
         emitIR(`  ${thisReg} = load ptr, ptr %this, align 8`)
@@ -263,12 +270,17 @@ function genMemberAccess(id: int): string {
 }
 
 function setObjClass(varName: string, className: string) {
-    objClasses.set(varName, className)
+    objClasses.set(`${currentFunc}.${varName}`, className)
 }
 
 function getObjClass(varName: string): string {
-    if (objClasses.has(varName) == 1) {
-        return objClasses.getString(varName)
+    const localKey = `${currentFunc}.${varName}`
+    if (objClasses.has(localKey) == 1) {
+        return objClasses.getString(localKey)
+    }
+    const globalKey = `.${varName}`
+    if (objClasses.has(globalKey) == 1) {
+        return objClasses.getString(globalKey)
     }
     return ""
 }

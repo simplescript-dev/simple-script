@@ -279,9 +279,17 @@ function parseEnumDecl(): int {
     pExpect("LBRACE")
     skipNL()
     let variants = ""
+    let nextVal = 0
     while (curKind() != "RBRACE" && curKind() != "EOF") {
         const vId = newNode("ENUM_VARIANT")
         nSetS1(vId, pExpectIdent())
+        if (curKind() == "ASSIGN") {
+            pAdvance()
+            nextVal = parseInt(curValue())
+            pAdvance()
+        }
+        nSetI1(vId, nextVal)
+        nextVal = nextVal + 1
         variants = listAppend(variants, vId)
         if (curKind() == "COMMA") { pAdvance() }
         skipNL()
@@ -691,11 +699,22 @@ function parseExpr(): int {
 }
 
 function parseOr(): int {
-    let left = parseAndExpr()
+    let left = parseNullish()
     while (curKind() == "OR") {
         pAdvance()
-        const right = parseAndExpr()
+        const right = parseNullish()
         const id = newNode("BINARY"); nSetS1(id, "Or"); nSetI1(id, left); nSetI2(id, right)
+        left = id
+    }
+    return left
+}
+
+function parseNullish(): int {
+    let left = parseAndExpr()
+    while (curKind() == "NULLISH") {
+        pAdvance()
+        const right = parseAndExpr()
+        const id = newNode("BINARY"); nSetS1(id, "NullCoalesce"); nSetI1(id, left); nSetI2(id, right)
         left = id
     }
     return left
@@ -882,6 +901,86 @@ function parsePrimary(): int {
     return expr
 }
 
+// Lookahead: is current ( the start of an arrow function?
+// Scan forward from ( to find matching ), check if => follows
+function isArrowFunc(): int {
+    // Quick check: ( must be followed by ) or IDENT COLON
+    const nextK = tkKind(tkGet(tokens, tPos + 1))
+    if (nextK != "RPAREN" && nextK != "IDENT") { return 0 }
+    if (nextK == "IDENT") {
+        const afterIdent = tkKind(tkGet(tokens, tPos + 2))
+        // Must be param: name COLON type or name RPAREN or name COMMA
+        if (afterIdent != "COLON" && afterIdent != "RPAREN" && afterIdent != "COMMA") { return 0 }
+    }
+    // Scan to matching )
+    let lookahead = tPos + 1
+    let depth = 1
+    while (depth > 0) {
+        const lk = tkKind(tkGet(tokens, lookahead))
+        if (lk == "LPAREN") { depth = depth + 1 }
+        if (lk == "RPAREN") { depth = depth - 1 }
+        if (lk == "EOF") { return 0 }
+        lookahead = lookahead + 1
+    }
+    // Token right after ) must be => or : (return type annotation)
+    const afterParen = tkKind(tkGet(tokens, lookahead))
+    if (afterParen == "ARROW") { return 1 }
+    if (afterParen != "COLON") { return 0 }
+    // Skip return type to find =>
+    let checkPos = lookahead + 1
+    // Max 5 tokens for type (e.g. Array < string , int >)
+    let maxScan = 0
+    while (maxScan < 5) {
+        const tk = tkKind(tkGet(tokens, checkPos))
+        if (tk == "ARROW") { return 1 }
+        if (tk == "EOF" || tk == "LBRACE" || tk == "NEWLINE" || tk == "SEMICOLON") { return 0 }
+        checkPos = checkPos + 1
+        maxScan = maxScan + 1
+    }
+    return 0
+}
+
+// Parse: (params) => expr  or  (params): Type => expr  or  (params) => { block }
+function parseArrowFunc(): int {
+    pExpect("LPAREN")
+    let params = ""
+    while (curKind() != "RPAREN" && curKind() != "EOF") {
+        const pId = newNode("PARAM")
+        nSetS1(pId, pExpectIdent())
+        if (curKind() == "COLON") {
+            pAdvance()
+            nSetS2(pId, parseTypeAnn())
+        }
+        params = listAppend(params, pId)
+        if (curKind() == "COMMA") { pAdvance() }
+    }
+    pExpect("RPAREN")
+    let retType = ""
+    if (curKind() == "COLON") {
+        pAdvance()
+        retType = parseTypeAnn()
+    }
+    pExpect("ARROW")
+    // Body: either a block { ... } or a single expression
+    let bodyId = 0
+    if (curKind() == "LBRACE") {
+        bodyId = parseBlock()
+    } else {
+        // Single expression → wrap in implicit return
+        const exprId = parseExpr()
+        const retNode = newNode("RETURN")
+        nSetI1(retNode, exprId)
+        const blockId = newNode("BLOCK")
+        nSetList(blockId, `${retNode}`)
+        bodyId = blockId
+    }
+    const id = newNode("ARROW_FUNC")
+    nSetS2(id, retType)
+    nSetList(id, params)
+    nSetI1(id, bodyId)
+    return id
+}
+
 function parseAtom(): int {
     const k = curKind()
     const v = curValue()
@@ -943,6 +1042,10 @@ function parseAtom(): int {
         return id
     }
     if (k == "LPAREN") {
+        // Check if this is an arrow function: (...) => expr
+        if (isArrowFunc() == 1) {
+            return parseArrowFunc()
+        }
         pAdvance()
         const exprId = parseExpr()
         pExpect("RPAREN")

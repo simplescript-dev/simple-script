@@ -54,6 +54,7 @@ function genExpr(id: int): string {
     if (kind == "TERNARY") { return genTernary(id) }
     if (kind == "TEMPLATE_LIT") { return genTemplateLit(id) }
     if (kind == "ARRAY_LIT") { return genArrayLit(id) }
+    if (kind == "ARROW_FUNC") { return genArrowFunc(id) }
 
     if (kind == "INDEX_ACCESS") {
         let arrVal = genExpr(nGetI1(id))
@@ -136,6 +137,29 @@ function genBinary(id: int): string {
         const cmpBool = nextReg()
         emitIR(`  ${cmpBool} = icmp ${cmpOp} i32 ${cmpR}, 0`)
         const r = nextReg(); emitIR(`  ${r} = zext i1 ${cmpBool} to i32`); return r
+    }
+
+    // Null coalescing: left ?? right — if left is empty string, use right
+    if (op == "NullCoalesce") {
+        const ncResult = nextReg()
+        emitIR(`  ${ncResult} = alloca ptr, align 8`)
+        const ncLeft = genExpr(leftId)
+        emitIR(`  store ptr ${ncLeft}, ptr ${ncResult}, align 8`)
+        const ncLen = nextReg()
+        emitIR(`  ${ncLen} = call i32 @ss_stringLength(ptr ${ncLeft})`)
+        const ncCmp = nextReg()
+        emitIR(`  ${ncCmp} = icmp eq i32 ${ncLen}, 0`)
+        const ncThen = nextLabel("nc.then")
+        const ncEnd = nextLabel("nc.end")
+        emitIR(`  br i1 ${ncCmp}, label %${ncThen}, label %${ncEnd}`)
+        emitIR(`${ncThen}:`)
+        const ncRight = genExpr(rightId)
+        emitIR(`  store ptr ${ncRight}, ptr ${ncResult}, align 8`)
+        emitIR(`  br label %${ncEnd}`)
+        emitIR(`${ncEnd}:`)
+        const ncFinal = nextReg()
+        emitIR(`  ${ncFinal} = load ptr, ptr ${ncResult}, align 8`)
+        return ncFinal
     }
 
     // Short-circuit && and ||
@@ -333,6 +357,18 @@ function genCall(id: int): string {
     const retType = callReturnType(callee)
     const llRetType = ssTypeToLLVM(retType)
 
+    // Indirect call: if callee is a function pointer variable
+    if (getVarType(callee) == "fn") {
+        const fpVal = nextReg()
+        emitIR(`  ${fpVal} = load i64, ptr ${varRef(callee)}, align 8`)
+        const fpPtr = nextReg()
+        emitIR(`  ${fpPtr} = inttoptr i64 ${fpVal} to ptr`)
+        // Use i64 for indirect calls — caller converts as needed
+        const r = nextReg()
+        emitIR(`  ${r} = call i64 ${fpPtr}(${args})`)
+        return r
+    }
+
     if (llRetType == "void") {
         emitIR(`  call void @${rtName}(${args})`)
         return "0"
@@ -357,9 +393,9 @@ function genMethodCall(id: int): string {
     // String methods
     if (method == "length") {
         const r = nextReg()
-        // Heuristic: if object is from split/newArray (ptr type), use arrayLen
+        // Heuristic: if object is array type, use arrayLen
         const origType = inferType(objId)
-        if (origType == "ptr" || origType == "i64") {
+        if (origType == "ptr" || origType == "i64" || origType.contains("Array") == 1) {
             emitIR(`  ${r} = call i32 @ss_arrayLen(ptr ${objVal})`)
         } else {
             emitIR(`  ${r} = call i32 @ss_stringLength(ptr ${objVal})`)
@@ -371,7 +407,8 @@ function genMethodCall(id: int): string {
         const av = genExpr(parseInt(argList))
         let retT = "ptr"
         if (method == "charCodeAt") { retT = "i32" }
-        const r = nextReg(); emitIR(`  ${r} = call ${retT} @ss_${method}(ptr ${objVal}, i32 ${av})`); return r
+        const fn = preludeName(`ss_${method}`)
+        const r = nextReg(); emitIR(`  ${r} = call ${retT} @${fn}(ptr ${objVal}, i32 ${av})`); return r
     }
     if (method == "indexOf") {
         const argId = parseInt(argList)
@@ -394,32 +431,72 @@ function genMethodCall(id: int): string {
         const lenVal = genExpr(parseInt(argParts[1]))
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_substring(ptr ${objVal}, i32 ${startVal}, i32 ${lenVal})`); return r
     }
-    // Single ptr-arg bool methods → call i32 @ss_XXX(ptr, ptr)
-    if (method == "contains" || method == "startsWith" || method == "endsWith") {
+    // contains(sub) → indexOf(str, sub) >= 0
+    if (method == "contains") {
         const sub = genExpr(parseInt(argList))
-        const r = nextReg(); emitIR(`  ${r} = call i32 @ss_${method}(ptr ${objVal}, ptr ${sub})`); return r
+        const idxR = nextReg()
+        emitIR(`  ${idxR} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`)
+        const cmpR = nextReg()
+        emitIR(`  ${cmpR} = icmp sge i32 ${idxR}, 0`)
+        const r = nextReg()
+        emitIR(`  ${r} = zext i1 ${cmpR} to i32`)
+        return r
+    }
+    // startsWith(prefix) → substring(0, prefix.length()) == prefix
+    if (method == "startsWith") {
+        const sub = genExpr(parseInt(argList))
+        const pLen = nextReg()
+        emitIR(`  ${pLen} = call i32 @ss_stringLength(ptr ${sub})`)
+        const subStr = nextReg()
+        emitIR(`  ${subStr} = call ptr @ss_substring(ptr ${objVal}, i32 0, i32 ${pLen})`)
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @ss_string_eq(ptr ${subStr}, ptr ${sub})`)
+        return r
+    }
+    // endsWith(suffix) → substring(len - suffLen, suffLen) == suffix
+    if (method == "endsWith") {
+        const sub = genExpr(parseInt(argList))
+        const sLen = nextReg()
+        emitIR(`  ${sLen} = call i32 @ss_stringLength(ptr ${objVal})`)
+        const sufLen = nextReg()
+        emitIR(`  ${sufLen} = call i32 @ss_stringLength(ptr ${sub})`)
+        const start = nextReg()
+        emitIR(`  ${start} = sub i32 ${sLen}, ${sufLen}`)
+        const subStr = nextReg()
+        emitIR(`  ${subStr} = call ptr @ss_substring(ptr ${objVal}, i32 ${start}, i32 ${sufLen})`)
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @ss_string_eq(ptr ${subStr}, ptr ${sub})`)
+        return r
     }
     if (method == "replace") {
         const argParts = argList.split(",")
         const oldVal = genExpr(parseInt(argParts[0]))
         const newVal = genExpr(parseInt(argParts[1]))
-        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_replace(ptr ${objVal}, ptr ${oldVal}, ptr ${newVal})`); return r
+        const fn = preludeName("ss_replace")
+        const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, ptr ${oldVal}, ptr ${newVal})`); return r
     }
     // Single ptr-arg string methods -> call ptr @ss_XXX(ptr, ptr)
-    if (method == "split" || method == "join") {
+    if (method == "split") {
         const delim = genExpr(parseInt(argList))
-        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal}, ptr ${delim})`); return r
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_split(ptr ${objVal}, ptr ${delim})`); return r
+    }
+    if (method == "join") {
+        const delim = genExpr(parseInt(argList))
+        const fn = preludeName("ss_join")
+        const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, ptr ${delim})`); return r
     }
     // No-arg string methods -> call ptr @ss_XXX(ptr obj)
     if (method == "trim" || method == "toUpperCase" || method == "toLowerCase") {
-        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal})`); return r
+        const fn = preludeName(`ss_${method}`)
+        const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal})`); return r
     }
     // Two-arg pad methods -> call ptr @ss_XXX(ptr obj, i32 width, ptr pad)
     if (method == "padStart" || method == "padEnd") {
         const ap = argList.split(",")
         const w = genExpr(parseInt(ap[0]))
         const p = genExpr(parseInt(ap[1]))
-        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_${method}(ptr ${objVal}, i32 ${w}, ptr ${p})`); return r
+        const fn = preludeName(`ss_${method}`)
+        const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, i32 ${w}, ptr ${p})`); return r
     }
     // Array methods
     if (method == "push") {
@@ -471,9 +548,10 @@ function genMethodCall(id: int): string {
         const r = nextReg()
         if (method == "has") {
             emitIR(`  ${r} = call i32 @ss_mapHas(ptr ${objVal}, ptr ${mkey})`)
+        } else if (method == "getString") {
+            emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
         } else {
             emitIR(`  ${r} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
-            if (method == "getString") { const r2 = nextReg(); emitIR(`  ${r2} = inttoptr i64 ${r} to ptr`); return r2 }
         }
         return r
     }
@@ -571,6 +649,101 @@ function genTemplateLit(id: int): string {
         }
     }
     return result
+}
+
+// Arrow functions compile to top-level define blocks (like Zig fn pointers)
+// The function pointer is a ptr, stored as i64 in SS's uniform value system
+let arrowCount = 0
+let arrowDefs = ""
+
+function genArrowFunc(id: int): string {
+    arrowCount = arrowCount + 1
+    const fnName = `__arrow_${arrowCount}`
+    let retType = nGetS2(id)
+    if (retType == "") { retType = "int" }
+    const llRetType = ssTypeToLLVM(retType)
+    const bodyId = nGetI1(id)
+    const paramList = nGetList(id)
+    funcRetTypes.set(fnName, retType)
+
+    // Build param string
+    let paramStr = ""
+    if (paramList != "") {
+        const parts = paramList.split(",")
+        let idx = 0
+        for (p in parts) {
+            const pId = parseInt(p)
+            if (pId > 0) {
+                if (idx > 0) { paramStr = `${paramStr}, ` }
+                paramStr = `${paramStr}${ssTypeToLLVM(nGetS2(pId))} %${nGetS1(pId)}.arg`
+                idx = idx + 1
+            }
+        }
+    }
+
+    // Save state
+    const savedFunc = currentFunc
+    const savedReg = regCount
+    const savedTerm = terminated
+    const savedAliases = varAliases
+    const savedIrOut = irOutFile
+
+    // Generate body into buffer; string constants still go to main .str
+    currentFunc = fnName
+    regCount = 0
+    terminated = 0
+    varAliases = Map()
+    if (irOutFile != "") { strOutFile = irOutFile }
+    irOutFile = ""
+    irBuf = ""
+
+    emitIR(`define ${llRetType} @${fnName}(${paramStr}) {`)
+    emitIR("entry:")
+    if (paramList != "") {
+        const parts = paramList.split(",")
+        for (p in parts) {
+            const pId = parseInt(p)
+            if (pId > 0) {
+                const pName = nGetS1(pId)
+                const pType = nGetS2(pId)
+                const llType = ssTypeToLLVM(pType)
+                const pLLName = allocVarName(pName)
+                emitIR(`  %${pLLName} = alloca ${llType}, align 8`)
+                emitIR(`  store ${llType} %${pName}.arg, ptr %${pLLName}, align 8`)
+                setVarType(pName, pType)
+            }
+        }
+    }
+    genBlock(bodyId)
+    if (terminated == 0) {
+        if (llRetType == "void") { emitIR("  ret void") }
+        else if (llRetType == "ptr") { emitIR(`  ret ptr ${addStringConst("")}`) }
+        else { emitIR(`  ret ${llRetType} 0`) }
+    }
+    emitIR("}")
+    emitIR("")
+    arrowDefs = `${arrowDefs}${irBuf}`
+
+    // Restore state
+    irBuf = ""
+    irOutFile = savedIrOut
+    strOutFile = ""
+    currentFunc = savedFunc
+    regCount = savedReg
+    terminated = savedTerm
+    varAliases = savedAliases
+
+    // Return function pointer as ptr (ptrtoint to i64 for SS's value system)
+    const r = nextReg()
+    emitIR(`  ${r} = ptrtoint ptr @${fnName} to i64`)
+    return r
+}
+
+function flushArrowDefs() {
+    if (arrowDefs != "") {
+        emitIR(arrowDefs)
+        arrowDefs = ""
+    }
 }
 
 function genArrayLit(id: int): string {
@@ -707,6 +880,7 @@ function inferType(id: int): string {
     if (kind == "CALL") {
         const callee = nGetS1(id)
         if (callee == "Map") { return "ptr" }
+        if (getVarType(callee) == "fn") { return "i64" }
         return callReturnType(callee)
     }
     if (kind == "METHOD_CALL") {
@@ -755,10 +929,17 @@ function inferType(id: int): string {
     if (kind == "UNARY") { return inferType(nGetI1(id)) }
     if (kind == "TERNARY") { return inferType(nGetI2(id)) }
     if (kind == "ARRAY_LIT") { return "ptr" }
+    if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "INDEX_ACCESS") { return "i64" }
     if (kind == "NEW_EXPR") { return "ptr" }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { return "int" }
     return "int"
+}
+
+function preludeName(cName: string): string {
+    const pName = `_${cName}`
+    if (funcRetTypes.has(pName) == 1) { return pName }
+    return cName
 }
 
 function callReturnType(callee: string): string {
@@ -788,6 +969,7 @@ function ssTypeToLLVM(t: string): string {
     if (t == "string") { return "ptr" }
     if (t == "void") { return "void" }
     if (t == "ptr") { return "ptr" }
+    if (t == "fn") { return "i64" }
     if (t == "i64") { return "i64" }
     // Generic types (Array<string>, Map<string,int>, etc.) → ptr
     if (t.contains("<") == 1) { return "ptr" }
@@ -797,12 +979,17 @@ function ssTypeToLLVM(t: string): string {
 }
 
 function setVarType(name: string, varType: string) {
-    varTypes.set(name, varType)
+    varTypes.set(`${currentFunc}:${name}`, varType)
 }
 
 function getVarType(name: string): string {
-    if (varTypes.has(name) == 1) {
-        return varTypes.getString(name)
+    const scopedKey = `${currentFunc}:${name}`
+    if (varTypes.has(scopedKey) == 1) {
+        return varTypes.getString(scopedKey)
+    }
+    const globalKey = `:${name}`
+    if (varTypes.has(globalKey) == 1) {
+        return varTypes.getString(globalKey)
     }
     return ""
 }

@@ -56,7 +56,7 @@ function tokenize(source: string): string {
         if (ch == "%") { lexPercent(); continue }
         if (ch == "=") { lexEq(); continue }
         if (ch == "!") { lexBang(); continue }
-        if (ch == "?") { emit("QUESTION", "?"); advance(); continue }
+        if (ch == "?") { lexQuestion(); continue }
         if (ch == "<") { lexLt(); continue }
         if (ch == ">") { lexGt(); continue }
         if (ch == "&") { lexAnd(); continue }
@@ -267,7 +267,7 @@ function lexTemplate() {
                 } else if (ch == ",") { emit("COMMA", ","); advance()
                 } else if (ch == ".") { emit("DOT", "."); advance()
                 } else if (ch == ":") { emit("COLON", ":"); advance()
-                } else if (ch == "?") { emit("QUESTION", "?"); advance()
+                } else if (ch == "?") { lexQuestion()
                 } else if (ch == "=") { lexEq()
                 } else if (ch == "!") { lexBang()
                 } else if (ch == "<") { lexLt()
@@ -459,6 +459,12 @@ function lexOr() {
     advance()
     if (pos < srcLen && peek() == "|") { advance(); emit("OR", "||"); return }
     emit("BIT_OR", "|")
+}
+
+function lexQuestion() {
+    advance()
+    if (pos < srcLen && peek() == "?") { advance(); emit("NULLISH", "??"); return }
+    emit("QUESTION", "?")
 }
 
 function lexCaret() {

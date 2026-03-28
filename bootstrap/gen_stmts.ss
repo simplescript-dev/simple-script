@@ -1,6 +1,22 @@
 // Statement generation for bootstrap codegen
 // ── Statement generation ──────────────────────────────────────
 
+function registerEnum(id: int) {
+    if (enumReady == 0) { enumValues = Map(); enumReady = 1 }
+    const eName = nGetS1(id)
+    const vl = nGetList(id)
+    if (vl == "") { return }
+    const parts = vl.split(",")
+    for (p in parts) {
+        const vid = parseInt(p)
+        if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+            const vName = nGetS1(vid)
+            const vVal = nGetI1(vid)
+            enumValues.set(`${eName}.${vName}`, `${vVal}`)
+        }
+    }
+}
+
 function genStmt(id: int) {
     const kind = nGetKind(id)
 
@@ -90,7 +106,11 @@ function genStmt(id: int) {
         genClassDecl(id)
         return
     }
-    // IMPORT, INTERFACE_DECL, ENUM_DECL — skip
+    if (kind == "ENUM_DECL") {
+        registerEnum(id)
+        return
+    }
+    // IMPORT, INTERFACE_DECL — skip
 }
 
 function genFuncDecl(id: int) {
@@ -172,6 +192,7 @@ function genFuncDecl(id: int) {
     }
     emitIR("}")
     emitIR("")
+    flushArrowDefs()
 }
 
 function genBlock(blockId: int) {
@@ -224,8 +245,8 @@ function genVarDecl(id: int) {
     const initType = inferType(initId)
     const llType = ssTypeToLLVM(initType)
 
-    // Skip alloca for globals (already declared) — just store the init value
-    if (globalAliases.has(name) == 1) {
+    // Global vars: just store (alloca already done by genGlobalVar)
+    if (currentFunc == "" && globalAliases.has(name) == 1) {
         const val = genExpr(initId)
         const gn = globalAliases.getString(name)
         emitIR(`  store ${llType} ${val}, ptr ${gn}, align 8`)
