@@ -227,6 +227,7 @@ function genFuncDecl(id: int) {
         emitIR("entry:")
         emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
         regCount = 2
+        emitGlobalInits()
     } else {
         // Collect param types (MVP: all int for now)
         const paramList = nGetList(id)
@@ -309,6 +310,9 @@ function genBlock(blockId: int) {
     }
 }
 
+// Track global vars needing runtime init (new Map(), function calls, etc.)
+let globalInitIds = ""
+
 function genGlobalVar(id: int) {
     const name = nGetS1(id)
     if (globalAliases.has(name) == 1) { return }
@@ -331,10 +335,28 @@ function genGlobalVar(id: int) {
         emitIR(`@${name} = global i32 0, align 4`)
         gType = "int"
     } else {
+        // Non-literal init: declare null, queue runtime init
         emitIR(`@${name} = global ptr null, align 8`)
+        if (globalInitIds == "") { globalInitIds = `${id}` }
+        else { globalInitIds = `${globalInitIds},${id}` }
     }
     setVarType(name, gType)
     globalAliases.set(name, `@${name}`)
+}
+
+// Called at the start of main() to init global vars with runtime expressions
+function emitGlobalInits() {
+    if (globalInitIds == "") { return }
+    const parts = globalInitIds.split(",")
+    for (p in parts) {
+        const gid = parseInt(p)
+        if (gid > 0) {
+            const gname = nGetS1(gid)
+            const initId = nGetI1(gid)
+            const val = genExpr(initId)
+            emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
+        }
+    }
 }
 
 function genVarDecl(id: int) {
