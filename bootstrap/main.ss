@@ -263,6 +263,7 @@ function runTestDir(dir: string, p: int, f: int, t: int) {
     if (entries == "") { return }
     const parts = entries.split("\n")
     for (entry in parts) {
+        if (entry == "") { continue }
         const path = dir + "/" + entry
         if (entry.endsWith(".ss") == 1) {
             // Skip interactive tests and library-only files
