@@ -1,9 +1,8 @@
 // SimpleScript Spring HTTP — ResponseEntity & HttpStatus
-// Mirrors Spring's ResponseEntity<T> for building HTTP responses
 
 import { httpResponse } from "@/lib/http"
 
-// ── HttpStatus (enum with values, like Spring's HttpStatus) ──
+// ── HttpStatus ───────────────────────────────────────────────
 
 enum HttpStatus {
     OK = 200,
@@ -23,15 +22,17 @@ enum HttpStatus {
 }
 
 // ── ResponseEntity ───────────────────────────────────────────
-// Immutable response object. Use builder methods (chaining via new instances).
 //
-// Usage:
-//   return ResponseEntity.ok("{\"users\": []}")
-//   return ResponseEntity.created("{\"id\": 1}")
-//   return ResponseEntity.status(HttpStatus.NOT_FOUND).body("{\"error\": \"not found\"}")
-//   return ResponseEntity.badRequest().body("{\"error\": \"invalid\"}")
+// Usage (Spring Boot style):
+//   ResponseEntity.ok(body)
+//   ResponseEntity.created(body)
+//   ResponseEntity.status(HttpStatus.NOT_FOUND).body(msg).build()
+//   ResponseEntity.badRequest().body(msg).build()
+//   ResponseEntity.notFound().build()
+//   ResponseEntity.noContent().build()
 
 class ResponseEntity(statusCode: int, contentType: string, responseBody: string) {
+    // Instance methods (builder chain)
     function body(data: string): ResponseEntity {
         return new ResponseEntity(this.statusCode, this.contentType, data)
     }
@@ -45,14 +46,13 @@ class ResponseEntity(statusCode: int, contentType: string, responseBody: string)
     }
 }
 
-// ── Static factory methods (like ResponseEntity.ok()) ────────
-
-function ResponseEntity_ok(body: string): ResponseEntity {
-    return new ResponseEntity(HttpStatus.OK, "application/json", body)
+// Static factory methods — called as ResponseEntity.ok(), ResponseEntity.created(), etc.
+function ResponseEntity_ok(data: string): ResponseEntity {
+    return new ResponseEntity(HttpStatus.OK, "application/json", data)
 }
 
-function ResponseEntity_created(body: string): ResponseEntity {
-    return new ResponseEntity(HttpStatus.CREATED, "application/json", body)
+function ResponseEntity_created(data: string): ResponseEntity {
+    return new ResponseEntity(HttpStatus.CREATED, "application/json", data)
 }
 
 function ResponseEntity_noContent(): ResponseEntity {
@@ -69,12 +69,4 @@ function ResponseEntity_notFound(): ResponseEntity {
 
 function ResponseEntity_status(code: int): ResponseEntity {
     return new ResponseEntity(code, "application/json", "")
-}
-
-function ResponseEntity_redirect(url: string): string {
-    let resp = "HTTP/1.1 302 Found\r\n"
-    resp = `${resp}Location: ${url}\r\n`
-    resp = `${resp}Content-Length: 0\r\n`
-    resp = `${resp}Connection: close\r\n\r\n`
-    return resp
 }

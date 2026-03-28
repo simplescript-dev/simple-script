@@ -435,6 +435,42 @@ function genMethodCall(id: int): string {
     const objId = nGetI1(id)
     const argList = nGetList(id)
 
+    // Early static method detection: ClassName.method() where ClassName is a class, not a variable
+    if (nGetKind(objId) == "IDENT" && getVarType(nGetS1(objId)) == "" && classFields.has(nGetS1(objId)) == 1) {
+        const sClassName = nGetS1(objId)
+        let sMethodClass = sClassName
+        while (sMethodClass != "") {
+            if (funcRetTypes.has(`${sMethodClass}_${method}`) == 1) { break }
+            if (classParents.has(sMethodClass) == 1) { sMethodClass = classParents.getString(sMethodClass) }
+            else { sMethodClass = sClassName; break }
+        }
+        let sArgs = ""
+        if (argList != "") {
+            const sArgParts = argList.split(",")
+            let sFirst = 1
+            for (sap in sArgParts) {
+                const saId = parseInt(sap)
+                if (saId > 0) {
+                    const saVal = genExpr(saId)
+                    const saType = inferType(saId)
+                    if (sFirst == 1) { sFirst = 0 } else { sArgs = `${sArgs}, ` }
+                    sArgs = `${sArgs}${ssTypeToLLVM(saType)} ${saVal}`
+                }
+            }
+        }
+        let sRetType = "ptr"
+        if (funcRetTypes.has(`${sMethodClass}_${method}`) == 1) {
+            sRetType = ssTypeToLLVM(funcRetTypes.getString(`${sMethodClass}_${method}`))
+        }
+        if (sRetType == "void") {
+            emitIR(`  call void @${sMethodClass}_${method}(${sArgs})`)
+            return "0"
+        }
+        const sr = nextReg()
+        emitIR(`  ${sr} = call ${sRetType} @${sMethodClass}_${method}(${sArgs})`)
+        return sr
+    }
+
     let objVal = genExpr(objId)
     // If object is i64 (e.g., from for-in or Map.get), convert to ptr for string/array methods
     const objType = inferType(objId)
@@ -660,8 +696,14 @@ function genMethodCall(id: int): string {
     // Class method call: obj.method(args) → ClassName_method(obj, args)
     const objId2 = nGetI1(id)
     let className = ""
+    let isStaticCall = 0
     if (nGetKind(objId2) == "IDENT") {
         className = getObjClass(nGetS1(objId2))
+        // Static method: ClassName.method() where ClassName is a class, not a variable
+        if (className == "" && classFields.has(nGetS1(objId2)) == 1) {
+            className = nGetS1(objId2)
+            isStaticCall = 1
+        }
     }
     if (nGetKind(objId2) == "THIS" && currentClassName != "") {
         className = currentClassName
@@ -700,7 +742,11 @@ function genMethodCall(id: int): string {
                 break
             }
         }
-        let callArgs = `ptr ${objVal}`
+        // Static calls: no this parameter. Instance calls: this is first arg.
+        let callArgs = ""
+        if (isStaticCall == 0) {
+            callArgs = `ptr ${objVal}`
+        }
         if (argList != "") {
             const argParts = argList.split(",")
             for (ap in argParts) {
@@ -708,7 +754,8 @@ function genMethodCall(id: int): string {
                 if (argId > 0) {
                     const aVal = genExpr(argId)
                     const aType = inferType(argId)
-                    callArgs = `${callArgs}, ${ssTypeToLLVM(aType)} ${aVal}`
+                    if (callArgs != "") { callArgs = `${callArgs}, ` }
+                    callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
                 }
             }
         }
@@ -1068,7 +1115,13 @@ function inferType(id: int): string {
         // Class method — look up return type
         const mObjId = nGetI1(id)
         let mClassName = ""
-        if (nGetKind(mObjId) == "IDENT") { mClassName = getObjClass(nGetS1(mObjId)) }
+        if (nGetKind(mObjId) == "IDENT") {
+            mClassName = getObjClass(nGetS1(mObjId))
+            // Static method: ClassName.method()
+            if (mClassName == "" && classFields.has(nGetS1(mObjId)) == 1) {
+                mClassName = nGetS1(mObjId)
+            }
+        }
         if (nGetKind(mObjId) == "THIS" && currentClassName != "") { mClassName = currentClassName }
         // Infer class from function return type (chained calls)
         if (mClassName == "" && nGetKind(mObjId) == "CALL") {
