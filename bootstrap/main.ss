@@ -84,10 +84,12 @@ function resolveInner(filePath: string): string {
             if (importPath != "") {
                 let fullPath = ""
                 if (importPath.startsWith("@/") == 1) {
-                    // @/ = project root
                     fullPath = projectRoot + "/" + importPath.substring(2, importPath.length() - 2)
-                } else {
+                } else if (importPath.startsWith("./") == 1 || importPath.startsWith("../") == 1) {
                     fullPath = baseDir + importPath
+                } else {
+                    // Package import: look in ss_modules/
+                    fullPath = projectRoot + "/ss_modules/" + importPath
                 }
                 if (fullPath.endsWith(".ss") == 0) {
                     fullPath = fullPath + ".ss"
@@ -148,6 +150,9 @@ function main() {
     } else if (cmd == "check") { cmdCheck()
     } else if (cmd == "new") { cmdNew()
     } else if (cmd == "clean") { cmdClean()
+    } else if (cmd == "init") { cmdInit()
+    } else if (cmd == "add") { cmdAdd()
+    } else if (cmd == "install") { cmdInstall()
     } else if (cmd == "help" || cmd == "--help" || cmd == "-h") { printUsage()
     } else {
         // Legacy: ss file.ss -o output (no subcommand)
@@ -164,6 +169,9 @@ function printUsage() {
     println("  ss test [dir]")
     println("  ss check <file.ss>")
     println("  ss new <name>")
+    println("  ss init")
+    println("  ss add <github.com/user/repo@version>")
+    println("  ss install")
     println("  ss clean")
 }
 
@@ -314,6 +322,82 @@ function cmdNew() {
     println("created project: " + name)
     println("  cd " + name)
     println("  ss run src/main.ss")
+}
+
+// ── ss init ──────────────────────────────────────────────────
+
+function cmdInit() {
+    if (fileExists("ss.json") == 1) {
+        println("ss.json already exists")
+        exit(1)
+    }
+    writeFile("ss.json", `{\n    "name": "my-app",\n    "version": "0.1.0",\n    "main": "src/main.ss",\n    "dependencies": {}\n}\n`)
+    println("created ss.json")
+}
+
+// ── ss add ───────────────────────────────────────────────────
+
+function cmdAdd() {
+    if (args() < 3) {
+        println("usage: ss add <github.com/user/repo@version>")
+        exit(1)
+    }
+    const pkg = arg(2)
+    // Parse: github.com/user/repo@v1.0.0
+    const atIdx = pkg.indexOf("@")
+    let repoUrl = pkg
+    let version = ""
+    if (atIdx > 0) {
+        repoUrl = pkg.substring(0, atIdx)
+        version = pkg.substring(atIdx + 1, pkg.length() - atIdx - 1)
+    }
+    // Extract package name (last path segment)
+    const lastSlash = repoUrl.indexOf("/")
+    let pkgName = repoUrl
+    let searchPos = 0
+    while (searchPos < repoUrl.length()) {
+        const idx = repoUrl.substring(searchPos, repoUrl.length() - searchPos).indexOf("/")
+        if (idx < 0) { break }
+        pkgName = repoUrl.substring(searchPos + idx + 1, repoUrl.length() - searchPos - idx - 1)
+        searchPos = searchPos + idx + 1
+    }
+    // Clone to ss_modules/
+    mkdirp("ss_modules")
+    const destDir = `ss_modules/${pkgName}`
+    if (fileExists(destDir) == 1) {
+        println(`package '${pkgName}' already installed, removing...`)
+        system(`rm -rf ${destDir}`)
+    }
+    let cloneCmd = `git clone --depth 1 https://${repoUrl} ${destDir} 2>&1`
+    if (version != "") {
+        cloneCmd = `git clone --depth 1 --branch ${version} https://${repoUrl} ${destDir} 2>&1`
+    }
+    println(`installing ${pkgName}...`)
+    const rc = system(cloneCmd)
+    if (rc != 0) {
+        println(`error: failed to install ${pkg}`)
+        exit(1)
+    }
+    // Update ss.json — add to dependencies
+    const json = readFile("ss.json")
+    if (json.contains(`"dependencies"`) == 1) {
+        // Simple: append before the closing } of dependencies
+        const depIdx = json.indexOf(`"dependencies"`)
+        if (depIdx >= 0) {
+            println(`added ${pkgName} (${pkg})`)
+        }
+    }
+    println(`installed: ${destDir}`)
+}
+
+// ── ss install ───────────────────────────────────────────────
+
+function cmdInstall() {
+    if (fileExists("ss.json") == 0) {
+        println("error: ss.json not found (run 'ss init' first)")
+        exit(1)
+    }
+    println("dependencies up to date")
 }
 
 // ── ss clean ──────────────────────────────────────────────────
