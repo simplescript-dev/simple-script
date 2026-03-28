@@ -394,8 +394,22 @@ function genVarDecl(id: int) {
     if (nGetKind(initId) == "NEW_EXPR") {
         setObjClass(name, nGetS1(initId))
     }
-    if (nGetKind(initId) == "CALL" && nGetS1(initId) == "Map") {
-        setObjClass(name, "Map")
+    if (nGetKind(initId) == "CALL") {
+        if (nGetS1(initId) == "Map") {
+            setObjClass(name, "Map")
+        } else {
+            const callRet = funcRetTypes.getString(nGetS1(initId)) ?? ""
+            if (callRet != "" && classFields.has(callRet) == 1) {
+                setObjClass(name, callRet)
+            }
+        }
+    }
+    // Infer class from method call chain (e.g., createFoo().setBar())
+    if (nGetKind(initId) == "METHOD_CALL") {
+        const mRetType = inferType(initId)
+        if (mRetType != "" && classFields.has(mRetType) == 1) {
+            setObjClass(name, mRetType)
+        }
     }
 
     let val = genExpr(initId)
@@ -404,6 +418,11 @@ function genVarDecl(id: int) {
         const trR = nextReg()
         emitIR(`  ${trR} = trunc i64 ${val} to i32`)
         val = trR
+    }
+    if (valLLType == "i64" && llType == "ptr") {
+        const cvR = nextReg()
+        emitIR(`  ${cvR} = inttoptr i64 ${val} to ptr`)
+        val = cvR
     }
     emitIR(`  store ${llType} ${val}, ptr %${llName}, align 8`)
 }
@@ -419,10 +438,16 @@ function genAssign(id: int) {
     if (op == "ASSIGN") {
         let val = genExpr(valId)
         const valType = inferType(valId)
-        if (ssTypeToLLVM(valType) == "i64" && llType == "i32") {
+        const valLL = ssTypeToLLVM(valType)
+        if (valLL == "i64" && llType == "i32") {
             const trR = nextReg()
             emitIR(`  ${trR} = trunc i64 ${val} to i32`)
             val = trR
+        }
+        if (valLL == "i64" && llType == "ptr") {
+            const cvR = nextReg()
+            emitIR(`  ${cvR} = inttoptr i64 ${val} to ptr`)
+            val = cvR
         }
         emitIR(`  store ${llType} ${val}, ptr ${varRef(name)}, align 8`)
     } else {

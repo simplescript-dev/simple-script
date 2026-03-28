@@ -16,6 +16,11 @@ function genExpr(id: int): string {
     }
     if (kind == "TRUE_LIT") { return "1" }
     if (kind == "FALSE_LIT") { return "0" }
+    if (kind == "THIS") {
+        const r = nextReg()
+        emitIR(`  ${r} = load ptr, ptr %this, align 8`)
+        return r
+    }
 
     if (kind == "IDENT") {
         const name = nGetS1(id)
@@ -1065,6 +1070,15 @@ function inferType(id: int): string {
         let mClassName = ""
         if (nGetKind(mObjId) == "IDENT") { mClassName = getObjClass(nGetS1(mObjId)) }
         if (nGetKind(mObjId) == "THIS" && currentClassName != "") { mClassName = currentClassName }
+        // Infer class from function return type (chained calls)
+        if (mClassName == "" && nGetKind(mObjId) == "CALL") {
+            const cr = funcRetTypes.getString(nGetS1(mObjId)) ?? ""
+            if (cr != "" && classFields.has(cr) == 1) { mClassName = cr }
+        }
+        if (mClassName == "" && nGetKind(mObjId) == "METHOD_CALL") {
+            const chainType = inferType(mObjId)
+            if (chainType != "" && classFields.has(chainType) == 1) { mClassName = chainType }
+        }
         if (mClassName != "") {
             // Look up in class and parent chain
             let lookupClass = mClassName
