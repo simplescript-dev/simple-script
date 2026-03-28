@@ -262,6 +262,10 @@ function genFuncDecl(id: int) {
                     emitIR(`  %${pLLName} = alloca ${llType}, align 8`)
                     emitIR(`  store ${llType} %${pName}.arg, ptr %${pLLName}, align 8`)
                     setVarType(pName, pType)
+                    // Register class type for method dispatch
+                    if (classFields.has(pType) == 1) {
+                        setObjClass(pName, pType)
+                    }
                 }
             }
         }

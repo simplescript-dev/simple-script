@@ -1,22 +1,14 @@
 // SimpleScript Spring Boot — Application Bootstrap
-// Usage: SpringApplication.run(8080)
 
-import { parseRequest, httpResponse, httpOk, httpJson, httpNotFound, httpError } from "@/lib/http"
+import { parseRequest, httpNotFound, httpError } from "@/lib/http"
+import { HttpServletRequest, createRequest } from "@/lib/spring/web"
 
 // ── Route registry ───────────────────────────────────────────
 
-let routes = ""
+let routes = new Map()
 let routeCount = 0
-let routeReady = 0
-
-function initRoutes() {
-    if (routeReady == 1) { return }
-    routes = new Map()
-    routeReady = 1
-}
 
 function registerRoute(method: string, path: string, handler: fn) {
-    initRoutes()
     const key = `${method}:${path}`
     routes.set(key, handler)
     routeCount = routeCount + 1
@@ -40,23 +32,21 @@ function Delete(path: string, handler: fn) {
 
 // ── Request dispatcher ───────────────────────────────────────
 
-function dispatch(req: Map<string, string>): string {
-    const method = req.getString("method")
-    const path = req.getString("path")
+function dispatch(request: HttpServletRequest): string {
+    const method = request.getMethod()
+    const path = request.getRequestURI()
     const key = `${method}:${path}`
 
     if (routes.has(key) == 1) {
         const handler = routes.get(key)
-        return handler(req)
+        return handler(request)
     }
 
-    // Try path without trailing slash
     if (path.endsWith("/") == 1 && path != "/") {
-        const trimmedPath = path.substring(0, path.length() - 1)
-        const key2 = `${method}:${trimmedPath}`
+        const key2 = `${method}:${path.substring(0, path.length() - 1)}`
         if (routes.has(key2) == 1) {
             const handler2 = routes.get(key2)
-            return handler2(req)
+            return handler2(request)
         }
     }
 
@@ -92,16 +82,13 @@ class SpringApplication() {
             try {
                 const raw = tcpRead(client, 65536)
                 if (raw.length() > 0) {
-                    const req = parseRequest(raw)
-                    const method = req.getString("method")
-                    const path = req.getString("path")
-                    const response = dispatch(req)
-                    println(`${method} ${path}`)
-                    tcpWrite(client, response)
+                    const request = createRequest(raw)
+                    const result = dispatch(request)
+                    println(`${request.getMethod()} ${request.getRequestURI()}`)
+                    tcpWrite(client, result)
                 }
             } catch (e) {
-                const errResp = httpError(`Internal Server Error: ${e}`)
-                tcpWrite(client, errResp)
+                tcpWrite(client, httpError(`Internal Server Error: ${e}`))
             }
             tcpClose(client)
         }
