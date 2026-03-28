@@ -47,7 +47,10 @@ function genExpr(id: int): string {
     }
 
     if (kind == "CALL") { return genCall(id) }
-    if (kind == "METHOD_CALL") { return genMethodCall(id) }
+    if (kind == "METHOD_CALL") {
+        if (nGetI3(id) > 0) { return genOptionalMethodCall(id) }
+        return genMethodCall(id)
+    }
     if (kind == "MEMBER_ACCESS") { return genMemberAccess(id) }
     if (kind == "NEW_EXPR") { return genNewExpr(id) }
     if (kind == "GROUPING") { return genExpr(nGetI1(id)) }
@@ -374,6 +377,46 @@ function genCall(id: int): string {
         return "0"
     }
     const r = nextReg(); emitIR(`  ${r} = call ${llRetType} @${rtName}(${args})`); return r
+}
+
+// obj?.method() — if obj is "", return default; otherwise call normally
+function genOptionalMethodCall(id: int): string {
+    const objId = nGetI1(id)
+    const objVal = genExpr(objId)
+    const retType = inferType(id)
+    const llRetType = ssTypeToLLVM(retType)
+
+    // Alloca for result
+    const resultAlloca = nextReg()
+    emitIR(`  ${resultAlloca} = alloca ${llRetType}, align 8`)
+    // Store default
+    if (llRetType == "ptr") {
+        const emptyStr = addStringConst("")
+        emitIR(`  store ptr ${emptyStr}, ptr ${resultAlloca}, align 8`)
+    } else {
+        emitIR(`  store ${llRetType} 0, ptr ${resultAlloca}, align 8`)
+    }
+
+    // Check if obj is empty
+    const lenR = nextReg()
+    emitIR(`  ${lenR} = call i32 @ss_stringLength(ptr ${objVal})`)
+    const cmpR = nextReg()
+    emitIR(`  ${cmpR} = icmp eq i32 ${lenR}, 0`)
+    const callLabel = nextLabel("opt.call")
+    const endLabel = nextLabel("opt.end")
+    emitIR(`  br i1 ${cmpR}, label %${endLabel}, label %${callLabel}`)
+
+    // Call method normally (clear the optional flag so genMethodCall doesn't loop)
+    emitIR(`${callLabel}:`)
+    nSetI3(id, 0)
+    const callResult = genMethodCall(id)
+    emitIR(`  store ${llRetType} ${callResult}, ptr ${resultAlloca}, align 8`)
+    emitIR(`  br label %${endLabel}`)
+
+    emitIR(`${endLabel}:`)
+    const finalR = nextReg()
+    emitIR(`  ${finalR} = load ${llRetType}, ptr ${resultAlloca}, align 8`)
+    return finalR
 }
 
 function genMethodCall(id: int): string {
@@ -773,6 +816,66 @@ function flushArrowDefs() {
 
 function genArrayLit(id: int): string {
     const elemList = nGetList(id)
+
+    // Check if any spread elements exist
+    let hasSpread = 0
+    if (elemList != "") {
+        const chkParts = elemList.split(",")
+        for (cp in chkParts) {
+            const cid = parseInt(cp)
+            if (cid > 0 && nGetKind(cid) == "SPREAD_ELEM") { hasSpread = 1 }
+        }
+    }
+
+    // If spread exists, use push-based building
+    if (hasSpread == 1) {
+        const arrAlloca = nextReg()
+        emitIR(`  ${arrAlloca} = alloca ptr, align 8`)
+        const initArr = nextReg()
+        emitIR(`  ${initArr} = call ptr @ss_newArray(i32 0)`)
+        emitIR(`  store ptr ${initArr}, ptr ${arrAlloca}, align 8`)
+        if (elemList != "") {
+            const parts = elemList.split(",")
+            for (p in parts) {
+                const elemId = parseInt(p)
+                if (elemId > 0) {
+                    if (nGetKind(elemId) == "SPREAD_ELEM") {
+                        // Spread: concat arrays
+                        const spreadArr = genExpr(nGetI1(elemId))
+                        const curArr = nextReg()
+                        emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
+                        const merged = nextReg()
+                        emitIR(`  ${merged} = call ptr @ss_arrayConcat(ptr ${curArr}, ptr ${spreadArr})`)
+                        emitIR(`  store ptr ${merged}, ptr ${arrAlloca}, align 8`)
+                    } else {
+                        // Normal element: push
+                        const val = genExpr(elemId)
+                        const vType = inferType(elemId)
+                        let val64 = val
+                        if (vType == "string") {
+                            const cR = nextReg()
+                            emitIR(`  ${cR} = ptrtoint ptr ${val} to i64`)
+                            val64 = cR
+                        } else {
+                            const sR = nextReg()
+                            emitIR(`  ${sR} = sext i32 ${val} to i64`)
+                            val64 = sR
+                        }
+                        const curArr = nextReg()
+                        emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
+                        const pushed = nextReg()
+                        emitIR(`  ${pushed} = call ptr @ss_arrayPush(ptr ${curArr}, i64 ${val64})`)
+                        emitIR(`  store ptr ${pushed}, ptr ${arrAlloca}, align 8`)
+                    }
+                }
+            }
+        }
+        const finalArr = nextReg()
+        emitIR(`  ${finalArr} = load ptr, ptr ${arrAlloca}, align 8`)
+        return finalArr
+    }
+
+    // No spread: use fixed-size allocation
     let count = 0
     if (elemList != "") {
         const parts = elemList.split(",")

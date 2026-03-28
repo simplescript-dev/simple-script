@@ -72,7 +72,12 @@ function tokenize(source: string): string {
         if (ch == ",") { emit("COMMA", ","); advance(); continue }
         if (ch == ":") { emit("COLON", ":"); advance(); continue }
         if (ch == ";") { emit("SEMICOLON", ";"); advance(); continue }
-        if (ch == ".") { emit("DOT", "."); advance(); continue }
+        if (ch == ".") {
+            advance()
+            if (pos + 1 < srcLen && peek() == "." && peekNext() == ".") { advance(); advance(); emit("SPREAD", "..."); continue }
+            emit("DOT", ".")
+            continue
+        }
         println("lexer error: unexpected '" + ch + "' at line " + curLine)
         exit(1)
     }
@@ -467,6 +472,7 @@ function lexOr() {
 function lexQuestion() {
     advance()
     if (pos < srcLen && peek() == "?") { advance(); emit("NULLISH", "??"); return }
+    if (pos < srcLen && peek() == ".") { advance(); emit("OPT_CHAIN", "?."); return }
     emit("QUESTION", "?")
 }
 

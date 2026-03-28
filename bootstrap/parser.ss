@@ -915,8 +915,8 @@ function parseUnary(): int {
 
 function parsePrimary(): int {
     let expr = parseAtom()
-    // Postfix: .member, .method(), [index]
-    while (curKind() == "DOT" || curKind() == "LBRACKET") {
+    // Postfix: .member, .method(), [index], ?.member
+    while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN") {
         if (curKind() == "LBRACKET") {
             pAdvance()
             const indexId = parseExpr()
@@ -927,7 +927,8 @@ function parsePrimary(): int {
             expr = id
             continue
         }
-        // Dot access
+        // Dot or ?. access
+        const isOptional = curKind() == "OPT_CHAIN" ? 1 : 0
         pAdvance()
         const member = pExpectIdent()
         if (curKind() == "LPAREN") {
@@ -938,11 +939,13 @@ function parsePrimary(): int {
             nSetS1(id, member)
             nSetI1(id, expr)
             nSetList(id, argsStr)
+            nSetI3(id, isOptional)
             expr = id
         } else {
             const id = newNode("MEMBER_ACCESS")
             nSetS1(id, member)
             nSetI1(id, expr)
+            nSetI3(id, isOptional)
             expr = id
         }
     }
@@ -1108,8 +1111,16 @@ function parseAtom(): int {
         if (curKind() != "RBRACKET") {
             while (curKind() != "EOF") {
                 skipNL()
-                const elemId = parseExpr()
-                elems = listAppend(elems, elemId)
+                if (curKind() == "SPREAD") {
+                    pAdvance()
+                    const spreadExpr = parseExpr()
+                    const spreadNode = newNode("SPREAD_ELEM")
+                    nSetI1(spreadNode, spreadExpr)
+                    elems = listAppend(elems, spreadNode)
+                } else {
+                    const elemId = parseExpr()
+                    elems = listAppend(elems, elemId)
+                }
                 skipNL()
                 if (curKind() == "COMMA") { pAdvance() } else { break }
             }
