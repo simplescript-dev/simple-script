@@ -20,6 +20,12 @@ function genExpr(id: int): string {
     if (kind == "IDENT") {
         const name = nGetS1(id)
         const vType = getVarType(name)
+        // Named function reference → function pointer (ptrtoint)
+        if (vType == "" && funcRetTypes.has(name) == 1) {
+            const r = nextReg()
+            emitIR(`  ${r} = ptrtoint ptr @${name} to i64`)
+            return r
+        }
         const r = nextReg(); emitIR(`  ${r} = load ${ssTypeToLLVM(vType)}, ptr ${varRef(name)}, align 8`); return r
     }
 
@@ -995,6 +1001,7 @@ function inferType(id: int): string {
     if (kind == "IDENT") {
         const vType = getVarType(nGetS1(id))
         if (vType != "") { return vType }
+        if (funcRetTypes.has(nGetS1(id)) == 1) { return "fn" }
         return "int"
     }
     if (kind == "BINARY") {
