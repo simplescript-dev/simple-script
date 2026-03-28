@@ -433,6 +433,54 @@ function genOptionalMethodCall(id: int): string {
     return finalR
 }
 
+function emitClassMethodCall(className: string, method: string, objVal: string, argList: string, isStatic: int): string {
+    // Walk parent chain to find the class that has this method
+    let methodClass = className
+    while (methodClass != "") {
+        if (funcRetTypes.has(`${methodClass}_${method}`) == 1) { break }
+        if (classParents.has(methodClass) == 1) {
+            methodClass = classParents.getString(methodClass)
+        } else {
+            methodClass = className
+            break
+        }
+    }
+    // Build args: static calls skip this, instance calls include this as first arg
+    let callArgs = ""
+    if (isStatic == 0) { callArgs = `ptr ${objVal}` }
+    if (argList != "") {
+        const argParts = argList.split(",")
+        for (ap in argParts) {
+            const argId = parseInt(ap)
+            if (argId > 0) {
+                const aVal = genExpr(argId)
+                const aType = inferType(argId)
+                if (callArgs != "") { callArgs = `${callArgs}, ` }
+                callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
+            }
+        }
+    }
+    // Resolve overloaded method name
+    let resolved = `${methodClass}_${method}`
+    if (isOverloaded(resolved) == 1) {
+        const sig = argsSig(argList)
+        if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
+            resolved = `${resolved}_${sig}`
+        }
+    }
+    let retType = "ptr"
+    if (funcRetTypes.has(resolved) == 1) {
+        retType = ssTypeToLLVM(funcRetTypes.getString(resolved))
+    }
+    if (retType == "void") {
+        emitIR(`  call void @${resolved}(${callArgs})`)
+        return "0"
+    }
+    const r = nextReg()
+    emitIR(`  ${r} = call ${retType} @${resolved}(${callArgs})`)
+    return r
+}
+
 function genMethodCall(id: int): string {
     const method = nGetS1(id)
     const objId = nGetI1(id)
@@ -491,49 +539,15 @@ function genMethodCall(id: int): string {
         objVal = castR
     }
 
-    // Class method priority: if object is a class instance with this method, skip built-in dispatch
+    // Class method priority: skip built-in dispatch if object is a class instance with this method
     let earlyClass = ""
-    if (nGetKind(objId) == "IDENT") {
-        earlyClass = getObjClass(nGetS1(objId))
-    }
-    // Infer class from expression return type (chained calls like JSON.create().put())
+    if (nGetKind(objId) == "IDENT") { earlyClass = getObjClass(nGetS1(objId)) }
     if (earlyClass == "") {
         const exprType = inferType(objId)
-        if (exprType != "" && classFields.has(exprType) == 1) {
-            earlyClass = exprType
-        }
+        if (exprType != "" && classFields.has(exprType) == 1) { earlyClass = exprType }
     }
-    if (earlyClass != "" && earlyClass != "Map") {
-        if (funcRetTypes.has(`${earlyClass}_${method}`) == 1) {
-            // Jump to class method dispatch (handled below after built-in checks)
-            let ecArgs = `ptr ${objVal}`
-            if (argList != "") {
-                const ecParts = argList.split(",")
-                for (ecp in ecParts) {
-                    const ecId = parseInt(ecp)
-                    if (ecId > 0) {
-                        const ecVal = genExpr(ecId)
-                        const ecType = inferType(ecId)
-                        ecArgs = `${ecArgs}, ${ssTypeToLLVM(ecType)} ${ecVal}`
-                    }
-                }
-            }
-            let ecResolved = `${earlyClass}_${method}`
-            if (isOverloaded(ecResolved) == 1) {
-                const ecSig = argsSig(argList)
-                if (ecSig != "" && funcRetTypes.has(`${ecResolved}_${ecSig}`) == 1) {
-                    ecResolved = `${ecResolved}_${ecSig}`
-                }
-            }
-            let ecRet = ssTypeToLLVM(funcRetTypes.getString(ecResolved) ?? "int")
-            if (ecRet == "void") {
-                emitIR(`  call void @${ecResolved}(${ecArgs})`)
-                return "0"
-            }
-            const ecR = nextReg()
-            emitIR(`  ${ecR} = call ${ecRet} @${ecResolved}(${ecArgs})`)
-            return ecR
-        }
+    if (earlyClass != "" && earlyClass != "Map" && funcRetTypes.has(`${earlyClass}_${method}`) == 1) {
+        return emitClassMethodCall(earlyClass, method, objVal, argList, 0)
     }
 
     // String methods
@@ -787,53 +801,7 @@ function genMethodCall(id: int): string {
         }
     }
     if (className != "" && className != "Map") {
-        // Find actual class that has this method (walk parent chain)
-        let methodClass = className
-        while (methodClass != "") {
-            if (funcRetTypes.has(`${methodClass}_${method}`) == 1) { break }
-            if (classParents.has(methodClass) == 1) {
-                methodClass = classParents.getString(methodClass)
-            } else {
-                methodClass = className
-                break
-            }
-        }
-        // Static calls: no this parameter. Instance calls: this is first arg.
-        let callArgs = ""
-        if (isStaticCall == 0) {
-            callArgs = `ptr ${objVal}`
-        }
-        if (argList != "") {
-            const argParts = argList.split(",")
-            for (ap in argParts) {
-                const argId = parseInt(ap)
-                if (argId > 0) {
-                    const aVal = genExpr(argId)
-                    const aType = inferType(argId)
-                    if (callArgs != "") { callArgs = `${callArgs}, ` }
-                    callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
-                }
-            }
-        }
-        // Resolve overloaded method name
-        let resolvedMethod = `${methodClass}_${method}`
-        if (isOverloaded(resolvedMethod) == 1) {
-            const maSig = argsSig(argList)
-            if (maSig != "" && funcRetTypes.has(`${resolvedMethod}_${maSig}`) == 1) {
-                resolvedMethod = `${resolvedMethod}_${maSig}`
-            }
-        }
-        let mRetType = "ptr"
-        if (funcRetTypes.has(resolvedMethod) == 1) {
-            mRetType = ssTypeToLLVM(funcRetTypes.getString(resolvedMethod))
-        }
-        if (mRetType == "void") {
-            emitIR(`  call void @${resolvedMethod}(${callArgs})`)
-            return "0"
-        }
-        const cr = nextReg()
-        emitIR(`  ${cr} = call ${mRetType} @${resolvedMethod}(${callArgs})`)
-        return cr
+        return emitClassMethodCall(className, method, objVal, argList, isStaticCall)
     }
 
     emitIR(`  ; TODO: method call .${method}`)
