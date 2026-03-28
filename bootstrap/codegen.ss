@@ -70,6 +70,7 @@ let enumValues = ""
 let enumReady = 0
 let overloadCount = ""
 let overloadReady = 0
+let annotatedRoutes = ""
 
 function initFuncRetTypes() {
     if (funcRetReady == 1) { return }
@@ -203,7 +204,70 @@ function registerAllDecls(rootId: int) {
                 funcParamCount.set(fname, "0")
             }
         }
-        if (sk == "CLASS_DECL") { registerClass(sid) }
+        if (sk == "CLASS_DECL") {
+            registerClass(sid)
+            // Scan for @RestController / @RequestMapping annotations
+            collectAnnotatedRoutes(sid)
+        }
+    }
+}
+
+function collectAnnotatedRoutes(classId: int) {
+    const annListId = nGetI4(classId)
+    if (annListId <= 0) { return }
+    if (nGetKind(annListId) != "ANNOTATION_LIST") { return }
+    const annList = nGetList(annListId)
+    if (annList == "") { return }
+    // Check if class has @RestController
+    let isController = 0
+    let basePath = ""
+    const annParts = annList.split(",")
+    for (ap in annParts) {
+        const aId = parseInt(ap)
+        if (aId > 0 && nGetKind(aId) == "ANNOTATION") {
+            if (nGetS1(aId) == "RestController") { isController = 1 }
+            if (nGetS1(aId) == "RequestMapping") { basePath = nGetS2(aId) }
+        }
+    }
+    if (isController == 0) { return }
+    // Scan methods for @GetMapping, @PostMapping, etc.
+    const className = nGetS1(classId)
+    const methodsBlockId = nGetI2(classId)
+    if (methodsBlockId <= 0) { return }
+    const mList = nGetList(methodsBlockId)
+    if (mList == "") { return }
+    const mParts = mList.split(",")
+    for (mp in mParts) {
+        const mId = parseInt(mp)
+        if (mId <= 0 || nGetKind(mId) != "FUNC_DECL") { continue }
+        const mAnnId = nGetI4(mId)
+        if (mAnnId <= 0) { continue }
+        if (nGetKind(mAnnId) != "ANNOTATION_LIST") { continue }
+        const mAnnList = nGetList(mAnnId)
+        if (mAnnList == "") { continue }
+        const mAnnParts = mAnnList.split(",")
+        for (ma in mAnnParts) {
+            const maId = parseInt(ma)
+            if (maId <= 0 || nGetKind(maId) != "ANNOTATION") { continue }
+            const annName = nGetS1(maId)
+            const annPath = nGetS2(maId)
+            let httpMethod = ""
+            if (annName == "GetMapping") { httpMethod = "GET" }
+            if (annName == "PostMapping") { httpMethod = "POST" }
+            if (annName == "PutMapping") { httpMethod = "PUT" }
+            if (annName == "DeleteMapping") { httpMethod = "DELETE" }
+            if (annName == "PatchMapping") { httpMethod = "PATCH" }
+            if (httpMethod != "") {
+                const fullPath = `${basePath}${annPath}`
+                const methodName = nGetS1(mId)
+                // Store: "METHOD:path:ClassName:methodName"
+                if (annotatedRoutes == "") {
+                    annotatedRoutes = `${httpMethod}:${fullPath}:${className}:${methodName}`
+                } else {
+                    annotatedRoutes = `${annotatedRoutes}\n${httpMethod}:${fullPath}:${className}:${methodName}`
+                }
+            }
+        }
     }
 }
 

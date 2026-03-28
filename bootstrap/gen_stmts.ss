@@ -366,16 +366,72 @@ function genGlobalVar(id: int) {
 
 // Called at the start of main() to init global vars with runtime expressions
 function emitGlobalInits() {
-    if (globalInitIds == "") { return }
-    const parts = globalInitIds.split(",")
-    for (p in parts) {
-        const gid = parseInt(p)
-        if (gid > 0) {
-            const gname = nGetS1(gid)
-            const initId = nGetI1(gid)
-            const val = genExpr(initId)
-            emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
+    if (globalInitIds != "") {
+        const parts = globalInitIds.split(",")
+        for (p in parts) {
+            const gid = parseInt(p)
+            if (gid > 0) {
+                const gname = nGetS1(gid)
+                const initId = nGetI1(gid)
+                const val = genExpr(initId)
+                emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
+            }
         }
+    }
+    // Auto-register annotated routes (@GetMapping etc.)
+    if (annotatedRoutes != "") {
+        emitAnnotatedRoutes()
+    }
+}
+
+function emitAnnotatedRoutes() {
+    // For each @RestController class, create a singleton wrapper function per route
+    // that passes null as this (controller methods shouldn't use this for state)
+    let remaining = annotatedRoutes
+    let wrapperIdx = 0
+    while (remaining != "") {
+        let entry = remaining
+        const nlIdx = remaining.indexOf("\n")
+        if (nlIdx >= 0) {
+            entry = remaining.substring(0, nlIdx)
+            remaining = remaining.substring(nlIdx + 1, remaining.length() - nlIdx - 1)
+        } else {
+            remaining = ""
+        }
+        const p1 = entry.indexOf(":")
+        if (p1 < 0) { continue }
+        const httpMethod = entry.substring(0, p1)
+        const rest1 = entry.substring(p1 + 1, entry.length() - p1 - 1)
+        const p2 = rest1.indexOf(":")
+        const path = rest1.substring(0, p2)
+        const rest2 = rest1.substring(p2 + 1, rest1.length() - p2 - 1)
+        const p3 = rest2.indexOf(":")
+        const className = rest2.substring(0, p3)
+        const methodName = rest2.substring(p3 + 1, rest2.length() - p3 - 1)
+        // Generate registerRoute call with function pointer
+        const pathStr = addStringConst(path)
+        const methodStr = addStringConst(httpMethod)
+        // Create singleton instance stored in global
+        const globalName = `@__ctrl_${className}`
+        // Emit global declaration (only once per class)
+        if (funcRetTypes.has(`__ctrl_${className}_init`) == 0) {
+            funcRetTypes.set(`__ctrl_${className}_init`, "1")
+            emitIR(`  ; init controller ${className}`)
+        }
+        const instR = nextReg()
+        emitIR(`  ${instR} = call ptr @${className}_new()`)
+        // Create wrapper function that loads instance from register
+        // Use a global to pass the instance
+        const wrapName = `__route_${wrapperIdx}`
+        wrapperIdx = wrapperIdx + 1
+        // Store instance in a global variable
+        const gName = `__ctrl_inst_${wrapperIdx}`
+        arrowDefs = `${arrowDefs}@${gName} = internal global ptr null\n`
+        emitIR(`  store ptr ${instR}, ptr @${gName}`)
+        arrowDefs = `${arrowDefs}define ptr @${wrapName}(ptr %req, ptr %resp) {\nentry:\n  %inst = load ptr, ptr @${gName}\n  %r = call ptr @${className}_${methodName}(ptr %inst, ptr %req, ptr %resp)\n  ret ptr %r\n}\n\n`
+        const fnPtr = nextReg()
+        emitIR(`  ${fnPtr} = ptrtoint ptr @${wrapName} to i64`)
+        emitIR(`  call void @registerRoute(ptr ${methodStr}, ptr ${pathStr}, i64 ${fnPtr})`)
     }
 }
 

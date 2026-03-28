@@ -259,9 +259,12 @@ function parseClassDecl(): int {
         pAdvance()
         extendsName = pExpectIdent()
     }
-    pExpect("LPAREN")
-    const fields = parseParams()
-    pExpect("RPAREN")
+    let fields = ""
+    if (curKind() == "LPAREN") {
+        pAdvance()
+        fields = parseParams()
+        pExpect("RPAREN")
+    }
     // Optional implements
     let implList = ""
     if (curKind() == "COLON") {
@@ -279,7 +282,29 @@ function parseClassDecl(): int {
         pExpect("LBRACE")
         skipNL()
         while (curKind() != "RBRACE" && curKind() != "EOF") {
+            // Collect method annotations (@GetMapping etc.)
+            let mAnnotations = ""
+            while (curKind() == "ANNOTATION") {
+                const maName = curValue()
+                pAdvance()
+                let maArg = ""
+                if (curKind() == "LPAREN") {
+                    pAdvance()
+                    if (curKind() == "STRING") { maArg = curValue(); pAdvance() }
+                    pExpect("RPAREN")
+                }
+                const maId = newNode("ANNOTATION")
+                nSetS1(maId, maName)
+                nSetS2(maId, maArg)
+                mAnnotations = listAppend(mAnnotations, maId)
+                skipNL()
+            }
             const mId = parseFuncDecl()
+            if (mAnnotations != "") {
+                const mAnnList = newNode("ANNOTATION_LIST")
+                nSetList(mAnnList, mAnnotations)
+                nSetI4(mId, mAnnList)
+            }
             methods = listAppend(methods, mId)
             skipNL()
         }
