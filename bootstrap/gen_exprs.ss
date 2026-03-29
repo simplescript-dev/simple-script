@@ -542,6 +542,7 @@ function genMethodCall(id: int): string {
     // Class method priority: skip built-in dispatch if object is a class instance with this method
     let earlyClass = ""
     if (nGetKind(objId) == "IDENT") { earlyClass = getObjClass(nGetS1(objId)) }
+    if (nGetKind(objId) == "THIS" && currentClassName != "") { earlyClass = currentClassName }
     if (earlyClass == "") {
         const exprType = inferType(objId)
         if (exprType != "" && classFields.has(exprType) == 1) { earlyClass = exprType }
