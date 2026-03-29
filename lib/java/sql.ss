@@ -103,17 +103,17 @@ function rsGetValue(data: string, columns: string, row: int, colLabel: string): 
 // ── Statement ────────────────────────────────────────────────
 // Placeholder — actual implementation in driver
 
-class Statement(connPtr: int) {
+class Statement(dbHandle: string) {
     function executeQuery(sql: string): ResultSet {
-        return stmtExecuteQuery(this.connPtr, sql)
+        return stmtExecuteQuery(this.dbHandle, sql)
     }
 
     function executeUpdate(sql: string): int {
-        return stmtExecuteUpdate(this.connPtr, sql)
+        return stmtExecuteUpdate(this.dbHandle, sql)
     }
 
     function execute(sql: string): int {
-        return stmtExecuteUpdate(this.connPtr, sql)
+        return stmtExecuteUpdate(this.dbHandle, sql)
     }
 
     function close() {
@@ -123,27 +123,27 @@ class Statement(connPtr: int) {
 
 // ── Connection ───────────────────────────────────────────────
 
-class Connection(dbPtr: int, url: string, closed: int) {
+class Connection(dbHandle: string, url: string, closed: int) {
     function createStatement(): Statement {
-        return new Statement(this.dbPtr)
+        return new Statement(this.dbHandle)
     }
 
     function setAutoCommit(auto: int) {
         if (auto == 0) {
-            stmtExecuteUpdate(this.dbPtr, "BEGIN")
+            stmtExecuteUpdate(this.dbHandle, "BEGIN")
         }
     }
 
     function commit() {
-        stmtExecuteUpdate(this.dbPtr, "COMMIT")
+        stmtExecuteUpdate(this.dbHandle, "COMMIT")
     }
 
     function rollback() {
-        stmtExecuteUpdate(this.dbPtr, "ROLLBACK")
+        stmtExecuteUpdate(this.dbHandle, "ROLLBACK")
     }
 
     function close() {
-        ss_sqlite3_close(this.dbPtr)
+        ss_sqlite3_close(this.dbHandle)
     }
 
     function isClosed(): int {
@@ -153,20 +153,21 @@ class Connection(dbPtr: int, url: string, closed: int) {
 
 // ── DriverManager ────────────────────────────────────────────
 
+class DriverManager
+
 function DriverManager_getConnection(url: string): Connection {
-    // Parse URL: "sqlite:path" or "jdbc:sqlite:path"
     let dbPath = url
     if (url.startsWith("jdbc:sqlite:") == 1) {
         dbPath = url.substring(12, url.length() - 12)
     } else if (url.startsWith("sqlite:") == 1) {
         dbPath = url.substring(7, url.length() - 7)
     }
-    const dbPtr = ss_sqlite3_open(dbPath)
-    if (dbPtr == 0) {
+    const dbHandle = ss_sqlite3_open(dbPath)
+    if (dbHandle == "") {
         println(`JDBC: failed to open database: ${dbPath}`)
         exit(1)
     }
-    return new Connection(dbPtr, url, 0)
+    return new Connection(dbHandle, url, 0)
 }
 
 // ── SQLite native bindings (declared in gen_runtime.ss) ──────
@@ -176,8 +177,8 @@ function DriverManager_getConnection(url: string): Connection {
 // ss_sqlite3_exec(db, sql) → 0 on success
 // ss_sqlite3_query(db, sql) → "col1\tcol2\nval1\tval2\n..." result string
 
-function stmtExecuteQuery(dbPtr: int, sql: string): ResultSet {
-    const raw = ss_sqlite3_query(dbPtr, sql)
+function stmtExecuteQuery(dbHandle: string, sql: string): ResultSet {
+    const raw = ss_sqlite3_query(dbHandle, sql)
     // First line is column headers, rest is data
     const nlIdx = raw.indexOf("\n")
     if (nlIdx < 0) { return new ResultSet("", "", 0, 0) }
@@ -198,6 +199,6 @@ function stmtExecuteQuery(dbPtr: int, sql: string): ResultSet {
     return new ResultSet(data, columns, rows, 0)
 }
 
-function stmtExecuteUpdate(dbPtr: int, sql: string): int {
-    return ss_sqlite3_exec(dbPtr, sql)
+function stmtExecuteUpdate(dbHandle: string, sql: string): int {
+    return ss_sqlite3_exec(dbHandle, sql)
 }

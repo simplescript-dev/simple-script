@@ -1214,7 +1214,7 @@ function preludeName(cName: string): string {
 }
 
 function callReturnType(callee: string): string {
-    const strFns = ",readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,"
+    const strFns = ",readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,ss_sqlite3_query,ss_sqlite3_open,"
     const voidFns = ",println,print,writeFile,appendFile,exit,tcpClose,"
     const intFns = ",parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,"
     const dblFns = ",parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,"

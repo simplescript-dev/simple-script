@@ -1426,8 +1426,8 @@ function emitRuntimeExceptions() {
 // ── SQLite bindings ───────────────────────────────────────────
 
 function emitRuntimeSQLite() {
-    // ss_sqlite3_open(path) → db ptr as i32 (actually ptr stored as int)
-    emitIR("define i32 @ss_sqlite3_open(ptr %path) {")
+    // ss_sqlite3_open(path) → db pointer (as ptr)
+    emitIR("define ptr @ss_sqlite3_open(ptr %path) {")
     emitIR("entry:")
     emitIR("  %dbpp = alloca ptr, align 8")
     emitIR("  %rc = call i32 @sqlite3_open(ptr %path, ptr %dbpp)")
@@ -1435,33 +1435,29 @@ function emitRuntimeSQLite() {
     emitIR("  br i1 %ok, label %success, label %fail")
     emitIR("success:")
     emitIR("  %db = load ptr, ptr %dbpp")
-    emitIR("  %dbi = ptrtoint ptr %db to i32")
-    emitIR("  ret i32 %dbi")
+    emitIR("  ret ptr %db")
     emitIR("fail:")
-    emitIR("  ret i32 0")
+    emitIR("  ret ptr null")
     emitIR("}")
     emitIR("")
 
     // ss_sqlite3_close(db)
-    emitIR("define void @ss_sqlite3_close(i32 %dbi) {")
-    emitIR("  %db = inttoptr i32 %dbi to ptr")
+    emitIR("define void @ss_sqlite3_close(ptr %db) {")
     emitIR("  %_1 = call i32 @sqlite3_close(ptr %db)")
     emitIR("  ret void")
     emitIR("}")
     emitIR("")
 
     // ss_sqlite3_exec(db, sql) → 0 on success
-    emitIR("define i32 @ss_sqlite3_exec(i32 %dbi, ptr %sql) {")
-    emitIR("  %db = inttoptr i32 %dbi to ptr")
+    emitIR("define i32 @ss_sqlite3_exec(ptr %db, ptr %sql) {")
     emitIR("  %rc = call i32 @sqlite3_exec(ptr %db, ptr %sql, ptr null, ptr null, ptr null)")
     emitIR("  ret i32 %rc")
     emitIR("}")
     emitIR("")
 
     // ss_sqlite3_query(db, sql) → "col1\tcol2\nval1\tval2\n..." result string
-    emitIR("define ptr @ss_sqlite3_query(i32 %dbi, ptr %sql) {")
+    emitIR("define ptr @ss_sqlite3_query(ptr %db, ptr %sql) {")
     emitIR("entry:")
-    emitIR("  %db = inttoptr i32 %dbi to ptr")
     emitIR("  %stmtpp = alloca ptr, align 8")
     emitIR("  %rc = call i32 @sqlite3_prepare_v2(ptr %db, ptr %sql, i32 -1, ptr %stmtpp, ptr null)")
     emitIR("  %ok = icmp eq i32 %rc, 0")
