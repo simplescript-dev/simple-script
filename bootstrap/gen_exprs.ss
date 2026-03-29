@@ -453,8 +453,8 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
         for (ap in argParts) {
             const argId = parseInt(ap)
             if (argId > 0) {
-                const aVal = genExpr(argId)
-                const aType = inferType(argId)
+                let aVal = genExpr(argId)
+                let aType = inferType(argId)
                 if (callArgs != "") { callArgs = `${callArgs}, ` }
                 callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
             }
@@ -495,6 +495,8 @@ function genMethodCall(id: int): string {
             if (classParents.has(sMethodClass) == 1) { sMethodClass = classParents.getString(sMethodClass) }
             else { sMethodClass = sClassName; break }
         }
+        // Check if this is a Math method (needs int→double auto-conversion)
+        const isMathClass = sClassName == "Math" ? 1 : 0
         let sArgs = ""
         if (argList != "") {
             const sArgParts = argList.split(",")
@@ -502,8 +504,14 @@ function genMethodCall(id: int): string {
             for (sap in sArgParts) {
                 const saId = parseInt(sap)
                 if (saId > 0) {
-                    const saVal = genExpr(saId)
-                    const saType = inferType(saId)
+                    let saVal = genExpr(saId)
+                    let saType = inferType(saId)
+                    if (isMathClass == 1 && (saType == "int" || saType == "auto")) {
+                        const cvR = nextReg()
+                        emitIR(`  ${cvR} = sitofp i32 ${saVal} to double`)
+                        saVal = cvR
+                        saType = "double"
+                    }
                     if (sFirst == 1) { sFirst = 0 } else { sArgs = `${sArgs}, ` }
                     sArgs = `${sArgs}${ssTypeToLLVM(saType)} ${saVal}`
                 }
@@ -517,16 +525,18 @@ function genMethodCall(id: int): string {
                 sResolved = `${sResolved}_${sSig}`
             }
         }
+        // Map to runtime name (e.g., Math_min → ss_min)
+        const sRtName = runtimeName(sResolved)
         let sRetType = "ptr"
         if (funcRetTypes.has(sResolved) == 1) {
             sRetType = ssTypeToLLVM(funcRetTypes.getString(sResolved))
         }
         if (sRetType == "void") {
-            emitIR(`  call void @${sResolved}(${sArgs})`)
+            emitIR(`  call void @${sRtName}(${sArgs})`)
             return "0"
         }
         const sr = nextReg()
-        emitIR(`  ${sr} = call ${sRetType} @${sResolved}(${sArgs})`)
+        emitIR(`  ${sr} = call ${sRetType} @${sRtName}(${sArgs})`)
         return sr
     }
 
@@ -1207,21 +1217,22 @@ function preludeName(cName: string): string {
 }
 
 function callReturnType(callee: string): string {
+    // User-defined functions take priority over builtins
+    if (funcRetTypes.has(callee) == 1) {
+        return funcRetTypes.getString(callee)
+    }
+    if (callee == "Map") { return "Map" }
+    // Builtin function return types
     const strFns = ",readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,ss_sqlite3_query,ss_sqlite3_open,"
     const voidFns = ",println,print,writeFile,appendFile,exit,tcpClose,"
     const intFns = ",parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,"
-    const dblFns = ",parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,"
+    const dblFns = ",parseDouble,"
     const i64Fns = ",timeMs,timeUnix,fileSize,"
     if (strFns.contains(`,${callee},`) == 1) { return "string" }
     if (voidFns.contains(`,${callee},`) == 1) { return "void" }
     if (intFns.contains(`,${callee},`) == 1) { return "int" }
     if (dblFns.contains(`,${callee},`) == 1) { return "double" }
     if (i64Fns.contains(`,${callee},`) == 1) { return "i64" }
-    if (callee == "Map") { return "Map" }
-    // User-defined function
-    if (funcRetTypes.has(callee) == 1) {
-        return funcRetTypes.getString(callee)
-    }
     return "int"
 }
 

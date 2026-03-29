@@ -93,6 +93,20 @@ function initFuncRetTypes() {
     funcRetTypes.set("Map_size", "int")
     funcRetTypes.set("Map_keys", "string")
     funcRetTypes.set("Map_new", "Map")
+    // Register Math as built-in class with static methods (Java/JS style)
+    classFields.set("Math", "")
+    funcRetTypes.set("Math_sqrt", "double")
+    funcRetTypes.set("Math_abs", "double")
+    funcRetTypes.set("Math_floor", "double")
+    funcRetTypes.set("Math_ceil", "double")
+    funcRetTypes.set("Math_round", "double")
+    funcRetTypes.set("Math_pow", "double")
+    funcRetTypes.set("Math_log", "double")
+    funcRetTypes.set("Math_sin", "double")
+    funcRetTypes.set("Math_cos", "double")
+    funcRetTypes.set("Math_random", "double")
+    funcRetTypes.set("Math_min", "double")
+    funcRetTypes.set("Math_max", "double")
     funcRetReady = 1
 }
 
@@ -334,8 +348,22 @@ function initBuiltinMap() {
     builtinMap.set("args", "ss_argCount")
     builtinMap.set("arg", "ss_argGet")
     builtinMap.set("Map", "ss_mapNew")
+    // Math.xxx() → ss_xxx
+    builtinMap.set("Math_sqrt", "ss_sqrt")
+    builtinMap.set("Math_abs", "ss_abs")
+    builtinMap.set("Math_floor", "ss_floor")
+    builtinMap.set("Math_ceil", "ss_ceil")
+    builtinMap.set("Math_round", "ss_round")
+    builtinMap.set("Math_pow", "ss_pow")
+    builtinMap.set("Math_log", "ss_log")
+    builtinMap.set("Math_sin", "ss_sin")
+    builtinMap.set("Math_cos", "ss_cos")
+    builtinMap.set("Math_random", "ss_random")
+    builtinMap.set("Math_min", "ss_min")
+    builtinMap.set("Math_max", "ss_max")
     // All standard builtins: ss_ + callee
-    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,pow,log,sin,cos,random,min,max,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
+    // Math functions moved to Math.xxx() — NOT in builtinMap
+    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
     const parts = names.split(",")
     for (n in parts) {
         builtinMap.set(n, `ss_${n}`)
@@ -346,7 +374,13 @@ function initBuiltinMap() {
 function runtimeName(callee: string): string {
     initBuiltinMap()
     // User-defined functions take priority over builtins
-    if (funcRetTypes.has(callee) == 1) { return callee }
+    if (funcRetTypes.has(callee) == 1) {
+        // But NOT for built-in class methods (Math_min etc.) — always use builtinMap
+        if (builtinMap.has(callee) == 1) {
+            return builtinMap.getString(callee)
+        }
+        return callee
+    }
     if (builtinMap.has(callee) == 1) {
         return builtinMap.getString(callee)
     }
