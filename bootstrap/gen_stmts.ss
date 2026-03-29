@@ -476,13 +476,9 @@ function genVarDecl(id: int) {
         setObjClass(name, nGetS1(initId))
     }
     if (nGetKind(initId) == "CALL") {
-        if (nGetS1(initId) == "Map") {
-            setObjClass(name, "Map")
-        } else {
-            const callRet = funcRetTypes.getString(nGetS1(initId)) ?? ""
-            if (callRet != "" && classFields.has(callRet) == 1) {
-                setObjClass(name, callRet)
-            }
+        const callRet = funcRetTypes.getString(nGetS1(initId)) ?? ""
+        if (callRet != "" && classFields.has(callRet) == 1) {
+            setObjClass(name, callRet)
         }
     }
     // Infer class from method call chain (e.g., createFoo().setBar())

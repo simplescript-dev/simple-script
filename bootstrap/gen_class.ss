@@ -326,7 +326,7 @@ function genClassMethod(className: string, id: int) {
 
 function genNewExpr(id: int): string {
     const className = nGetS1(id)
-    // Special case: new Map() → ss_mapNew()
+    // Map is a built-in class — constructor delegates to ss_mapNew
     if (className == "Map") {
         const r = nextReg()
         emitIR(`  ${r} = call ptr @ss_mapNew()`)

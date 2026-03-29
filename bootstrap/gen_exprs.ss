@@ -539,7 +539,8 @@ function genMethodCall(id: int): string {
         objVal = castR
     }
 
-    // Class method priority: skip built-in dispatch if object is a class instance
+    // Class method priority: skip built-in dispatch if object is a user-defined class
+    // (Map stays on built-in dispatch since its methods are C runtime functions)
     const earlyClass = resolveObjClass(objId)
     if (earlyClass != "" && earlyClass != "Map" && funcRetTypes.has(`${earlyClass}_${method}`) == 1) {
         return emitClassMethodCall(earlyClass, method, objVal, argList, 0)
@@ -1141,7 +1142,7 @@ function inferType(id: int): string {
     }
     if (kind == "CALL") {
         const callee = nGetS1(id)
-        if (callee == "Map") { return "ptr" }
+        if (callee == "Map") { return "Map" }
         if (getVarType(callee) == "fn" || getVarType(callee) == "i64") { return "i64" }
         // Use funcRetTypes directly — preserves class names
         if (funcRetTypes.has(callee) == 1) {
@@ -1155,7 +1156,7 @@ function inferType(id: int): string {
         // Resolve object type FIRST via unified inferType (recursive)
         const objType = resolveObjClass(nGetI1(id))
         // If object is a known class, look up method return type in class chain
-        if (objType != "" && objType != "Map" && objType != "string" && objType != "int" && objType != "double") {
+        if (objType != "" && objType != "string" && objType != "int" && objType != "double") {
             let lookupClass = objType
             while (lookupClass != "") {
                 if (funcRetTypes.has(`${lookupClass}_${method}`) == 1) {
@@ -1216,7 +1217,7 @@ function callReturnType(callee: string): string {
     if (intFns.contains(`,${callee},`) == 1) { return "int" }
     if (dblFns.contains(`,${callee},`) == 1) { return "double" }
     if (i64Fns.contains(`,${callee},`) == 1) { return "i64" }
-    if (callee == "Map") { return "ptr" }
+    if (callee == "Map") { return "Map" }
     // User-defined function
     if (funcRetTypes.has(callee) == 1) {
         return funcRetTypes.getString(callee)
@@ -1236,9 +1237,7 @@ function ssTypeToLLVM(t: string): string {
     if (t == "i64") { return "i64" }
     // Generic types (Array<string>, Map<string,int>, etc.) → ptr
     if (t.contains("<") == 1) { return "ptr" }
-    // Built-in object types → ptr
-    if (t == "Map") { return "ptr" }
-    // Class type names → ptr
+    // Class type names → ptr (includes Map, registered as built-in class)
     if (classFields.has(t) == 1) { return "ptr" }
     // Generic type params (single uppercase letter like T, U, V) → ptr (erased)
     if (t.length() == 1 && charCodeAt(t, 0) >= 65 && charCodeAt(t, 0) <= 90) { return "ptr" }
@@ -1300,7 +1299,7 @@ function argsSig(argList: string): string {
             // For IDENT with class type, use class name
             if (nGetKind(argId) == "IDENT") {
                 const objClass = getObjClass(nGetS1(argId))
-                if (objClass != "" && objClass != "Map") {
+                if (objClass != "") {
                     sig = `${sig}${objClass}`
                     continue
                 }

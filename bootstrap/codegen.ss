@@ -82,6 +82,17 @@ function initFuncRetTypes() {
     classParents = Map()
     funcDefaults = Map()
     funcParamCount = Map()
+    // Register Map as a built-in class (eliminates special cases)
+    classFields.set("Map", "")
+    classMethods.set("Map", "set,get,getString,has,delete,size,keys")
+    funcRetTypes.set("Map_set", "void")
+    funcRetTypes.set("Map_get", "i64")
+    funcRetTypes.set("Map_getString", "string")
+    funcRetTypes.set("Map_has", "int")
+    funcRetTypes.set("Map_delete", "void")
+    funcRetTypes.set("Map_size", "int")
+    funcRetTypes.set("Map_keys", "string")
+    funcRetTypes.set("Map_new", "Map")
     funcRetReady = 1
 }
 
