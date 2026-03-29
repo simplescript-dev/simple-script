@@ -438,7 +438,11 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
 
     let linkFlags = "-static"
     if (release == 1) { linkFlags = "-static -O2 -s" }
-    if (system(`musl-gcc ${linkFlags} ${objFile} -o ${outputFile} -lm`) != 0) {
+    // Link with SQLite if vendor/sqlite3.o exists
+    let sqliteObj = ""
+    if (fileExists("vendor/sqlite3.o") == 1) { sqliteObj = "vendor/sqlite3.o" }
+    if (fileExists("../vendor/sqlite3.o") == 1) { sqliteObj = "../vendor/sqlite3.o" }
+    if (system(`musl-gcc ${linkFlags} ${objFile} ${sqliteObj} -o ${outputFile} -lm`) != 0) {
         println("error: linking failed")
         exit(1)
     }

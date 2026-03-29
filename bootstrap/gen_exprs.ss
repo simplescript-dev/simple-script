@@ -1164,6 +1164,11 @@ function inferType(id: int): string {
             const chainType = inferType(mObjId)
             if (chainType != "" && classFields.has(chainType) == 1) { mClassName = chainType }
         }
+        // Infer class from member access (e.g., this.em.loadTable())
+        if (mClassName == "" && nGetKind(mObjId) == "MEMBER_ACCESS") {
+            const maType = inferType(mObjId)
+            if (maType != "" && classFields.has(maType) == 1) { mClassName = maType }
+        }
         if (mClassName != "") {
             // Look up in class and parent chain
             let lookupClass = mClassName

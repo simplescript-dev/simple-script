@@ -375,6 +375,11 @@ function emitGlobalInits() {
                 const initId = nGetI1(gid)
                 const val = genExpr(initId)
                 emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
+                // Infer class type for global var (for method dispatch)
+                const gInitType = inferType(initId)
+                if (gInitType != "" && classFields.has(gInitType) == 1) {
+                    setObjClass(gname, gInitType)
+                }
             }
         }
     }
