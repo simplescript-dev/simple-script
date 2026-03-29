@@ -649,7 +649,14 @@ function parseImport(): int {
     let names = ""
     while (curKind() != "RBRACE" && curKind() != "EOF") {
         const n = pExpectIdent()
-        if (names == "") { names = n } else { names = names + "," + n }
+        // Support: import { Foo as Bar } — parse but alias stored for future use
+        if (curKind() == "IDENT" && curValue() == "as") {
+            pAdvance()
+            const alias = pExpectIdent()
+            if (names == "") { names = `${n}:${alias}` } else { names = `${names},${n}:${alias}` }
+        } else {
+            if (names == "") { names = n } else { names = names + "," + n }
+        }
         if (curKind() == "COMMA") { pAdvance() }
     }
     pExpect("RBRACE")
