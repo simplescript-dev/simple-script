@@ -359,6 +359,9 @@ function genGlobalVar(id: int) {
         emitIR(`@${name} = global ptr null, align 8`)
         if (globalInitIds == "") { globalInitIds = `${id}` }
         else { globalInitIds = `${globalInitIds},${id}` }
+        // Infer actual type for class tracking
+        const realType = inferType(initId)
+        if (realType != "" && realType != "ptr" && realType != "int") { gType = realType }
     }
     setVarType(name, gType)
     globalAliases.set(name, `@${name}`)
@@ -375,10 +378,13 @@ function emitGlobalInits() {
                 const initId = nGetI1(gid)
                 const val = genExpr(initId)
                 emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
-                // Infer class type for global var (for method dispatch)
+                // Infer class type for global var (store in global scope, not main)
                 const gInitType = inferType(initId)
                 if (gInitType != "" && classFields.has(gInitType) == 1) {
+                    const savedFunc = currentFunc
+                    currentFunc = ""
                     setObjClass(gname, gInitType)
+                    currentFunc = savedFunc
                 }
             }
         }
@@ -465,7 +471,7 @@ function genVarDecl(id: int) {
         setVarType(name, typeAnn)
     }
 
-    // Track object class for method dispatch
+    // Track object class for method dispatch (redundant with varTypes but kept for compatibility)
     if (nGetKind(initId) == "NEW_EXPR") {
         setObjClass(name, nGetS1(initId))
     }

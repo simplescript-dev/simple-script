@@ -539,14 +539,8 @@ function genMethodCall(id: int): string {
         objVal = castR
     }
 
-    // Class method priority: skip built-in dispatch if object is a class instance with this method
-    let earlyClass = ""
-    if (nGetKind(objId) == "IDENT") { earlyClass = getObjClass(nGetS1(objId)) }
-    if (nGetKind(objId) == "THIS" && currentClassName != "") { earlyClass = currentClassName }
-    if (earlyClass == "") {
-        const exprType = inferType(objId)
-        if (exprType != "" && classFields.has(exprType) == 1) { earlyClass = exprType }
-    }
+    // Class method priority: skip built-in dispatch if object is a class instance
+    const earlyClass = resolveObjClass(objId)
     if (earlyClass != "" && earlyClass != "Map" && funcRetTypes.has(`${earlyClass}_${method}`) == 1) {
         return emitClassMethodCall(earlyClass, method, objVal, argList, 0)
     }
@@ -764,42 +758,14 @@ function genMethodCall(id: int): string {
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_arrayConcat(ptr ${objVal}, ptr ${otherArr})`); return r
     }
 
-    // Class method call: obj.method(args) → ClassName_method(obj, args)
+    // Class method call — unified resolution via resolveObjClass
     const objId2 = nGetI1(id)
-    let className = ""
+    let className = resolveObjClass(objId2)
     let isStaticCall = 0
-    if (nGetKind(objId2) == "IDENT") {
-        className = getObjClass(nGetS1(objId2))
-        // Static method: ClassName.method() where ClassName is a class, not a variable
-        if (className == "" && classFields.has(nGetS1(objId2)) == 1) {
-            className = nGetS1(objId2)
-            isStaticCall = 1
-        }
-    }
-    if (nGetKind(objId2) == "THIS" && currentClassName != "") {
-        className = currentClassName
-    }
-    // Infer class from function return type (e.g., ResponseEntity_ok() returns ResponseEntity)
-    if (className == "" && nGetKind(objId2) == "CALL") {
-        const calleeRet = funcRetTypes.getString(nGetS1(objId2)) ?? ""
-        if (calleeRet != "" && classFields.has(calleeRet) == 1) {
-            className = calleeRet
-        }
-    }
-    // Infer class from chained method calls (e.g., foo.bar().baz())
-    if (className == "" && nGetKind(objId2) == "METHOD_CALL") {
-        const chainMethod = nGetS1(objId2)
-        const chainObj = nGetI1(objId2)
-        let chainClass = ""
-        if (nGetKind(chainObj) == "IDENT") { chainClass = getObjClass(nGetS1(chainObj)) }
-        if (nGetKind(chainObj) == "CALL") {
-            const cr = funcRetTypes.getString(nGetS1(chainObj)) ?? ""
-            if (cr != "" && classFields.has(cr) == 1) { chainClass = cr }
-        }
-        if (chainClass != "") {
-            const chainRet = funcRetTypes.getString(`${chainClass}_${chainMethod}`) ?? ""
-            if (chainRet != "" && classFields.has(chainRet) == 1) { className = chainRet }
-        }
+    // Static method: ClassName.method() where ClassName is a class name, not a variable
+    if (className == "" && nGetKind(objId2) == "IDENT" && getVarType(nGetS1(objId2)) == "" && classFields.has(nGetS1(objId2)) == 1) {
+        className = nGetS1(objId2)
+        isStaticCall = 1
     }
     if (className != "" && className != "Map") {
         return emitClassMethodCall(className, method, objVal, argList, isStaticCall)
@@ -1095,7 +1061,52 @@ function genExprAsString(id: int): string {
     const r = nextReg(); emitIR(`  ${r} = call ptr @ss_int_to_string(i32 ${val})`); return r
 }
 
-// ── Type inference (simplified) ───────────────────────────────
+// ── Type inference ────────────────────────────────────────────
+
+// Resolve the CLASS name of an expression (returns class name or "")
+function resolveObjClass(nodeId: int): string {
+    if (nodeId <= 0) { return "" }
+    const kind = nGetKind(nodeId)
+    // Variable → check varType for class name
+    if (kind == "IDENT") {
+        const vt = getVarType(nGetS1(nodeId))
+        if (vt != "" && classFields.has(vt) == 1) { return vt }
+        const oc = getObjClass(nGetS1(nodeId))
+        if (oc != "") { return oc }
+        // Class name used as static method target (e.g., JSON.create())
+        if (classFields.has(nGetS1(nodeId)) == 1) { return nGetS1(nodeId) }
+        return ""
+    }
+    // this → current class
+    if (kind == "THIS" && currentClassName != "") { return currentClassName }
+    // new ClassName() → class name directly
+    if (kind == "NEW_EXPR") { return nGetS1(nodeId) }
+    // Function call → check return type
+    if (kind == "CALL") {
+        const callee = nGetS1(nodeId)
+        if (funcRetTypes.has(callee) == 1) {
+            const rt = funcRetTypes.getString(callee)
+            if (classFields.has(rt) == 1) { return rt }
+        }
+        return ""
+    }
+    // Method call → recursively resolve object, then look up method return type
+    if (kind == "METHOD_CALL") {
+        const rt = inferType(nodeId)
+        if (classFields.has(rt) == 1) { return rt }
+        return ""
+    }
+    // Member access → resolve object class, look up field type
+    if (kind == "MEMBER_ACCESS") {
+        const objClass = resolveObjClass(nGetI1(nodeId))
+        if (objClass != "") {
+            const fType = classFieldTypes.getString(`${objClass}.${nGetS1(nodeId)}`)
+            if (fType != "" && classFields.has(fType) == 1) { return fType }
+        }
+        return ""
+    }
+    return ""
+}
 
 function inferType(id: int): string {
     if (id <= 0) { return "int" }
@@ -1122,7 +1133,6 @@ function inferType(id: int): string {
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
             return "int"
         }
-        // Check both operands for double
         const binLt = inferType(nGetI1(id))
         const binRt = inferType(nGetI2(id))
         if (binLt == "double" || binRt == "double") { return "double" }
@@ -1133,46 +1143,20 @@ function inferType(id: int): string {
         const callee = nGetS1(id)
         if (callee == "Map") { return "ptr" }
         if (getVarType(callee) == "fn" || getVarType(callee) == "i64") { return "i64" }
+        // Use funcRetTypes directly — preserves class names
+        if (funcRetTypes.has(callee) == 1) {
+            return funcRetTypes.getString(callee)
+        }
         return callReturnType(callee)
     }
+    if (kind == "NEW_EXPR") { return nGetS1(id) }
     if (kind == "METHOD_CALL") {
         const method = nGetS1(id)
-        const intMethods = ",length,indexOf,has,size,contains,startsWith,endsWith,charCodeAt,reduce,"
-        const strMethods = ",charAt,substring,trim,toUpperCase,toLowerCase,replace,join,repeat,padStart,padEnd,keys,getString,"
-        const ptrMethods = ",split,push,slice,concat,reverse,sort,map,filter,"
-        if (intMethods.contains(`,${method},`) == 1) { return "int" }
-        if (strMethods.contains(`,${method},`) == 1) { return "string" }
-        if (ptrMethods.contains(`,${method},`) == 1) { return "ptr" }
-        if (method == "get") { return "i64" }
-        if (method == "delete" || method == "forEach") { return "void" }
-        // Class method — look up return type
-        const mObjId = nGetI1(id)
-        let mClassName = ""
-        if (nGetKind(mObjId) == "IDENT") {
-            mClassName = getObjClass(nGetS1(mObjId))
-            // Static method: ClassName.method()
-            if (mClassName == "" && classFields.has(nGetS1(mObjId)) == 1) {
-                mClassName = nGetS1(mObjId)
-            }
-        }
-        if (nGetKind(mObjId) == "THIS" && currentClassName != "") { mClassName = currentClassName }
-        // Infer class from function return type (chained calls)
-        if (mClassName == "" && nGetKind(mObjId) == "CALL") {
-            const cr = funcRetTypes.getString(nGetS1(mObjId)) ?? ""
-            if (cr != "" && classFields.has(cr) == 1) { mClassName = cr }
-        }
-        if (mClassName == "" && nGetKind(mObjId) == "METHOD_CALL") {
-            const chainType = inferType(mObjId)
-            if (chainType != "" && classFields.has(chainType) == 1) { mClassName = chainType }
-        }
-        // Infer class from member access (e.g., this.em.loadTable())
-        if (mClassName == "" && nGetKind(mObjId) == "MEMBER_ACCESS") {
-            const maType = inferType(mObjId)
-            if (maType != "" && classFields.has(maType) == 1) { mClassName = maType }
-        }
-        if (mClassName != "") {
-            // Look up in class and parent chain
-            let lookupClass = mClassName
+        // Resolve object type FIRST via unified inferType (recursive)
+        const objType = resolveObjClass(nGetI1(id))
+        // If object is a known class, look up method return type in class chain
+        if (objType != "" && objType != "Map" && objType != "string" && objType != "int" && objType != "double") {
+            let lookupClass = objType
             while (lookupClass != "") {
                 if (funcRetTypes.has(`${lookupClass}_${method}`) == 1) {
                     return funcRetTypes.getString(`${lookupClass}_${method}`)
@@ -1184,14 +1168,21 @@ function inferType(id: int): string {
                 }
             }
         }
+        // Built-in method return types (string/array/map methods)
+        const intMethods = ",length,indexOf,has,size,contains,startsWith,endsWith,charCodeAt,reduce,"
+        const strMethods = ",charAt,substring,trim,toUpperCase,toLowerCase,replace,join,repeat,padStart,padEnd,keys,getString,"
+        const ptrMethods = ",split,push,slice,concat,reverse,sort,map,filter,"
+        if (intMethods.contains(`,${method},`) == 1) { return "int" }
+        if (strMethods.contains(`,${method},`) == 1) { return "string" }
+        if (ptrMethods.contains(`,${method},`) == 1) { return "ptr" }
+        if (method == "get") { return "i64" }
+        if (method == "delete" || method == "forEach") { return "void" }
         return "int"
     }
     if (kind == "MEMBER_ACCESS") {
         const mField = nGetS1(id)
         const mObj = nGetI1(id)
-        let maClassName = ""
-        if (nGetKind(mObj) == "THIS" && currentClassName != "") { maClassName = currentClassName }
-        if (nGetKind(mObj) == "IDENT") { maClassName = getObjClass(nGetS1(mObj)) }
+        let maClassName = resolveObjClass(mObj)
         if (maClassName != "" && classFieldTypes.has(`${maClassName}.${mField}`) == 1) {
             return classFieldTypes.getString(`${maClassName}.${mField}`)
         }
@@ -1245,6 +1236,8 @@ function ssTypeToLLVM(t: string): string {
     if (t == "i64") { return "i64" }
     // Generic types (Array<string>, Map<string,int>, etc.) → ptr
     if (t.contains("<") == 1) { return "ptr" }
+    // Built-in object types → ptr
+    if (t == "Map") { return "ptr" }
     // Class type names → ptr
     if (classFields.has(t) == 1) { return "ptr" }
     // Generic type params (single uppercase letter like T, U, V) → ptr (erased)

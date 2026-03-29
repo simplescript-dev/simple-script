@@ -1,230 +1,73 @@
-// Spring Data JPA — SimpleScript Implementation
-// JpaRepository with auto-generated CRUD operations
-// Storage: JSON files via EntityManager
+// spring-data-jpa:2025.1 — JpaRepository (SimpleScript Implementation)
+// Compile-time CRUD over SQLite via JdbcTemplate.
+// Each repository operates on a single table.
 
-import { EntityManager, createEntityManager } from "@/lib/jakarta/persistence"
-import { JSON, JsonNode } from "@/lib/json"
+import { Connection, ResultSet, rsNext, stmtExecuteQuery, stmtExecuteUpdate, DriverManager } from "@/lib/java/sql"
+import { JdbcTemplate } from "@/lib/spring/jdbc"
 
 // ── JpaRepository ────────────────────────────────────────────
-// File-based repository. Each entity stored as JSON in ./data/<table>.json
-// Format: array of JSON objects, each with an "id" field
+// Usage:
+//   const repo = JpaRepository.create("sqlite::memory:", "users", "id,name,age")
+//   repo.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER)")
+//   repo.save("name,age", "'Alice',30")
+//   repo.findAll() → ResultSet
+//   repo.findById(1) → ResultSet
+//   repo.deleteById(1)
+//   repo.count() → int
 
-class JpaRepository(tableName: string, em: EntityManager) {
+class JpaRepository(tableName: string, columns: string, jdbc: JdbcTemplate) {
 
-    // Save entity (create or update). Returns the saved JSON string.
-    function save(entity: string): string {
-        const data = this.em.loadTable(this.tableName)
-        const parsed = JSON.parse(entity)
-        let id = parsed.getInt("id")
-
-        if (id == 0) {
-            // Auto-generate ID: find max ID + 1
-            id = this.nextId()
-            // Prepend id to entity JSON
-            const withId = `{"id":${id},${entity.substring(1, entity.length() - 1)}`
-            this.appendRecord(withId)
-            return withId
-        }
-
-        // Update existing: replace record with same ID
-        this.replaceRecord(id, entity)
-        return entity
+    function execute(sql: string): int {
+        return this.jdbc.execute(sql)
     }
 
-    // Find by ID. Returns JSON string or "" if not found.
-    function findById(id: int): string {
-        const records = this.em.loadTable(this.tableName)
-        return this.findRecordById(records, id)
+    function save(cols: string, vals: string): int {
+        return this.jdbc.update(`INSERT INTO ${this.tableName} (${cols}) VALUES (${vals})`)
     }
 
-    // Find all. Returns JSON array string.
-    function findAll(): string {
-        return this.em.loadTable(this.tableName)
+    function findAll(): ResultSet {
+        return this.jdbc.queryForList(`SELECT ${this.columns} FROM ${this.tableName}`)
     }
 
-    // Check if exists by ID.
+    function findById(id: int): ResultSet {
+        return this.jdbc.queryForList(`SELECT ${this.columns} FROM ${this.tableName} WHERE id = ${id}`)
+    }
+
+    function findBy(column: string, value: string): ResultSet {
+        return this.jdbc.queryForList(`SELECT ${this.columns} FROM ${this.tableName} WHERE ${column} = '${value}'`)
+    }
+
+    function findByInt(column: string, value: int): ResultSet {
+        return this.jdbc.queryForList(`SELECT ${this.columns} FROM ${this.tableName} WHERE ${column} = ${value}`)
+    }
+
     function existsById(id: int): int {
-        const record = this.findById(id)
-        return record != "" ? 1 : 0
+        return this.jdbc.queryForInt(`SELECT COUNT(*) as cnt FROM ${this.tableName} WHERE id = ${id}`, "cnt") > 0 ? 1 : 0
     }
 
-    // Count all records.
     function count(): int {
-        const data = this.em.loadTable(this.tableName)
-        if (data == "[]") { return 0 }
-        let cnt = 1
-        let i = 0
-        let depth = 0
-        while (i < data.length()) {
-            const ch = data.charAt(i)
-            if (ch == "{") { depth = depth + 1 }
-            if (ch == "}") { depth = depth - 1 }
-            if (ch == "," && depth == 1) { cnt = cnt + 1 }
-            i = i + 1
-        }
-        return cnt
+        return this.jdbc.queryForInt(`SELECT COUNT(*) as cnt FROM ${this.tableName}`, "cnt")
     }
 
-    // Delete by ID.
-    function deleteById(id: int) {
-        const data = this.em.loadTable(this.tableName)
-        let result = "["
-        let first = 1
-        let remaining = data.substring(1, data.length() - 2)
-        while (remaining != "") {
-            let record = ""
-            let depth = 0
-            let end = 0
-            let ri = 0
-            while (ri < remaining.length()) {
-                const ch = remaining.charAt(ri)
-                if (ch == "{") { depth = depth + 1 }
-                if (ch == "}") {
-                    depth = depth - 1
-                    if (depth == 0) { end = ri + 1; break }
-                }
-                ri = ri + 1
-            }
-            record = remaining.substring(0, end)
-            if (end < remaining.length() && remaining.charAt(end) == ",") {
-                remaining = remaining.substring(end + 1, remaining.length() - end - 1)
-            } else {
-                remaining = ""
-            }
-            if (record != "") {
-                const recParsed = JSON.parse(record)
-                if (recParsed.getInt("id") != id) {
-                    if (first == 1) { first = 0 } else { result = `${result},` }
-                    result = `${result}${record}`
-                }
-            }
-        }
-        result = `${result}]`
-        this.em.saveTable(this.tableName, result)
+    function deleteById(id: int): int {
+        return this.jdbc.update(`DELETE FROM ${this.tableName} WHERE id = ${id}`)
     }
 
-    // Delete all records.
-    function deleteAll() {
-        this.em.saveTable(this.tableName, "[]")
+    function deleteAll(): int {
+        return this.jdbc.update(`DELETE FROM ${this.tableName}`)
     }
 
-    // ── Internal helpers ─────────────────────────────────────
-
-    function nextId(): int {
-        const data = this.em.loadTable(this.tableName)
-        if (data == "[]") { return 1 }
-        let maxId = 0
-        let remaining = data.substring(1, data.length() - 2)
-        while (remaining != "") {
-            let depth = 0
-            let end = 0
-            let ri = 0
-            while (ri < remaining.length()) {
-                const ch = remaining.charAt(ri)
-                if (ch == "{") { depth = depth + 1 }
-                if (ch == "}") {
-                    depth = depth - 1
-                    if (depth == 0) { end = ri + 1; break }
-                }
-                ri = ri + 1
-            }
-            const record = remaining.substring(0, end)
-            if (end < remaining.length() && remaining.charAt(end) == ",") {
-                remaining = remaining.substring(end + 1, remaining.length() - end - 1)
-            } else {
-                remaining = ""
-            }
-            if (record != "") {
-                const rec = JSON.parse(record)
-                const recId = rec.getInt("id")
-                if (recId > maxId) { maxId = recId }
-            }
-        }
-        return maxId + 1
-    }
-
-    function appendRecord(record: string) {
-        const data = this.em.loadTable(this.tableName)
-        if (data == "[]") {
-            this.em.saveTable(this.tableName, `[${record}]`)
-        } else {
-            const inner = data.substring(1, data.length() - 2)
-            this.em.saveTable(this.tableName, `[${inner},${record}]`)
-        }
-    }
-
-    function replaceRecord(id: int, newRecord: string) {
-        const data = this.em.loadTable(this.tableName)
-        let result = "["
-        let first = 1
-        let found = 0
-        let remaining = data.substring(1, data.length() - 2)
-        while (remaining != "") {
-            let depth = 0
-            let end = 0
-            let ri = 0
-            while (ri < remaining.length()) {
-                const ch = remaining.charAt(ri)
-                if (ch == "{") { depth = depth + 1 }
-                if (ch == "}") {
-                    depth = depth - 1
-                    if (depth == 0) { end = ri + 1; break }
-                }
-                ri = ri + 1
-            }
-            let record = remaining.substring(0, end)
-            if (end < remaining.length() && remaining.charAt(end) == ",") {
-                remaining = remaining.substring(end + 1, remaining.length() - end - 1)
-            } else {
-                remaining = ""
-            }
-            if (record != "") {
-                const recParsed = JSON.parse(record)
-                if (recParsed.getInt("id") == id) {
-                    record = newRecord
-                    found = 1
-                }
-                if (first == 1) { first = 0 } else { result = `${result},` }
-                result = `${result}${record}`
-            }
-        }
-        result = `${result}]`
-        this.em.saveTable(this.tableName, result)
-    }
-
-    function findRecordById(data: string, id: int): string {
-        if (data == "[]") { return "" }
-        let remaining = data.substring(1, data.length() - 2)
-        while (remaining != "") {
-            let depth = 0
-            let end = 0
-            let ri = 0
-            while (ri < remaining.length()) {
-                const ch = remaining.charAt(ri)
-                if (ch == "{") { depth = depth + 1 }
-                if (ch == "}") {
-                    depth = depth - 1
-                    if (depth == 0) { end = ri + 1; break }
-                }
-                ri = ri + 1
-            }
-            const record = remaining.substring(0, end)
-            if (end < remaining.length() && remaining.charAt(end) == ",") {
-                remaining = remaining.substring(end + 1, remaining.length() - end - 1)
-            } else {
-                remaining = ""
-            }
-            if (record != "") {
-                const rec = JSON.parse(record)
-                if (rec.getInt("id") == id) { return record }
-            }
-        }
-        return ""
+    function update(id: int, setClauses: string): int {
+        return this.jdbc.update(`UPDATE ${this.tableName} SET ${setClauses} WHERE id = ${id}`)
     }
 }
 
-// ── Factory ──────────────────────────────────────────────────
+// ── Factory (static method) ──────────────────────────────────
 
-function JpaRepository_create(tableName: string): JpaRepository {
-    return new JpaRepository(tableName, createEntityManager())
+class JpaRepositoryFactory
+
+function JpaRepositoryFactory_create(url: string, tableName: string, columns: string): JpaRepository {
+    const conn = DriverManager.getConnection(url)
+    const jdbc = new JdbcTemplate(conn.dbHandle)
+    return new JpaRepository(tableName, columns, jdbc)
 }
