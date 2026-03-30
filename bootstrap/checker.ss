@@ -7,12 +7,15 @@ import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetL
 
 // ── Scope + function registry ─────────────────────────────────
 
-let scopeDepth = 0
 let scopeId = 0
+let currentScope = 0
+let scopeParent = ""  // Map: "scopeId" -> "parentScopeId" (chain-based scope)
 let varNames = ""     // "scopeId:name" -> "type"
-let varConst = ""     // "scopeId:name" -> 1 if const
+let varConst = ""     // "scopeId:name" -> "const" if const
 let funcNames = ""    // "funcName" -> "retType"
 let ifaceMethods = ""
+let funcParamMin = ""  // "funcName" -> min args (required params)
+let funcParamMax = ""  // "funcName" -> max args (total params)
 let funcReady = 0
 
 function initChecker() {
@@ -21,42 +24,81 @@ function initChecker() {
     varConst = Map()
     funcNames = Map()
     ifaceMethods = Map()
-    scopeDepth = 0
+    scopeParent = Map()
+    funcParamMin = Map()
+    funcParamMax = Map()
     scopeId = 0
+    currentScope = 0
     // Built-in functions
     const builtins = "println,print,readLine,readFile,writeFile,args,arg,exit,system,parseInt,parseDouble,Map,sqrt,abs,floor,ceil,round,log,sin,cos,pow,min,max,random,timeMs"
     const parts = builtins.split(",")
     for (name in parts) {
         funcNames.set(name, "builtin")
     }
+    // Built-in param counts
+    const zeroArgFns = "readLine,args,Map,random,timeMs"
+    const za = zeroArgFns.split(",")
+    for (z in za) {
+        funcParamMin.set(z, "0")
+        funcParamMax.set(z, "0")
+    }
+    const oneArgFns = "println,print,readFile,arg,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,log,sin,cos"
+    const oa = oneArgFns.split(",")
+    for (o in oa) {
+        funcParamMin.set(o, "1")
+        funcParamMax.set(o, "1")
+    }
+    const twoArgFns = "writeFile,pow,min,max"
+    const ta = twoArgFns.split(",")
+    for (t in ta) {
+        funcParamMin.set(t, "2")
+        funcParamMax.set(t, "2")
+    }
     funcReady = 1
 }
 
 function pushScope() {
     scopeId = scopeId + 1
-    scopeDepth = scopeDepth + 1
+    scopeParent.set(`${scopeId}`, `${currentScope}`)
+    currentScope = scopeId
 }
 
 function popScope() {
-    scopeDepth = scopeDepth - 1
+    currentScope = parseInt(scopeParent.getString(`${currentScope}`))
 }
 
 function defineVar(name: string, varType: string, isConst: int) {
-    const key = scopeId + ":" + name
+    const key = `${currentScope}:${name}`
     varNames.set(key, varType)
-    varConst.set(key, isConst)
+    if (isConst == 1) {
+        varConst.set(key, "const")
+    }
 }
 
 function lookupVar(name: string): string {
-    let d = scopeDepth
-    while (d >= 0) {
-        const key = d + ":" + name
+    let s = currentScope
+    while (s >= 0) {
+        const key = `${s}:${name}`
         if (varNames.has(key) == 1) {
             return varNames.getString(key)
         }
-        d = d - 1
+        if (s == 0) { break }
+        s = parseInt(scopeParent.getString(`${s}`))
     }
     return ""
+}
+
+function isVarConst(name: string): int {
+    let s = currentScope
+    while (s >= 0) {
+        const key = `${s}:${name}`
+        if (varNames.has(key) == 1) {
+            return varConst.has(key)
+        }
+        if (s == 0) { break }
+        s = parseInt(scopeParent.getString(`${s}`))
+    }
+    return 0
 }
 
 function checkInterfaceImpl(className: string, implList: string, classMethods: string) {
@@ -102,6 +144,29 @@ function lookupFunc(name: string): int {
     return funcNames.has(name)
 }
 
+function defineFuncParams(name: string, minArgs: int, maxArgs: int) {
+    if (funcParamMin.has(name) == 1) {
+        const existMin = parseInt(funcParamMin.getString(name))
+        const existMax = parseInt(funcParamMax.getString(name))
+        if (minArgs < existMin) { funcParamMin.set(name, `${minArgs}`) }
+        if (maxArgs > existMax) { funcParamMax.set(name, `${maxArgs}`) }
+    } else {
+        funcParamMin.set(name, `${minArgs}`)
+        funcParamMax.set(name, `${maxArgs}`)
+    }
+}
+
+function countArgs(listStr: string): int {
+    if (listStr == "") { return 0 }
+    let count = 0
+    const parts = listStr.split(",")
+    for (p in parts) {
+        const argId = parseInt(p)
+        if (argId > 0) { count = count + 1 }
+    }
+    return count
+}
+
 // ── Public API ────────────────────────────────────────────────
 
 function check(rootId: int): int {
@@ -118,7 +183,26 @@ function check(rootId: int): int {
         for (p in p1) {
             const s = parseInt(p)
             if (s <= 0) { continue }
-            if (nGetKind(s) == "FUNC_DECL") { defineFunc(nGetS1(s), nGetS2(s)) }
+            if (nGetKind(s) == "FUNC_DECL") {
+                const fname = nGetS1(s)
+                defineFunc(fname, nGetS2(s))
+                const paramList = nGetList(s)
+                let minP = 0
+                let maxP = 0
+                if (paramList != "") {
+                    const ps = paramList.split(",")
+                    for (pp in ps) {
+                        const ppId = parseInt(pp)
+                        if (ppId > 0 && nGetKind(ppId) == "PARAM") {
+                            maxP = maxP + 1
+                            if (nGetI1(ppId) <= 0 && nGetI2(ppId) <= 0) {
+                                minP = minP + 1
+                            }
+                        }
+                    }
+                }
+                defineFuncParams(fname, minP, maxP)
+            }
             if (nGetKind(s) == "INTERFACE_DECL") {
                 const ifName = nGetS1(s)
                 const ml = nGetList(s)
@@ -206,8 +290,10 @@ function checkStmt(id: int) {
             println("checker error: undefined variable '" + name + "'")
             exit(1)
         }
-        // Skip const check for bootstrap (scope isolation not perfect)
-        // if (isVarConst(name) == 1) { ... }
+        if (isVarConst(name) == 1) {
+            println(`checker error: cannot reassign const variable '${name}'`)
+            exit(1)
+        }
         const valId = nGetI1(id)
         if (valId > 0) { checkExpr(valId) }
         return
@@ -286,6 +372,20 @@ function checkStmt(id: int) {
         return
     }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { checkExpr(id); return }
+    if (kind == "TRY") {
+        pushScope()
+        checkBlock(nGetI1(id))
+        popScope()
+        pushScope()
+        defineVar(nGetS1(id), "string", 0)
+        checkBlock(nGetI2(id))
+        popScope()
+        return
+    }
+    if (kind == "THROW") {
+        checkExpr(nGetI1(id))
+        return
+    }
     // IMPORT, INTERFACE_DECL, ENUM_DECL, BREAK, CONTINUE — no checks needed
 }
 
@@ -352,6 +452,19 @@ function checkExpr(id: int) {
         if (lookupFunc(callee) == 0) {
             println("checker error: undefined function '" + callee + "'")
             exit(1)
+        }
+        const argCount = countArgs(nGetList(id))
+        if (funcParamMin.has(callee) == 1) {
+            const minArgs = parseInt(funcParamMin.getString(callee))
+            const maxArgs = parseInt(funcParamMax.getString(callee))
+            if (argCount < minArgs || argCount > maxArgs) {
+                if (minArgs == maxArgs) {
+                    println(`checker error: function '${callee}' expects ${minArgs} arguments, got ${argCount}`)
+                } else {
+                    println(`checker error: function '${callee}' expects ${minArgs}-${maxArgs} arguments, got ${argCount}`)
+                }
+                exit(1)
+            }
         }
         checkArgList(nGetList(id))
         return
