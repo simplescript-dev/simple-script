@@ -289,6 +289,7 @@ function lexTemplate() {
                 } else if (ch == "|") { lexOr()
                 } else if (ch == "^") { lexCaret()
                 } else if (ch == "~") { lexTilde()
+                } else if (ch == "%") { emit("PERCENT", "%"); advance()
                 } else {
                     println(`lexer error: unexpected '${ch}' in template`)
                     exit(1)
@@ -324,6 +325,43 @@ function lexTemplate() {
 
 function lexNumber() {
     let start = pos
+    // Check for 0x, 0b, 0o prefix
+    if (peek() == "0" && pos + 1 < srcLen) {
+        const next = src.charAt(pos + 1)
+        if (next == "x" || next == "X") {
+            advance(); advance()
+            let val = 0
+            while (pos < srcLen && "0123456789abcdefABCDEF".contains(peek()) == 1 && peek() != "") {
+                const d = "0123456789abcdef".indexOf(peek())
+                const dv = d >= 0 ? d : "0123456789ABCDEF".indexOf(peek())
+                val = val * 16 + dv
+                advance()
+            }
+            emit("INT", `${val}`)
+            return
+        }
+        if (next == "b" || next == "B") {
+            advance(); advance()
+            let val = 0
+            while (pos < srcLen && (peek() == "0" || peek() == "1")) {
+                val = val * 2 + parseInt(peek())
+                advance()
+            }
+            emit("INT", `${val}`)
+            return
+        }
+        if (next == "o" || next == "O") {
+            advance(); advance()
+            let val = 0
+            while (pos < srcLen && "01234567".contains(peek()) == 1 && peek() != "") {
+                val = val * 8 + parseInt(peek())
+                advance()
+            }
+            emit("INT", `${val}`)
+            return
+        }
+    }
+    // Regular decimal number
     let isDouble = 0
     while (pos < srcLen && (isDigit(peek()) || peek() == "_")) {
         advance()

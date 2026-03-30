@@ -2,12 +2,12 @@
 // ── Class support ─────────────────────────────────────────────
 
 function registerClass(id: int) {
-    const name = nGetS1(id)
-    const extendsName = nGetS2(id)
+    const name = classNodeName(id)
+    const extendsName = classParentName(id)
     if (extendsName != "") {
         classParents.set(name, extendsName)
     }
-    const paramList = nGetList(id)
+    const paramList = classFieldList(id)
     // Collect field names and types
     let fieldNames = ""
     if (paramList != "") {
@@ -15,34 +15,17 @@ function registerClass(id: int) {
         for (p in parts) {
             const pId = parseInt(p)
             if (pId > 0 && nGetKind(pId) == "PARAM") {
-                const fName = nGetS1(pId)
-                const fType = nGetS2(pId)
+                const fName = paramName(pId)
+                const fType = paramType(pId)
                 if (fieldNames == "") { fieldNames = fName } else { fieldNames = `${fieldNames},${fName}` }
                 classFieldTypes.set(`${name}.${fName}`, fType)
             }
         }
     }
-    // Prepend parent fields if extends
-    if (extendsName != "" && classFields.has(extendsName) == 1) {
-        const parentFields = classFields.getString(extendsName)
-        if (parentFields != "") {
-            if (fieldNames == "") {
-                fieldNames = parentFields
-            } else {
-                fieldNames = `${parentFields},${fieldNames}`
-            }
-            // Copy parent field types
-            const pfs = parentFields.split(",")
-            for (pf in pfs) {
-                if (classFieldTypes.has(`${extendsName}.${pf}`) == 1) {
-                    classFieldTypes.set(`${name}.${pf}`, classFieldTypes.getString(`${extendsName}.${pf}`))
-                }
-            }
-        }
-    }
+    // Store own fields only; inheritance resolved in resolveInheritance()
     classFields.set(name, fieldNames)
     // Collect method names
-    const methodsBlockId = nGetI2(id)
+    const methodsBlockId = classMethodsBlock(id)
     let methodNames = ""
     if (methodsBlockId > 0) {
         const mList = nGetList(methodsBlockId)
@@ -51,18 +34,15 @@ function registerClass(id: int) {
             for (mp in mParts) {
                 const mId = parseInt(mp)
                 if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
-                    const mName = nGetS1(mId)
+                    const mName = funcName(mId)
                     if (methodNames == "") { methodNames = mName } else { methodNames = `${methodNames},${mName}` }
-                    // Register return type
-                    let mRet = nGetS2(mId)
+                    let mRet = funcRetType(mId)
                     if (mRet == "") { mRet = "void" }
                     funcRetTypes.set(`${name}_${mName}`, mRet)
-                    // Mangled name for overloading
-                    const mSig = paramSig(nGetList(mId))
+                    const mSig = paramSig(funcParams(mId))
                     if (mSig != "") {
                         funcRetTypes.set(`${name}_${mName}_${mSig}`, mRet)
                     }
-                    // Track overload count
                     if (overloadReady == 0) { overloadCount = new Map(); overloadReady = 1 }
                     const mFullName = `${name}_${mName}`
                     if (overloadCount.has(mFullName) == 1) {
@@ -78,26 +58,193 @@ function registerClass(id: int) {
     classMethods.set(name, methodNames)
 }
 
-function genClassDecl(id: int) {
-    const name = nGetS1(id)
-    const fieldStr = classFields.getString(name)
+// Resolve inheritance after ALL classes are registered.
+// Walks parent chain to prepend parent fields and copy field types.
+function resolveInheritance() {
+    const allClasses = classFields.keys()
+    if (allClasses == "") { return }
+    // Map.keys() returns newline-separated string
+    const classList = allClasses.split("\n")
+    for (cls in classList) {
+        if (cls == "") { continue }
+        const parent = classParents.has(cls) == 1 ? classParents.getString(cls) : ""
+        if (parent == "") { continue }
+        if (classFields.has(parent) == 0) {
+            println(`codegen error: class '${cls}' extends unknown class '${parent}'`)
+            exit(1)
+        }
+        // Walk parent chain to get full parent fields (handles grandparent etc.)
+        let fullParentFields = resolveFullFields(parent)
+        const ownFields = classFields.getString(cls)
+        if (fullParentFields != "") {
+            if (ownFields == "") {
+                classFields.set(cls, fullParentFields)
+            } else {
+                classFields.set(cls, `${fullParentFields},${ownFields}`)
+            }
+            // Copy parent field types to child
+            const pfs = fullParentFields.split(",")
+            for (pf in pfs) {
+                const parentCls = findFieldOwner(pf, parent)
+                if (parentCls != "" && classFieldTypes.has(`${parentCls}.${pf}`) == 1) {
+                    classFieldTypes.set(`${cls}.${pf}`, classFieldTypes.getString(`${parentCls}.${pf}`))
+                }
+            }
+        }
+    }
+}
 
-    // Emit LLVM struct type
+// Get the complete field list for a class (own + all ancestors)
+function resolveFullFields(cls: string): string {
+    const parent = classParents.has(cls) == 1 ? classParents.getString(cls) : ""
+    const ownFields = classFields.getString(cls)
+    if (parent == "" || classFields.has(parent) == 0) { return ownFields }
+    const parentFields = resolveFullFields(parent)
+    if (parentFields == "") { return ownFields }
+    if (ownFields == "") { return parentFields }
+    return `${parentFields},${ownFields}`
+}
+
+// ── Class dtor tags ──────────────────────────────────────────
+// Assign unique tags (>= 10) to classes with ptr fields for destructor dispatch.
+// Called after resolveInheritance() so inherited fields are known.
+
+function assignClassDtorTags() {
+    const allClasses = classFields.keys()
+    if (allClasses == "") { return }
+    const cList = allClasses.split("\n")
+    for (c in cList) {
+        if (c == "" || c == "Map") { continue }
+        const fieldStr = classFields.getString(c)
+        if (fieldStr == "") { continue }
+        // Check if any field (own or inherited) has ptr type
+        let hasPtrField = 0
+        const fields = fieldStr.split(",")
+        for (f in fields) {
+            if (f == "") { continue }
+            const owner = findFieldOwner(f, c)
+            if (owner == "") { continue }
+            const fType = classFieldTypes.getString(`${owner}.${f}`)
+            if (fType == "") { continue }
+            const llType = ssTypeToLLVM(fType)
+            if (llType == "ptr") { hasPtrField = 1 }
+        }
+        if (hasPtrField == 1) {
+            classDtorTags.set(c, `${dtorNextTag}`)
+            dtorNextTag = dtorNextTag + 1
+        }
+    }
+}
+
+// ── Vtable ────────────────────────────────────────────────────
+// Build vtable metadata for classes in inheritance hierarchies.
+// Called after resolveInheritance() so parent chains are complete.
+
+function buildClassVtables() {
+    const allClasses = classFields.keys()
+    if (allClasses == "") { return }
+    const classList = allClasses.split("\n")
+    // Mark all classes that are part of an inheritance hierarchy
+    for (cls in classList) {
+        if (cls == "") { continue }
+        if (classParents.has(cls) == 1) {
+            classNeedsVtable.set(cls, "1")
+            classNeedsVtable.set(classParents.getString(cls), "1")
+        }
+    }
+    // Build vtable for each marked class (recursion ensures parents built first)
+    for (cls in classList) {
+        if (cls == "") { continue }
+        if (classNeedsVtable.has(cls) == 0) { continue }
+        buildVtableForClass(cls)
+    }
+}
+
+function buildVtableForClass(cls: string) {
+    // Already built?
+    if (classVtableSlots.has(cls) == 1) { return }
+    const parent = classParents.has(cls) == 1 ? classParents.getString(cls) : ""
+    // Build parent first (recursion)
+    if (parent != "" && classNeedsVtable.has(parent) == 1) {
+        buildVtableForClass(parent)
+    }
+    let slots = ""
+    // Inherit parent slot ordering + implementations
+    if (parent != "" && classVtableSlots.has(parent) == 1) {
+        slots = classVtableSlots.getString(parent)
+        const parentSlots = slots.split(",")
+        for (ps in parentSlots) {
+            if (ps == "") { continue }
+            const parentImpl = classVtableImpl.getString(`${parent}.${ps}`)
+            classVtableImpl.set(`${cls}.${ps}`, parentImpl)
+        }
+    }
+    // Collect own methods + toJson
+    let allMethods = classMethods.getString(cls)
+    const fieldStr = classFields.getString(cls)
+    if (fieldStr != "") {
+        if (allMethods == "") { allMethods = "toJson" }
+        else if (allMethods.contains("toJson") == 0) { allMethods = `${allMethods},toJson` }
+    }
+    if (allMethods != "") {
+        const methods = allMethods.split(",")
+        for (m in methods) {
+            if (m == "") { continue }
+            // Check if already in slots
+            let found = 0
+            if (slots != "") {
+                const existing = slots.split(",")
+                for (es in existing) {
+                    if (es == m) { found = 1 }
+                }
+            }
+            if (found == 0) {
+                if (slots == "") { slots = m } else { slots = `${slots},${m}` }
+            }
+            // Set implementation for this class
+            classVtableImpl.set(`${cls}.${m}`, `${cls}_${m}`)
+        }
+    }
+    classVtableSlots.set(cls, slots)
+}
+
+// ── Class codegen helpers ────────────────────────────────────
+
+function emitClassStruct(name: string, fieldStr: string, hasVtable: int) {
     let fieldTypes = ""
+    if (hasVtable == 1) { fieldTypes = "ptr" }
     if (fieldStr != "") {
         const parts = fieldStr.split(",")
-        let first = 1
         for (p in parts) {
             const ft = classFieldTypes.getString(`${name}.${p}`)
             const llType = ssTypeToLLVM(ft)
-            if (first == 1) { first = 0 } else { fieldTypes = fieldTypes + ", " }
+            if (fieldTypes != "") { fieldTypes = fieldTypes + ", " }
             fieldTypes = fieldTypes + llType
         }
     }
     emitIR(`%${name} = type { ${fieldTypes} }`)
     emitIR("")
+}
 
-    // Emit constructor: @ClassName_new(fields...) -> ptr
+function emitClassVtableConst(name: string, hasVtable: int) {
+    if (hasVtable == 0 || classVtableSlots.has(name) == 0) { return }
+    const vtSlots = classVtableSlots.getString(name)
+    if (vtSlots == "") { return }
+    const slotParts = vtSlots.split(",")
+    let vtEntries = ""
+    let vtCount = 0
+    for (sp in slotParts) {
+        if (sp == "") { continue }
+        const impl = classVtableImpl.getString(`${name}.${sp}`)
+        if (vtCount > 0) { vtEntries = vtEntries + ", " }
+        vtEntries = `${vtEntries}ptr @${impl}`
+        vtCount = vtCount + 1
+    }
+    emitIR(`@${name}_vtable = constant [${vtCount} x ptr] [${vtEntries}]`)
+    emitIR("")
+}
+
+function emitClassConstructor(name: string, fieldStr: string, hasVtable: int) {
     let ctorParams = ""
     let ctorIdx = 0
     if (fieldStr != "") {
@@ -113,19 +260,35 @@ function genClassDecl(id: int) {
     regCount = 0
     emitIR(`define ptr @${name}_new(${ctorParams}) {`)
     emitIR("entry:")
-    // Calculate struct size (simplified: 8 bytes per field)
-    const structSize = ctorIdx * 8
+    const sizeGep = nextReg()
+    emitIR(`  ${sizeGep} = getelementptr %${name}, ptr null, i32 1`)
+    const sizeReg = nextReg()
+    emitIR(`  ${sizeReg} = ptrtoint ptr ${sizeGep} to i64`)
+    let classTag = 3
+    if (classDtorTags.has(name) == 1) {
+        classTag = parseInt(classDtorTags.getString(name))
+    }
     const mallocReg = nextReg()
-    emitIR(`  ${mallocReg} = call ptr @malloc(i64 ${structSize})`)
-    // Store fields
+    emitIR(`  ${mallocReg} = call ptr @ss_rc_alloc(i64 ${sizeReg}, i32 ${classTag})`)
+    if (classTag >= 10) {
+        emitIR(`  call void @${name}_dtor_register()`)
+    }
+    if (hasVtable == 1) {
+        const vtGep = nextReg()
+        emitIR(`  ${vtGep} = getelementptr %${name}, ptr ${mallocReg}, i32 0, i32 0`)
+        emitIR(`  store ptr @${name}_vtable, ptr ${vtGep}, align 8`)
+    }
     if (fieldStr != "") {
-        let idx = 0
+        let idx = hasVtable == 1 ? 1 : 0
         const parts = fieldStr.split(",")
         for (p in parts) {
             const ft = classFieldTypes.getString(`${name}.${p}`)
             const llType = ssTypeToLLVM(ft)
             const gepReg = nextReg()
             emitIR(`  ${gepReg} = getelementptr %${name}, ptr ${mallocReg}, i32 0, i32 ${idx}`)
+            if (llType == "ptr") {
+                emitIR(`  call void @ss_rc_retain(ptr %${p}.arg)`)
+            }
             emitIR(`  store ${llType} %${p}.arg, ptr ${gepReg}, align 8`)
             idx = idx + 1
         }
@@ -133,9 +296,39 @@ function genClassDecl(id: int) {
     emitIR(`  ret ptr ${mallocReg}`)
     emitIR("}")
     emitIR("")
+}
 
-    // Emit methods: @ClassName_methodName(ptr %this, args...) -> retType
-    const methodsBlockId = nGetI2(id)
+function emitClassDtorRegister(name: string, fieldStr: string, hasVtable: int) {
+    if (classDtorTags.has(name) == 0) { return }
+    const dtorTag = parseInt(classDtorTags.getString(name))
+    emitClassDestroy(name, fieldStr, hasVtable)
+    const dtorIdx = dtorTag - 10
+    emitIR(`@${name}_dtor_init = internal global i1 false`)
+    emitIR(`define internal void @${name}_dtor_register() {`)
+    emitIR("entry:")
+    emitIR(`  %done = load i1, ptr @${name}_dtor_init`)
+    emitIR(`  br i1 %done, label %ret, label %init`)
+    emitIR("init:")
+    emitIR(`  store i1 true, ptr @${name}_dtor_init`)
+    emitIR(`  %gep = getelementptr [100 x ptr], ptr @ss_class_dtor, i64 0, i64 ${dtorIdx}`)
+    emitIR(`  store ptr @${name}_destroy, ptr %gep`)
+    emitIR("  br label %ret")
+    emitIR("ret:")
+    emitIR("  ret void")
+    emitIR("}")
+    emitIR("")
+}
+
+function genClassDecl(id: int) {
+    const name = classNodeName(id)
+    const fieldStr = classFields.getString(name)
+    const hasVtable = classNeedsVtable.has(name) == 1 ? 1 : 0
+
+    emitClassStruct(name, fieldStr, hasVtable)
+    emitClassVtableConst(name, hasVtable)
+    emitClassConstructor(name, fieldStr, hasVtable)
+
+    const methodsBlockId = classMethodsBlock(id)
     if (methodsBlockId > 0) {
         const mList = nGetList(methodsBlockId)
         if (mList != "") {
@@ -148,9 +341,41 @@ function genClassDecl(id: int) {
             }
         }
     }
-
-    // Auto-generate toJson() for all classes
     genAutoToJson(name, fieldStr)
+    emitClassDtorRegister(name, fieldStr, hasVtable)
+}
+
+// Emit @ClassName_destroy(ptr %self) — release all ptr-type fields
+function emitClassDestroy(className: string, fieldStr: string, hasVtable: int) {
+    regCount = 0
+    emitIR(`define void @${className}_destroy(ptr %self) {`)
+    emitIR("entry:")
+    if (fieldStr != "") {
+        let idx = hasVtable == 1 ? 1 : 0
+        const parts = fieldStr.split(",")
+        for (p in parts) {
+            const owner = findFieldOwner(p, className)
+            let ft = ""
+            if (owner != "") { ft = classFieldTypes.getString(`${owner}.${p}`) }
+            if (ft == "") { ft = classFieldTypes.getString(`${className}.${p}`) }
+            const llType = ssTypeToLLVM(ft)
+            if (llType == "ptr") {
+                const gepR = nextReg()
+                emitIR(`  ${gepR} = getelementptr %${className}, ptr %self, i32 0, i32 ${idx}`)
+                const loadR = nextReg()
+                emitIR(`  ${loadR} = load ptr, ptr ${gepR}, align 8`)
+                if (nonOwningFields.has(`${className}.${p}`) == 1) {
+                    emitIR(`  call void @ss_rc_release_no_children(ptr ${loadR})`)
+                } else {
+                    emitIR(`  call void @ss_rc_release(ptr ${loadR})`)
+                }
+            }
+            idx = idx + 1
+        }
+    }
+    emitIR("  ret void")
+    emitIR("}")
+    emitIR("")
 }
 
 function genAutoToJson(className: string, fieldStr: string) {
@@ -166,13 +391,15 @@ function genAutoToJson(className: string, fieldStr: string) {
     // Build JSON string: {"field1":value1,"field2":value2}
     let resultReg = addStringConst("{")
     const fields = fieldStr.split(",")
-    let fieldIdx = 0
+    // Vtable classes have vtable ptr at index 0, data fields start at 1
+    let fieldIdx = classNeedsVtable.has(className) == 1 ? 1 : 0
+    let fieldOrd = 0
     for (f in fields) {
         const fType = classFieldTypes.getString(`${className}.${f}`)
         const llFType = ssTypeToLLVM(fType)
 
         // Add comma separator
-        if (fieldIdx > 0) {
+        if (fieldOrd > 0) {
             const commaStr = addStringConst(",")
             const cR = nextReg()
             emitIR(`  ${cR} = call ptr @ss_string_concat(ptr ${resultReg}, ptr ${commaStr})`)
@@ -231,6 +458,7 @@ function genAutoToJson(className: string, fieldStr: string) {
             resultReg = oR
         }
         fieldIdx = fieldIdx + 1
+        fieldOrd = fieldOrd + 1
     }
 
     // Close with }
@@ -243,14 +471,14 @@ function genAutoToJson(className: string, fieldStr: string) {
 }
 
 function genClassMethod(className: string, id: int) {
-    const mName = nGetS1(id)
-    let retType = nGetS2(id)
+    const mName = funcName(id)
+    let retType = funcRetType(id)
     if (retType == "") { retType = "void" }
     const llRetType = ssTypeToLLVM(retType)
 
     // Build param list (this + declared params)
     let paramStr = "ptr %this.ptr"
-    const paramList = nGetList(id)
+    const paramList = funcParams(id)
     if (paramList != "") {
         const parts = paramList.split(",")
         for (p in parts) {
@@ -276,6 +504,8 @@ function genClassMethod(className: string, id: int) {
     currentFunc = llMethodName
     currentClassName = className
     varAliases = Map()
+    localPtrVars = ""
+    rcBlockDepth = 0
 
     emitIR(`define ${llRetType} @${llMethodName}(${paramStr}) {`)
     emitIR("entry:")
@@ -285,31 +515,15 @@ function genClassMethod(className: string, id: int) {
     emitIR("  store ptr %this.ptr, ptr %this, align 8")
     setVarType("this", className)
 
-    // Alloca params
-    if (paramList != "") {
-        const parts = paramList.split(",")
-        for (p in parts) {
-            const pId = parseInt(p)
-            if (pId > 0 && nGetKind(pId) == "PARAM") {
-                const pName = nGetS1(pId)
-                const pType = nGetS2(pId)
-                const llType = ssTypeToLLVM(pType)
-                emitIR(`  %${pName} = alloca ${llType}, align 8`)
-                emitIR(`  store ${llType} %${pName}.arg, ptr %${pName}, align 8`)
-                setVarType(pName, pType)
-                if (classFields.has(pType) == 1) {
-                    setObjClass(pName, pType)
-                }
-            }
-        }
-    }
+    emitParamAllocas(paramList, 0)
 
     // Generate body
-    const bodyId = nGetI1(id)
+    const bodyId = funcBody(id)
     genBlock(bodyId)
 
     // Default return
     if (terminated == 0) {
+        emitReleaseLocals()
         if (llRetType == "void") {
             emitIR("  ret void")
         } else if (llRetType == "ptr") {
@@ -355,7 +569,10 @@ function genNewExpr(id: int): string {
 
 function emitFieldLoad(className: string, objReg: string, field: string): string {
     const idx = getFieldIndex(className, field)
-    if (idx < 0) { return objReg }
+    if (idx < 0) {
+        println(`codegen error: class '${className}' has no field '${field}'`)
+        exit(1)
+    }
     const fType = classFieldTypes.getString(`${className}.${field}`)
     const gepReg = nextReg()
     emitIR(`  ${gepReg} = getelementptr %${className}, ptr ${objReg}, i32 0, i32 ${idx}`)
@@ -408,7 +625,8 @@ function getFieldIndex(className: string, fieldName: string): int {
     const fieldStr = classFields.getString(className)
     if (fieldStr == "") { return -1 }
     const parts = fieldStr.split(",")
-    let idx = 0
+    // Vtable classes have vtable ptr at index 0, data fields start at 1
+    let idx = classNeedsVtable.has(className) == 1 ? 1 : 0
     for (p in parts) {
         if (p == fieldName) { return idx }
         idx = idx + 1

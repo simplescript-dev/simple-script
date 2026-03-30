@@ -71,13 +71,7 @@ let funcParamCount = ""  // "funcName" -> param count
 let currentClassName = ""
 let breakLabel = ""
 let continueLabel = ""
-let localPtrVars = ""
-let rcBlockDepth = 0
-let blockPtrVarStack = ""    // "|"-separated segments of block-level ptr vars
-let loopBlockStackSaved = "" // saved blockPtrVarStack at loop entry (for break/continue)
-let lastExprStringOwned = 0
-let nonOwningFields = ""     // Map: "ClassName.fieldName" -> "1" (non-owning container fields)
-let pushNonOwning = 0        // flag: current push target is non-owning container
+// RC state moved to gen_rc.ss (localPtrVars, rcBlockDepth, blockPtrVarStack, etc.)
 let enumValues = ""
 let enumReady = 0
 let methodRetTypes = ""   // "methodName" -> return type (built-in method fallback)
@@ -98,7 +92,6 @@ function initFuncRetTypes() {
     classDtorTags = Map()
     dtorNextTag = 10
     classParents = Map()
-    nonOwningFields = Map()
     funcDefaults = Map()
     funcParamCount = Map()
     // Register Map as a built-in class (eliminates special cases)
@@ -425,13 +418,8 @@ function resetCodegen() {
     terminated = 0
     breakLabel = ""
     continueLabel = ""
-    // RC state
-    localPtrVars = ""
-    rcBlockDepth = 0
-    blockPtrVarStack = ""
-    loopBlockStackSaved = ""
-    lastExprStringOwned = 0
-    pushNonOwning = 0
+    // RC state (gen_rc.ss)
+    initRcState()
     // Enum / overload / routes
     enumValues = ""
     enumReady = 0

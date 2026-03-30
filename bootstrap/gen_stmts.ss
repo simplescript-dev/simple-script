@@ -1,6 +1,47 @@
 // Statement generation for bootstrap codegen
 // ── Statement generation ──────────────────────────────────────
 
+// Emit alloca/store for function parameters.
+// useVarAlias=1: allocVarName for SSA renaming (free functions, arrows)
+// useVarAlias=0: raw param name (class methods, where %name is used directly)
+function emitParamAllocas(paramList: string, useVarAlias: int) {
+    if (paramList == "") { return }
+    const parts = paramList.split(",")
+    for (p in parts) {
+        const pId = parseInt(p)
+        if (pId <= 0) { continue }
+        if (nGetKind(pId) != "PARAM") { continue }
+        const pName = nGetS1(pId)
+        const pType = nGetS2(pId)
+        const llType = ssTypeToLLVM(pType)
+        let llName = pName
+        if (useVarAlias == 1) { llName = allocVarName(pName) }
+        emitIR(`  %${llName} = alloca ${llType}, align 8`)
+        emitIR(`  store ${llType} %${pName}.arg, ptr %${llName}, align 8`)
+        setVarType(pName, pType)
+        if (classFields.has(pType) == 1) {
+            setObjClass(pName, pType)
+        }
+    }
+}
+
+// Emit condition→i1 conversion for any type (i32/i64/ptr/double)
+function emitCondToI1(condId: int, condVal: string): string {
+    const vType = inferType(condId)
+    const llType = ssTypeToLLVM(vType)
+    const r = nextReg()
+    if (llType == "ptr") {
+        emitIR(`  ${r} = icmp ne ptr ${condVal}, null`)
+    } else if (llType == "i64") {
+        emitIR(`  ${r} = icmp ne i64 ${condVal}, 0`)
+    } else if (llType == "double") {
+        emitIR(`  ${r} = fcmp one double ${condVal}, 0.0`)
+    } else {
+        emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    }
+    return r
+}
+
 function genDestructureArray(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
@@ -51,7 +92,7 @@ function genTryCatch(id: int) {
     emitIR(`${tryLabel}:`)
     const savedTerm = terminated
     terminated = 0
-    genBlock(tryBody)
+    genNestedBlock(tryBody)
     if (terminated == 0) {
         // Pop handler and skip catch
         const d2 = nextReg()
@@ -78,7 +119,7 @@ function genTryCatch(id: int) {
     emitIR(`  ${excMsg} = load ptr, ptr @ss_exc_msg`)
     emitIR(`  store ptr ${excMsg}, ptr %${errLLName}, align 8`)
     setVarType(errName, "string")
-    genBlock(catchBody)
+    genNestedBlock(catchBody)
     if (terminated == 0) {
         emitIR(`  br label %${endLabel}`)
     }
@@ -103,123 +144,105 @@ function registerEnum(id: int) {
     }
 }
 
+// ── Statement helpers ────────────────────────────────────────
+
+function genFuncDeclStmt(id: int) {
+    const fname = nGetS1(id)
+    const fSig = paramSig(nGetList(id))
+    const genKey = fSig != "" ? `${fname}_${fSig}_generated` : `${fname}_generated`
+    if (fname != "main" && funcRetTypes.has(genKey) == 1) { return }
+    funcRetTypes.set(genKey, "1")
+    genFuncDecl(id)
+}
+
+function genBreak() {
+    if (breakLabel != "") {
+        emitReleaseBlockVarsSince(loopBlockStackSaved)
+        emitIR(`  br label %${breakLabel}`)
+        terminated = 1
+    }
+}
+
+function genContinueStmt() {
+    if (continueLabel != "") {
+        emitReleaseBlockVarsSince(loopBlockStackSaved)
+        emitIR(`  br label %${continueLabel}`)
+        terminated = 1
+    }
+}
+
+function genPostfixStmt(id: int) {
+    const kind = nGetKind(id)
+    const pRef = varRef(nGetS1(id))
+    const r1 = nextReg(); emitIR(`  ${r1} = load i32, ptr ${pRef}, align 4`)
+    const r2 = nextReg()
+    if (kind == "POSTFIX_INC") { emitIR(`  ${r2} = add i32 ${r1}, 1`) } else { emitIR(`  ${r2} = sub i32 ${r1}, 1`) }
+    emitIR(`  store i32 ${r2}, ptr ${pRef}, align 4`)
+}
+
+function genIndexAssign(id: int) {
+    const arrPtr = nextReg(); emitIR(`  ${arrPtr} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
+    const idxVal = genExpr(nGetI1(id))
+    const valVal = genExpr(nGetI2(id))
+    const vt = inferType(nGetI2(id))
+    let v64 = valVal
+    if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR(`  ${s} = sext i32 ${valVal} to i64`); v64 = s }
+    if (vt == "string" || vt == "ptr") { const c = nextReg(); emitIR(`  ${c} = ptrtoint ptr ${valVal} to i64`); v64 = c }
+    emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
+}
+
+function genThrow(id: int) {
+    const msgVal = genExpr(nGetI1(id))
+    emitIR(`  call void @ss_throw(ptr ${msgVal})`)
+    emitIR("  unreachable")
+    terminated = 1
+}
+
 function genStmt(id: int) {
     const kind = nGetKind(id)
-
-    if (kind == "FUNC_DECL") {
-        const fname = nGetS1(id)
-        const fSig = paramSig(nGetList(id))
-        // Use mangled key for duplicate detection (supports overloading)
-        const genKey = fSig != "" ? `${fname}_${fSig}_generated` : `${fname}_generated`
-        if (fname != "main" && funcRetTypes.has(genKey) == 1) { return }
-        funcRetTypes.set(genKey, "1")
-        genFuncDecl(id)
-        return
-    }
-    if (kind == "VAR_DECL") {
-        genVarDecl(id)
-        return
-    }
-    if (kind == "DESTRUCTURE_ARRAY") {
-        genDestructureArray(id)
-        return
-    }
-    if (kind == "ASSIGN") {
-        genAssign(id)
-        return
-    }
-    if (kind == "EXPR_STMT") {
-        genExpr(nGetI1(id))
-        return
-    }
-    if (kind == "RETURN") {
-        genReturn(id)
-        return
-    }
-    if (kind == "IF") {
-        genIf(id)
-        return
-    }
-    if (kind == "FOR") {
-        genFor(id)
-        return
-    }
-    if (kind == "FOR_IN") {
-        genForIn(id)
-        return
-    }
-    if (kind == "WHILE") {
-        genWhile(id)
-        return
-    }
-    if (kind == "BREAK") {
-        if (breakLabel != "") {
-            emitIR(`  br label %${breakLabel}`)
-            terminated = 1
-        }
-        return
-    }
-    if (kind == "CONTINUE") {
-        if (continueLabel != "") {
-            emitIR(`  br label %${continueLabel}`)
-            terminated = 1
-        }
-        return
-    }
-    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
-        const pRef = varRef(nGetS1(id))
-        const r1 = nextReg(); emitIR(`  ${r1} = load i32, ptr ${pRef}, align 4`)
-        const r2 = nextReg()
-        if (kind == "POSTFIX_INC") { emitIR(`  ${r2} = add i32 ${r1}, 1`) } else { emitIR(`  ${r2} = sub i32 ${r1}, 1`) }
-        emitIR(`  store i32 ${r2}, ptr ${pRef}, align 4`)
-        return
-    }
-    if (kind == "DO_WHILE") {
-        genDoWhile(id)
-        return
-    }
-    if (kind == "SWITCH") {
-        genSwitch(id)
-        return
-    }
-    if (kind == "INDEX_ASSIGN") {
-        // arr[i] = val — nGetS1=arrName, nGetI1=indexExpr, nGetI2=valueExpr
-        const arrPtr = nextReg(); emitIR(`  ${arrPtr} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
-        const idxVal = genExpr(nGetI1(id))
-        const valVal = genExpr(nGetI2(id))
-        const vt = inferType(nGetI2(id))
-        let v64 = valVal
-        if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR(`  ${s} = sext i32 ${valVal} to i64`); v64 = s }
-        if (vt == "string" || vt == "ptr") { const c = nextReg(); emitIR(`  ${c} = ptrtoint ptr ${valVal} to i64`); v64 = c }
-        emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
-        return
-    }
-    if (kind == "CLASS_DECL") {
-        genClassDecl(id)
-        return
-    }
-    if (kind == "ENUM_DECL") {
-        registerEnum(id)
-        return
-    }
-    if (kind == "TRY") {
-        genTryCatch(id)
-        return
-    }
-    if (kind == "THROW") {
-        const msgVal = genExpr(nGetI1(id))
-        emitIR(`  call void @ss_throw(ptr ${msgVal})`)
-        emitIR("  unreachable")
-        terminated = 1
-        return
-    }
-    // IMPORT, INTERFACE_DECL — skip
+    if (kind == "FUNC_DECL") { genFuncDeclStmt(id); return }
+    if (kind == "VAR_DECL") { genVarDecl(id); return }
+    if (kind == "DESTRUCTURE_ARRAY") { genDestructureArray(id); return }
+    if (kind == "ASSIGN") { genAssign(id); return }
+    if (kind == "EXPR_STMT") { genExpr(nGetI1(id)); return }
+    if (kind == "RETURN") { genReturn(id); return }
+    if (kind == "IF") { genIf(id); return }
+    if (kind == "FOR") { genFor(id); return }
+    if (kind == "FOR_IN") { genForIn(id); return }
+    if (kind == "WHILE") { genWhile(id); return }
+    if (kind == "BREAK") { genBreak(); return }
+    if (kind == "CONTINUE") { genContinueStmt(); return }
+    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { genPostfixStmt(id); return }
+    if (kind == "DO_WHILE") { genDoWhile(id); return }
+    if (kind == "SWITCH") { genSwitch(id); return }
+    if (kind == "INDEX_ASSIGN") { genIndexAssign(id); return }
+    if (kind == "CLASS_DECL") { genClassDecl(id); return }
+    if (kind == "ENUM_DECL") { registerEnum(id); return }
+    if (kind == "TRY") { genTryCatch(id); return }
+    if (kind == "THROW") { genThrow(id); return }
 }
 
 function isOverloaded(fname: string): int {
     if (overloadReady == 0) { return 0 }
     if (overloadCount.has(fname) == 0) { return 0 }
     return parseInt(overloadCount.getString(fname)) > 1 ? 1 : 0
+}
+
+// RC: check if expression produces an owned (freshly allocated) value
+function isOwnedExpr(nodeId: int): int {
+    const kind = nGetKind(nodeId)
+    if (kind == "NEW_EXPR") { return 1 }
+    if (kind == "CALL") { return 1 }
+    if (kind == "METHOD_CALL") { return 0 }
+    if (kind == "STRING_LIT") { return 1 }
+    if (kind == "TEMPLATE_LIT") { return 1 }
+    if (kind == "ARRAY_LIT") { return 1 }
+    if (kind == "BINARY") {
+        const lType = inferType(nGetI1(nodeId))
+        if (lType == "string") { return 1 }
+        return 0
+    }
+    return 0
 }
 
 function genFuncDecl(id: int) {
@@ -234,13 +257,16 @@ function genFuncDecl(id: int) {
     currentFunc = llName
     terminated = 0
     varAliases = Map()
+    localPtrVars = ""
+    rcBlockDepth = 0
 
     // For 'main', use C main signature
     if (name == "main") {
         emitIR("define i32 @main(i32 %0, ptr %1) {")
         emitIR("entry:")
         emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
-        regCount = 2
+        emitIR("  %_atexit = call i32 @atexit(ptr @ss_rc_atexit_cleanup)")
+        regCount = 3
         emitGlobalInits()
     } else {
         // Collect param types (MVP: all int for now)
@@ -263,26 +289,7 @@ function genFuncDecl(id: int) {
         const llRetType = ssTypeToLLVM(retType)
         emitIR(`define ${llRetType} @${llName}(${paramStr}) {`)
         emitIR("entry:")
-        // Alloca params and store argument values
-        if (paramList != "") {
-            const parts = paramList.split(",")
-            for (p in parts) {
-                const pId = parseInt(p)
-                if (pId > 0) {
-                    const pName = nGetS1(pId)
-                    const pType = nGetS2(pId)
-                    const llType = ssTypeToLLVM(pType)
-                    const pLLName = allocVarName(pName)
-                    emitIR(`  %${pLLName} = alloca ${llType}, align 8`)
-                    emitIR(`  store ${llType} %${pName}.arg, ptr %${pLLName}, align 8`)
-                    setVarType(pName, pType)
-                    // Register class type for method dispatch
-                    if (classFields.has(pType) == 1) {
-                        setObjClass(pName, pType)
-                    }
-                }
-            }
-        }
+        emitParamAllocas(paramList, 1)
     }
 
     // Generate body
@@ -295,6 +302,7 @@ function genFuncDecl(id: int) {
         emitIR("")
         return
     }
+    emitReleaseLocals()
     if (name == "main") {
         emitIR("  ret i32 0")
     } else {
@@ -328,6 +336,19 @@ function genBlock(blockId: int) {
             genStmt(stmtId)
         }
     }
+}
+
+// RC: nested block wrapper — tracks block-level ptr vars and releases them on exit
+function genNestedBlock(blockId: int) {
+    pushBlockScope()
+    rcBlockDepth = rcBlockDepth + 1
+    genBlock(blockId)
+    // Release block vars on normal exit (skip if terminated by return/break/continue)
+    if (terminated == 0) {
+        emitReleaseCurrentBlockVars()
+    }
+    popBlockScope()
+    rcBlockDepth = rcBlockDepth - 1
 }
 
 // Track global vars needing runtime init (new Map(), function calls, etc.)
@@ -470,6 +491,13 @@ function genVarDecl(id: int) {
     if (typeAnn.contains("<") == 1) {
         setVarType(name, typeAnn)
     }
+    // Infer array element type from init expression (split, etc.)
+    if (typeAnn == "" && initType == "ptr") {
+        const aeType = inferArrayElemType(initId)
+        if (aeType != "") {
+            setVarType(name, `Array<${aeType}>`)
+        }
+    }
 
     // Track object class for method dispatch (redundant with varTypes but kept for compatibility)
     if (nGetKind(initId) == "NEW_EXPR") {
@@ -502,6 +530,25 @@ function genVarDecl(id: int) {
         val = cvR
     }
     emitIR(`  store ${llType} ${val}, ptr %${llName}, align 8`)
+    // RC: track local ptr vars for release
+    if (llType == "ptr" && currentFunc != "") {
+        trackPtrVar(llName)
+        if (isOwnedExpr(initId) == 0) {
+            emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+        }
+    }
+    // Mark Map as ptr-value if type annotation indicates it (val_type=1 at offset 516)
+    let isMapInit = 0
+    if (nGetKind(initId) == "NEW_EXPR" && nGetS1(initId) == "Map") { isMapInit = 1 }
+    if (nGetKind(initId) == "CALL" && nGetS1(initId) == "Map") { isMapInit = 1 }
+    if (isMapInit == 1) {
+        const mVarType = getVarType(name)
+        if (mapValueIsPtr(mVarType) == 1) {
+            const vtpGep = nextReg()
+            emitIR(`  ${vtpGep} = getelementptr i8, ptr ${val}, i64 516`)
+            emitIR(`  store i32 1, ptr ${vtpGep}`)
+        }
+    }
 }
 
 function genAssign(id: int) {
@@ -526,7 +573,25 @@ function genAssign(id: int) {
             emitIR(`  ${cvR} = inttoptr i64 ${val} to ptr`)
             val = cvR
         }
-        emitIR(`  store ${llType} ${val}, ptr ${varRef(name)}, align 8`)
+        // RC: release old value on reassignment of tracked ptr vars
+        // Skip if RHS is a method call on the same variable (e.g., x = x.push(v))
+        // because the method may realloc the pointer, invalidating the old value
+        let skipRelease = 0
+        if (nGetKind(valId) == "METHOD_CALL" && nGetKind(nGetI1(valId)) == "IDENT") {
+            if (nGetS1(nGetI1(valId)) == name) { skipRelease = 1 }
+        }
+        const assignLLName = llVarName(name)
+        if (llType == "ptr" && currentFunc != "" && isTrackedPtrVar(assignLLName) == 1 && skipRelease == 0) {
+            const oldVal = nextReg()
+            emitIR(`  ${oldVal} = load ptr, ptr ${varRef(name)}, align 8`)
+            if (isOwnedExpr(valId) == 0) {
+                emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+            }
+            emitIR(`  store ptr ${val}, ptr ${varRef(name)}, align 8`)
+            emitIR(`  call void @ss_rc_release(ptr ${oldVal})`)
+        } else {
+            emitIR(`  store ${llType} ${val}, ptr ${varRef(name)}, align 8`)
+        }
     } else {
         // Compound: +=, -=, etc.
         const lnRef = varRef(name)
@@ -555,19 +620,25 @@ function genAssign(id: int) {
             emitIR(`  ${r3} = srem i32 ${r1}, ${r2}`)
         }
         emitIR(`  store ${llType} ${r3}, ptr ${lnRef}, align 8`)
+        // RC: for string +=, release old value (concat result is new owned)
+        if (op == "PLUS_ASSIGN" && vType == "string" && currentFunc != "" && isTrackedPtrVar(llVarName(name)) == 1) {
+            emitIR(`  call void @ss_rc_release(ptr ${r1})`)
+        }
     }
 }
 
 function genReturn(id: int) {
     const valId = nGetI1(id)
     if (valId <= 0) {
+        emitReleaseAllBlockVars()
+        emitReleaseLocals()
         if (currentFunc == "main") {
             emitIR("  ret i32 0")
         } else {
             emitIR("  ret void")
         }
     } else {
-        const val = genExpr(valId)
+        let val = genExpr(valId)
         const vType = inferType(valId)
         const retLLType = ssTypeToLLVM(vType)
         // Get declared return type
@@ -576,24 +647,27 @@ function genReturn(id: int) {
             declRet = ssTypeToLLVM(funcRetTypes.getString(currentFunc))
         }
         if (currentFunc == "main") { declRet = "i32" }
-        // Convert if needed
-        if (retLLType == declRet) {
-            emitIR(`  ret ${retLLType} ${val}`)
-        } else if (retLLType == "i64" && declRet == "i32") {
+        // Convert type if needed
+        if (retLLType == "i64" && declRet == "i32") {
             const trR = nextReg(); emitIR(`  ${trR} = trunc i64 ${val} to i32`)
-            emitIR(`  ret i32 ${trR}`)
+            val = trR
         } else if (retLLType == "i64" && declRet == "ptr") {
             const cvR = nextReg(); emitIR(`  ${cvR} = inttoptr i64 ${val} to ptr`)
-            emitIR(`  ret ptr ${cvR}`)
+            val = cvR
         } else if (retLLType == "double" && declRet == "i32") {
             const fpR = nextReg(); emitIR(`  ${fpR} = fptosi double ${val} to i32`)
-            emitIR(`  ret i32 ${fpR}`)
+            val = fpR
         } else if (retLLType == "i32" && declRet == "double") {
             const siR = nextReg(); emitIR(`  ${siR} = sitofp i32 ${val} to double`)
-            emitIR(`  ret double ${siR}`)
-        } else {
-            emitIR(`  ret ${declRet} ${val}`)
+            val = siR
         }
+        // RC: retain borrowed ptr before releasing locals
+        if (declRet == "ptr" && isOwnedExpr(valId) == 0) {
+            emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+        }
+        emitReleaseAllBlockVars()
+        emitReleaseLocals()
+        emitIR(`  ret ${declRet} ${val}`)
     }
     terminated = 1
 }
@@ -608,8 +682,7 @@ function genIf(id: int) {
     const elseLabel = nextLabel("if.else")
     const mergeLabel = nextLabel("if.merge")
 
-    // Convert condition to i1 if needed
-    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = emitCondToI1(condId, condVal)
 
     if (elseId > 0) {
         emitIR(`  br i1 ${r}, label %${thenLabel}, label %${elseLabel}`)
@@ -619,7 +692,7 @@ function genIf(id: int) {
 
     emitIR(`${thenLabel}:`)
     terminated = 0
-    genBlock(thenId)
+    genNestedBlock(thenId)
     if (terminated == 0) {
         emitIR(`  br label %${mergeLabel}`)
     }
@@ -627,7 +700,7 @@ function genIf(id: int) {
     if (elseId > 0) {
         emitIR(`${elseLabel}:`)
         terminated = 0
-        genBlock(elseId)
+        genNestedBlock(elseId)
         if (terminated == 0) {
             emitIR(`  br label %${mergeLabel}`)
         }
@@ -650,20 +723,22 @@ function genFor(id: int) {
 
     const savedBreak = breakLabel
     const savedContinue = continueLabel
+    const savedLoopStack = loopBlockStackSaved
     breakLabel = afterLabel
     continueLabel = updateLabel
+    loopBlockStackSaved = blockPtrVarStack
 
     genStmt(initId)
     emitIR(`  br label %${condLabel}`)
 
     emitIR(`${condLabel}:`)
     const condVal = genExpr(condId)
-    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = emitCondToI1(condId, condVal)
     emitIR(`  br i1 ${r}, label %${bodyLabel}, label %${afterLabel}`)
 
     emitIR(`${bodyLabel}:`)
     terminated = 0
-    genBlock(bodyId)
+    genNestedBlock(bodyId)
     if (terminated == 0) { emitIR(`  br label %${updateLabel}`) }
 
     emitIR(`${updateLabel}:`)
@@ -675,6 +750,7 @@ function genFor(id: int) {
     terminated = 0
     breakLabel = savedBreak
     continueLabel = savedContinue
+    loopBlockStackSaved = savedLoopStack
 }
 
 function genForIn(id: int) {
@@ -697,6 +773,11 @@ function genForIn(id: int) {
         if (arrType.contains("<int>") == 1) { itemType = "int" }
         if (arrType.contains("<double>") == 1) { itemType = "double" }
     }
+    // Fallback: infer from expression (e.g., inline str.split(","))
+    if (itemType == "i64") {
+        const fiElem = inferArrayElemType(iterableId)
+        if (fiElem != "") { itemType = fiElem }
+    }
     const itemLLName = allocVarName(itemName)
     const itemLLType = ssTypeToLLVM(itemType)
     emitIR(`  %${itemLLName} = alloca ${itemLLType}, align 8`)
@@ -708,9 +789,11 @@ function genForIn(id: int) {
 
     const savedBreak2 = breakLabel
     const savedContinue2 = continueLabel
+    const savedLoopStack2 = loopBlockStackSaved
     const updateLabel2 = nextLabel("forin.update")
     breakLabel = afterLabel
     continueLabel = updateLabel2
+    loopBlockStackSaved = blockPtrVarStack
 
     emitIR(`  br label %${condLabel}`)
 
@@ -733,7 +816,7 @@ function genForIn(id: int) {
         emitIR(`  store i64 ${elemVal}, ptr %${itemLLName}, align 8`)
     }
 
-    genBlock(bodyId)
+    genNestedBlock(bodyId)
     if (terminated == 0) { emitIR(`  br label %${updateLabel2}`) }
 
     emitIR(`${updateLabel2}:`)
@@ -747,6 +830,7 @@ function genForIn(id: int) {
     terminated = 0
     breakLabel = savedBreak2
     continueLabel = savedContinue2
+    loopBlockStackSaved = savedLoopStack2
 }
 
 function genWhile(id: int) {
@@ -759,25 +843,28 @@ function genWhile(id: int) {
 
     const savedBreak3 = breakLabel
     const savedContinue3 = continueLabel
+    const savedLoopStack3 = loopBlockStackSaved
     breakLabel = afterLabel
     continueLabel = condLabel
+    loopBlockStackSaved = blockPtrVarStack
 
     emitIR(`  br label %${condLabel}`)
 
     emitIR(`${condLabel}:`)
     const condVal = genExpr(condId)
-    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = emitCondToI1(condId, condVal)
     emitIR(`  br i1 ${r}, label %${bodyLabel}, label %${afterLabel}`)
 
     emitIR(`${bodyLabel}:`)
     terminated = 0
-    genBlock(bodyId)
+    genNestedBlock(bodyId)
     if (terminated == 0) { emitIR(`  br label %${condLabel}`) }
 
     emitIR(`${afterLabel}:`)
     terminated = 0
     breakLabel = savedBreak3
     continueLabel = savedContinue3
+    loopBlockStackSaved = savedLoopStack3
 }
 
 function genDoWhile(id: int) {
@@ -788,21 +875,24 @@ function genDoWhile(id: int) {
     const afterLabel = nextLabel("dowhile.after")
     const savedBreak = breakLabel
     const savedContinue = continueLabel
+    const savedLoopStack4 = loopBlockStackSaved
     breakLabel = afterLabel
     continueLabel = condLabel
+    loopBlockStackSaved = blockPtrVarStack
     emitIR(`  br label %${bodyLabel}`)
     emitIR(`${bodyLabel}:`)
     terminated = 0
-    genBlock(bodyId)
+    genNestedBlock(bodyId)
     if (terminated == 0) { emitIR(`  br label %${condLabel}`) }
     emitIR(`${condLabel}:`)
     const condVal = genExpr(condId)
-    const r = nextReg(); emitIR(`  ${r} = icmp ne i32 ${condVal}, 0`)
+    const r = emitCondToI1(condId, condVal)
     emitIR(`  br i1 ${r}, label %${bodyLabel}, label %${afterLabel}`)
     emitIR(`${afterLabel}:`)
     terminated = 0
     breakLabel = savedBreak
     continueLabel = savedContinue
+    loopBlockStackSaved = savedLoopStack4
 }
 
 function genSwitch(id: int) {
@@ -838,7 +928,7 @@ function genSwitch(id: int) {
             emitIR(`  br i1 ${cmpResult}, label %${thenLabel}, label %${nextLabel2}`)
             emitIR(`${thenLabel}:`)
             terminated = 0
-            genBlock(bodyId)
+            genNestedBlock(bodyId)
             if (terminated == 0) { emitIR(`  br label %${afterLabel}`) }
             emitIR(`${nextLabel2}:`)
         }
@@ -846,7 +936,7 @@ function genSwitch(id: int) {
     // Default case
     if (defaultId > 0) {
         terminated = 0
-        genBlock(defaultId)
+        genNestedBlock(defaultId)
     }
     if (terminated == 0) { emitIR(`  br label %${afterLabel}`) }
     emitIR(`${afterLabel}:`)

@@ -5,6 +5,7 @@ import { tokenize, initTkMap } from "./lexer"
 import { parse, initParser } from "./parser"
 import { check } from "./checker"
 import { generate, generateToFile, initCodegen, initFuncRetTypes, initVarAliases } from "./codegen"
+import { initRcState, detectCyclicOwnership } from "./gen_rc"
 import { genStmt } from "./gen_stmts"
 import { genExpr } from "./gen_exprs"
 import { registerClass } from "./gen_class"
@@ -55,6 +56,37 @@ function findProjectRoot(startPath: string): string {
     return "."
 }
 
+function normalizePath(path: string): string {
+    const isAbs = path.startsWith("/")
+    const parts = path.split("/")
+    let stack = ""
+    let stackCount = 0
+    for (p in parts) {
+        if (p == "" || p == ".") { continue }
+        if (p == "..") {
+            if (stackCount > 0) {
+                const lc = lastIndexOf(stack, ",")
+                if (lc >= 0) { stack = stack.substring(0, lc) } else { stack = "" }
+                stackCount = stackCount - 1
+            }
+            continue
+        }
+        if (stack == "") { stack = p } else { stack = `${stack},${p}` }
+        stackCount = stackCount + 1
+    }
+    if (stack == "") {
+        if (isAbs == 1) { return "/" }
+        return "."
+    }
+    const components = stack.split(",")
+    let result = ""
+    for (c in components) {
+        result = `${result}/${c}`
+    }
+    if (isAbs == 1) { return result }
+    return result.substring(1, result.length() - 1)
+}
+
 function resolveImports(filePath: string): string {
     initVisited()
     projectRoot = findProjectRoot(filePath)
@@ -94,6 +126,7 @@ function resolveInner(filePath: string): string {
                 if (fullPath.endsWith(".ss") == 0) {
                     fullPath = fullPath + ".ss"
                 }
+                fullPath = normalizePath(fullPath)
                 const importedCode = resolveInner(fullPath)
                 imported = imported + importedCode + "\n"
             }

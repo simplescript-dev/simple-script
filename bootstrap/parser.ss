@@ -59,6 +59,27 @@ function nGetI3(id: int): int { return nInt3.get(id + "") }
 function nGetI4(id: int): int { return nInt4.get(id + "") }
 function nGetList(id: int): string { return nList.getString(id + "") }
 
+// ── Semantic AST accessors ────────────────────────────────────
+// Use these instead of raw nGetS1/nGetI1 for self-documenting code.
+// FUNC_DECL: S1=name, S2=retType, List=params, I1=body, I4=annotations
+function funcName(id: int): string { return nGetS1(id) }
+function funcRetType(id: int): string { return nGetS2(id) }
+function funcParams(id: int): string { return nGetList(id) }
+function funcBody(id: int): int { return nGetI1(id) }
+// CLASS_DECL: S1=className, S2=parentName, S3=implList, List=fields, I2=methodsBlock, I4=annotations
+function classNodeName(id: int): string { return nGetS1(id) }
+function classParentName(id: int): string { return nGetS2(id) }
+function classFieldList(id: int): string { return nGetList(id) }
+function classMethodsBlock(id: int): int { return nGetI2(id) }
+// VAR_DECL: S1=name, S2=mutability(CONST/LET), S3=typeAnnotation, I1=initExpr
+function varName(id: int): string { return nGetS1(id) }
+function varMut(id: int): string { return nGetS2(id) }
+function varTypeAnn(id: int): string { return nGetS3(id) }
+function varInit(id: int): int { return nGetI1(id) }
+// PARAM: S1=name, S2=type, I1=defaultValue, I2=isOptional
+function paramName(id: int): string { return nGetS1(id) }
+function paramType(id: int): string { return nGetS2(id) }
+
 // Append child ID to a node's list
 function listAppend(listStr: string, childId: int): string {
     if (listStr == "") { return childId + "" }
@@ -148,11 +169,9 @@ function parse(tokenBuf: string): int {
     return progId
 }
 
-// ── Statements ────────────────────────────────────────────────
+// ── Annotations ──────────────────────────────────────────────
 
-function parseStmt(): int {
-    skipNL()
-    // Collect annotations: @Name or @Name("arg")
+function parseAnnotationList(): string {
     let annotations = ""
     while (curKind() == "ANNOTATION") {
         const aName = curValue()
@@ -160,10 +179,7 @@ function parseStmt(): int {
         let aArg = ""
         if (curKind() == "LPAREN") {
             pAdvance()
-            if (curKind() == "STRING") {
-                aArg = curValue()
-                pAdvance()
-            }
+            if (curKind() == "STRING") { aArg = curValue(); pAdvance() }
             pExpect("RPAREN")
         }
         const aId = newNode("ANNOTATION")
@@ -172,23 +188,30 @@ function parseStmt(): int {
         annotations = listAppend(annotations, aId)
         skipNL()
     }
+    return annotations
+}
+
+function attachAnnotations(nodeId: int, annotations: string) {
+    if (annotations == "") { return }
+    const annListNode = newNode("ANNOTATION_LIST")
+    nSetList(annListNode, annotations)
+    nSetI4(nodeId, annListNode)
+}
+
+// ── Statements ────────────────────────────────────────────────
+
+function parseStmt(): int {
+    skipNL()
+    const annotations = parseAnnotationList()
     const k = curKind()
     if (k == "FUNCTION" || k == "OVERRIDE") {
         const fId = parseFuncDecl()
-        if (annotations != "") {
-            const annListNode = newNode("ANNOTATION_LIST")
-            nSetList(annListNode, annotations)
-            nSetI4(fId, annListNode)
-        }
+        attachAnnotations(fId, annotations)
         return fId
     }
     if (k == "CLASS") {
         const cId = parseClassDecl()
-        if (annotations != "") {
-            const annListNode = newNode("ANNOTATION_LIST")
-            nSetList(annListNode, annotations)
-            nSetI4(cId, annListNode)
-        }
+        attachAnnotations(cId, annotations)
         return cId
     }
     if (k == "INTERFACE") { return parseInterfaceDecl() }
@@ -282,29 +305,9 @@ function parseClassDecl(): int {
         pExpect("LBRACE")
         skipNL()
         while (curKind() != "RBRACE" && curKind() != "EOF") {
-            // Collect method annotations (@GetMapping etc.)
-            let mAnnotations = ""
-            while (curKind() == "ANNOTATION") {
-                const maName = curValue()
-                pAdvance()
-                let maArg = ""
-                if (curKind() == "LPAREN") {
-                    pAdvance()
-                    if (curKind() == "STRING") { maArg = curValue(); pAdvance() }
-                    pExpect("RPAREN")
-                }
-                const maId = newNode("ANNOTATION")
-                nSetS1(maId, maName)
-                nSetS2(maId, maArg)
-                mAnnotations = listAppend(mAnnotations, maId)
-                skipNL()
-            }
+            const mAnnotations = parseAnnotationList()
             const mId = parseFuncDecl()
-            if (mAnnotations != "") {
-                const mAnnList = newNode("ANNOTATION_LIST")
-                nSetList(mAnnList, mAnnotations)
-                nSetI4(mId, mAnnList)
-            }
+            attachAnnotations(mId, mAnnotations)
             methods = listAppend(methods, mId)
             skipNL()
         }
@@ -941,7 +944,7 @@ function parseAdditive(): int {
     while (curKind() == "PLUS" || curKind() == "MINUS") {
         const op = curKind()
         pAdvance()
-        const right = parseMultiplicative()
+        const right = parseShift()
         const id = newNode("BINARY")
         if (op == "PLUS") { nSetS1(id, "Add") } else { nSetS1(id, "Sub") }
         nSetI1(id, left)
