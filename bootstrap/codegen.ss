@@ -61,13 +61,26 @@ let classFieldTypes = "" // "ClassName.field" -> "type"
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
+let classNeedsVtable = "" // "ClassName" -> "1" (if class has vtable)
+let classVtableSlots = "" // "ClassName" -> "method1,method2,..." (ordered vtable slots)
+let classVtableImpl = ""  // "ClassName.method" -> "ImplClassName_method" (actual func)
+let classDtorTags = ""    // "ClassName" -> "tag" (tag >= 10 for classes with ptr fields)
+let dtorNextTag = 10      // next available class dtor tag
 let funcDefaults = ""    // "funcName" -> "paramIdx:defaultNodeId,..."
 let funcParamCount = ""  // "funcName" -> param count
 let currentClassName = ""
 let breakLabel = ""
 let continueLabel = ""
+let localPtrVars = ""
+let rcBlockDepth = 0
+let blockPtrVarStack = ""    // "|"-separated segments of block-level ptr vars
+let loopBlockStackSaved = "" // saved blockPtrVarStack at loop entry (for break/continue)
+let lastExprStringOwned = 0
+let nonOwningFields = ""     // Map: "ClassName.fieldName" -> "1" (non-owning container fields)
+let pushNonOwning = 0        // flag: current push target is non-owning container
 let enumValues = ""
 let enumReady = 0
+let methodRetTypes = ""   // "methodName" -> return type (built-in method fallback)
 let overloadCount = ""
 let overloadReady = 0
 let annotatedRoutes = ""
@@ -79,7 +92,13 @@ function initFuncRetTypes() {
     classFieldTypes = Map()
     classMethods = Map()
     objClasses = Map()
+    classNeedsVtable = Map()
+    classVtableSlots = Map()
+    classVtableImpl = Map()
+    classDtorTags = Map()
+    dtorNextTag = 10
     classParents = Map()
+    nonOwningFields = Map()
     funcDefaults = Map()
     funcParamCount = Map()
     // Register Map as a built-in class (eliminates special cases)
@@ -107,6 +126,76 @@ function initFuncRetTypes() {
     funcRetTypes.set("Math_random", "double")
     funcRetTypes.set("Math_min", "double")
     funcRetTypes.set("Math_max", "double")
+    // Built-in function return types (from callReturnType hardcoded lists)
+    funcRetTypes.set("readLine", "string")
+    funcRetTypes.set("readFile", "string")
+    funcRetTypes.set("arg", "string")
+    funcRetTypes.set("getenv", "string")
+    funcRetTypes.set("listDir", "string")
+    funcRetTypes.set("sha256", "string")
+    funcRetTypes.set("tcpRead", "string")
+    funcRetTypes.set("fromCharCode", "string")
+    funcRetTypes.set("base64Encode", "string")
+    funcRetTypes.set("base64Decode", "string")
+    funcRetTypes.set("ss_sqlite3_query", "string")
+    funcRetTypes.set("ss_sqlite3_open", "string")
+    funcRetTypes.set("println", "void")
+    funcRetTypes.set("print", "void")
+    funcRetTypes.set("writeFile", "void")
+    funcRetTypes.set("appendFile", "void")
+    funcRetTypes.set("exit", "void")
+    funcRetTypes.set("tcpClose", "void")
+    funcRetTypes.set("parseInt", "int")
+    funcRetTypes.set("args", "int")
+    funcRetTypes.set("system", "int")
+    funcRetTypes.set("tcpListen", "int")
+    funcRetTypes.set("tcpAccept", "int")
+    funcRetTypes.set("tcpWrite", "int")
+    funcRetTypes.set("mkdir", "int")
+    funcRetTypes.set("mkdirp", "int")
+    funcRetTypes.set("fileExists", "int")
+    funcRetTypes.set("removeFile", "int")
+    funcRetTypes.set("renameFile", "int")
+    funcRetTypes.set("charCodeAt", "int")
+    funcRetTypes.set("parseDouble", "double")
+    funcRetTypes.set("timeMs", "i64")
+    funcRetTypes.set("timeUnix", "i64")
+    funcRetTypes.set("fileSize", "i64")
+    funcRetTypes.set("Map", "Map")
+    // Built-in method return types (type-agnostic fallback for string/array methods)
+    methodRetTypes = Map()
+    methodRetTypes.set("length", "int")
+    methodRetTypes.set("indexOf", "int")
+    methodRetTypes.set("has", "int")
+    methodRetTypes.set("size", "int")
+    methodRetTypes.set("contains", "int")
+    methodRetTypes.set("startsWith", "int")
+    methodRetTypes.set("endsWith", "int")
+    methodRetTypes.set("charCodeAt", "int")
+    methodRetTypes.set("reduce", "int")
+    methodRetTypes.set("charAt", "string")
+    methodRetTypes.set("substring", "string")
+    methodRetTypes.set("trim", "string")
+    methodRetTypes.set("toUpperCase", "string")
+    methodRetTypes.set("toLowerCase", "string")
+    methodRetTypes.set("replace", "string")
+    methodRetTypes.set("join", "string")
+    methodRetTypes.set("repeat", "string")
+    methodRetTypes.set("padStart", "string")
+    methodRetTypes.set("padEnd", "string")
+    methodRetTypes.set("keys", "string")
+    methodRetTypes.set("getString", "string")
+    methodRetTypes.set("split", "ptr")
+    methodRetTypes.set("push", "ptr")
+    methodRetTypes.set("slice", "ptr")
+    methodRetTypes.set("concat", "ptr")
+    methodRetTypes.set("reverse", "ptr")
+    methodRetTypes.set("sort", "ptr")
+    methodRetTypes.set("map", "ptr")
+    methodRetTypes.set("filter", "ptr")
+    methodRetTypes.set("get", "i64")
+    methodRetTypes.set("delete", "void")
+    methodRetTypes.set("forEach", "void")
     funcRetReady = 1
 }
 
@@ -235,6 +324,14 @@ function registerAllDecls(rootId: int) {
             collectAnnotatedRoutes(sid)
         }
     }
+    // Resolve inheritance after all classes are registered
+    resolveInheritance()
+    // Build vtable for classes in inheritance hierarchies
+    buildClassVtables()
+    // Assign dtor tags to classes with ptr fields
+    assignClassDtorTags()
+    // Detect cyclic ownership and mark non-owning container fields
+    detectCyclicOwnership()
 }
 
 function collectAnnotatedRoutes(classId: int) {
@@ -306,13 +403,46 @@ function emitGlobalsAndCode(rootId: int) {
 }
 
 function resetCodegen() {
+    // Reset guard flags so init functions re-create fresh Maps
+    varTypesReady = 0
+    funcRetReady = 0
+    varAliasReady = 0
     initCodegen()
     initFuncRetTypes()
+    initVarAliases()
+    // IR output
     irBuf = ""
     strConsts = ""
     strCount = 0
+    strOutFile = ""
+    // SSA counters
     regCount = 0
     labelCount = 0
+    varCounter = 0
+    // Function/class context
+    currentFunc = ""
+    currentClassName = ""
+    terminated = 0
+    breakLabel = ""
+    continueLabel = ""
+    // RC state
+    localPtrVars = ""
+    rcBlockDepth = 0
+    blockPtrVarStack = ""
+    loopBlockStackSaved = ""
+    lastExprStringOwned = 0
+    pushNonOwning = 0
+    // Enum / overload / routes
+    enumValues = ""
+    enumReady = 0
+    overloadCount = ""
+    overloadReady = 0
+    annotatedRoutes = ""
+    // Arrow functions (gen_exprs.ss)
+    arrowCount = 0
+    arrowDefs = ""
+    // Global var init tracking (gen_stmts.ss)
+    globalInitIds = ""
 }
 
 function generate(rootId: int): string {
