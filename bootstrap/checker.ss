@@ -29,26 +29,33 @@ function initChecker() {
     funcParamMax = Map()
     scopeId = 0
     currentScope = 0
-    // Built-in functions
-    const builtins = "println,print,readLine,readFile,writeFile,args,arg,exit,system,parseInt,parseDouble,Map,sqrt,abs,floor,ceil,round,log,sin,cos,pow,min,max,random,timeMs"
+    // Built-in functions (synced with codegen.ss funcRetTypes)
+    const builtins = "println,print,readLine,readFile,writeFile,appendFile,args,arg,exit,system,parseInt,parseDouble,Map,timeMs,timeUnix,fileSize,getenv,listDir,sha256,fromCharCode,charCodeAt,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpClose,mkdir,mkdirp,fileExists,removeFile,renameFile"
     const parts = builtins.split(",")
     for (name in parts) {
         funcNames.set(name, "builtin")
     }
+    // Built-in namespaces (accessed as Math.sqrt() etc.)
+    defineVar("Math", "namespace", 0)
     // Built-in param counts
-    const zeroArgFns = "readLine,args,Map,random,timeMs"
+    const zeroArgFns = "readLine,args,Map,timeMs,timeUnix"
     const za = zeroArgFns.split(",")
     for (z in za) {
         funcParamMin.set(z, "0")
         funcParamMax.set(z, "0")
     }
-    const oneArgFns = "println,print,readFile,arg,exit,system,parseInt,parseDouble,sqrt,abs,floor,ceil,round,log,sin,cos"
+    // println/print are variadic (genPrintCall concatenates with spaces)
+    funcParamMin.set("println", "0")
+    funcParamMax.set("println", "99")
+    funcParamMin.set("print", "0")
+    funcParamMax.set("print", "99")
+    const oneArgFns = "readFile,arg,exit,system,parseInt,parseDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize"
     const oa = oneArgFns.split(",")
     for (o in oa) {
         funcParamMin.set(o, "1")
         funcParamMax.set(o, "1")
     }
-    const twoArgFns = "writeFile,pow,min,max"
+    const twoArgFns = "writeFile,appendFile,tcpWrite,renameFile,charCodeAt"
     const ta = twoArgFns.split(",")
     for (t in ta) {
         funcParamMin.set(t, "2")
@@ -177,13 +184,14 @@ function check(rootId: int): int {
         exit(1)
     }
     const stmtList = nGetList(rootId)
-    // Pass 1: register function declarations + interface definitions
+    // Pass 1: register all top-level declarations (forward reference support)
     if (stmtList != "") {
         const p1 = stmtList.split(",")
         for (p in p1) {
             const s = parseInt(p)
             if (s <= 0) { continue }
-            if (nGetKind(s) == "FUNC_DECL") {
+            const sk = nGetKind(s)
+            if (sk == "FUNC_DECL") {
                 const fname = nGetS1(s)
                 defineFunc(fname, nGetS2(s))
                 const paramList = nGetList(s)
@@ -203,7 +211,20 @@ function check(rootId: int): int {
                 }
                 defineFuncParams(fname, minP, maxP)
             }
-            if (nGetKind(s) == "INTERFACE_DECL") {
+            if (sk == "VAR_DECL") {
+                const vname = nGetS1(s)
+                const vkind = nGetS2(s)
+                let vtype = nGetS3(s)
+                if (vtype == "") { vtype = "auto" }
+                defineVar(vname, vtype, vkind == "CONST")
+            }
+            if (sk == "CLASS_DECL") {
+                defineVar(nGetS1(s), "class", 0)
+            }
+            if (sk == "ENUM_DECL") {
+                defineVar(nGetS1(s), "enum", 0)
+            }
+            if (sk == "INTERFACE_DECL") {
                 const ifName = nGetS1(s)
                 const ml = nGetList(s)
                 let methodNames = ""
@@ -226,19 +247,80 @@ function check(rootId: int): int {
     return 1
 }
 
+// ── Return path analysis ─────────────────────────────────────
+
+function blockAlwaysReturns(blockId: int): int {
+    if (blockId <= 0) { return 0 }
+    if (nGetKind(blockId) != "BLOCK") { return 0 }
+    const stmtList = nGetList(blockId)
+    if (stmtList == "") { return 0 }
+    const parts = stmtList.split(",")
+    for (p in parts) {
+        const sid = parseInt(p)
+        if (sid > 0 && stmtAlwaysReturns(sid) == 1) { return 1 }
+    }
+    return 0
+}
+
+function stmtAlwaysReturns(id: int): int {
+    if (id <= 0) { return 0 }
+    const kind = nGetKind(id)
+    if (kind == "RETURN") { return 1 }
+    if (kind == "THROW") { return 1 }
+    // exit() is noreturn
+    if (kind == "EXPR_STMT") {
+        const inner = nGetI1(id)
+        if (inner > 0 && nGetKind(inner) == "CALL" && nGetS1(inner) == "exit") { return 1 }
+        return 0
+    }
+    if (kind == "IF") {
+        const elseId = nGetI3(id)
+        if (elseId <= 0) { return 0 }
+        if (blockAlwaysReturns(nGetI2(id)) == 1 && blockAlwaysReturns(elseId) == 1) { return 1 }
+        return 0
+    }
+    if (kind == "TRY") {
+        if (blockAlwaysReturns(nGetI1(id)) == 1 && blockAlwaysReturns(nGetI2(id)) == 1) { return 1 }
+        return 0
+    }
+    if (kind == "SWITCH") {
+        const defId = nGetI2(id)
+        if (defId <= 0) { return 0 }
+        if (blockAlwaysReturns(defId) == 0) { return 0 }
+        const caseList = nGetList(id)
+        if (caseList == "") { return 0 }
+        const cases = caseList.split(",")
+        for (c in cases) {
+            const caseId = parseInt(c)
+            if (caseId > 0 && nGetKind(caseId) == "SWITCH_CASE") {
+                if (blockAlwaysReturns(nGetI2(caseId)) == 0) { return 0 }
+            }
+        }
+        return 1
+    }
+    if (kind == "BLOCK") { return blockAlwaysReturns(id) }
+    return 0
+}
+
 // ── Statement checking ────────────────────────────────────────
 
 function checkStmt(id: int) {
     const kind = nGetKind(id)
     if (kind == "FUNC_DECL") {
         pushScope()
-        // Define params
         const paramList = nGetList(id)
         checkParamList(paramList)
-        // Check body
         const bodyId = nGetI1(id)
         checkBlock(bodyId)
         popScope()
+        // Return path analysis: non-void functions must return on all paths
+        const retType = nGetS2(id)
+        if (retType != "" && retType != "void") {
+            if (blockAlwaysReturns(bodyId) == 0) {
+                println(`checker error: function '${nGetS1(id)}' with return type '${retType}' does not return on all paths`)
+                exit(1)
+            }
+        }
         return
     }
     if (kind == "CLASS_DECL") {
@@ -449,7 +531,7 @@ function checkExpr(id: int) {
     }
     if (kind == "CALL") {
         const callee = nGetS1(id)
-        if (lookupFunc(callee) == 0) {
+        if (lookupFunc(callee) == 0 && lookupVar(callee) == "") {
             println("checker error: undefined function '" + callee + "'")
             exit(1)
         }

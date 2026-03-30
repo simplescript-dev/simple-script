@@ -458,6 +458,7 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     const tokens = tokenize(source)
     setLineOffset(preludeLines + 1)
     const root = parse(tokens)
+    check(root)
     const llFile = "/tmp/ss_bootstrap.ll"
     generateToFile(root, llFile)
 
