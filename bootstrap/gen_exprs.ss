@@ -302,6 +302,30 @@ function genBinary(id: int): string {
     if (blt == "i64") { const tr = nextReg(); emitIR(`  ${tr} = trunc i64 ${left} to i32`); left = tr }
     if (brt == "i64") { const tr = nextReg(); emitIR(`  ${tr} = trunc i64 ${right} to i32`); right = tr }
 
+    // Pow: always use double math via ss_pow, convert back if both operands are int
+    if (op == "Pow") {
+        let dl = left
+        let dr = right
+        if (blt != "double") {
+            const cv = nextReg()
+            emitIR(`  ${cv} = sitofp i32 ${dl} to double`)
+            dl = cv
+        }
+        if (brt != "double") {
+            const cv = nextReg()
+            emitIR(`  ${cv} = sitofp i32 ${dr} to double`)
+            dr = cv
+        }
+        const powR = nextReg()
+        emitIR(`  ${powR} = call double @ss_pow(double ${dl}, double ${dr})`)
+        if (blt != "double" && brt != "double") {
+            const intR = nextReg()
+            emitIR(`  ${intR} = fptosi double ${powR} to i32`)
+            return intR
+        }
+        return powR
+    }
+
     if (blt == "double" || brt == "double") {
         return genDoubleBinary(op, left, right, blt, brt)
     }

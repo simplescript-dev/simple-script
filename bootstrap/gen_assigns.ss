@@ -40,6 +40,35 @@ function genMemberAssign(id: int) {
         } else {
             emitIR(`  store ${llType} ${val}, ptr ${gepReg}, align 8`)
         }
+    } else if (op == "POWER_ASSIGN") {
+        const r1 = nextReg()
+        emitIR(`  ${r1} = load ${llType}, ptr ${gepReg}, align 8`)
+        let r2 = genExpr(valExpr)
+        const r2Type = inferType(valExpr)
+        if (r2Type == "i64" && fType != "i64") {
+            const trR = nextReg()
+            emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
+            r2 = trR
+        }
+        let pd1 = r1
+        let pd2 = r2
+        if (fType != "double") {
+            const cv1 = nextReg()
+            emitIR(`  ${cv1} = sitofp i32 ${r1} to double`)
+            pd1 = cv1
+            const cv2 = nextReg()
+            emitIR(`  ${cv2} = sitofp i32 ${r2} to double`)
+            pd2 = cv2
+        }
+        const powRes = nextReg()
+        emitIR(`  ${powRes} = call double @ss_pow(double ${pd1}, double ${pd2})`)
+        if (fType != "double") {
+            const intRes = nextReg()
+            emitIR(`  ${intRes} = fptosi double ${powRes} to i32`)
+            emitIR(`  store ${llType} ${intRes}, ptr ${gepReg}, align 8`)
+        } else {
+            emitIR(`  store double ${powRes}, ptr ${gepReg}, align 8`)
+        }
     } else {
         // Compound: +=, -=, *=, /=, %=
         const r1 = nextReg()
@@ -131,8 +160,38 @@ function genAssign(id: int) {
         } else {
             emitIR(`  store ${llType} ${val}, ptr ${varRef(name)}, align 8`)
         }
+    } else if (op == "POWER_ASSIGN") {
+        const lnRef = varRef(name)
+        const r1 = nextReg()
+        emitIR(`  ${r1} = load ${llType}, ptr ${lnRef}, align 8`)
+        let r2 = genExpr(valId)
+        const r2Type = inferType(valId)
+        if (r2Type == "i64" && vType != "i64") {
+            const trR = nextReg()
+            emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
+            r2 = trR
+        }
+        let pd1 = r1
+        let pd2 = r2
+        if (vType != "double") {
+            const cv1 = nextReg()
+            emitIR(`  ${cv1} = sitofp i32 ${r1} to double`)
+            pd1 = cv1
+            const cv2 = nextReg()
+            emitIR(`  ${cv2} = sitofp i32 ${r2} to double`)
+            pd2 = cv2
+        }
+        const powRes = nextReg()
+        emitIR(`  ${powRes} = call double @ss_pow(double ${pd1}, double ${pd2})`)
+        if (vType != "double") {
+            const intRes = nextReg()
+            emitIR(`  ${intRes} = fptosi double ${powRes} to i32`)
+            emitIR(`  store ${llType} ${intRes}, ptr ${lnRef}, align 8`)
+        } else {
+            emitIR(`  store double ${powRes}, ptr ${lnRef}, align 8`)
+        }
     } else {
-        // Compound: +=, -=, etc.
+        // Compound: +=, -=, *=, /=, %=
         const lnRef = varRef(name)
         const r1 = nextReg(); emitIR(`  ${r1} = load ${llType}, ptr ${lnRef}, align 8`)
         let r2 = genExpr(valId)

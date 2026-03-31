@@ -305,7 +305,7 @@ function lexTemplate() {
                     lexIdent()
                 } else if (ch == "+") { lexPlus()
                 } else if (ch == "-") { lexMinus()
-                } else if (ch == "*") { emit("STAR", "*"); advance()
+                } else if (ch == "*") { lexStar()
                 } else if (ch == "/") { emit("SLASH", "/"); advance()
                 } else if (ch == "(") { emit("LPAREN", "("); advance()
                 } else if (ch == ")") { emit("RPAREN", ")"); advance()

@@ -20,7 +20,12 @@ function lexMinus() {
 
 function lexStar() {
     advance()
-    if (pos < srcLen && peek() == "*") { advance(); emit("POWER", "**"); return }
+    if (pos < srcLen && peek() == "*") {
+        advance()
+        if (pos < srcLen && peek() == "=") { advance(); emit("POWER_ASSIGN", "**="); return }
+        emit("POWER", "**")
+        return
+    }
     if (pos < srcLen && peek() == "=") { advance(); emit("STAR_ASSIGN", "*="); return }
     emit("STAR", "*")
 }

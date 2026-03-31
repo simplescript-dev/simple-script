@@ -434,7 +434,7 @@ function parseAssignOrExpr(): int {
         return id
     }
     // Compound assignment: x += expr
-    if (nextTok == "PLUS_ASSIGN" || nextTok == "MINUS_ASSIGN" || nextTok == "STAR_ASSIGN" || nextTok == "SLASH_ASSIGN" || nextTok == "PERCENT_ASSIGN") {
+    if (nextTok == "PLUS_ASSIGN" || nextTok == "MINUS_ASSIGN" || nextTok == "STAR_ASSIGN" || nextTok == "SLASH_ASSIGN" || nextTok == "PERCENT_ASSIGN" || nextTok == "POWER_ASSIGN") {
         pAdvance()
         const op = curKind()
         pAdvance()
@@ -465,7 +465,7 @@ function parseAssignOrExpr(): int {
     // Expression statement — or member assignment (obj.field = value)
     const exprId = parseExpr()
     const ck = curKind()
-    if (nGetKind(exprId) == "MEMBER_ACCESS" && (ck == "ASSIGN" || ck == "PLUS_ASSIGN" || ck == "MINUS_ASSIGN" || ck == "STAR_ASSIGN" || ck == "SLASH_ASSIGN" || ck == "PERCENT_ASSIGN")) {
+    if (nGetKind(exprId) == "MEMBER_ACCESS" && (ck == "ASSIGN" || ck == "PLUS_ASSIGN" || ck == "MINUS_ASSIGN" || ck == "STAR_ASSIGN" || ck == "SLASH_ASSIGN" || ck == "PERCENT_ASSIGN" || ck == "POWER_ASSIGN")) {
         let mOp = "ASSIGN"
         if (ck != "ASSIGN") { mOp = ck }
         pAdvance()
