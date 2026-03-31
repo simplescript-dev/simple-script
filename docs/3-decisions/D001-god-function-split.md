@@ -4,7 +4,7 @@
 firm
 
 ## Resolves
-DI-1 — 6 god functions (100-184 lines) split into 24 focused handlers.
+I001 - 6 god functions (100-184 lines) split into 24 focused handlers.
 
 ## Depends On
 - axioms.md → C1 (bootstrap must pass)
@@ -20,6 +20,12 @@ God functions made it impossible to modify one feature without risking others. G
 - ✗ **Coarse grouping by type**: Produced 60-70 line functions still mixing concerns. P6 violated.
 - ✗ **Map-based dispatch table**: SS lacks first-class function types in Map. Would require language feature first.
 - ✗ **Multi-level dispatchers**: Added classification maintenance cost with no benefit. P7 violated.
+
+## Interfaces With Other Decisions
+None currently.
+
+## Open Tensions
+None currently.
 
 ## Notes
 Completed 2026-03-30. Bootstrap fixed-point verified.

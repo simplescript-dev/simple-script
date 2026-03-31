@@ -8,6 +8,14 @@ set -e
 SEED="bin/ss"
 OUT="bin/ss"
 
+# Build mimalloc.o if not present
+if [ ! -f vendor/mimalloc.o ] && [ -f vendor/mimalloc/src/static.c ]; then
+    echo "Building vendor/mimalloc.o ..."
+    musl-gcc -c -O2 -DMI_OVERRIDE=0 -DMI_LIBC_MUSL=1 \
+        -I vendor/mimalloc/include \
+        -o vendor/mimalloc.o vendor/mimalloc/src/static.c
+fi
+
 if [ "$1" == "bootstrap" ]; then
     echo "=== Self-bootstrap ==="
     echo "Stage 1: seed → stage1"

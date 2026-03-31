@@ -3,7 +3,7 @@
 
 // ── Higher-order array methods ────────────────────────────────
 
-function _ss_map(arr: Array<int>, callback: fn): Array<int> {
+function _ss_map(arr: List<int>, callback: fn): List<int> {
     const len = arr.length()
     let result = []
     for (let i = 0; i < len; i++) {
@@ -12,7 +12,7 @@ function _ss_map(arr: Array<int>, callback: fn): Array<int> {
     return result
 }
 
-function _ss_filter(arr: Array<int>, predicate: fn): Array<int> {
+function _ss_filter(arr: List<int>, predicate: fn): List<int> {
     const len = arr.length()
     let result = []
     for (let i = 0; i < len; i++) {
@@ -23,7 +23,7 @@ function _ss_filter(arr: Array<int>, predicate: fn): Array<int> {
     return result
 }
 
-function _ss_reduce(arr: Array<int>, callback: fn, initial: int): int {
+function _ss_reduce(arr: List<int>, callback: fn, initial: int): int {
     let acc = initial
     const len = arr.length()
     for (let i = 0; i < len; i++) {
@@ -32,7 +32,7 @@ function _ss_reduce(arr: Array<int>, callback: fn, initial: int): int {
     return acc
 }
 
-function _ss_forEach(arr: Array<int>, callback: fn) {
+function _ss_forEach(arr: List<int>, callback: fn) {
     const len = arr.length()
     for (let i = 0; i < len; i++) {
         callback(arr[i])
@@ -136,7 +136,7 @@ function _ss_padEnd(s: string, width: int, pad: string): string {
     return result
 }
 
-function _ss_join(arr: Array<string>, delim: string): string {
+function _ss_join(arr: List<string>, delim: string): string {
     const len = arr.length()
     if (len == 0) { return "" }
     let result = ""

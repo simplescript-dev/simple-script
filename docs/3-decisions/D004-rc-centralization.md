@@ -1,4 +1,4 @@
-# D004: RC Logic Centralization (DI-7)
+# D004: RC Logic Centralization
 
 ## Status
 firm
@@ -19,12 +19,15 @@ Not moved (reverse dependencies): `isOwnedExpr` (needs inferType from gen_exprs)
 Changing RC strategy required modifying 3 files and 20+ functions. Centralization means RC changes only touch gen_rc.ss. Inline RC stays because extracting it would create circular imports or artificial indirection.
 
 ## Rejected Alternatives
-- ✗ **Move everything including inline RC**: Creates circular dependencies (gen_rc ↔ gen_exprs). Violated module ordering.
-- ✗ **Independent RC pass**: Requires SSA-level intermediate representation. Not feasible without major language features.
+- **Move everything including inline RC**: Creates circular dependencies (gen_rc ↔ gen_exprs). Violated module ordering.
+- **Independent RC pass**: Requires SSA-level intermediate representation. Not feasible without major language features.
 
 ## Interfaces With Other Decisions
 - D005 (RC implementation): gen_rc.ss is the home for future RC enhancements.
 - DI-4 Phase 4 (inferType migration): If inferType moves to checker, isOwnedExpr could also move to gen_rc.ss.
+
+## Open Tensions
+None currently.
 
 ## Notes
 gen_stmts.ss 1082→945 lines, gen_class.ss 733→635 lines. Completed 2026-03-30.

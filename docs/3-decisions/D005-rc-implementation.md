@@ -66,7 +66,7 @@ RC provides deterministic deallocation without GC pauses. Magic guard (0x534F535
 - D004 (RC centralization): RC helpers centralized in gen_rc.ss — cycle detection functions live here
 - D006 (ownership transfer): Bug fixes prerequisite for Phase 9 — push retain must exist before non-owning conditional can skip it
 
-## Known Limitations
+## Open Tensions
 - **L1: Non-owning dangling references.** If an element's last owning reference is released while the element is still in a non-owning container, the container holds a dangling pointer. Acceptable for typical patterns (observer unregisters before destruction; tree children outlive parent references). C6 (immutable fields) significantly limits the danger surface. Matches Lobster's accepted trade-off.
 - **L2: No interface/trait-based cycle detection.** `canReachClass()` traverses concrete class types in containers. If a future interface system adds polymorphic containers (e.g., `Array<Listener>` where multiple classes implement `Listener`), the cycle detection would need to check all implementing classes. Currently not an issue — SS has no interfaces.
 

@@ -1,8 +1,10 @@
-// SimpleScript Bootstrap Parser
-// Produces a Map-based AST from a token buffer string (from lexer).
-// Each AST node has a unique integer ID. Properties stored in global Maps.
+// SimpleScript Bootstrap Parser — Core
+// AST node system, parser state, public API, declarations, helpers.
+// Statement parsing in parse_stmts.ss, expression parsing in parse_exprs.ss.
 
-import { tkGet, tkKind, tkValue } from "./lexer"
+import { tkGet, tkKind, tkValue, tkCol } from "./lexer"
+import { parseStmt, parseBlock, parseVarDecl, parseVarDeclNoNL, parseUpdateStmt } from "./parse_stmts"
+import { parseExpr, parseArgs } from "./parse_exprs"
 
 // ── AST node storage ──────────────────────────────────────────
 
@@ -16,6 +18,8 @@ let nInt2 = ""
 let nInt3 = ""
 let nInt4 = ""
 let nList = ""
+let nLine = ""
+let nCol = ""
 let mapsReady = 0
 
 function initParser() {
@@ -29,6 +33,12 @@ function initParser() {
     nInt3 = Map()
     nInt4 = Map()
     nList = Map()
+    nLine = Map()
+    nCol = Map()
+    classTypeParamsMap = Map()
+    funcConstraintMap = Map()
+    classConstraintMap = Map()
+    classTPReady = 1
     mapsReady = 1
 }
 
@@ -37,6 +47,8 @@ function newNode(kind: string): int {
     const id = nextId
     nextId = nextId + 1
     nKind.set(id + "", kind)
+    nLine.set(id + "", curLineNum())
+    nCol.set(id + "", curColNum())
     return id
 }
 
@@ -58,6 +70,10 @@ function nGetI2(id: int): int { return nInt2.get(id + "") }
 function nGetI3(id: int): int { return nInt3.get(id + "") }
 function nGetI4(id: int): int { return nInt4.get(id + "") }
 function nGetList(id: int): string { return nList.getString(id + "") }
+function nGetLine(id: int): int { return nLine.get(id + "") }
+function nGetCol(id: int): int { return nCol.get(id + "") }
+function nSetLine(id: int, val: int) { nLine.set(id + "", val) }
+function nSetCol(id: int, val: int) { nCol.set(id + "", val) }
 
 // ── Semantic AST accessors ────────────────────────────────────
 // Use these instead of raw nGetS1/nGetI1 for self-documenting code.
@@ -71,6 +87,28 @@ function classNodeName(id: int): string { return nGetS1(id) }
 function classParentName(id: int): string { return nGetS2(id) }
 function classFieldList(id: int): string { return nGetList(id) }
 function classMethodsBlock(id: int): int { return nGetI2(id) }
+// Generic class type params: stored in separate Map (CLASS_DECL S1-S3 all used)
+let classTypeParamsMap = ""
+let classTPReady = 0
+function classTypeParams(id: int): string {
+    if (classTPReady == 0) { return "" }
+    const key = id + ""
+    if (classTypeParamsMap.has(key) == 1) { return classTypeParamsMap.getString(key) }
+    return ""
+}
+// Generic type constraints: "&"-separated for multi-constraints, e.g. "Printable&Scorable"
+let funcConstraintMap = ""
+let classConstraintMap = ""
+function funcConstraint(funcName: string, tp: string): string {
+    const key = `${funcName}.${tp}`
+    if (funcConstraintMap.has(key) == 1) { return funcConstraintMap.getString(key) }
+    return ""
+}
+function classConstraint(className: string, tp: string): string {
+    const key = `${className}.${tp}`
+    if (classConstraintMap.has(key) == 1) { return classConstraintMap.getString(key) }
+    return ""
+}
 // VAR_DECL: S1=name, S2=mutability(CONST/LET), S3=typeAnnotation, I1=initExpr
 function varName(id: int): string { return nGetS1(id) }
 function varMut(id: int): string { return nGetS2(id) }
@@ -84,6 +122,22 @@ function paramType(id: int): string { return nGetS2(id) }
 function listAppend(listStr: string, childId: int): string {
     if (listStr == "") { return childId + "" }
     return listStr + "," + childId
+}
+
+function listAppendStr(listStr: string, item: string): string {
+    if (listStr == "") { return item }
+    return listStr + "," + item
+}
+
+function listGet(listStr: string, index: int): string {
+    if (listStr == "") { return "" }
+    const parts = listStr.split(",")
+    let i = 0
+    for (p in parts) {
+        if (i == index) { return p }
+        i = i + 1
+    }
+    return ""
 }
 
 // ── Parser state ──────────────────────────────────────────────
@@ -115,6 +169,14 @@ function curLineNum(): int {
     const raw = tkLine(tPos)
     const adjusted = raw - lineOffset
     return adjusted > 0 ? adjusted : raw
+}
+
+function curColNum(): int {
+    return tkCol(tPos)
+}
+
+function getLineOffset(): int {
+    return lineOffset
 }
 
 function pExpect(kind: string) {
@@ -198,63 +260,48 @@ function attachAnnotations(nodeId: int, annotations: string) {
     nSetI4(nodeId, annListNode)
 }
 
-// ── Statements ────────────────────────────────────────────────
+// ── Declarations ─────────────────────────────────────────────
 
-function parseStmt(): int {
-    skipNL()
-    const annotations = parseAnnotationList()
-    const k = curKind()
-    if (k == "FUNCTION" || k == "OVERRIDE") {
-        const fId = parseFuncDecl()
-        attachAnnotations(fId, annotations)
-        return fId
-    }
-    if (k == "CLASS") {
-        const cId = parseClassDecl()
-        attachAnnotations(cId, annotations)
-        return cId
-    }
-    if (k == "INTERFACE") { return parseInterfaceDecl() }
-    if (k == "ENUM") { return parseEnumDecl() }
-    if (k == "SWITCH") { return parseSwitch() }
-    if (k == "CONST" || k == "LET") { return parseVarDecl() }
-    if (k == "RETURN") { return parseReturn() }
-    if (k == "IF") { return parseIf() }
-    if (k == "FOR") { return parseFor() }
-    if (k == "WHILE") { return parseWhile() }
-    if (k == "DO") { return parseDoWhile() }
-    if (k == "BREAK") {
+function parseTypeParamList(ownerName: string, cMap: Map): string {
+    let tp = pExpectIdent()
+    if (curKind() == "EXTENDS") {
         pAdvance()
-        expectNLOrRB()
-        return newNode("BREAK")
+        let constraint = pExpectIdent()
+        while (curKind() == "BIT_AND") {
+            pAdvance()
+            constraint = `${constraint}&${pExpectIdent()}`
+        }
+        cMap.set(`${ownerName}.${tp}`, constraint)
     }
-    if (k == "CONTINUE") {
+    let result = tp
+    while (curKind() == "COMMA") {
         pAdvance()
-        expectNLOrRB()
-        return newNode("CONTINUE")
+        tp = pExpectIdent()
+        if (curKind() == "EXTENDS") {
+            pAdvance()
+            let constraint = pExpectIdent()
+            while (curKind() == "BIT_AND") {
+                pAdvance()
+                constraint = `${constraint}&${pExpectIdent()}`
+            }
+            cMap.set(`${ownerName}.${tp}`, constraint)
+        }
+        result = listAppendStr(result, tp)
     }
-    if (k == "TRY") { return parseTryCatch() }
-    if (k == "THROW") { return parseThrow() }
-    if (k == "IMPORT") { return parseImport() }
-    if (k == "IDENT") { return parseAssignOrExpr() }
-    // Fallback: expression statement
-    const exprId = parseExpr()
-    expectNLOrRB()
-    const id = newNode("EXPR_STMT")
-    nSetI1(id, exprId)
-    return id
+    pExpect("GT")
+    return result
 }
 
 function parseFuncDecl(): int {
+    const startLine = curLineNum()
+    const startCol = curColNum()
     if (curKind() == "OVERRIDE") { pAdvance() }
     pExpect("FUNCTION")
     const name = pExpectIdent()
-    // Optional generic type params: function name<T, U>(...)
+    let typeParams = ""
     if (curKind() == "LT") {
         pAdvance()
-        pExpectIdent()
-        while (curKind() == "COMMA") { pAdvance(); pExpectIdent() }
-        pExpect("GT")
+        typeParams = parseTypeParamList(name, funcConstraintMap)
     }
     pExpect("LPAREN")
     const params = parseParams()
@@ -267,20 +314,30 @@ function parseFuncDecl(): int {
     skipNL()
     const bodyId = parseBlock()
     const id = newNode("FUNC_DECL")
+    nSetLine(id, startLine)
+    nSetCol(id, startCol)
     nSetS1(id, name)
     nSetS2(id, retType)
+    nSetS3(id, typeParams)
     nSetList(id, params)
     nSetI1(id, bodyId)
     return id
 }
 
 function parseClassDecl(): int {
+    const startLine = curLineNum()
+    const startCol = curColNum()
     pExpect("CLASS")
     const name = pExpectIdent()
+    let classTP = ""
+    if (curKind() == "LT") {
+        pAdvance()
+        classTP = parseTypeParamList(name, classConstraintMap)
+    }
     let extendsName = ""
     if (curKind() == "EXTENDS") {
         pAdvance()
-        extendsName = pExpectIdent()
+        extendsName = parseTypeAnn()
     }
     let fields = ""
     if (curKind() == "LPAREN") {
@@ -295,7 +352,7 @@ function parseClassDecl(): int {
         implList = pExpectIdent()
         while (curKind() == "COMMA") {
             pAdvance()
-            implList = implList + "," + pExpectIdent()
+            implList = listAppendStr(implList, pExpectIdent())
         }
     }
     skipNL()
@@ -314,6 +371,8 @@ function parseClassDecl(): int {
         pExpect("RBRACE")
     }
     const id = newNode("CLASS_DECL")
+    nSetLine(id, startLine)
+    nSetCol(id, startCol)
     nSetS1(id, name)
     nSetS2(id, extendsName)
     nSetS3(id, implList)
@@ -322,6 +381,10 @@ function parseClassDecl(): int {
     const methodsBlock = newNode("BLOCK")
     nSetList(methodsBlock, methods)
     nSetI2(id, methodsBlock)
+    // Store generic type params in separate Map (S1-S3 all used)
+    if (classTP != "") {
+        classTypeParamsMap.set(id + "", classTP)
+    }
     return id
 }
 
@@ -387,265 +450,6 @@ function parseEnumDecl(): int {
     return id
 }
 
-// try { ... } catch (e) { ... }
-function parseTryCatch(): int {
-    pExpect("TRY")
-    const tryBody = parseBlock()
-    skipNL()
-    pExpect("CATCH")
-    pExpect("LPAREN")
-    const errName = pExpectIdent()
-    pExpect("RPAREN")
-    const catchBody = parseBlock()
-    const id = newNode("TRY")
-    nSetI1(id, tryBody)
-    nSetI2(id, catchBody)
-    nSetS1(id, errName)
-    return id
-}
-
-// throw("message") or throw(expr)
-function parseThrow(): int {
-    pExpect("THROW")
-    pExpect("LPAREN")
-    const msgId = parseExpr()
-    pExpect("RPAREN")
-    const id = newNode("THROW")
-    nSetI1(id, msgId)
-    return id
-}
-
-function parseSwitch(): int {
-    pExpect("SWITCH")
-    pExpect("LPAREN")
-    const subjectId = parseExpr()
-    pExpect("RPAREN")
-    skipNL()
-    pExpect("LBRACE")
-    skipNL()
-    let cases = ""
-    let defaultId = 0
-    while (curKind() != "RBRACE" && curKind() != "EOF") {
-        if (curKind() == "DEFAULT") {
-            pAdvance()
-            pExpect("THIN_ARROW")
-            defaultId = parseSwitchBody()
-        } else {
-            pExpect("CASE")
-            const patId = newNode("SWITCH_PAT")
-            let patKind = "IDENT"
-            if (curKind() == "INT") { patKind = "INT" }
-            if (curKind() == "STRING") { patKind = "STRING" }
-            nSetS1(patId, patKind)
-            nSetS2(patId, curValue())
-            pAdvance()
-            pExpect("THIN_ARROW")
-            const bodyId = parseSwitchBody()
-            const caseId = newNode("SWITCH_CASE")
-            nSetI1(caseId, patId)
-            nSetI2(caseId, bodyId)
-            cases = listAppend(cases, caseId)
-        }
-        skipNL()
-    }
-    pExpect("RBRACE")
-    const id = newNode("SWITCH")
-    nSetI1(id, subjectId)
-    nSetI2(id, defaultId)
-    nSetList(id, cases)
-    return id
-}
-
-function parseSwitchBody(): int {
-    if (curKind() == "LBRACE") { return parseBlock() }
-    const stmtId = parseStmt()
-    const blockId = newNode("BLOCK")
-    nSetList(blockId, stmtId + "")
-    return blockId
-}
-
-function parseVarDeclCore(): int {
-    const varKind = curKind()
-    pAdvance()
-    // Array destructuring: const [a, b, c] = expr
-    if (curKind() == "LBRACKET") {
-        pAdvance()
-        let names = ""
-        while (curKind() != "RBRACKET" && curKind() != "EOF") {
-            const n = pExpectIdent()
-            if (names == "") { names = n } else { names = `${names},${n}` }
-            if (curKind() == "COMMA") { pAdvance() }
-        }
-        pExpect("RBRACKET")
-        pExpect("ASSIGN")
-        const initId = parseExpr()
-        const id = newNode("DESTRUCTURE_ARRAY")
-        nSetS1(id, names)
-        nSetS2(id, varKind)
-        nSetI1(id, initId)
-        return id
-    }
-    const name = pExpectIdent()
-    let typeAnn = ""
-    if (curKind() == "COLON") { pAdvance(); typeAnn = parseTypeAnn() }
-    pExpect("ASSIGN")
-    const initId = parseExpr()
-    const id = newNode("VAR_DECL")
-    nSetS1(id, name)
-    nSetS2(id, varKind)
-    nSetS3(id, typeAnn)
-    nSetI1(id, initId)
-    return id
-}
-
-function parseVarDecl(): int {
-    const id = parseVarDeclCore()
-    expectNLOrRB()
-    return id
-}
-
-function parseVarDeclNoNL(): int {
-    return parseVarDeclCore()
-}
-
-function parseReturn(): int {
-    pAdvance()
-    const k = curKind()
-    let valId = 0
-    if (k != "NEWLINE" && k != "RBRACE" && k != "EOF") {
-        valId = parseExpr()
-    }
-    expectNLOrRB()
-    const id = newNode("RETURN")
-    nSetI1(id, valId)
-    return id
-}
-
-function parseIf(): int {
-    pExpect("IF")
-    pExpect("LPAREN")
-    const condId = parseExpr()
-    pExpect("RPAREN")
-    skipNL()
-    const thenId = parseBlock()
-    skipNL()
-    let elseId = 0
-    if (curKind() == "ELSE") {
-        pAdvance()
-        skipNL()
-        if (curKind() == "IF") {
-            // else if -> wrap in block
-            const elseIfId = parseIf()
-            const blockId = newNode("BLOCK")
-            nSetList(blockId, elseIfId + "")
-            elseId = blockId
-        } else {
-            elseId = parseBlock()
-        }
-    }
-    const id = newNode("IF")
-    nSetI1(id, condId)
-    nSetI2(id, thenId)
-    nSetI3(id, elseId)
-    return id
-}
-
-function parseFor(): int {
-    pExpect("FOR")
-    pExpect("LPAREN")
-    // Check for for-in: for (item in expr)
-    if (curKind() == "IDENT") {
-        // Look ahead for "in" keyword
-        const savedPos = tPos
-        const itemName = curValue()
-        pAdvance()
-        if (curKind() == "IN") {
-            pAdvance()
-            const iterableId = parseExpr()
-            pExpect("RPAREN")
-            skipNL()
-            const bodyId = parseBlock()
-            const id = newNode("FOR_IN")
-            nSetS1(id, itemName)
-            nSetI1(id, iterableId)
-            nSetI2(id, bodyId)
-            return id
-        }
-        // Not for-in, restore position
-        tPos = savedPos
-    }
-    // C-style for
-    const initId = parseVarDeclNoNL()
-    pExpect("SEMICOLON")
-    const condId = parseExpr()
-    pExpect("SEMICOLON")
-    const updateId = parseUpdateStmt()
-    pExpect("RPAREN")
-    skipNL()
-    const bodyId = parseBlock()
-    const id = newNode("FOR")
-    nSetI1(id, initId)
-    nSetI2(id, condId)
-    nSetI3(id, updateId)
-    nSetI4(id, bodyId)
-    return id
-}
-
-function parseUpdateStmt(): int {
-    const name = pExpectIdent()
-    const k = curKind()
-    if (k == "PLUS_PLUS") {
-        pAdvance()
-        const id = newNode("POSTFIX_INC")
-        nSetS1(id, name)
-        return id
-    }
-    if (k == "MINUS_MINUS") {
-        pAdvance()
-        const id = newNode("POSTFIX_DEC")
-        nSetS1(id, name)
-        return id
-    }
-    // Assignment operators
-    let op = k
-    pAdvance()
-    const valId = parseExpr()
-    const id = newNode("ASSIGN")
-    nSetS1(id, name)
-    nSetS2(id, op)
-    nSetI1(id, valId)
-    return id
-}
-
-function parseWhile(): int {
-    pExpect("WHILE")
-    pExpect("LPAREN")
-    const condId = parseExpr()
-    pExpect("RPAREN")
-    skipNL()
-    const bodyId = parseBlock()
-    const id = newNode("WHILE")
-    nSetI1(id, condId)
-    nSetI2(id, bodyId)
-    return id
-}
-
-function parseDoWhile(): int {
-    pExpect("DO")
-    skipNL()
-    const bodyId = parseBlock()
-    skipNL()
-    pExpect("WHILE")
-    pExpect("LPAREN")
-    const condId = parseExpr()
-    pExpect("RPAREN")
-    expectNLOrRB()
-    const id = newNode("DO_WHILE")
-    nSetI1(id, bodyId)
-    nSetI2(id, condId)
-    return id
-}
-
 function parseImport(): int {
     pExpect("IMPORT")
     pExpect("LBRACE")
@@ -656,9 +460,9 @@ function parseImport(): int {
         if (curKind() == "IDENT" && curValue() == "as") {
             pAdvance()
             const alias = pExpectIdent()
-            if (names == "") { names = `${n}:${alias}` } else { names = `${names},${n}:${alias}` }
+            names = listAppendStr(names, `${n}:${alias}`)
         } else {
-            if (names == "") { names = n } else { names = names + "," + n }
+            names = listAppendStr(names, n)
         }
         if (curKind() == "COMMA") { pAdvance() }
     }
@@ -673,97 +477,6 @@ function parseImport(): int {
     return id
 }
 
-function parseBlock(): int {
-    pExpect("LBRACE")
-    skipNL()
-    let stmts = ""
-    while (curKind() != "RBRACE" && curKind() != "EOF") {
-        const stmtId = parseStmt()
-        stmts = listAppend(stmts, stmtId)
-        skipNL()
-    }
-    pExpect("RBRACE")
-    const id = newNode("BLOCK")
-    nSetList(id, stmts)
-    return id
-}
-
-function parseAssignOrExpr(): int {
-    const name = curValue()
-    // Look ahead
-    const nextTok = tkKind(tkGet(tokens, tPos + 1))
-    // Index assignment: arr[i] = val
-    if (nextTok == "LBRACKET") {
-        pAdvance()
-        pAdvance()
-        const indexId = parseExpr()
-        pExpect("RBRACKET")
-        if (curKind() == "ASSIGN") {
-            pAdvance()
-            const valId = parseExpr()
-            expectNLOrRB()
-            const id = newNode("INDEX_ASSIGN")
-            nSetS1(id, name)
-            nSetI1(id, indexId)
-            nSetI2(id, valId)
-            return id
-        }
-        // Not assignment, expression stmt
-        const objExpr = newNode("IDENT")
-        nSetS1(objExpr, name)
-        const accessId = newNode("INDEX_ACCESS")
-        nSetI1(accessId, objExpr)
-        nSetI2(accessId, indexId)
-        expectNLOrRB()
-        const stmtId = newNode("EXPR_STMT")
-        nSetI1(stmtId, accessId)
-        return stmtId
-    }
-    // Simple assignment: x = expr
-    if (nextTok == "ASSIGN") {
-        pAdvance()
-        pAdvance()
-        const valId = parseExpr()
-        expectNLOrRB()
-        const id = newNode("ASSIGN")
-        nSetS1(id, name)
-        nSetS2(id, "ASSIGN")
-        nSetI1(id, valId)
-        return id
-    }
-    // Compound assignment: x += expr
-    if (nextTok == "PLUS_ASSIGN" || nextTok == "MINUS_ASSIGN" || nextTok == "STAR_ASSIGN" || nextTok == "SLASH_ASSIGN" || nextTok == "PERCENT_ASSIGN") {
-        pAdvance()
-        const op = curKind()
-        pAdvance()
-        const valId = parseExpr()
-        expectNLOrRB()
-        const id = newNode("ASSIGN")
-        nSetS1(id, name)
-        nSetS2(id, op)
-        nSetI1(id, valId)
-        return id
-    }
-    if (nextTok == "PLUS_PLUS" || nextTok == "MINUS_MINUS") {
-        let pfKind = "POSTFIX_DEC"
-        if (nextTok == "PLUS_PLUS") { pfKind = "POSTFIX_INC" }
-        pAdvance()
-        pAdvance()
-        expectNLOrRB()
-        const id = newNode("EXPR_STMT")
-        const pfId = newNode(pfKind)
-        nSetS1(pfId, name)
-        nSetI1(id, pfId)
-        return id
-    }
-    // Expression statement
-    const exprId = parseExpr()
-    expectNLOrRB()
-    const id = newNode("EXPR_STMT")
-    nSetI1(id, exprId)
-    return id
-}
-
 // ── Helpers ───────────────────────────────────────────────────
 
 function parseParams(): string {
@@ -772,6 +485,12 @@ function parseParams(): string {
     let params = ""
     while (curKind() != "EOF") {
         skipNL()
+        // Field-level const: const name: Type
+        let isFieldConst = 0
+        if (curKind() == "CONST") {
+            isFieldConst = 1
+            pAdvance()
+        }
         const pName = pExpectIdent()
         // Optional param: name?: type (equivalent to name: type = default)
         let isOptional = 0
@@ -791,6 +510,7 @@ function parseParams(): string {
         nSetS2(pId, pType)
         nSetI1(pId, defId)
         nSetI2(pId, isOptional)
+        if (isFieldConst == 1) { nSetS3(pId, "const") }
         params = listAppend(params, pId)
         if (curKind() == "COMMA") { pAdvance() } else { break }
     }
@@ -805,15 +525,17 @@ function parseTypeAnn(): string {
     if (k == "BOOL_TYPE") { pAdvance(); return "bool" }
     if (k == "VOID_TYPE") { pAdvance(); return "void" }
     if (k == "IDENT") {
-        const name = curValue()
+        let name = curValue()
         pAdvance()
+        // Normalize List → Array (user-facing alias, D021)
+        if (name == "List") { name = "Array" }
         // Generic type: Name<T, U, ...>
         if (curKind() == "LT") {
             pAdvance()
             let typeArgs = parseTypeAnn()
             while (curKind() == "COMMA") {
                 pAdvance()
-                typeArgs = typeArgs + "," + parseTypeAnn()
+                typeArgs = listAppendStr(typeArgs, parseTypeAnn())
             }
             pExpect("GT")
             return name + "<" + typeArgs + ">"
@@ -824,454 +546,3 @@ function parseTypeAnn(): string {
     exit(1)
     return ""
 }
-
-// ── Expressions (precedence climbing) ─────────────────────────
-
-function parseExpr(): int {
-    const left = parseOr()
-    if (curKind() == "QUESTION") {
-        pAdvance()
-        const thenId = parseExpr()
-        pExpect("COLON")
-        const elseId = parseExpr()
-        const id = newNode("TERNARY")
-        nSetI1(id, left)
-        nSetI2(id, thenId)
-        nSetI3(id, elseId)
-        return id
-    }
-    return left
-}
-
-function parseOr(): int {
-    let left = parseNullish()
-    while (curKind() == "OR") {
-        pAdvance()
-        const right = parseNullish()
-        const id = newNode("BINARY"); nSetS1(id, "Or"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseNullish(): int {
-    let left = parseAndExpr()
-    while (curKind() == "NULLISH") {
-        pAdvance()
-        const right = parseAndExpr()
-        const id = newNode("BINARY"); nSetS1(id, "NullCoalesce"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseAndExpr(): int {
-    let left = parseBitOr()
-    while (curKind() == "AND") {
-        pAdvance()
-        const right = parseBitOr()
-        const id = newNode("BINARY"); nSetS1(id, "And"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseBitOr(): int {
-    let left = parseBitXor()
-    while (curKind() == "BIT_OR") {
-        pAdvance()
-        const right = parseBitXor()
-        const id = newNode("BINARY"); nSetS1(id, "BitOr"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseBitXor(): int {
-    let left = parseBitAnd()
-    while (curKind() == "BIT_XOR") {
-        pAdvance()
-        const right = parseBitAnd()
-        const id = newNode("BINARY"); nSetS1(id, "BitXor"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseBitAnd(): int {
-    let left = parseEquality()
-    while (curKind() == "BIT_AND") {
-        pAdvance()
-        const right = parseEquality()
-        const id = newNode("BINARY"); nSetS1(id, "BitAnd"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseEquality(): int {
-    let left = parseComparison()
-    while (curKind() == "EQ" || curKind() == "NE") {
-        const op = curKind()
-        pAdvance()
-        const right = parseComparison()
-        const id = newNode("BINARY")
-        if (op == "EQ") { nSetS1(id, "Eq") } else { nSetS1(id, "Ne") }
-        nSetI1(id, left)
-        nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseComparison(): int {
-    let left = parseAdditive()
-    while (curKind() == "LT" || curKind() == "GT" || curKind() == "LE" || curKind() == "GE") {
-        const op = curKind()
-        pAdvance()
-        const right = parseAdditive()
-        const id = newNode("BINARY")
-        if (op == "LT") { nSetS1(id, "Lt") } else if (op == "GT") { nSetS1(id, "Gt") } else if (op == "LE") { nSetS1(id, "Le") } else { nSetS1(id, "Ge") }
-        nSetI1(id, left)
-        nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseAdditive(): int {
-    let left = parseShift()
-    while (curKind() == "PLUS" || curKind() == "MINUS") {
-        const op = curKind()
-        pAdvance()
-        const right = parseShift()
-        const id = newNode("BINARY")
-        if (op == "PLUS") { nSetS1(id, "Add") } else { nSetS1(id, "Sub") }
-        nSetI1(id, left)
-        nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseShift(): int {
-    let left = parseMultiplicative()
-    while (curKind() == "SHL" || curKind() == "SHR" || curKind() == "USHR") {
-        const op = curKind()
-        pAdvance()
-        const right = parseMultiplicative()
-        const id = newNode("BINARY")
-        if (op == "SHL") { nSetS1(id, "Shl") } else if (op == "SHR") { nSetS1(id, "Shr") } else { nSetS1(id, "UShr") }
-        nSetI1(id, left)
-        nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseMultiplicative(): int {
-    let left = parsePower()
-    while (curKind() == "STAR" || curKind() == "SLASH" || curKind() == "PERCENT") {
-        const op = curKind()
-        pAdvance()
-        const right = parsePower()
-        const id = newNode("BINARY")
-        if (op == "STAR") { nSetS1(id, "Mul") } else if (op == "SLASH") { nSetS1(id, "Div") } else { nSetS1(id, "Mod") }
-        nSetI1(id, left)
-        nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parsePower(): int {
-    let left = parseUnary()
-    if (curKind() == "POWER") {
-        pAdvance()
-        const right = parsePower()
-        const id = newNode("BINARY"); nSetS1(id, "Pow"); nSetI1(id, left); nSetI2(id, right)
-        left = id
-    }
-    return left
-}
-
-function parseUnary(): int {
-    if (curKind() == "MINUS" || curKind() == "NOT" || curKind() == "BIT_NOT") {
-        let opName = "Not"
-        if (curKind() == "MINUS") { opName = "Neg" }
-        if (curKind() == "BIT_NOT") { opName = "BitNot" }
-        pAdvance()
-        const operandId = parseUnary()
-        const id = newNode("UNARY")
-        nSetS1(id, opName)
-        nSetI1(id, operandId)
-        return id
-    }
-    return parsePrimary()
-}
-
-function parsePrimary(): int {
-    let expr = parseAtom()
-    // Postfix: .member, .method(), [index], ?.member
-    // Support multiline chaining: NEWLINE followed by DOT continues the chain
-    while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN" || (curKind() == "NEWLINE" && tkKind(tkGet(tokens, tPos + 1)) == "DOT")) {
-        if (curKind() == "NEWLINE") { pAdvance() }
-        if (curKind() == "LBRACKET") {
-            pAdvance()
-            const indexId = parseExpr()
-            pExpect("RBRACKET")
-            const id = newNode("INDEX_ACCESS")
-            nSetI1(id, expr)
-            nSetI2(id, indexId)
-            expr = id
-            continue
-        }
-        // Dot or ?. access
-        const isOptional = curKind() == "OPT_CHAIN" ? 1 : 0
-        pAdvance()
-        const member = pExpectIdent()
-        if (curKind() == "LPAREN") {
-            pAdvance()
-            const argsStr = parseArgs()
-            pExpect("RPAREN")
-            const id = newNode("METHOD_CALL")
-            nSetS1(id, member)
-            nSetI1(id, expr)
-            nSetList(id, argsStr)
-            nSetI3(id, isOptional)
-            expr = id
-        } else {
-            const id = newNode("MEMBER_ACCESS")
-            nSetS1(id, member)
-            nSetI1(id, expr)
-            nSetI3(id, isOptional)
-            expr = id
-        }
-    }
-    return expr
-}
-
-// Lookahead: is current ( the start of an arrow function?
-// Scan forward from ( to find matching ), check if => follows
-function isArrowFunc(): int {
-    // Quick check: ( must be followed by ) or IDENT COLON
-    const nextK = tkKind(tkGet(tokens, tPos + 1))
-    if (nextK != "RPAREN" && nextK != "IDENT") { return 0 }
-    if (nextK == "IDENT") {
-        const afterIdent = tkKind(tkGet(tokens, tPos + 2))
-        // Must be param: name COLON type or name RPAREN or name COMMA
-        if (afterIdent != "COLON" && afterIdent != "RPAREN" && afterIdent != "COMMA") { return 0 }
-    }
-    // Scan to matching )
-    let lookahead = tPos + 1
-    let depth = 1
-    while (depth > 0) {
-        const lk = tkKind(tkGet(tokens, lookahead))
-        if (lk == "LPAREN") { depth = depth + 1 }
-        if (lk == "RPAREN") { depth = depth - 1 }
-        if (lk == "EOF") { return 0 }
-        lookahead = lookahead + 1
-    }
-    // Token right after ) must be => or : (return type annotation)
-    const afterParen = tkKind(tkGet(tokens, lookahead))
-    if (afterParen == "ARROW") { return 1 }
-    if (afterParen != "COLON") { return 0 }
-    // Skip return type to find =>
-    let checkPos = lookahead + 1
-    // Max 5 tokens for type (e.g. Array < string , int >)
-    let maxScan = 0
-    while (maxScan < 5) {
-        const tk = tkKind(tkGet(tokens, checkPos))
-        if (tk == "ARROW") { return 1 }
-        if (tk == "EOF" || tk == "LBRACE" || tk == "NEWLINE" || tk == "SEMICOLON") { return 0 }
-        checkPos = checkPos + 1
-        maxScan = maxScan + 1
-    }
-    return 0
-}
-
-// Parse: (params) => expr  or  (params): Type => expr  or  (params) => { block }
-function parseArrowFunc(): int {
-    pExpect("LPAREN")
-    let params = ""
-    while (curKind() != "RPAREN" && curKind() != "EOF") {
-        const pId = newNode("PARAM")
-        nSetS1(pId, pExpectIdent())
-        if (curKind() == "COLON") {
-            pAdvance()
-            nSetS2(pId, parseTypeAnn())
-        }
-        params = listAppend(params, pId)
-        if (curKind() == "COMMA") { pAdvance() }
-    }
-    pExpect("RPAREN")
-    let retType = ""
-    if (curKind() == "COLON") {
-        pAdvance()
-        retType = parseTypeAnn()
-    }
-    pExpect("ARROW")
-    // Body: either a block { ... } or a single expression
-    let bodyId = 0
-    if (curKind() == "LBRACE") {
-        bodyId = parseBlock()
-    } else {
-        // Single expression → wrap in implicit return
-        const exprId = parseExpr()
-        const retNode = newNode("RETURN")
-        nSetI1(retNode, exprId)
-        const blockId = newNode("BLOCK")
-        nSetList(blockId, `${retNode}`)
-        bodyId = blockId
-    }
-    const id = newNode("ARROW_FUNC")
-    nSetS2(id, retType)
-    nSetList(id, params)
-    nSetI1(id, bodyId)
-    return id
-}
-
-function parseAtom(): int {
-    const k = curKind()
-    const v = curValue()
-
-    if (k == "INT" || k == "DOUBLE" || k == "STRING") {
-        pAdvance()
-        let nk = "INT_LIT"
-        if (k == "DOUBLE") { nk = "DOUBLE_LIT" }
-        if (k == "STRING") { nk = "STRING_LIT" }
-        const id = newNode(nk)
-        nSetS1(id, v)
-        return id
-    }
-    if (k == "TRUE") {
-        pAdvance()
-        return newNode("TRUE_LIT")
-    }
-    if (k == "FALSE") {
-        pAdvance()
-        return newNode("FALSE_LIT")
-    }
-    if (k == "NULL") {
-        pAdvance()
-        return newNode("NULL_LIT")
-    }
-    if (k == "THIS") {
-        pAdvance()
-        return newNode("THIS")
-    }
-    if (k == "NEW") {
-        pAdvance()
-        const className = pExpectIdent()
-        pExpect("LPAREN")
-        const argsStr = parseArgs()
-        pExpect("RPAREN")
-        const id = newNode("NEW_EXPR")
-        nSetS1(id, className)
-        nSetList(id, argsStr)
-        return id
-    }
-    // Template literal tokens: TMPL_LIT ... TMPL_EXPR_START ... TMPL_EXPR_END ... TMPL_END
-    if (k == "TMPL_LIT" || k == "TMPL_EXPR_START") {
-        return parseTemplateLit()
-    }
-    if (k == "IDENT") {
-        const name = v
-        pAdvance()
-        if (curKind() == "LPAREN") {
-            pAdvance()
-            const argsStr = parseArgs()
-            pExpect("RPAREN")
-            const id = newNode("CALL")
-            nSetS1(id, name)
-            nSetList(id, argsStr)
-            return id
-        }
-        const id = newNode("IDENT")
-        nSetS1(id, name)
-        return id
-    }
-    if (k == "LPAREN") {
-        // Check if this is an arrow function: (...) => expr
-        if (isArrowFunc() == 1) {
-            return parseArrowFunc()
-        }
-        pAdvance()
-        const exprId = parseExpr()
-        pExpect("RPAREN")
-        const id = newNode("GROUPING")
-        nSetI1(id, exprId)
-        return id
-    }
-    if (k == "LBRACKET") {
-        pAdvance()
-        skipNL()
-        let elems = ""
-        if (curKind() != "RBRACKET") {
-            while (curKind() != "EOF") {
-                skipNL()
-                if (curKind() == "SPREAD") {
-                    pAdvance()
-                    const spreadExpr = parseExpr()
-                    const spreadNode = newNode("SPREAD_ELEM")
-                    nSetI1(spreadNode, spreadExpr)
-                    elems = listAppend(elems, spreadNode)
-                } else {
-                    const elemId = parseExpr()
-                    elems = listAppend(elems, elemId)
-                }
-                skipNL()
-                if (curKind() == "COMMA") { pAdvance() } else { break }
-            }
-        }
-        skipNL()
-        pExpect("RBRACKET")
-        const id = newNode("ARRAY_LIT")
-        nSetList(id, elems)
-        return id
-    }
-    println(`parse error at line ${curLineNum()}: unexpected token ${k} '${v}'`)
-    exit(1)
-    return 0
-}
-
-function parseTemplateLit(): int {
-    // Collect fragments: TMPL_LIT and TMPL_EXPR_START...TMPL_EXPR_END pairs, ending with TMPL_END
-    let frags = ""
-    while (curKind() != "TMPL_END" && curKind() != "EOF") {
-        if (curKind() == "TMPL_LIT") {
-            const litId = newNode("TMPL_FRAG_LIT")
-            nSetS1(litId, curValue())
-            pAdvance()
-            frags = listAppend(frags, litId)
-        } else if (curKind() == "TMPL_EXPR_START") {
-            pAdvance()
-            const exprId = parseExpr()
-            const fragId = newNode("TMPL_FRAG_EXPR")
-            nSetI1(fragId, exprId)
-            frags = listAppend(frags, fragId)
-            if (curKind() == "TMPL_EXPR_END") { pAdvance() }
-        } else {
-            break
-        }
-    }
-    if (curKind() == "TMPL_END") { pAdvance() }
-    const id = newNode("TEMPLATE_LIT")
-    nSetList(id, frags)
-    return id
-}
-
-function parseArgs(): string {
-    skipNL()
-    if (curKind() == "RPAREN") { return "" }
-    let args = ""
-    while (curKind() != "EOF") {
-        skipNL()
-        const argId = parseExpr()
-        args = listAppend(args, argId)
-        skipNL()
-        if (curKind() == "COMMA") { pAdvance() } else { break }
-    }
-    return args
-}
-

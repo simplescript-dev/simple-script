@@ -1,9 +1,10 @@
 // SimpleScript Bootstrap Type Checker
-// Walks the Map-based AST, registers functions, checks variable usage.
-// For the bootstrap compiler, this is simplified: no deep type inference,
-// focus on detecting undefined vars/funcs and const reassignment.
+// Core: initialization, scope management, function registry, error reporting, entry point.
+// Statement/expression checking logic in check_stmts.ss.
 
-import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
+import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine, nGetCol, getLineOffset, classTypeParams } from "./parser"
+import { getSourceLine } from "./lexer"
+import { checkStmtList } from "./check_stmts"
 
 // ── Scope + function registry ─────────────────────────────────
 
@@ -17,6 +18,18 @@ let ifaceMethods = ""
 let funcParamMin = ""  // "funcName" -> min args (required params)
 let funcParamMax = ""  // "funcName" -> max args (total params)
 let funcReady = 0
+let errorCount = 0     // collected error count (Phase 3: multi-error reporting)
+let scopeVarNames = "" // Map: "scopeId" -> comma-separated var names (for suggestions)
+let allFuncNameList = "" // comma-separated function names (for suggestions)
+let classConsMin = ""        // "ClassName" -> min constructor args
+let classConsMax = ""        // "ClassName" -> max constructor args
+let checkerClassParents = "" // "ClassName" -> parent class name
+let methodParamMin = ""      // "ClassName.method" -> min method args
+let methodParamMax = ""      // "ClassName.method" -> max method args
+let currentCheckerClass = "" // current class context (for this.method() resolution)
+let constFields = ""         // "ClassName.fieldName" -> "1" if const field
+let checkerFieldTypes = ""   // "ClassName.fieldName" -> type string
+let checkerClassFields = ""  // "ClassName" -> "field1,field2,..." (ordered field list)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -29,12 +42,57 @@ function initChecker() {
     funcParamMax = Map()
     scopeId = 0
     currentScope = 0
+    scopeVarNames = Map()
+    allFuncNameList = ""
+    classConsMin = Map()
+    classConsMax = Map()
+    checkerClassParents = Map()
+    methodParamMin = Map()
+    methodParamMax = Map()
+    currentCheckerClass = ""
+    constFields = Map()
+    checkerFieldTypes = Map()
+    checkerClassFields = Map()
+    // Built-in class: Map
+    classConsMin.set("Map", "0")
+    classConsMax.set("Map", "0")
+    registerMethodParams("Map", "set", 2, 2)
+    registerMethodParams("Map", "get", 1, 1)
+    registerMethodParams("Map", "getString", 1, 1)
+    registerMethodParams("Map", "has", 1, 1)
+    registerMethodParams("Map", "delete", 1, 1)
+    registerMethodParams("Map", "size", 0, 0)
+    registerMethodParams("Map", "keys", 0, 0)
+    // Built-in class: Set (Map wrapper, D021)
+    classConsMin.set("Set", "0")
+    classConsMax.set("Set", "0")
+    registerMethodParams("Set", "add", 1, 1)
+    registerMethodParams("Set", "has", 1, 1)
+    registerMethodParams("Set", "remove", 1, 1)
+    registerMethodParams("Set", "size", 0, 0)
+    registerMethodParams("Set", "values", 0, 0)
+    // Built-in namespace: Math (registered in classConsMin for method lookup resolution)
+    classConsMin.set("Math", "0")
+    classConsMax.set("Math", "0")
+    registerMethodParams("Math", "sqrt", 1, 1)
+    registerMethodParams("Math", "abs", 1, 1)
+    registerMethodParams("Math", "floor", 1, 1)
+    registerMethodParams("Math", "ceil", 1, 1)
+    registerMethodParams("Math", "round", 1, 1)
+    registerMethodParams("Math", "log", 1, 1)
+    registerMethodParams("Math", "sin", 1, 1)
+    registerMethodParams("Math", "cos", 1, 1)
+    registerMethodParams("Math", "random", 0, 0)
+    registerMethodParams("Math", "pow", 2, 2)
+    registerMethodParams("Math", "min", 2, 2)
+    registerMethodParams("Math", "max", 2, 2)
     // Built-in functions (synced with codegen.ss funcRetTypes)
-    const builtins = "println,print,readLine,readFile,writeFile,appendFile,args,arg,exit,system,parseInt,parseDouble,Map,timeMs,timeUnix,fileSize,getenv,listDir,sha256,fromCharCode,charCodeAt,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpClose,mkdir,mkdirp,fileExists,removeFile,renameFile"
+    const builtins = "println,print,readLine,readFile,writeFile,appendFile,args,arg,exit,system,parseInt,parseDouble,Map,Set,timeMs,timeUnix,fileSize,getenv,listDir,sha256,fromCharCode,charCodeAt,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpClose,mkdir,mkdirp,fileExists,removeFile,renameFile"
     const parts = builtins.split(",")
     for (name in parts) {
         funcNames.set(name, "builtin")
     }
+    allFuncNameList = builtins
     // Built-in namespaces (accessed as Math.sqrt() etc.)
     defineVar("Math", "namespace", 0)
     // Built-in param counts
@@ -80,6 +138,12 @@ function defineVar(name: string, varType: string, isConst: int) {
     if (isConst == 1) {
         varConst.set(key, "const")
     }
+    const scopeKey = `${currentScope}`
+    if (scopeVarNames.has(scopeKey) == 1) {
+        scopeVarNames.set(scopeKey, `${scopeVarNames.getString(scopeKey)},${name}`)
+    } else {
+        scopeVarNames.set(scopeKey, name)
+    }
 }
 
 function lookupVar(name: string): string {
@@ -108,7 +172,35 @@ function isVarConst(name: string): int {
     return 0
 }
 
-function checkInterfaceImpl(className: string, implList: string, classMethods: string) {
+// Infer class name from an expression node (for const field checking)
+function inferCheckerClass(nodeId: int): string {
+    if (nodeId <= 0) { return "" }
+    const kind = nGetKind(nodeId)
+    if (kind == "IDENT") {
+        return lookupVar(nGetS1(nodeId))
+    }
+    if (kind == "THIS") { return currentCheckerClass }
+    if (kind == "NEW_EXPR") { return nGetS1(nodeId) }
+    if (kind == "MEMBER_ACCESS") {
+        const objClass = inferCheckerClass(nGetI1(nodeId))
+        if (objClass == "") { return "" }
+        const fieldKey = `${objClass}.${nGetS1(nodeId)}`
+        if (checkerFieldTypes.has(fieldKey) == 1) {
+            return checkerFieldTypes.getString(fieldKey)
+        }
+        return ""
+    }
+    if (kind == "CALL") {
+        const fname = nGetS1(nodeId)
+        if (funcNames.has(fname) == 1) {
+            return funcNames.getString(fname)
+        }
+        return ""
+    }
+    return ""
+}
+
+function checkInterfaceImpl(classNodeId: int, className: string, implList: string, classMethods: string) {
     // Scan comma-separated interface names without for-in (avoids i64/ptr issue)
     let remaining = implList
     while (remaining != "") {
@@ -134,8 +226,7 @@ function checkInterfaceImpl(className: string, implList: string, classMethods: s
                         remReq = ""
                     }
                     if (classMethods.contains(`,${req},`) == 0) {
-                        println(`checker error: class '${className}' missing method '${req}' required by interface '${iface}'`)
-                        exit(1)
+                        checkerError(`class '${className}' missing method '${req}' required by interface '${iface}'`, nGetLine(classNodeId), nGetCol(classNodeId))
                     }
                 }
             }
@@ -144,6 +235,9 @@ function checkInterfaceImpl(className: string, implList: string, classMethods: s
 }
 
 function defineFunc(name: string, retType: string) {
+    if (funcNames.has(name) == 0) {
+        allFuncNameList = listAppendStr(allFuncNameList, name)
+    }
     funcNames.set(name, retType)
 }
 
@@ -163,6 +257,78 @@ function defineFuncParams(name: string, minArgs: int, maxArgs: int) {
     }
 }
 
+function registerMethodParams(className: string, methodName: string, minArgs: int, maxArgs: int) {
+    const key = `${className}.${methodName}`
+    methodParamMin.set(key, `${minArgs}`)
+    methodParamMax.set(key, `${maxArgs}`)
+}
+
+// Walk parent chain to find method param counts. Returns "min,max" or "".
+function lookupMethodParams(className: string, methodName: string): string {
+    let cls = className
+    while (cls != "") {
+        const key = `${cls}.${methodName}`
+        if (methodParamMin.has(key) == 1) {
+            return `${methodParamMin.getString(key)},${methodParamMax.getString(key)}`
+        }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return ""
+}
+
+// Walk parent chain and sum constructor params (own + inherited). Returns "min,max".
+function totalConstructorParams(className: string): string {
+    let totalMin = 0
+    let totalMax = 0
+    let cls = className
+    while (cls != "") {
+        if (classConsMin.has(cls) == 1) {
+            totalMin = totalMin + parseInt(classConsMin.getString(cls))
+            totalMax = totalMax + parseInt(classConsMax.getString(cls))
+        }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return `${totalMin},${totalMax}`
+}
+
+// Count min/max required params from a PARAM node list. Returns "min,max".
+function countParamRange(paramListStr: string): string {
+    let pMin = 0
+    let pMax = 0
+    if (paramListStr != "") {
+        const parts = paramListStr.split(",")
+        for (p in parts) {
+            const pId = parseInt(p)
+            if (pId > 0 && nGetKind(pId) == "PARAM") {
+                pMax = pMax + 1
+                if (nGetI1(pId) <= 0 && nGetI2(pId) <= 0) {
+                    pMin = pMin + 1
+                }
+            }
+        }
+    }
+    return `${pMin},${pMax}`
+}
+
+// Emit checker error if argCount is outside [minArgs, maxArgs].
+function checkArgCount(label: string, name: string, argCount: int, minArgs: int, maxArgs: int, line: int, col: int) {
+    if (argCount < minArgs || argCount > maxArgs) {
+        if (minArgs == maxArgs) {
+            checkerError(`${label} '${name}' expects ${minArgs} arguments, got ${argCount}`, line, col)
+        } else {
+            checkerError(`${label} '${name}' expects ${minArgs}-${maxArgs} arguments, got ${argCount}`, line, col)
+        }
+    }
+}
+
 function countArgs(listStr: string): int {
     if (listStr == "") { return 0 }
     let count = 0
@@ -174,17 +340,49 @@ function countArgs(listStr: string): int {
     return count
 }
 
+// ── Error reporting ───────────────────────────────────────────
+
+function checkerError(msg: string, line: int, col: int, suggestion: string = "") {
+    errorCount = errorCount + 1
+    if (errorCount > 20) { return }
+    if (line <= 0) {
+        println(`error: ${msg}`)
+        println("")
+        return
+    }
+    const rawLine = line + getLineOffset()
+    const srcLine = getSourceLine(rawLine)
+    if (srcLine == "") {
+        println(`error at line ${line}: ${msg}`)
+        println("")
+        return
+    }
+    const lineStr = `${line}`
+    const gutter = " ".repeat(lineStr.length())
+    println(`error: ${msg}`)
+    println(`${gutter}--> line ${line}:${col}`)
+    println(`${gutter} |`)
+    println(`${lineStr} | ${srcLine}`)
+    if (col > 0) {
+        println(`${gutter} | ${" ".repeat(col - 1)}^`)
+    }
+    if (suggestion != "") {
+        println(`${gutter} = help: did you mean '${suggestion}'?`)
+    }
+    println("")
+}
+
 // ── Public API ────────────────────────────────────────────────
 
 function check(rootId: int): int {
     initChecker()
+    errorCount = 0
     const kind = nGetKind(rootId)
     if (kind != "PROGRAM") {
-        println("checker error: expected PROGRAM node")
+        println("fatal: expected PROGRAM node, got " + kind)
         exit(1)
     }
     const stmtList = nGetList(rootId)
-    // Pass 1: register all top-level declarations (forward reference support)
     if (stmtList != "") {
         const p1 = stmtList.split(",")
         for (p in p1) {
@@ -194,22 +392,9 @@ function check(rootId: int): int {
             if (sk == "FUNC_DECL") {
                 const fname = nGetS1(s)
                 defineFunc(fname, nGetS2(s))
-                const paramList = nGetList(s)
-                let minP = 0
-                let maxP = 0
-                if (paramList != "") {
-                    const ps = paramList.split(",")
-                    for (pp in ps) {
-                        const ppId = parseInt(pp)
-                        if (ppId > 0 && nGetKind(ppId) == "PARAM") {
-                            maxP = maxP + 1
-                            if (nGetI1(ppId) <= 0 && nGetI2(ppId) <= 0) {
-                                minP = minP + 1
-                            }
-                        }
-                    }
-                }
-                defineFuncParams(fname, minP, maxP)
+                const fRange = countParamRange(nGetList(s))
+                const fComma = fRange.indexOf(",")
+                defineFuncParams(fname, parseInt(fRange.substring(0, fComma)), parseInt(fRange.substring(fComma + 1, fRange.length() - fComma - 1)))
             }
             if (sk == "VAR_DECL") {
                 const vname = nGetS1(s)
@@ -218,8 +403,70 @@ function check(rootId: int): int {
                 if (vtype == "") { vtype = "auto" }
                 defineVar(vname, vtype, vkind == "CONST")
             }
+            if (sk == "DESTRUCTURE_ARRAY" || sk == "DESTRUCTURE_OBJECT") {
+                const dNames = nGetS1(s)
+                const dKind = nGetS2(s)
+                const dParts = dNames.split(",")
+                for (dn in dParts) {
+                    defineVar(dn, "auto", dKind == "CONST")
+                }
+            }
             if (sk == "CLASS_DECL") {
-                defineVar(nGetS1(s), "class", 0)
+                const className = nGetS1(s)
+                defineVar(className, "class", 0)
+                // Register parent class (strip generic type args: "Box<int>" → "Box")
+                let parentName = nGetS2(s)
+                if (parentName != "") {
+                    const ltIdx = parentName.indexOf("<")
+                    if (ltIdx > 0) { parentName = parentName.substring(0, ltIdx) }
+                    checkerClassParents.set(className, parentName)
+                }
+                // Register field const status, types, and ordered field list
+                const fieldList = nGetList(s)
+                let fieldNameList = ""
+                if (fieldList != "") {
+                    const flds = fieldList.split(",")
+                    for (f in flds) {
+                        const fId = parseInt(f)
+                        if (fId > 0 && nGetKind(fId) == "PARAM") {
+                            const fName = nGetS1(fId)
+                            const fType = nGetS2(fId)
+                            checkerFieldTypes.set(`${className}.${fName}`, fType)
+                            fieldNameList = listAppendStr(fieldNameList, fName)
+                            if (nGetS3(fId) == "const") {
+                                constFields.set(`${className}.${fName}`, "1")
+                            }
+                        }
+                    }
+                }
+                checkerClassFields.set(className, fieldNameList)
+                // Register constructor params (CLASS_DECL List = constructor PARAM nodes)
+                if (classTypeParams(s) != "") {
+                    // Generic class: accept any arg count (specialized at codegen)
+                    classConsMin.set(className, "0")
+                    classConsMax.set(className, "99")
+                } else {
+                    const consRange = countParamRange(nGetList(s))
+                    const consComma = consRange.indexOf(",")
+                    classConsMin.set(className, consRange.substring(0, consComma))
+                    classConsMax.set(className, consRange.substring(consComma + 1, consRange.length() - consComma - 1))
+                }
+                // Register method params
+                const clsMethodsBlock = nGetI2(s)
+                if (clsMethodsBlock > 0) {
+                    const clsML = nGetList(clsMethodsBlock)
+                    if (clsML != "") {
+                        const clsMS = clsML.split(",")
+                        for (cm in clsMS) {
+                            const cmId = parseInt(cm)
+                            if (cmId > 0 && nGetKind(cmId) == "FUNC_DECL") {
+                                const mRange = countParamRange(nGetList(cmId))
+                                const mComma = mRange.indexOf(",")
+                                registerMethodParams(className, nGetS1(cmId), parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))
+                            }
+                        }
+                    }
+                }
             }
             if (sk == "ENUM_DECL") {
                 defineVar(nGetS1(s), "enum", 0)
@@ -233,389 +480,29 @@ function check(rootId: int): int {
                     for (m in ms) {
                         const mId = parseInt(m)
                         if (mId > 0) {
-                            if (methodNames == "") { methodNames = nGetS1(mId) }
-                            else { methodNames = `${methodNames},${nGetS1(mId)}` }
+                            methodNames = listAppendStr(methodNames, nGetS1(mId))
                         }
                     }
                 }
                 ifaceMethods.set(ifName, methodNames)
+                defineVar(ifName, "interface", 0)
             }
         }
     }
     // Pass 2: check all statements
     checkStmtList(stmtList)
+    // Report collected errors
+    if (errorCount > 0) {
+        if (errorCount == 1) {
+            println("aborting due to 1 error")
+        } else if (errorCount <= 20) {
+            println(`aborting due to ${errorCount} errors`)
+        } else {
+            println(`aborting due to ${errorCount} errors (20 shown)`)
+        }
+        exit(1)
+    }
     return 1
 }
 
-// ── Return path analysis ─────────────────────────────────────
 
-function blockAlwaysReturns(blockId: int): int {
-    if (blockId <= 0) { return 0 }
-    if (nGetKind(blockId) != "BLOCK") { return 0 }
-    const stmtList = nGetList(blockId)
-    if (stmtList == "") { return 0 }
-    const parts = stmtList.split(",")
-    for (p in parts) {
-        const sid = parseInt(p)
-        if (sid > 0 && stmtAlwaysReturns(sid) == 1) { return 1 }
-    }
-    return 0
-}
-
-function stmtAlwaysReturns(id: int): int {
-    if (id <= 0) { return 0 }
-    const kind = nGetKind(id)
-    if (kind == "RETURN") { return 1 }
-    if (kind == "THROW") { return 1 }
-    // exit() is noreturn
-    if (kind == "EXPR_STMT") {
-        const inner = nGetI1(id)
-        if (inner > 0 && nGetKind(inner) == "CALL" && nGetS1(inner) == "exit") { return 1 }
-        return 0
-    }
-    if (kind == "IF") {
-        const elseId = nGetI3(id)
-        if (elseId <= 0) { return 0 }
-        if (blockAlwaysReturns(nGetI2(id)) == 1 && blockAlwaysReturns(elseId) == 1) { return 1 }
-        return 0
-    }
-    if (kind == "TRY") {
-        if (blockAlwaysReturns(nGetI1(id)) == 1 && blockAlwaysReturns(nGetI2(id)) == 1) { return 1 }
-        return 0
-    }
-    if (kind == "SWITCH") {
-        const defId = nGetI2(id)
-        if (defId <= 0) { return 0 }
-        if (blockAlwaysReturns(defId) == 0) { return 0 }
-        const caseList = nGetList(id)
-        if (caseList == "") { return 0 }
-        const cases = caseList.split(",")
-        for (c in cases) {
-            const caseId = parseInt(c)
-            if (caseId > 0 && nGetKind(caseId) == "SWITCH_CASE") {
-                if (blockAlwaysReturns(nGetI2(caseId)) == 0) { return 0 }
-            }
-        }
-        return 1
-    }
-    if (kind == "BLOCK") { return blockAlwaysReturns(id) }
-    return 0
-}
-
-// ── Statement checking ────────────────────────────────────────
-
-function checkStmt(id: int) {
-    const kind = nGetKind(id)
-    if (kind == "FUNC_DECL") {
-        pushScope()
-        const paramList = nGetList(id)
-        checkParamList(paramList)
-        const bodyId = nGetI1(id)
-        checkBlock(bodyId)
-        popScope()
-        // Return path analysis: non-void functions must return on all paths
-        const retType = nGetS2(id)
-        if (retType != "" && retType != "void") {
-            if (blockAlwaysReturns(bodyId) == 0) {
-                println(`checker error: function '${nGetS1(id)}' with return type '${retType}' does not return on all paths`)
-                exit(1)
-            }
-        }
-        return
-    }
-    if (kind == "CLASS_DECL") {
-        const className = nGetS1(id)
-        const implList = nGetS3(id)
-        const methodsBlockId = nGetI2(id)
-        // Collect class method names
-        let classMethods = ","
-        if (methodsBlockId > 0) {
-            const ml = nGetList(methodsBlockId)
-            if (ml != "") {
-                const ms = ml.split(",")
-                for (m in ms) {
-                    const mId = parseInt(m)
-                    if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
-                        classMethods = `${classMethods}${nGetS1(mId)},`
-                    }
-                }
-            }
-        }
-        // Verify interface implementations (uses contains to avoid i64/ptr bootstrap issue)
-        if (implList != "") {
-            checkInterfaceImpl(className, implList, classMethods)
-        }
-        // Check method bodies
-        if (methodsBlockId > 0) {
-            const methodList = nGetList(methodsBlockId)
-            checkStmtList(methodList)
-        }
-        return
-    }
-    if (kind == "VAR_DECL") {
-        const name = nGetS1(id)
-        const varKind = nGetS2(id)
-        let typeAnn = nGetS3(id)
-        const initId = nGetI1(id)
-        if (initId > 0) { checkExpr(initId) }
-        if (typeAnn == "") { typeAnn = "auto" }
-        if (varKind == "CONST") {
-            defineVar(name, typeAnn, 1)
-        } else {
-            defineVar(name, typeAnn, 0)
-        }
-        return
-    }
-    if (kind == "ASSIGN") {
-        const name = nGetS1(id)
-        if (lookupVar(name) == "") {
-            println("checker error: undefined variable '" + name + "'")
-            exit(1)
-        }
-        if (isVarConst(name) == 1) {
-            println(`checker error: cannot reassign const variable '${name}'`)
-            exit(1)
-        }
-        const valId = nGetI1(id)
-        if (valId > 0) { checkExpr(valId) }
-        return
-    }
-    if (kind == "INDEX_ASSIGN") {
-        const indexId = nGetI1(id)
-        const valId = nGetI2(id)
-        if (indexId > 0) { checkExpr(indexId) }
-        if (valId > 0) { checkExpr(valId) }
-        return
-    }
-    if (kind == "EXPR_STMT") {
-        const exprId = nGetI1(id)
-        if (exprId > 0) { checkExpr(exprId) }
-        return
-    }
-    if (kind == "RETURN") {
-        const valId = nGetI1(id)
-        if (valId > 0) { checkExpr(valId) }
-        return
-    }
-    if (kind == "IF") {
-        checkExpr(nGetI1(id))
-        pushScope()
-        checkBlock(nGetI2(id))
-        popScope()
-        const elseId = nGetI3(id)
-        if (elseId > 0) {
-            pushScope()
-            checkBlock(elseId)
-            popScope()
-        }
-        return
-    }
-    if (kind == "FOR") {
-        pushScope()
-        checkStmt(nGetI1(id))
-        checkExpr(nGetI2(id))
-        checkStmt(nGetI3(id))
-        checkBlock(nGetI4(id))
-        popScope()
-        return
-    }
-    if (kind == "FOR_IN") {
-        pushScope()
-        checkExpr(nGetI1(id))
-        defineVar(nGetS1(id), "auto", 0)
-        checkBlock(nGetI2(id))
-        popScope()
-        return
-    }
-    if (kind == "WHILE") {
-        checkExpr(nGetI1(id))
-        pushScope()
-        checkBlock(nGetI2(id))
-        popScope()
-        return
-    }
-    if (kind == "DO_WHILE") {
-        pushScope()
-        checkBlock(nGetI1(id))
-        popScope()
-        checkExpr(nGetI2(id))
-        return
-    }
-    if (kind == "SWITCH") {
-        checkExpr(nGetI1(id))
-        const caseList = nGetList(id)
-        checkStmtList(caseList)
-        const defId = nGetI2(id)
-        if (defId > 0) { checkBlock(defId) }
-        return
-    }
-    if (kind == "SWITCH_CASE") {
-        checkBlock(nGetI2(id))
-        return
-    }
-    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { checkExpr(id); return }
-    if (kind == "TRY") {
-        pushScope()
-        checkBlock(nGetI1(id))
-        popScope()
-        pushScope()
-        defineVar(nGetS1(id), "string", 0)
-        checkBlock(nGetI2(id))
-        popScope()
-        return
-    }
-    if (kind == "THROW") {
-        checkExpr(nGetI1(id))
-        return
-    }
-    // IMPORT, INTERFACE_DECL, ENUM_DECL, BREAK, CONTINUE — no checks needed
-}
-
-function checkBlock(blockId: int) {
-    if (blockId <= 0) { return }
-    const kind = nGetKind(blockId)
-    if (kind != "BLOCK") { return }
-    const stmtList = nGetList(blockId)
-    checkStmtList(stmtList)
-}
-
-function checkStmtList(listStr: string) {
-    if (listStr == "") { return }
-    const parts = listStr.split(",")
-    for (p in parts) {
-        const childId = parseInt(p)
-        if (childId > 0) {
-            checkStmt(childId)
-        }
-    }
-}
-
-function checkParamList(listStr: string) {
-    if (listStr == "") { return }
-    const parts = listStr.split(",")
-    for (p in parts) {
-        const paramId = parseInt(p)
-        if (paramId > 0) {
-            const pk = nGetKind(paramId)
-            if (pk == "PARAM") {
-                defineVar(nGetS1(paramId), nGetS2(paramId), 0)
-            }
-        }
-    }
-}
-
-// ── Expression checking ───────────────────────────────────────
-
-function checkExpr(id: int) {
-    if (id <= 0) { return }
-    const kind = nGetKind(id)
-    if (kind == "INT_LIT" || kind == "DOUBLE_LIT" || kind == "STRING_LIT") { return }
-    if (kind == "TRUE_LIT" || kind == "FALSE_LIT" || kind == "NULL_LIT") { return }
-    if (kind == "THIS") { return }
-    if (kind == "IDENT") {
-        const name = nGetS1(id)
-        if (lookupVar(name) == "" && lookupFunc(name) == 0) {
-            println("checker error: undefined variable '" + name + "'")
-            exit(1)
-        }
-        return
-    }
-    if (kind == "BINARY") {
-        checkExpr(nGetI1(id))
-        checkExpr(nGetI2(id))
-        return
-    }
-    if (kind == "UNARY") {
-        checkExpr(nGetI1(id))
-        return
-    }
-    if (kind == "CALL") {
-        const callee = nGetS1(id)
-        if (lookupFunc(callee) == 0 && lookupVar(callee) == "") {
-            println("checker error: undefined function '" + callee + "'")
-            exit(1)
-        }
-        const argCount = countArgs(nGetList(id))
-        if (funcParamMin.has(callee) == 1) {
-            const minArgs = parseInt(funcParamMin.getString(callee))
-            const maxArgs = parseInt(funcParamMax.getString(callee))
-            if (argCount < minArgs || argCount > maxArgs) {
-                if (minArgs == maxArgs) {
-                    println(`checker error: function '${callee}' expects ${minArgs} arguments, got ${argCount}`)
-                } else {
-                    println(`checker error: function '${callee}' expects ${minArgs}-${maxArgs} arguments, got ${argCount}`)
-                }
-                exit(1)
-            }
-        }
-        checkArgList(nGetList(id))
-        return
-    }
-    if (kind == "METHOD_CALL") {
-        checkExpr(nGetI1(id))
-        checkArgList(nGetList(id))
-        return
-    }
-    if (kind == "MEMBER_ACCESS") {
-        checkExpr(nGetI1(id))
-        return
-    }
-    if (kind == "INDEX_ACCESS") {
-        checkExpr(nGetI1(id))
-        checkExpr(nGetI2(id))
-        return
-    }
-    if (kind == "NEW_EXPR") {
-        checkArgList(nGetList(id))
-        return
-    }
-    if (kind == "ARRAY_LIT") {
-        checkArgList(nGetList(id))
-        return
-    }
-    if (kind == "TERNARY") {
-        checkExpr(nGetI1(id))
-        checkExpr(nGetI2(id))
-        checkExpr(nGetI3(id))
-        return
-    }
-    if (kind == "GROUPING") {
-        checkExpr(nGetI1(id))
-        return
-    }
-    if (kind == "TEMPLATE_LIT") {
-        const fragList = nGetList(id)
-        if (fragList != "") {
-            const parts = fragList.split(",")
-            for (p in parts) {
-                const fragId = parseInt(p)
-                if (fragId > 0) {
-                    const fk = nGetKind(fragId)
-                    if (fk == "TMPL_FRAG_EXPR") {
-                        checkExpr(nGetI1(fragId))
-                    }
-                }
-            }
-        }
-        return
-    }
-    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
-        const name = nGetS1(id)
-        if (lookupVar(name) == "") {
-            println("checker error: undefined variable '" + name + "'")
-            exit(1)
-        }
-        return
-    }
-}
-
-function checkArgList(listStr: string) {
-    if (listStr == "") { return }
-    const parts = listStr.split(",")
-    for (p in parts) {
-        const argId = parseInt(p)
-        if (argId > 0) {
-            checkExpr(argId)
-        }
-    }
-}

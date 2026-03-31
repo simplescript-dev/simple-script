@@ -2,7 +2,7 @@
 // Walks the Map-based AST and produces LLVM IR text (.ll format).
 // Uses SSA registers (%1, %2, ...) and named allocas for variables.
 
-import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
+import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "./parser"
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -54,143 +54,24 @@ function varRef(name: string): string {
     return `%${ln}`
 }
 
-let funcRetTypes = ""
-let funcRetReady = 0
-let classFields = ""     // "ClassName" -> "field1,field2,..."
-let classFieldTypes = "" // "ClassName.field" -> "type"
-let classMethods = ""    // "ClassName" -> "method1,method2,..."
-let objClasses = ""      // "varName" -> "ClassName"
-let classParents = ""    // "ClassName" -> "ParentClassName"
-let classNeedsVtable = "" // "ClassName" -> "1" (if class has vtable)
-let classVtableSlots = "" // "ClassName" -> "method1,method2,..." (ordered vtable slots)
-let classVtableImpl = ""  // "ClassName.method" -> "ImplClassName_method" (actual func)
-let classDtorTags = ""    // "ClassName" -> "tag" (tag >= 10 for classes with ptr fields)
-let dtorNextTag = 10      // next available class dtor tag
-let funcDefaults = ""    // "funcName" -> "paramIdx:defaultNodeId,..."
-let funcParamCount = ""  // "funcName" -> param count
-let currentClassName = ""
+// Function registry moved to gen_registry.ss (funcRetTypes, funcDefaults, funcParamCount, etc.)
 let breakLabel = ""
 let continueLabel = ""
 // RC state moved to gen_rc.ss (localPtrVars, rcBlockDepth, blockPtrVarStack, etc.)
 let enumValues = ""
 let enumReady = 0
-let methodRetTypes = ""   // "methodName" -> return type (built-in method fallback)
-let overloadCount = ""
-let overloadReady = 0
 let annotatedRoutes = ""
 
-function initFuncRetTypes() {
-    if (funcRetReady == 1) { return }
-    funcRetTypes = Map()
-    classFields = Map()
-    classFieldTypes = Map()
-    classMethods = Map()
-    objClasses = Map()
-    classNeedsVtable = Map()
-    classVtableSlots = Map()
-    classVtableImpl = Map()
-    classDtorTags = Map()
-    dtorNextTag = 10
-    classParents = Map()
-    funcDefaults = Map()
-    funcParamCount = Map()
-    // Register Map as a built-in class (eliminates special cases)
-    classFields.set("Map", "")
-    classMethods.set("Map", "set,get,getString,has,delete,size,keys")
-    funcRetTypes.set("Map_set", "void")
-    funcRetTypes.set("Map_get", "i64")
-    funcRetTypes.set("Map_getString", "string")
-    funcRetTypes.set("Map_has", "int")
-    funcRetTypes.set("Map_delete", "void")
-    funcRetTypes.set("Map_size", "int")
-    funcRetTypes.set("Map_keys", "string")
-    funcRetTypes.set("Map_new", "Map")
-    // Register Math as built-in class with static methods (Java/JS style)
-    classFields.set("Math", "")
-    funcRetTypes.set("Math_sqrt", "double")
-    funcRetTypes.set("Math_abs", "double")
-    funcRetTypes.set("Math_floor", "double")
-    funcRetTypes.set("Math_ceil", "double")
-    funcRetTypes.set("Math_round", "double")
-    funcRetTypes.set("Math_pow", "double")
-    funcRetTypes.set("Math_log", "double")
-    funcRetTypes.set("Math_sin", "double")
-    funcRetTypes.set("Math_cos", "double")
-    funcRetTypes.set("Math_random", "double")
-    funcRetTypes.set("Math_min", "double")
-    funcRetTypes.set("Math_max", "double")
-    // Built-in function return types (from callReturnType hardcoded lists)
-    funcRetTypes.set("readLine", "string")
-    funcRetTypes.set("readFile", "string")
-    funcRetTypes.set("arg", "string")
-    funcRetTypes.set("getenv", "string")
-    funcRetTypes.set("listDir", "string")
-    funcRetTypes.set("sha256", "string")
-    funcRetTypes.set("tcpRead", "string")
-    funcRetTypes.set("fromCharCode", "string")
-    funcRetTypes.set("base64Encode", "string")
-    funcRetTypes.set("base64Decode", "string")
-    funcRetTypes.set("ss_sqlite3_query", "string")
-    funcRetTypes.set("ss_sqlite3_open", "string")
-    funcRetTypes.set("println", "void")
-    funcRetTypes.set("print", "void")
-    funcRetTypes.set("writeFile", "void")
-    funcRetTypes.set("appendFile", "void")
-    funcRetTypes.set("exit", "void")
-    funcRetTypes.set("tcpClose", "void")
-    funcRetTypes.set("parseInt", "int")
-    funcRetTypes.set("args", "int")
-    funcRetTypes.set("system", "int")
-    funcRetTypes.set("tcpListen", "int")
-    funcRetTypes.set("tcpAccept", "int")
-    funcRetTypes.set("tcpWrite", "int")
-    funcRetTypes.set("mkdir", "int")
-    funcRetTypes.set("mkdirp", "int")
-    funcRetTypes.set("fileExists", "int")
-    funcRetTypes.set("removeFile", "int")
-    funcRetTypes.set("renameFile", "int")
-    funcRetTypes.set("charCodeAt", "int")
-    funcRetTypes.set("parseDouble", "double")
-    funcRetTypes.set("timeMs", "i64")
-    funcRetTypes.set("timeUnix", "i64")
-    funcRetTypes.set("fileSize", "i64")
-    funcRetTypes.set("Map", "Map")
-    // Built-in method return types (type-agnostic fallback for string/array methods)
-    methodRetTypes = Map()
-    methodRetTypes.set("length", "int")
-    methodRetTypes.set("indexOf", "int")
-    methodRetTypes.set("has", "int")
-    methodRetTypes.set("size", "int")
-    methodRetTypes.set("contains", "int")
-    methodRetTypes.set("startsWith", "int")
-    methodRetTypes.set("endsWith", "int")
-    methodRetTypes.set("charCodeAt", "int")
-    methodRetTypes.set("reduce", "int")
-    methodRetTypes.set("charAt", "string")
-    methodRetTypes.set("substring", "string")
-    methodRetTypes.set("trim", "string")
-    methodRetTypes.set("toUpperCase", "string")
-    methodRetTypes.set("toLowerCase", "string")
-    methodRetTypes.set("replace", "string")
-    methodRetTypes.set("join", "string")
-    methodRetTypes.set("repeat", "string")
-    methodRetTypes.set("padStart", "string")
-    methodRetTypes.set("padEnd", "string")
-    methodRetTypes.set("keys", "string")
-    methodRetTypes.set("getString", "string")
-    methodRetTypes.set("split", "ptr")
-    methodRetTypes.set("push", "ptr")
-    methodRetTypes.set("slice", "ptr")
-    methodRetTypes.set("concat", "ptr")
-    methodRetTypes.set("reverse", "ptr")
-    methodRetTypes.set("sort", "ptr")
-    methodRetTypes.set("map", "ptr")
-    methodRetTypes.set("filter", "ptr")
-    methodRetTypes.set("get", "i64")
-    methodRetTypes.set("delete", "void")
-    methodRetTypes.set("forEach", "void")
-    funcRetReady = 1
-}
+// Generic function state (monomorphization)
+let genericFuncNodes = ""
+let specializedFuncs = ""
+let genericTypeSubs = ""
+let genericSpecDefs = ""
+let specFuncName = ""
+// Generic class state (monomorphization)
+let genericClassNodes = ""
+let specializedClasses = ""
+let specClassName = ""
 
 function initCodegen() {
     if (varTypesReady == 1) { return }
@@ -214,6 +95,100 @@ function nextReg(): string {
 function nextLabel(prefix: string): string {
     labelCount = labelCount + 1
     return `${prefix}.${labelCount}`
+}
+
+// ── IR Builder Helpers ───────────────────────────────────────
+
+function irLabel(name: string) {
+    emitIR(`${name}:`)
+}
+
+function irAlloca(dst: string, ty: string, align: int) {
+    emitIR(`  %${dst} = alloca ${ty}, align ${align}`)
+}
+
+function irLoad(dst: string, ty: string, ptr: string) {
+    emitIR(`  %${dst} = load ${ty}, ptr ${ptr}`)
+}
+
+function irStore(ty: string, val: string, ptr: string) {
+    emitIR(`  store ${ty} ${val}, ptr ${ptr}`)
+}
+
+function irGEP(dst: string, baseTy: string, base: string, idx: string) {
+    emitIR(`  %${dst} = getelementptr ${baseTy}, ptr ${base}, i64 ${idx}`)
+}
+
+function irICmp(dst: string, op: string, ty: string, a: string, b: string) {
+    emitIR(`  %${dst} = icmp ${op} ${ty} ${a}, ${b}`)
+}
+
+function irBr(label: string) {
+    emitIR(`  br label %${label}`)
+}
+
+function irBrCond(cond: string, thenL: string, elseL: string) {
+    emitIR(`  br i1 %${cond}, label %${thenL}, label %${elseL}`)
+}
+
+function irRet(ty: string, val: string) {
+    emitIR(`  ret ${ty} ${val}`)
+}
+
+function irRetVoid() {
+    emitIR("  ret void")
+}
+
+function irAdd(dst: string, ty: string, a: string, b: string) {
+    emitIR(`  %${dst} = add ${ty} ${a}, ${b}`)
+}
+
+function irSub(dst: string, ty: string, a: string, b: string) {
+    emitIR(`  %${dst} = sub ${ty} ${a}, ${b}`)
+}
+
+function irMul(dst: string, ty: string, a: string, b: string) {
+    emitIR(`  %${dst} = mul ${ty} ${a}, ${b}`)
+}
+
+function irCall(dst: string, retTy: string, func: string, args: string) {
+    emitIR(`  %${dst} = call ${retTy} @${func}(${args})`)
+}
+
+function irCallVoid(func: string, args: string) {
+    emitIR(`  call void @${func}(${args})`)
+}
+
+function irSext(dst: string, fromTy: string, val: string, toTy: string) {
+    emitIR(`  %${dst} = sext ${fromTy} ${val} to ${toTy}`)
+}
+
+function irZext(dst: string, fromTy: string, val: string, toTy: string) {
+    emitIR(`  %${dst} = zext ${fromTy} ${val} to ${toTy}`)
+}
+
+function irSelect(dst: string, cond: string, ty: string, thenVal: string, elseVal: string) {
+    emitIR(`  %${dst} = select i1 %${cond}, ${ty} ${thenVal}, ${ty} ${elseVal}`)
+}
+
+function irSDiv(dst: string, ty: string, a: string, b: string) {
+    emitIR(`  %${dst} = sdiv ${ty} ${a}, ${b}`)
+}
+
+function irOr(dst: string, ty: string, a: string, b: string) {
+    emitIR(`  %${dst} = or ${ty} ${a}, ${b}`)
+}
+
+function irTrunc(dst: string, fromTy: string, val: string, toTy: string) {
+    emitIR(`  %${dst} = trunc ${fromTy} ${val} to ${toTy}`)
+}
+
+function irPtrToInt(dst: string, val: string, toTy: string) {
+    emitIR(`  %${dst} = ptrtoint ptr ${val} to ${toTy}`)
+}
+
+function irIntToPtr(dst: string, fromTy: string, val: string) {
+    emitIR(`  %${dst} = inttoptr ${fromTy} ${val} to ptr`)
 }
 
 function addStringConst(value: string): string {
@@ -253,6 +228,7 @@ function registerAllDecls(rootId: int) {
     const stmtList0 = nGetList(rootId)
     if (stmtList0 == "") { return }
     const parts0 = stmtList0.split(",")
+    registrationPhase = 1
     for (p0 in parts0) {
         const sid = parseInt(p0)
         if (sid <= 0) { continue }
@@ -268,12 +244,11 @@ function registerAllDecls(rootId: int) {
                 funcRetTypes.set(`${fname}_${fSig}`, fret)
                 funcParamCount.set(`${fname}_${fSig}`, funcParamCount.getString(fname) ?? "0")
             }
-            if (overloadReady == 0) { overloadCount = new Map(); overloadReady = 1 }
-            if (overloadCount.has(fname) == 1) {
-                const cnt = parseInt(overloadCount.getString(fname))
-                overloadCount.set(fname, `${cnt + 1}`)
-            } else {
-                overloadCount.set(fname, "1")
+            trackOverload(fname)
+            // Track generic functions for monomorphization
+            const fTypeParams = nGetS3(sid)
+            if (fTypeParams != "") {
+                genericFuncNodes.set(fname, `${sid}`)
             }
             const fparams = nGetList(sid)
             if (fparams != "") {
@@ -300,7 +275,7 @@ function registerAllDecls(rootId: int) {
                             nSetI1(fpId, defId)
                         }
                         if (defId > 0) {
-                            if (defaults == "") { defaults = `${pCount}:${defId}` } else { defaults = `${defaults},${pCount}:${defId}` }
+                            defaults = listAppendStr(defaults, `${pCount}:${defId}`)
                         }
                         pCount = pCount + 1
                     }
@@ -311,8 +286,15 @@ function registerAllDecls(rootId: int) {
                 funcParamCount.set(fname, "0")
             }
         }
+        if (sk == "INTERFACE_DECL") {
+            registerInterface(sid)
+        }
         if (sk == "CLASS_DECL") {
             registerClass(sid)
+            // Track generic classes for monomorphization
+            if (classTypeParams(sid) != "") {
+                genericClassNodes.set(nGetS1(sid), `${sid}`)
+            }
             // Scan for @RestController / @RequestMapping annotations
             collectAnnotatedRoutes(sid)
         }
@@ -321,10 +303,15 @@ function registerAllDecls(rootId: int) {
     resolveInheritance()
     // Build vtable for classes in inheritance hierarchies
     buildClassVtables()
+    // Emit struct types for generic parents deferred during registration
+    emitDeferredStructDefs()
+    registrationPhase = 0
     // Assign dtor tags to classes with ptr fields
     assignClassDtorTags()
     // Detect cyclic ownership and mark non-owning container fields
     detectCyclicOwnership()
+    // Generate interface dispatch functions (switch on class_id)
+    generateInterfaceDispatchers()
 }
 
 function collectAnnotatedRoutes(classId: int) {
@@ -392,16 +379,26 @@ function emitGlobalsAndCode(rootId: int) {
     const parts = sl.split(",")
     for (x1 in parts) { const s1 = parseInt(x1); if (s1 > 0 && nGetKind(s1) == "VAR_DECL") { genGlobalVar(s1) } }
     emitIR("")
-    for (x2 in parts) { const s2 = parseInt(x2); if (s2 > 0 && nGetKind(s2) != "VAR_DECL") { genStmt(s2) } }
+    for (x2 in parts) {
+        const s2 = parseInt(x2)
+        if (s2 <= 0) { continue }
+        if (nGetKind(s2) == "VAR_DECL") { continue }
+        // Skip generic functions — emitted on-demand at call sites
+        if (nGetKind(s2) == "FUNC_DECL" && nGetS3(s2) != "") { continue }
+        // Skip generic classes — emitted on-demand at new expressions
+        if (nGetKind(s2) == "CLASS_DECL" && genericClassNodes.has(nGetS1(s2)) == 1) { continue }
+        genStmt(s2)
+    }
 }
 
 function resetCodegen() {
     // Reset guard flags so init functions re-create fresh Maps
     varTypesReady = 0
-    funcRetReady = 0
     varAliasReady = 0
+    classStateReady = 0
     initCodegen()
-    initFuncRetTypes()
+    initClassState()
+    initFuncRegistry()
     initVarAliases()
     // IR output
     irBuf = ""
@@ -412,23 +409,38 @@ function resetCodegen() {
     regCount = 0
     labelCount = 0
     varCounter = 0
-    // Function/class context
+    // Function context
     currentFunc = ""
-    currentClassName = ""
     terminated = 0
     breakLabel = ""
     continueLabel = ""
     // RC state (gen_rc.ss)
     initRcState()
-    // Enum / overload / routes
+    // PIR state (gen_pir.ss)
+    initPir()
+    // Enum / routes
     enumValues = ""
     enumReady = 0
-    overloadCount = ""
-    overloadReady = 0
     annotatedRoutes = ""
     // Arrow functions (gen_exprs.ss)
     arrowCount = 0
     arrowDefs = ""
+    // Generic function monomorphization
+    genericFuncNodes = Map()
+    specializedFuncs = Map()
+    genericTypeSubs = Map()
+    genericSpecDefs = ""
+    specFuncName = ""
+    // Generic class monomorphization
+    genericClassNodes = Map()
+    specializedClasses = Map()
+    specClassName = ""
+    // Generic class inheritance deferred state
+    registrationPhase = 0
+    deferredStructDefs = ""
+    specClassNodeId = Map()
+    specClassTypeArgs = Map()
+    specClassGenerated = Map()
     // Global var init tracking (gen_stmts.ss)
     globalInitIds = ""
 }
@@ -438,6 +450,7 @@ function generate(rootId: int): string {
     emitRuntimeDefs()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
+    generateDeferredSpecializations()
     return `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${strConsts}\n${irBuf}`
 }
 
@@ -449,59 +462,11 @@ function generateToFile(rootId: int, outFile: string) {
     emitRuntimeDefs()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
+    generateDeferredSpecializations()
     irOutFile = ""
     const body = readFile(outFile)
     writeFile(outFile, `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${readFile(`${outFile}.str`)}\n${body}`)
 }
 
-// ── Builtin function name mapping ─────────────────────────────
-
-let builtinMap = ""
-let builtinMapReady = 0
-
-function initBuiltinMap() {
-    if (builtinMapReady == 1) { return }
-    builtinMap = Map()
-    // Exceptions (name doesn't match ss_ + callee)
-    builtinMap.set("args", "ss_argCount")
-    builtinMap.set("arg", "ss_argGet")
-    builtinMap.set("Map", "ss_mapNew")
-    // Math.xxx() → ss_xxx
-    builtinMap.set("Math_sqrt", "ss_sqrt")
-    builtinMap.set("Math_abs", "ss_abs")
-    builtinMap.set("Math_floor", "ss_floor")
-    builtinMap.set("Math_ceil", "ss_ceil")
-    builtinMap.set("Math_round", "ss_round")
-    builtinMap.set("Math_pow", "ss_pow")
-    builtinMap.set("Math_log", "ss_log")
-    builtinMap.set("Math_sin", "ss_sin")
-    builtinMap.set("Math_cos", "ss_cos")
-    builtinMap.set("Math_random", "ss_random")
-    builtinMap.set("Math_min", "ss_min")
-    builtinMap.set("Math_max", "ss_max")
-    // All standard builtins: ss_ + callee
-    // Math functions moved to Math.xxx() — NOT in builtinMap
-    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
-    const parts = names.split(",")
-    for (n in parts) {
-        builtinMap.set(n, `ss_${n}`)
-    }
-    builtinMapReady = 1
-}
-
-function runtimeName(callee: string): string {
-    initBuiltinMap()
-    // User-defined functions take priority over builtins
-    if (funcRetTypes.has(callee) == 1) {
-        // But NOT for built-in class methods (Math_min etc.) — always use builtinMap
-        if (builtinMap.has(callee) == 1) {
-            return builtinMap.getString(callee)
-        }
-        return callee
-    }
-    if (builtinMap.has(callee) == 1) {
-        return builtinMap.getString(callee)
-    }
-    return callee
-}
+// Builtin function name mapping moved to gen_registry.ss (builtinMap, runtimeName)
 

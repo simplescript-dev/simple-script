@@ -4,12 +4,16 @@
 import { tokenize, initTkMap } from "./lexer"
 import { parse, initParser } from "./parser"
 import { check } from "./checker"
-import { generate, generateToFile, initCodegen, initFuncRetTypes, initVarAliases } from "./codegen"
+import { generate, generateToFile, initCodegen, initVarAliases } from "./codegen"
+import { initFuncRegistry } from "./gen_registry"
 import { initRcState, detectCyclicOwnership } from "./gen_rc"
 import { genStmt } from "./gen_stmts"
 import { genExpr } from "./gen_exprs"
-import { registerClass } from "./gen_class"
+import { inferType, ssTypeToLLVM } from "./gen_types"
+import { registerClass, initClassState } from "./gen_class"
 import { emitRuntimeDefs } from "./gen_runtime"
+import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./gen_pir"
+import { pirLivenessPass, pirMoveAnalysis } from "./pir_opt"
 
 // ── Import resolution ─────────────────────────────────────────
 
@@ -71,7 +75,7 @@ function normalizePath(path: string): string {
             }
             continue
         }
-        if (stack == "") { stack = p } else { stack = `${stack},${p}` }
+        stack = listAppendStr(stack, p)
         stackCount = stackCount + 1
     }
     if (stack == "") {
@@ -171,7 +175,8 @@ function main() {
     initTkMap()
     initParser()
     initCodegen()
-    initFuncRetTypes()
+    initClassState()
+    initFuncRegistry()
     initVarAliases()
 
     if (args() < 2) { printUsage(); exit(1) }
@@ -311,7 +316,8 @@ function runTestDir(dir: string, p: int, f: int, t: int) {
             if (entry == "guess_game.ss" || entry == "ygrep.ss") { continue }
             if (entry != "main.ss" && dir.endsWith("/import") == 1) { continue }
             const outBin = "/tmp/ss_test_bin"
-            const rc1 = system(`bin/ss build ${path} -o ${outBin} 2>/dev/null`)
+            const selfBin = arg(0)
+            const rc1 = system(`${selfBin} build ${path} -o ${outBin} >/dev/null 2>&1`)
             if (rc1 != 0) {
                 println("FAIL (compile): " + path)
                 testFailed = testFailed + 1
@@ -472,11 +478,15 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
 
     let linkFlags = "-static"
     if (release == 1) { linkFlags = "-static -O2 -s" }
+    // Link with mimalloc if vendor/mimalloc.o exists
+    let mimallocObj = ""
+    if (fileExists("vendor/mimalloc.o") == 1) { mimallocObj = "vendor/mimalloc.o" }
+    if (fileExists("../vendor/mimalloc.o") == 1) { mimallocObj = "../vendor/mimalloc.o" }
     // Link with SQLite if vendor/sqlite3.o exists
     let sqliteObj = ""
     if (fileExists("vendor/sqlite3.o") == 1) { sqliteObj = "vendor/sqlite3.o" }
     if (fileExists("../vendor/sqlite3.o") == 1) { sqliteObj = "../vendor/sqlite3.o" }
-    if (system(`musl-gcc ${linkFlags} ${objFile} ${sqliteObj} -o ${outputFile} -lm`) != 0) {
+    if (system(`musl-gcc ${linkFlags} ${objFile} ${mimallocObj} ${sqliteObj} -o ${outputFile} -lm`) != 0) {
         println("error: linking failed")
         exit(1)
     }

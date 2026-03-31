@@ -2,7 +2,7 @@
 id: I003
 title: Semantic analysis incomplete — missing return path, type checking, inferType pre-pass
 severity: high
-related-decisions: [D003]
+related-decisions: [D003, D007, D012]
 related-principles: [P8]
 origin: design-improvements.md DI-4 Phase 2-4
 ---
@@ -37,13 +37,14 @@ Pipeline: `Lexer → Parser → Checker → Codegen`. checker.ss currently valid
 ### Phase 2: Return path analysis ✅ (D007)
 Implemented. `blockAlwaysReturns`/`stmtAlwaysReturns` walk AST to verify all control paths return. Handles: if/else, try/catch, switch/default, throw, exit() as noreturn. Checker also integrated into `compile()` pipeline.
 
-### Phase 3: Basic type checking
+### Phase 3: Basic type checking (partially done)
+- ✅ METHOD_CALL / NEW_EXPR: argument count checking (D012) — constructor params with inheritance accumulation, method params with parent chain walk, receiver resolution for `this`/typed vars/new expr, built-in Map/Math methods
 - Assignment: RHS type compatible with LHS declared type
 - Function call: argument types match parameter types
-- METHOD_CALL / NEW_EXPR: argument count checking (requires resolving receiver class → needs class type info in checker)
+- Remaining METHOD_CALL receiver resolution (chain calls, function return types — needs inferType in checker)
 
 ### Phase 4: Migrate inferType to checker
 Move `inferType()` from gen_exprs.ss to checker.ss as a pre-pass. Checker populates type info for all expressions. Codegen reads cached types instead of re-inferring. This enables I002 (structured types) to be addressed independently.
 
 ## Context
-Files: checker.ss (current ~600 lines). D003 established the incremental approach — each phase is independently verifiable.
+Files: checker.ss (current ~865 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). Receiver class resolution covers 3 static cases; full coverage requires Phase 4 (inferType migration).

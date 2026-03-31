@@ -33,9 +33,7 @@ Two missing `ss_rc_retain` calls are added in codegen, fixing ownership transfer
 All existing tests used string constants (`"Alice"`), which carry the magic guard (0x534F5353). The retain/release functions detect non-RC pointers via the magic check and skip operations. Only dynamically created strings (from concatenation, template literals) and class instances are RC-managed. The bugs are only triggered by dynamic strings/objects stored in arrays or passed to constructors.
 
 ## Key Reasoning
-Both bugs share the same pattern: **ownership transfer without retain**. When a reference is stored in a new location (container element, class field), the storage location becomes a new owner and must increment the refcount. Without this, the original owner's release drops rc to 0 prematurely.
-
-The fix follows the standard ARC rule used by Swift and Nim: **every store of a ptr into a persistent location must be paired with a retain**.
+Both bugs share the same pattern: **ownership transfer without retain**. When a reference is stored in a new location (container element, class field), the storage location becomes a new owner and must increment the refcount. The fix follows the standard ARC rule used by Swift and Nim: every store of a ptr into a persistent location must be paired with a retain.
 
 ## Rejected Alternatives
 None — these are straightforward correctness fixes with no design alternatives.
@@ -44,7 +42,11 @@ None — these are straightforward correctness fixes with no design alternatives
 - D005 Phase 9: Bug 1 fix is prerequisite for non-owning container semantics (the `pushNonOwning` conditional retain only makes sense when retain exists in the first place)
 - D004 (RC centralization): Both fixes use the centralized `emitIR` pattern for retain calls
 
-## Verification
+## Open Tensions
+None currently.
+
+## Notes
+Verification:
 1. `bin/ss test tests/` — all existing tests pass
 2. `tests/phase4/rc_class_dtor.ss` — exercises ptr field retention in constructors
 3. `tests/phase4/rc_destruct.ss` — exercises container element retention

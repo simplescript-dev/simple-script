@@ -2,7 +2,7 @@
 id: I001
 title: Global mutable state explosion — 55+ global lets
 severity: high
-related-decisions: [D004]
+related-decisions: [D004, D014, D015]
 related-principles: [P10]
 origin: design-improvements.md DI-2
 ---
@@ -26,7 +26,7 @@ codegen.ss has 30+ global let variables, gen_exprs.ss 10+, gen_stmts.ss 10+, par
 ## Proposed Solution
 > ⚠️ **Blocked**: SS has no `struct` — global Map is the only state aggregation mechanism.
 >
-> **Short-term**: Group related global variables into Map objects (e.g., `rcState`, `codegenCtx`) to reduce bare global count. D004 already did this for RC state (7 globals → gen_rc.ss with initRcState()).
+> **Short-term**: Group related global variables into dedicated files with init functions. D004 did this for RC state (7 globals → gen_rc.ss with `initRcState()`). D014 did this for class state (11 globals → gen_class.ss with `initClassState()`). D015 did this for function registry (9 globals → gen_registry.ss with `initFuncRegistry()`). Remaining: IR output state (irBuf, strConsts, strCount, irOutFile, strOutFile), SSA counters (regCount, labelCount, varCounter), variable tracking (varTypes, varAliases, globalAliases), control flow (breakLabel, continueLabel, currentFunc, terminated), and misc (enumValues, annotatedRoutes) — ~15 globals in codegen.ss (320 lines, under V5 threshold).
 >
 > **Long-term**: After SS supports `struct`, upgrade Map groups to struct instances.
 

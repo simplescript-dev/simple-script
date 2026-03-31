@@ -1,6 +1,8 @@
 // SimpleScript Bootstrap Lexer
 // Tokenizes .ss source code. Tokens stored as "KIND\tVALUE" lines in a string.
 
+import { lexPlus, lexMinus, lexStar, lexSlash, lexPercent, lexEq, lexBang, lexLt, lexGt, lexAnd, lexOr, lexQuestion, lexAnnotation, lexCaret, lexTilde } from "./lex_ops"
+
 // ── Lexer state ───────────────────────────────────────────────
 
 let src = ""
@@ -13,6 +15,8 @@ let tokenCount = 0
 let tkKinds = ""
 let tkValues = ""
 let tkLines = ""
+let tkCols = ""
+let tokenStartCol = 1
 let tkMapReady = 0
 
 function initTkMap() {
@@ -20,6 +24,7 @@ function initTkMap() {
     tkKinds = Map()
     tkValues = Map()
     tkLines = Map()
+    tkCols = Map()
     tkMapReady = 1
 }
 
@@ -38,6 +43,7 @@ function tokenize(source: string): string {
     while (pos < srcLen) {
         skipWS()
         if (pos >= srcLen) { break }
+        tokenStartCol = curCol
         const ch = src.charAt(pos)
         if (ch == "\n") {
             emit("NEWLINE", "\\n")
@@ -123,11 +129,36 @@ function emit(kind: string, value: string) {
     tkKinds.set(idx, kind)
     tkValues.set(idx, value)
     tkLines.set(idx, `${curLine}`)
+    tkCols.set(idx, `${tokenStartCol}`)
     tokenCount = tokenCount + 1
 }
 
 function tkLine(index: int): int {
     return parseInt(tkLines.getString(`${index}`))
+}
+
+function tkCol(index: int): int {
+    return parseInt(tkCols.getString(`${index}`))
+}
+
+function getSourceLine(lineNum: int): string {
+    let current = 1
+    let start = 0
+    let i = 0
+    while (i < srcLen) {
+        if (src.charAt(i) == "\n") {
+            if (current == lineNum) {
+                return src.substring(start, i - start)
+            }
+            current = current + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    if (current == lineNum) {
+        return src.substring(start, srcLen - start)
+    }
+    return ""
 }
 
 function advance(): string {
@@ -246,9 +277,11 @@ function lexTemplate() {
         // template char processing
         if (peek() == "$" && peekNext() == "{") {
             if (literal.length() > 0) {
+                tokenStartCol = curCol
                 emit("TMPL_LIT", literal)
                 literal = ""
             }
+            tokenStartCol = curCol
             advance()
             advance()
             emit("TMPL_EXPR_START", "${")
@@ -257,6 +290,7 @@ function lexTemplate() {
                 if (depth <= 0) { break }
                 skipWS()
                 if (pos >= srcLen) { break }
+                tokenStartCol = curCol
                 const ch = peek()
                 if (ch == "{") { depth = depth + 1; emit("LBRACE", "{"); advance() } else if (ch == "}") {
                     depth = depth - 1
@@ -295,6 +329,7 @@ function lexTemplate() {
                     exit(1)
                 }
             }
+            tokenStartCol = curCol
             emit("TMPL_EXPR_END", "}")
             continue
         }
@@ -316,8 +351,10 @@ function lexTemplate() {
     if (pos >= srcLen) { println("lexer error: unterminated template"); exit(1) }
     advance()
     if (literal.length() > 0) {
+        tokenStartCol = curCol
         emit("TMPL_LIT", literal)
     }
+    tokenStartCol = curCol
     emit("TMPL_END", "`")
 }
 
@@ -435,109 +472,4 @@ function keywordKind(text: string): string {
     return "IDENT"
 }
 
-// ── Multi-char operators ──────────────────────────────────────
-
-function lexPlus() {
-    advance()
-    if (pos < srcLen && peek() == "+") { advance(); emit("PLUS_PLUS", "++"); return }
-    if (pos < srcLen && peek() == "=") { advance(); emit("PLUS_ASSIGN", "+="); return }
-    emit("PLUS", "+")
-}
-
-function lexMinus() {
-    advance()
-    if (pos < srcLen && peek() == "-") { advance(); emit("MINUS_MINUS", "--"); return }
-    if (pos < srcLen && peek() == "=") { advance(); emit("MINUS_ASSIGN", "-="); return }
-    if (pos < srcLen && peek() == ">") { advance(); emit("THIN_ARROW", "->"); return }
-    emit("MINUS", "-")
-}
-
-function lexStar() {
-    advance()
-    if (pos < srcLen && peek() == "*") { advance(); emit("POWER", "**"); return }
-    if (pos < srcLen && peek() == "=") { advance(); emit("STAR_ASSIGN", "*="); return }
-    emit("STAR", "*")
-}
-
-function lexSlash() {
-    advance()
-    if (pos < srcLen && peek() == "=") { advance(); emit("SLASH_ASSIGN", "/="); return }
-    emit("SLASH", "/")
-}
-
-function lexPercent() {
-    advance()
-    if (pos < srcLen && peek() == "=") { advance(); emit("PERCENT_ASSIGN", "%="); return }
-    emit("PERCENT", "%")
-}
-
-function lexEq() {
-    advance()
-    if (pos < srcLen && peek() == "=") { advance(); emit("EQ", "=="); return }
-    if (pos < srcLen && peek() == ">") { advance(); emit("ARROW", "=>"); return }
-    emit("ASSIGN", "=")
-}
-
-function lexBang() {
-    advance()
-    if (pos < srcLen && peek() == "=") { advance(); emit("NE", "!="); return }
-    emit("NOT", "!")
-}
-
-function lexLt() {
-    advance()
-    if (pos < srcLen && peek() == "=") { advance(); emit("LE", "<="); return }
-    if (pos < srcLen && peek() == "<") { advance(); emit("SHL", "<<"); return }
-    emit("LT", "<")
-}
-
-function lexGt() {
-    advance()
-    if (pos < srcLen && peek() == "=") { advance(); emit("GE", ">="); return }
-    if (pos < srcLen && peek() == ">") {
-        advance()
-        if (pos < srcLen && peek() == ">") { advance(); emit("USHR", ">>>"); return }
-        emit("SHR", ">>")
-        return
-    }
-    emit("GT", ">")
-}
-
-function lexAnd() {
-    advance()
-    if (pos < srcLen && peek() == "&") { advance(); emit("AND", "&&"); return }
-    emit("BIT_AND", "&")
-}
-
-function lexOr() {
-    advance()
-    if (pos < srcLen && peek() == "|") { advance(); emit("OR", "||"); return }
-    emit("BIT_OR", "|")
-}
-
-function lexQuestion() {
-    advance()
-    if (pos < srcLen && peek() == "?") { advance(); emit("NULLISH", "??"); return }
-    if (pos < srcLen && peek() == ".") { advance(); emit("OPT_CHAIN", "?."); return }
-    emit("QUESTION", "?")
-}
-
-function lexAnnotation() {
-    advance()
-    let name = ""
-    while (pos < srcLen && isAlphaNum(peek())) {
-        name = name + peek()
-        advance()
-    }
-    emit("ANNOTATION", name)
-}
-
-function lexCaret() {
-    advance()
-    emit("BIT_XOR", "^")
-}
-
-function lexTilde() {
-    advance()
-    emit("BIT_NOT", "~")
-}
+// ── Multi-char operators ── (see lex_ops.ss)

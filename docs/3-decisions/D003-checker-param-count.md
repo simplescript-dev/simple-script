@@ -24,5 +24,8 @@ Dual Map handles default parameters and overloads naturally. Union interval is c
 ## Interfaces With Other Decisions
 - DI-4 Phase 2-4: This is step 1 of a 4-phase plan. Phase 2 = return path analysis, Phase 3 = type checking.
 
+## Open Tensions
+None currently.
+
 ## Notes
 Also fixed: chain-based scope (replacing broken scopeDepth), enabled const reassignment detection, added TRY/THROW node traversal. Completed 2026-03-30.

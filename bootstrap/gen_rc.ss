@@ -4,6 +4,7 @@
 // ── RC global state ──────────────────────────────────────────
 
 let localPtrVars = ""
+let localFnVars = ""         // fn-typed locals holding closures (released via ss_release)
 let rcBlockDepth = 0
 let blockPtrVarStack = ""    // "|"-separated segments of block-level ptr vars
 let loopBlockStackSaved = "" // saved blockPtrVarStack at loop entry (for break/continue)
@@ -13,6 +14,7 @@ let pushNonOwning = 0        // flag: current push target is non-owning containe
 
 function initRcState() {
     localPtrVars = ""
+    localFnVars = ""
     rcBlockDepth = 0
     blockPtrVarStack = ""
     loopBlockStackSaved = ""
@@ -27,8 +29,7 @@ function initRcState() {
 function trackPtrVar(llName: string) {
     if (rcBlockDepth == 0) {
         // Function-level: track in localPtrVars (released at function exit)
-        if (localPtrVars == "") { localPtrVars = llName }
-        else { localPtrVars = `${localPtrVars},${llName}` }
+        localPtrVars = listAppendStr(localPtrVars, llName)
     } else {
         // Block-level: track in blockPtrVarStack (released at block exit)
         if (blockPtrVarStack == "" || blockPtrVarStack.endsWith("|") == 1) {
@@ -105,6 +106,37 @@ function emitReleaseLocals() {
         const r = nextReg()
         emitIR(`  ${r} = load ptr, ptr %${p}, align 8`)
         emitIR(`  call void @ss_rc_release(ptr ${r})`)
+    }
+}
+
+// Track a fn-typed local for closure release
+function trackFnVar(llName: string) {
+    localFnVars = listAppendStr(localFnVars, llName)
+}
+
+// Emit release for fn-typed locals (closures with tag bit)
+function emitReleaseFnLocals() {
+    if (localFnVars == "") { return }
+    const parts = localFnVars.split(",")
+    for (p in parts) {
+        if (p == "") { continue }
+        const valR = nextReg()
+        emitIR(`  ${valR} = load i64, ptr %${p}, align 8`)
+        const tagR = nextReg()
+        emitIR(`  ${tagR} = and i64 ${valR}, 1`)
+        const isClR = nextReg()
+        emitIR(`  ${isClR} = icmp eq i64 ${tagR}, 1`)
+        const lblRel = nextLabel("fn.release")
+        const lblSkip = nextLabel("fn.skip")
+        emitIR(`  br i1 ${isClR}, label %${lblRel}, label %${lblSkip}`)
+        emitIR(`${lblRel}:`)
+        const untagR = nextReg()
+        emitIR(`  ${untagR} = and i64 ${valR}, -2`)
+        const ptrR = nextReg()
+        emitIR(`  ${ptrR} = inttoptr i64 ${untagR} to ptr`)
+        emitIR(`  call void @ss_release(ptr ${ptrR})`)
+        emitIR(`  br label %${lblSkip}`)
+        emitIR(`${lblSkip}:`)
     }
 }
 
