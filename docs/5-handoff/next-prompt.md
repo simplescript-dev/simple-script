@@ -1,7 +1,7 @@
-# Round 58
+# Round 62
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13282 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13392 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
@@ -13,28 +13,46 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-Tuple types 实现：`[int, string]` 类型语法（parser 转为 `Tuple<int,string>` 内部表示），位置类型推断（INDEX_ACCESS 常量索引时返回位置类型），元组解构支持（genDestructureArray 按位置分配类型）。修复混合类型数组安全问题：同时含 ptr 和 scalar 元素的 array literal 使用 `ss_newArray` (tag=1) 避免 cleanup 将 int 当 pointer 释放导致 segfault。1 个新测试 + 全量测试通过，bootstrap 三阶段固定点验证通过。
+Math 增强（D037）：两层架构——编译器层新增 13 个 Math 内置函数（tan/asin/acos/atan/atan2/exp/log10/log2/trunc/sign/hypot/cbrt/fmod），纯 SS 层新增 lib/math.ss 工具模块（MathUtil: clamp/lerp/inverseLerp/mapRange/toDegrees/toRadians/approxEqual/isEven/isOdd/gcd/lcm/isPowerOfTwo + PI/E/TAU/EPSILON 常量）。编译器改动涉及 gen_runtime.ss（libc 声明）、gen_rt_io.ss（ss_* wrapper）、gen_registry.ss（返回类型+builtin 映射）、checker.ss（参数检查），全量测试 + bootstrap 固定点验证通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done
 Scope:
-1. **Phase 4 remaining features**:
-   - **Numeric separators** — `1_000_000` already implemented in lexer (skip)
+1. **Standard library expansion (continued)**:
+   - **New modules**: Consider `string_utils.ss` (format, padCenter, truncate), `datetime.ss` (timestamp formatting)
+   - **json.ss remaining**: Unicode `\uXXXX` escape parsing (requires hex utils)
+2. **Phase 4 remaining features**:
    - **String template tag functions** — Tagged templates (advanced, low priority)
-2. **Standard library expansion**:
-   - **json.ss** enhancements — Additional JSON utilities
-   - **path.ss** — Path manipulation utilities
-   - **fs.ss** — File system wrapper (higher-level API over existing runtime)
 3. **Phase 2 remaining** (diminishing returns):
    - Mutability inference — Fixed-point analysis marking function params as mutated/readonly
-4. **文件大小状态**: gen_class.ss ~615 (approaching limit), gen_decls.ss ~576, parser.ss ~559, check_stmts.ss ~553, parse_exprs.ss ~531, parse_stmts.ss ~519, checker.ss ~518, gen_calls.ss ~507. gen_class.ss may need a split if further features add to it.
-5. **建议**: Consider standard library expansion (json/path/fs) or other language features. gen_class.ss at 615 lines may need splitting if more codegen features are added there. Phase 4 is essentially complete (tuples done, numeric separators done, tag functions deferred).
+4. **文件大小状态**: gen_class.ss ~615 (approaching limit), gen_decls.ss ~576, parser.ss ~559, check_stmts.ss ~553, checker.ss ~531, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_calls.ss ~507. gen_class.ss may need a split if further features add to it.
+5. **Standard library状态**: json.ss (512 LOC), sha256.ss (228 LOC), http.ss (151 LOC), path.ss (148 LOC), math.ss (115 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~1277 LOC in lib/.
+6. **建议**: String utility module or datetime module would add practical value. Or consider new language features like `for-of` for Map iteration, string interpolation tag functions, or numeric separators (1_000_000). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**. Compiler source CAN now use these features.
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
+- **Math enhancements (D037, Round 61)**:
+  - **New builtins**: `Math.tan(x)`, `Math.asin(x)`, `Math.acos(x)`, `Math.atan(x)`, `Math.atan2(y,x)`, `Math.exp(x)`, `Math.log10(x)`, `Math.log2(x)`, `Math.trunc(x)`, `Math.sign(x)`, `Math.hypot(x,y)`, `Math.cbrt(x)`, `Math.fmod(x,y)`.
+  - **All return double**: Auto int→double conversion via `isMathClass` in `genStaticMethodCall()`.
+  - **sign**: Custom LLVM IR (fcmp ogt/olt + select). **cbrt**: pow(x, 1/3). Others wrap libc.
+  - **lib/math.ss (MathUtil)**: `clamp(v,lo,hi)`, `lerp(a,b,t)`, `inverseLerp(a,b,v)`, `mapRange(v,inMin,inMax,outMin,outMax)`, `toDegrees(rad)`, `toRadians(deg)`, `approxEqual(a,b,eps)`, `isEven(n)`, `isOdd(n)`, `gcd(a,b)`, `lcm(a,b)`, `isPowerOfTwo(n)`.
+  - **Constants as methods**: `MathUtil.PI()`, `MathUtil.E()`, `MathUtil.TAU()`, `MathUtil.EPSILON()` — zero-arg methods since built-in class property access not supported.
+  - **Known limitation**: `Math.PI` (property-style) not supported — would require member access dispatch for built-in classes.
+- **JSON library (D036, Round 60)**:
+  - **Getters**: `getDouble(key)` uses `parseDouble()`, `getBool(key)` reads stored int, `has(key)` checks field existence, `keys()` returns `Array<string>`.
+  - **Direct access**: `asDouble()`, `asBool()` for array elements or direct node value access.
+  - **Builders**: `put(key, double)`, `putBool(key, int)`, `putNull(key)`, `add(double)`, `addBool(int)`, `addNull()`. Bool uses separate method names to avoid signature clash with int.
+  - **Escape**: `jnEscapeString()` in stringify handles `\`, `"`, `\n`, `\t`, `\r`. Parser handles `\r`, `\/`.
+  - **Scientific notation**: `jpParseNumber()` handles `e`/`E` with optional `+`/`-`.
+  - **Known limitation**: Unicode `\uXXXX` escape not yet supported.
+- **Standard library pattern (D035, Round 59)**:
+  - **Static method pattern**: `class Path()` + `function Path_join(...)` → user calls `Path.join(...)`. Same pattern as JSON, Math.
+  - **Overloaded join**: `Path.join(a, b)`, `Path.join(a, b, c)`, `Path.join(a, b, c, d)` — different param counts → different mangled names.
+  - **FS wraps builtins**: `FS.readFile()` wraps `readFile()`, `FS.readDir()` wraps `listDir()` + split into `Array<string>`.
+  - **Import path**: `import { Path } from "@/lib/path"`, `import { FS } from "@/lib/fs"`.
 - **Tuple types (D034, Round 58)**:
   - **Syntax**: `[int, string]` in type position → `"Tuple<int,string>"` internal representation.
   - **Runtime**: Backed by arrays. Mixed-type literals use `ss_newArray` (tag=1, no element RC cleanup) to avoid segfault from cleanup treating int as ptr.
@@ -62,17 +80,19 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 51 tests.
-- **35 bootstrap files**, ~13282 LOC.
+- **phase5 tests**: 56 tests.
+- **35 bootstrap files**, ~13392 LOC.
 
 ## Decision Criteria
-- Tuple types (D034, Round 58) completed: `[int, string]` syntax, positional type inference, tuple destructuring, mixed-type array safety.
-- Phase 4 essentially complete: tuples done, numeric separators done, tag functions deferred (low priority).
-- File sizes: gen_class.ss ~615 (largest, approaching limit), gen_decls.ss ~576, parser.ss ~559, check_stmts.ss ~553, parse_exprs.ss ~531, parse_stmts.ss ~519, checker.ss ~518, gen_calls.ss ~507.
+- Standard library now has 7 modules: json.ss (512), sha256.ss (228), http.ss (151), path.ss (148), math.ss (115), base64.ss (63), fs.ss (60). Total ~1277 LOC.
+- Math builtins: 25 total (12 original + 13 new). Full trig suite (sin/cos/tan/asin/acos/atan/atan2), exponential/logarithmic (exp/log/log10/log2), rounding (floor/ceil/round/trunc), utility (abs/sign/hypot/cbrt/fmod/pow/sqrt), comparison (min/max), random.
+- MathUtil stdlib: 16 functions including integer utilities (gcd/lcm/isPowerOfTwo) and interpolation (lerp/inverseLerp/mapRange/clamp).
+- Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
+- File sizes: gen_class.ss ~615 (largest), gen_decls.ss ~576, parser.ss ~559, check_stmts.ss ~553, checker.ss ~531.
 - All existing features working: tuple types (D034), Phase 4 batch (D033), array methods, power operator (D032), multi-constraints (D031), type constraints, generic class inheritance (D030), destructuring, switch patterns (D029), explicit type args (D028), generic classes (D027), generic functions (D026), interfaces (D025).
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known issue: `genOptionalMethodCall` has same double-evaluation pattern that was fixed in `genOptionalMemberAccess`. Low priority since method call object is typically an IDENT.
-- 35 bootstrap files total, ~13282 LOC, 51 phase5 tests.
+- 35 bootstrap files total, ~13392 LOC, 56 phase5 tests.
 
 ## When Done
 1. Write tests for new features
