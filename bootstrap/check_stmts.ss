@@ -455,6 +455,30 @@ function checkExpr(id: int) {
                 checkArgCount("method", methodName, argCount, mMin, mMax, nGetLine(id), nGetCol(id))
             }
         }
+        // Check argument types (when receiver class is known)
+        if (recvClass != "") {
+            const mcArgList = nGetList(id)
+            if (hasSpreadArg(mcArgList) == 0 && mcArgList != "") {
+                const mcArgs = mcArgList.split(",")
+                let mcArgIdx = 0
+                for (mca in mcArgs) {
+                    const mcaId = parseInt(mca)
+                    if (mcaId <= 0) { continue }
+                    if (nGetKind(mcaId) == "NAMED_ARG" || nGetKind(mcaId) == "SPREAD_ELEM") {
+                        mcArgIdx = mcArgIdx + 1
+                        continue
+                    }
+                    const mcExpType = lookupMethodParamType(recvClass, methodName, mcArgIdx)
+                    if (mcExpType != "") {
+                        const mcActType = checkerInferType(mcaId)
+                        if (mcActType != "" && isTypeCompatible(mcExpType, mcActType) == 0) {
+                            checkerError(`argument ${mcArgIdx + 1} of method '${methodName}': expected '${mcExpType}', got '${mcActType}'`, nGetLine(mcaId), nGetCol(mcaId))
+                        }
+                    }
+                    mcArgIdx = mcArgIdx + 1
+                }
+            }
+        }
         checkArgList(nGetList(id))
         return
     }

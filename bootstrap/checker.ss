@@ -32,6 +32,8 @@ let checkerFieldTypes = ""   // "ClassName.fieldName" -> type string
 let checkerClassFields = ""  // "ClassName" -> "field1,field2,..." (ordered field list)
 let funcParamTypes = ""     // "funcName:paramIndex" -> type string
 let funcOverloaded = ""     // "funcName" -> "1" if overloaded (skip type check)
+let methodParamTypes = ""   // "ClassName.methodName:paramIndex" -> type string
+let methodRetTypes = ""     // "ClassName.methodName" -> return type string
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -57,6 +59,8 @@ function initChecker() {
     checkerClassFields = Map()
     funcParamTypes = Map()
     funcOverloaded = Map()
+    methodParamTypes = Map()
+    methodRetTypes = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -215,6 +219,13 @@ function inferCheckerClass(nodeId: int): string {
         }
         return ""
     }
+    if (kind == "METHOD_CALL") {
+        const objClass = inferCheckerClass(nGetI1(nodeId))
+        if (objClass != "" && classConsMin.has(objClass) == 1) {
+            return lookupMethodRetType(objClass, nGetS1(nodeId))
+        }
+        return ""
+    }
     return ""
 }
 
@@ -288,6 +299,38 @@ function lookupMethodParams(className: string, methodName: string): string {
         const key = `${cls}.${methodName}`
         if (methodParamMin.has(key) == 1) {
             return `${methodParamMin.getString(key)},${methodParamMax.getString(key)}`
+        }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return ""
+}
+
+function lookupMethodParamType(className: string, methodName: string, paramIndex: int): string {
+    let cls = className
+    while (cls != "") {
+        const key = `${cls}.${methodName}:${paramIndex}`
+        if (methodParamTypes.has(key) == 1) {
+            return methodParamTypes.getString(key)
+        }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return ""
+}
+
+function lookupMethodRetType(className: string, methodName: string): string {
+    let cls = className
+    while (cls != "") {
+        const key = `${cls}.${methodName}`
+        if (methodRetTypes.has(key) == 1) {
+            return methodRetTypes.getString(key)
         }
         if (checkerClassParents.has(cls) == 1) {
             cls = checkerClassParents.getString(cls)
@@ -428,6 +471,13 @@ function checkerInferType(nodeId: int): string {
         if (funcNames.has(callee) == 1) {
             const retType = funcNames.getString(callee)
             if (retType != "" && retType != "builtin") { return retType }
+        }
+        return ""
+    }
+    if (kind == "METHOD_CALL") {
+        const mcRecv = inferCheckerClass(nGetI1(nodeId))
+        if (mcRecv != "" && classConsMin.has(mcRecv) == 1) {
+            return lookupMethodRetType(mcRecv, nGetS1(nodeId))
         }
         return ""
     }
@@ -609,9 +659,32 @@ function check(rootId: int): int {
                         for (cm in clsMS) {
                             const cmId = parseInt(cm)
                             if (cmId > 0 && nGetKind(cmId) == "FUNC_DECL") {
+                                const mName = nGetS1(cmId)
                                 const mRange = countParamRange(nGetList(cmId))
                                 const mComma = mRange.indexOf(",")
-                                registerMethodParams(className, nGetS1(cmId), parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))
+                                registerMethodParams(className, mName, parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))
+                                // Store method param types + return type (non-generic classes)
+                                if (classTypeParams(s) == "") {
+                                    const mRetType = nGetS2(cmId)
+                                    if (mRetType != "") {
+                                        methodRetTypes.set(`${className}.${mName}`, mRetType)
+                                    }
+                                    const mPList = nGetList(cmId)
+                                    if (mPList != "") {
+                                        const mParts = mPList.split(",")
+                                        let mPIdx = 0
+                                        for (mp in mParts) {
+                                            const mpId = parseInt(mp)
+                                            if (mpId > 0 && nGetKind(mpId) == "PARAM") {
+                                                const mpType = nGetS2(mpId)
+                                                if (mpType != "") {
+                                                    methodParamTypes.set(`${className}.${mName}:${mPIdx}`, mpType)
+                                                }
+                                                mPIdx = mPIdx + 1
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
