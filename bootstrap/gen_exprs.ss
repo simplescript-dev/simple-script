@@ -100,7 +100,10 @@ function genExpr(id: int): string {
         if (nGetI3(id) > 0) { return genOptionalMethodCall(id) }
         return genMethodCall(id)
     }
-    if (kind == "MEMBER_ACCESS") { return genMemberAccess(id) }
+    if (kind == "MEMBER_ACCESS") {
+        if (nGetI3(id) > 0) { return genOptionalMemberAccess(id) }
+        return genMemberAccess(id)
+    }
     if (kind == "NEW_EXPR") { return genNewExpr(id) }
     if (kind == "GROUPING") { return genExpr(nGetI1(id)) }
     if (kind == "TERNARY") { return genTernary(id) }

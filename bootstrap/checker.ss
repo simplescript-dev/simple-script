@@ -340,6 +340,16 @@ function countArgs(listStr: string): int {
     return count
 }
 
+function hasSpreadArg(listStr: string): int {
+    if (listStr == "") { return 0 }
+    const parts = listStr.split(",")
+    for (p in parts) {
+        const argId = parseInt(p)
+        if (argId > 0 && nGetKind(argId) == "SPREAD_ELEM") { return 1 }
+    }
+    return 0
+}
+
 // ── Error reporting ───────────────────────────────────────────
 
 function checkerError(msg: string, line: int, col: int, suggestion: string = "") {

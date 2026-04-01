@@ -44,7 +44,7 @@ function pirLowerStmt(id: int, buf: string): string {
         buf = pirEmitExprUses(nGetI2(id), id, buf)
         return pirLowerBlock(nGetI4(id), buf)
     }
-    if (kind == "FOR_IN") {
+    if (kind == "FOR_IN" || kind == "FOR_OF") {
         buf = pirEmitExprUses(nGetI1(id), id, buf)
         return pirLowerBlock(nGetI2(id), buf)
     }

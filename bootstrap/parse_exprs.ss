@@ -503,8 +503,15 @@ function parseArgs(): string {
     let args = ""
     while (curKind() != "EOF") {
         skipNL()
+        // Spread arg: ...expr
+        if (curKind() == "SPREAD") {
+            pAdvance()
+            const spreadExpr = parseExpr()
+            const spreadNode = newNode("SPREAD_ELEM")
+            nSetI1(spreadNode, spreadExpr)
+            args = listAppend(args, spreadNode)
         // Named arg: IDENT followed by COLON → NAMED_ARG node
-        if (curKind() == "IDENT" && tkKind(tkGet(tokens, tPos + 1)) == "COLON") {
+        } else if (curKind() == "IDENT" && tkKind(tkGet(tokens, tPos + 1)) == "COLON") {
             const naName = curValue()
             pAdvance()
             pAdvance()

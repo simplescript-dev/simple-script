@@ -268,9 +268,8 @@ function parseIf(): int {
 function parseFor(): int {
     pExpect("FOR")
     pExpect("LPAREN")
-    // Check for for-in: for (item in expr)
+    // Check for for-in / for-of: for (item in expr), for (item of expr)
     if (curKind() == "IDENT") {
-        // Look ahead for "in" keyword
         const savedPos = tPos
         const itemName = curValue()
         pAdvance()
@@ -286,8 +285,41 @@ function parseFor(): int {
             nSetI2(id, bodyId)
             return id
         }
-        // Not for-in, restore position
+        if (curKind() == "IDENT" && curValue() == "of") {
+            pAdvance()
+            const iterableId = parseExpr()
+            pExpect("RPAREN")
+            skipNL()
+            const bodyId = parseBlock()
+            const id = newNode("FOR_OF")
+            nSetS1(id, itemName)
+            nSetI1(id, iterableId)
+            nSetI2(id, bodyId)
+            return id
+        }
         tPos = savedPos
+    }
+    // Check for for-of with const/let: for (const x of expr), for (let x of expr)
+    if (curKind() == "CONST" || curKind() == "LET") {
+        const savedPos2 = tPos
+        pAdvance()
+        if (curKind() == "IDENT") {
+            const itemName2 = curValue()
+            pAdvance()
+            if (curKind() == "IDENT" && curValue() == "of") {
+                pAdvance()
+                const iterableId2 = parseExpr()
+                pExpect("RPAREN")
+                skipNL()
+                const bodyId2 = parseBlock()
+                const id2 = newNode("FOR_OF")
+                nSetS1(id2, itemName2)
+                nSetI1(id2, iterableId2)
+                nSetI2(id2, bodyId2)
+                return id2
+            }
+        }
+        tPos = savedPos2
     }
     // C-style for
     const initId = parseVarDeclNoNL()

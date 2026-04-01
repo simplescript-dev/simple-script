@@ -517,6 +517,46 @@ function emitFieldLoad(className: string, objReg: string, field: string): string
     return loadReg
 }
 
+// obj?.field — if obj is null, return default; otherwise access normally
+function genOptionalMemberAccess(id: int): string {
+    const objId = nGetI1(id)
+    const member = nGetS1(id)
+    const objVal = genExpr(objId)
+    const retType = inferType(id)
+    const llRetType = ssTypeToLLVM(retType)
+
+    const resultAlloca = nextReg()
+    emitIR(`  ${resultAlloca} = alloca ${llRetType}, align 8`)
+    if (llRetType == "ptr") {
+        const emptyStr = addStringConst("")
+        emitIR(`  store ptr ${emptyStr}, ptr ${resultAlloca}, align 8`)
+    } else {
+        emitIR(`  store ${llRetType} 0, ptr ${resultAlloca}, align 8`)
+    }
+
+    const cmpR = nextReg()
+    emitIR(`  ${cmpR} = icmp eq ptr ${objVal}, null`)
+    const accessLabel = nextLabel("optf.access")
+    const endLabel = nextLabel("optf.end")
+    emitIR(`  br i1 ${cmpR}, label %${endLabel}, label %${accessLabel}`)
+
+    emitIR(`${accessLabel}:`)
+    // Resolve class and emit field load directly (avoid re-evaluating objId)
+    let className = ""
+    const objKind = nGetKind(objId)
+    if (objKind == "IDENT") { className = getObjClass(nGetS1(objId)) }
+    if (className == "") { className = resolveObjClass(objId) }
+    let accessResult = objVal
+    if (className != "") { accessResult = emitFieldLoad(className, objVal, member) }
+    emitIR(`  store ${llRetType} ${accessResult}, ptr ${resultAlloca}, align 8`)
+    emitIR(`  br label %${endLabel}`)
+
+    emitIR(`${endLabel}:`)
+    const finalR = nextReg()
+    emitIR(`  ${finalR} = load ${llRetType}, ptr ${resultAlloca}, align 8`)
+    return finalR
+}
+
 function genMemberAccess(id: int): string {
     const member = nGetS1(id)
     const objId = nGetI1(id)

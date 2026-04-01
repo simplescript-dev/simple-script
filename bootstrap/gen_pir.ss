@@ -211,7 +211,7 @@ function pirStmtHasClassOp(id: int): int {
         if (nGetI3(id) > 0) { return pirScanForClassOps(nGetI3(id)) }
     }
     if (kind == "FOR") { return pirScanForClassOps(nGetI4(id)) }
-    if (kind == "FOR_IN") { return pirScanForClassOps(nGetI2(id)) }
+    if (kind == "FOR_IN" || kind == "FOR_OF") { return pirScanForClassOps(nGetI2(id)) }
     if (kind == "WHILE") { return pirScanForClassOps(nGetI2(id)) }
     if (kind == "DO_WHILE") { return pirScanForClassOps(nGetI1(id)) }
     return 0

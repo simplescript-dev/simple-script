@@ -165,7 +165,7 @@ function genStmt(id: int) {
     if (kind == "RETURN") { genReturn(id); return }
     if (kind == "IF") { genIf(id); return }
     if (kind == "FOR") { genFor(id); return }
-    if (kind == "FOR_IN") { genForIn(id); return }
+    if (kind == "FOR_IN" || kind == "FOR_OF") { genForIn(id); return }
     if (kind == "WHILE") { genWhile(id); return }
     if (kind == "BREAK") { genBreak(); return }
     if (kind == "CONTINUE") { genContinueStmt(); return }

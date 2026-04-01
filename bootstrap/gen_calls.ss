@@ -55,13 +55,18 @@ function genPrintCall(callee: string, argList: string): string {
 function resolveCallArgs(callee: string, argList: string, expectsDouble: int): string {
     let providedArgs = ""
     let providedCount = 0
+    let spreadNodeId = 0
     if (argList != "") {
         const parts = argList.split(",")
         for (p in parts) {
             const argId = parseInt(p)
             if (argId > 0) {
-                providedArgs = listAppend(providedArgs, argId)
-                providedCount = providedCount + 1
+                if (nGetKind(argId) == "SPREAD_ELEM") {
+                    spreadNodeId = argId
+                } else {
+                    providedArgs = listAppend(providedArgs, argId)
+                    providedCount = providedCount + 1
+                }
             }
         }
     }
@@ -70,7 +75,7 @@ function resolveCallArgs(callee: string, argList: string, expectsDouble: int): s
         expectedCount = parseInt(funcParamCount.getString(callee))
     }
     let fullArgs = providedArgs
-    if (providedCount < expectedCount && funcDefaults.has(callee) == 1) {
+    if (spreadNodeId == 0 && providedCount < expectedCount && funcDefaults.has(callee) == 1) {
         const defs = funcDefaults.getString(callee)
         const defParts = defs.split(",")
         for (dp in defParts) {
@@ -103,6 +108,42 @@ function resolveCallArgs(callee: string, argList: string, expectsDouble: int): s
                 if (first == 1) { first = 0 } else { args = args + ", " }
                 args = `${args}${llType} ${val}`
             }
+        }
+    }
+    // Expand spread argument: extract elements from array for remaining params
+    if (spreadNodeId > 0) {
+        const spreadArrExpr = nGetI1(spreadNodeId)
+        const spreadArr = genExpr(spreadArrExpr)
+        let elemType = inferArrayElemType(spreadArrExpr)
+        if (elemType == "") { elemType = "i64" }
+        const spreadCount = expectedCount - providedCount
+        let idx = 0
+        while (idx < spreadCount) {
+            const elemVal = nextReg()
+            emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${spreadArr}, i32 ${idx})`)
+            let converted = elemVal
+            let convType = elemType
+            if (elemType == "string" || ssTypeToLLVM(elemType) == "ptr") {
+                converted = nextReg()
+                emitIR(`  ${converted} = inttoptr i64 ${elemVal} to ptr`)
+            } else if (elemType == "int") {
+                converted = nextReg()
+                emitIR(`  ${converted} = trunc i64 ${elemVal} to i32`)
+            } else if (elemType == "double") {
+                converted = nextReg()
+                emitIR(`  ${converted} = bitcast i64 ${elemVal} to double`)
+                convType = "double"
+            }
+            if (expectsDouble && (convType == "int" || convType == "auto")) {
+                const dblR = nextReg()
+                emitIR(`  ${dblR} = sitofp i32 ${converted} to double`)
+                converted = dblR
+                convType = "double"
+            }
+            const llType = ssTypeToLLVM(convType)
+            if (args != "") { args = args + ", " }
+            args = `${args}${llType} ${converted}`
+            idx = idx + 1
         }
     }
     return args

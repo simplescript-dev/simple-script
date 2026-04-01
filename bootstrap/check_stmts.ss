@@ -247,7 +247,7 @@ function checkStmt(id: int) {
         popScope()
         return
     }
-    if (kind == "FOR_IN") {
+    if (kind == "FOR_IN" || kind == "FOR_OF") {
         pushScope()
         checkExpr(nGetI1(id))
         defineVar(nGetS1(id), "auto", 0)
@@ -362,7 +362,7 @@ function checkExpr(id: int) {
             checkerError(`undefined function '${callee}'`, nGetLine(id), nGetCol(id), findSuggestion(callee))
         }
         const argCount = countArgs(nGetList(id))
-        if (funcParamMin.has(callee) == 1) {
+        if (funcParamMin.has(callee) == 1 && hasSpreadArg(nGetList(id)) == 0) {
             checkArgCount("function", callee, argCount, parseInt(funcParamMin.getString(callee)), parseInt(funcParamMax.getString(callee)), nGetLine(id), nGetCol(id))
         }
         checkArgList(nGetList(id))
@@ -485,6 +485,8 @@ function checkArgList(listStr: string) {
         const argId = parseInt(p)
         if (argId > 0) {
             if (nGetKind(argId) == "NAMED_ARG") {
+                checkExpr(nGetI1(argId))
+            } else if (nGetKind(argId) == "SPREAD_ELEM") {
                 checkExpr(nGetI1(argId))
             } else {
                 checkExpr(argId)
