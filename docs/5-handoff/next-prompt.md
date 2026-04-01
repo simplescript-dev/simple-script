@@ -1,4 +1,4 @@
-# Round 71
+# Round 72
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13410 LOC).
@@ -13,21 +13,22 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-Template 标准库模块（D046）：为 lib/ 添加 Mustache 风格模板引擎——5 个 Template 静态方法（render/escape/unescape/variables/strip）。核心 `tmplRenderImpl` 递归解析器支持变量替换 `{{key}}`、条件 section `{{#key}}`、反转 section `{{^key}}`、注释 `{{! }}`、转义 `\{{`，嵌套 section 通过 `tmplFindClose` 深度追踪正确匹配。template.ss 348 LOC，纯 SS 无编译器改动，全量测试 + bootstrap 固定点验证通过。
+Crypto 标准库模块（D047）：为 lib/ 添加加密工具库——SHA-1 哈希、SHA-256 哈希、HMAC-SHA256（RFC 4231）、HMAC-SHA1（RFC 2202）、hex 转换、constant-time 比较，共 7 个 Crypto 静态方法。核心设计：flex hash 函数（sha1flex/sha256flex）通过 on-the-fly hex 解码避免 null-terminated 字符串的 0x00 截断问题，确保 HMAC 始终正确。crypto.ss 525 LOC，纯 SS 无编译器改动，全量测试 + bootstrap 固定点验证通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done
 Scope:
 1. **Standard library expansion (continued)**:
-   - **New modules**: Consider `regex.ss` (basic pattern matching), `buffer.ss` (byte buffer operations), `crypto.ss` (HMAC, SHA-512)
+   - **New modules**: Consider `regex.ss` (basic pattern matching), `buffer.ss` (byte buffer operations), `event.ss` (event emitter pattern)
 2. **Phase 4 remaining features**:
    - **String template tag functions** — Tagged templates (advanced, low priority)
 3. **Phase 2 remaining** (diminishing returns):
    - Mutability inference — Fixed-point analysis marking function params as mutated/readonly
 4. **文件大小状态**: gen_class.ss ~615 (approaching limit), gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507. gen_class.ss may need a split if further features add to it.
-5. **Standard library状态**: json.ss (578 LOC), url.ss (442 LOC), template.ss (348 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), color.ss (178 LOC), http.ss (151 LOC), path.ss (148 LOC), assert.ss (139 LOC), math.ss (115 LOC), uuid.ss (114 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~3328 LOC in lib/, 15 modules.
-6. **建议**: Standard library now covers 15 modules with broad coverage. Consider new language features like string template tag functions, or new stdlib modules like regex.ss (basic pattern matching), buffer.ss (byte-level operations), or crypto.ss (HMAC/SHA-512). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
+5. **Standard library状态**: json.ss (578 LOC), crypto.ss (525 LOC), url.ss (442 LOC), template.ss (348 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), color.ss (178 LOC), http.ss (151 LOC), path.ss (148 LOC), assert.ss (139 LOC), math.ss (115 LOC), uuid.ss (114 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~3853 LOC in lib/, 16 modules.
+6. **建议**: Standard library now covers 16 modules with broad coverage including crypto. Consider new language features like string template tag functions, or new stdlib modules like regex.ss (basic pattern matching — character classes, *, +, ?), buffer.ss (byte-level operations), or event.ss (pub/sub event emitter). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
 7. **Known compiler limitation**: `Map.keys()` is unreliable when called on a Map passed as a function parameter. Workaround: use parallel arrays or call `.keys()` before passing to function. Does not affect Maps created/used within the same scope.
+8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
@@ -35,6 +36,16 @@ Scope:
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules (string_utils.ss, csv.ss, template.ss) follow this pattern.
+- **Crypto module (D047, Round 71)**:
+  - **Architecture**: Pure SS, static method pattern. Imports sha256.ss for SHA-256 helpers (rotr, ch, maj, sigma0/1, gamma0/1, getKConst, hexByte, hexWord).
+  - **Flex hash design**: `sha1flex(data, dataHex, prefix, prefixHex, prefixXor)` and `sha256flex(...)` read bytes from multiple sources on-the-fly. Avoids constructing byte strings with potential 0x00 bytes that would be truncated by strlen-based string operations.
+  - **Standalone hash**: `sha256flex(data, "", "", "", 0)` — no prefix, reads all bytes from data string.
+  - **HMAC inner**: `sha256flex(message, "", key, "", 54)` — first 64 bytes = key XOR 0x36 (padded to 64), rest = message.
+  - **HMAC outer**: `sha256flex("", innerHex, key, "", 92)` — first 64 bytes = key XOR 0x5c, rest = inner hash decoded from hex on-the-fly.
+  - **Long key handling**: If key > 64 bytes, hash key first → keyHex, pass as prefixHex parameter.
+  - **Crypto static methods (7)**: `sha1(data)`, `sha256(data)`, `hmacSHA256(key, msg)`, `hmacSHA1(key, msg)`, `hexToBytes(hex)`, `bytesToHex(data)`, `timingSafeEqual(a, b)`.
+  - **Internal helpers (9)**: `sha1Rotl`, `sha1GetF`, `sha1GetK`, `cryptoHexDigit`, `sha1flex`, `sha256flex`, `cryptoHmac256`, `cryptoHmac1`, `cryptoTimeSafe`. Plus `cryptoHexToBytes`, `cryptoBytesToHex` for user-facing hex conversion.
+  - **Import**: `import { Crypto } from "@/lib/crypto"`.
 - **Template module (D046, Round 70)**:
   - **Architecture**: Pure SS, static method pattern (like UUID, Assert, Color).
   - **Template syntax**: `{{key}}` variable substitution, `{{#key}}...{{/key}}` sections, `{{^key}}...{{/key}}` inverted sections, `{{! comment }}` comments, `\{{` escaped delimiters.
@@ -103,19 +114,20 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 65 tests.
+- **phase5 tests**: 66 tests.
 - **35 bootstrap files**, ~13410 LOC.
 
 ## Decision Criteria
-- Standard library now has 15 modules: json.ss (578), url.ss (442), template.ss (348), csv.ss (286), datetime.ss (258), sha256.ss (228), string_utils.ss (220), color.ss (178), http.ss (151), path.ss (148), assert.ss (139), math.ss (115), uuid.ss (114), base64.ss (63), fs.ss (60). Total ~3328 LOC.
-- Template module: 5 static methods (render, escape, unescape, variables, strip) + 5 internal helpers. Mustache-style syntax with sections, inverted sections, comments, escaping.
+- Standard library now has 16 modules: json.ss (578), crypto.ss (525), url.ss (442), template.ss (348), csv.ss (286), datetime.ss (258), sha256.ss (228), string_utils.ss (220), color.ss (178), http.ss (151), path.ss (148), assert.ss (139), math.ss (115), uuid.ss (114), base64.ss (63), fs.ss (60). Total ~3853 LOC.
+- Crypto module: 7 static methods (sha1, sha256, hmacSHA256, hmacSHA1, hexToBytes, bytesToHex, timingSafeEqual) + flex hash design for null-byte safety.
 - Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
 - File sizes: gen_class.ss ~615 (largest), gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532.
 - All existing features working: tuple types (D034), Phase 4 batch (D033), array methods, power operator (D032), multi-constraints (D031), type constraints, generic class inheritance (D030), destructuring, switch patterns (D029), explicit type args (D028), generic classes (D027), generic functions (D026), interfaces (D025).
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known issue: `genOptionalMethodCall` has same double-evaluation pattern that was fixed in `genOptionalMemberAccess`. Low priority since method call object is typically an IDENT.
 - Known limitation: `Map.keys()` unreliable on function-parameter Maps. Workaround: parallel arrays or caller-side `.keys()`.
-- 35 bootstrap files total, ~13410 LOC, 65 phase5 tests.
+- Known limitation: SS strings are null-terminated. `hexToBytes` cannot produce strings with 0x00 bytes. HMAC uses on-the-fly hex decoding to avoid this.
+- 35 bootstrap files total, ~13410 LOC, 66 phase5 tests.
 
 ## When Done
 1. Write tests for new features
