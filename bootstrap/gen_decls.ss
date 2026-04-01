@@ -192,6 +192,12 @@ function genGlobalVar(id: int) {
     } else if (ik == "FALSE_LIT") {
         emitIR(`@${name} = global i32 0, align 4`)
         gType = "int"
+    } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "INT_LIT") {
+        emitIR(`@${name} = global i32 -${nGetS1(nGetI1(initId))}, align 4`)
+        gType = "int"
+    } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "DOUBLE_LIT") {
+        emitIR(`@${name} = global double -${nGetS1(nGetI1(initId))}, align 8`)
+        gType = "double"
     } else {
         // Non-literal init: declare null, queue runtime init
         emitIR(`@${name} = global ptr null, align 8`)
