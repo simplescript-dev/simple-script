@@ -275,6 +275,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 
 - **先修后加**：`docs/4-issues/1-open/` 中的 open issues 优先于新功能和 stdlib 模块。不在已知问题（静默产出错误代码、崩溃、强制 workaround）未修复时添加新功能
 - **每轮开始先审 open issues**：读 handoff 后先检查 `docs/4-issues/1-open/`，优先处理未被语言能力阻塞的 issue
+- **单上下文单任务**：每个对话上下文只处理一个任务（一个 issue fix、一个 feature、一个 refactor）。完成或上下文不足时，更新 handoff 并停止。外部自动化会 clear + `/next` 接力下一轮
 
 ### 决策记录与上下文管理
 

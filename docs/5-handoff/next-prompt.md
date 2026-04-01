@@ -27,7 +27,7 @@ Scope:
 4. **I005 — AST list 用字符串** [PARTIAL]: 已有 helper，性能问题待 proper array type。
 5. **I006 — Runtime raw IR** [LOW]: 已大幅转换，剩 401 处 raw emitIR。
 6. **I008 — Parser 优先级硬编码** [LOW]: 能用，递归下降是标准做法。
-7. **I004 — 错误报告** [DONE]: 全部 4 阶段已完成，应移至 closed。
+7. **I004 — 错误报告** [CLOSED]: 全部 4 阶段已完成，已移至 `2-closed/`。
 
 ### 次优先级
 8. **Standard library cleanup**: csv.ss/ini.ss 可用 Map 字段简化（Map.keys() 已修复）。
@@ -82,9 +82,11 @@ Scope:
 - 35 bootstrap files total, ~13450 LOC, 71 phase5 tests.
 
 ## When Done
+**P18: 单上下文单任务。完成当前任务或上下文不足时，更新 handoff 并停止。**
 1. Write tests for new features
 2. Verify against axioms and principles
 3. Self-review for contradictions
 4. Commit and push to remote
 5. Generate next docs/5-handoff/next-prompt.md — **must follow Handoff Template exactly**
 6. List files created/modified
+7. **Stop.** Do NOT start the next task. External automation will clear + `/next`.

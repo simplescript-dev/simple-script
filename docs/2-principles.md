@@ -28,6 +28,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 ## Priority
 
 - **P17: Fix before add.** Open issues (`docs/4-issues/1-open/`) take priority over new features or stdlib modules. Do not add new functionality while known issues silently produce wrong code, crash, or force workarounds. ← V3, P4
+- **P18: One task per context.** Each conversation context handles exactly one task (one issue fix, one feature, one refactor). When done or context runs low, update handoff and stop. External automation handles clear + `/next` for the next round. ← V6
 
 ## Workflow
 
