@@ -121,6 +121,13 @@ function checkStmt(id: int) {
         if (typeAnn == "auto" && initId > 0 && nGetKind(initId) == "NEW_EXPR") {
             typeAnn = nGetS1(initId)
         }
+        // Type check: annotation vs initializer
+        if (typeAnn != "auto" && initId > 0) {
+            const initType = checkerInferType(initId)
+            if (initType != "" && isTypeCompatible(typeAnn, initType) == 0) {
+                checkerError(`type mismatch: cannot assign '${initType}' to variable '${name}' of type '${typeAnn}'`, nGetLine(id), nGetCol(id))
+            }
+        }
         if (varKind == "CONST") {
             defineVar(name, typeAnn, 1)
         } else {
@@ -190,6 +197,16 @@ function checkStmt(id: int) {
         }
         const valId = nGetI1(id)
         if (valId > 0) { checkExpr(valId) }
+        // Type check: variable type vs RHS (simple assignment only)
+        if (nGetS2(id) == "ASSIGN") {
+            const varType = lookupVar(name)
+            if (varType != "" && varType != "auto" && valId > 0) {
+                const rhsType = checkerInferType(valId)
+                if (rhsType != "" && isTypeCompatible(varType, rhsType) == 0) {
+                    checkerError(`type mismatch: cannot assign '${rhsType}' to variable '${name}' of type '${varType}'`, nGetLine(id), nGetCol(id))
+                }
+            }
+        }
         return
     }
     if (kind == "MEMBER_ASSIGN") {
@@ -204,6 +221,14 @@ function checkStmt(id: int) {
             const fieldKey = `${objClass}.${fieldName}`
             if (constFields.has(fieldKey) == 1) {
                 checkerError(`cannot assign to const field '${fieldName}' of class '${objClass}'`, nGetLine(id), nGetCol(id))
+            }
+            // Type check: field type vs assigned value
+            if (nGetS2(id) == "ASSIGN" && checkerFieldTypes.has(fieldKey) == 1 && valId > 0) {
+                const fType = checkerFieldTypes.getString(fieldKey)
+                const vType = checkerInferType(valId)
+                if (vType != "" && isTypeCompatible(fType, vType) == 0) {
+                    checkerError(`type mismatch: cannot assign '${vType}' to field '${fieldName}' of type '${fType}'`, nGetLine(id), nGetCol(id))
+                }
             }
         }
         return
@@ -361,9 +386,35 @@ function checkExpr(id: int) {
         if (lookupFunc(callee) == 0 && lookupVar(callee) == "") {
             checkerError(`undefined function '${callee}'`, nGetLine(id), nGetCol(id), findSuggestion(callee))
         }
-        const argCount = countArgs(nGetList(id))
-        if (funcParamMin.has(callee) == 1 && hasSpreadArg(nGetList(id)) == 0) {
+        const callArgList = nGetList(id)
+        const argCount = countArgs(callArgList)
+        const hasSpread = hasSpreadArg(callArgList)
+        if (funcParamMin.has(callee) == 1 && hasSpread == 0) {
             checkArgCount("function", callee, argCount, parseInt(funcParamMin.getString(callee)), parseInt(funcParamMax.getString(callee)), nGetLine(id), nGetCol(id))
+        }
+        // Check argument types (non-overloaded user functions only)
+        if (funcOverloaded.has(callee) == 0 && hasSpread == 0) {
+            if (callArgList != "") {
+                const callArgs = callArgList.split(",")
+                let callArgIdx = 0
+                for (ca in callArgs) {
+                    const caId = parseInt(ca)
+                    if (caId <= 0) { continue }
+                    if (nGetKind(caId) == "NAMED_ARG" || nGetKind(caId) == "SPREAD_ELEM") {
+                        callArgIdx = callArgIdx + 1
+                        continue
+                    }
+                    const ptKey = `${callee}:${callArgIdx}`
+                    if (funcParamTypes.has(ptKey) == 1) {
+                        const expectedType = funcParamTypes.getString(ptKey)
+                        const actualType = checkerInferType(caId)
+                        if (actualType != "" && isTypeCompatible(expectedType, actualType) == 0) {
+                            checkerError(`argument ${callArgIdx + 1} of '${callee}': expected '${expectedType}', got '${actualType}'`, nGetLine(caId), nGetCol(caId))
+                        }
+                    }
+                    callArgIdx = callArgIdx + 1
+                }
+            }
         }
         checkArgList(nGetList(id))
         return

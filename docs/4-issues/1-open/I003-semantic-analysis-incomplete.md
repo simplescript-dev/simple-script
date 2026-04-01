@@ -39,12 +39,16 @@ Implemented. `blockAlwaysReturns`/`stmtAlwaysReturns` walk AST to verify all con
 
 ### Phase 3: Basic type checking (partially done)
 - ✅ METHOD_CALL / NEW_EXPR: argument count checking (D012) — constructor params with inheritance accumulation, method params with parent chain walk, receiver resolution for `this`/typed vars/new expr, built-in Map/Math methods
-- Assignment: RHS type compatible with LHS declared type
-- Function call: argument types match parameter types
+- ✅ Type inference in checker: `checkerInferType()` — literals, IDENT, CALL, NEW_EXPR, BINARY, MEMBER_ACCESS, etc. (D053)
+- ✅ VAR_DECL type checking: annotation vs initializer type (D053)
+- ✅ ASSIGN type checking: variable type vs RHS for simple assignment (D053)
+- ✅ MEMBER_ASSIGN type checking: field type vs assigned value (D053)
+- ✅ CALL argument type checking: parameter types vs argument types for non-overloaded, non-generic functions (D053)
+- Remaining METHOD_CALL argument type checking (needs method return type tracking)
 - Remaining METHOD_CALL receiver resolution (chain calls, function return types — needs inferType in checker)
 
 ### Phase 4: Migrate inferType to checker
 Move `inferType()` from gen_exprs.ss to checker.ss as a pre-pass. Checker populates type info for all expressions. Codegen reads cached types instead of re-inferring. This enables I002 (structured types) to be addressed independently.
 
 ## Context
-Files: checker.ss (current ~865 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). Receiver class resolution covers 3 static cases; full coverage requires Phase 4 (inferType migration).
+Files: checker.ss (~610 lines), check_stmts.ss (~590 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). D053 added `checkerInferType()` for compile-time type inference and basic type checking at 4 sites (VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL). Receiver class resolution covers 3 static cases; full coverage requires Phase 4 (inferType migration).

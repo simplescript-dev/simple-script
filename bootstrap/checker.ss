@@ -30,6 +30,8 @@ let currentCheckerClass = "" // current class context (for this.method() resolut
 let constFields = ""         // "ClassName.fieldName" -> "1" if const field
 let checkerFieldTypes = ""   // "ClassName.fieldName" -> type string
 let checkerClassFields = ""  // "ClassName" -> "field1,field2,..." (ordered field list)
+let funcParamTypes = ""     // "funcName:paramIndex" -> type string
+let funcOverloaded = ""     // "funcName" -> "1" if overloaded (skip type check)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -53,6 +55,8 @@ function initChecker() {
     constFields = Map()
     checkerFieldTypes = Map()
     checkerClassFields = Map()
+    funcParamTypes = Map()
+    funcOverloaded = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -396,6 +400,107 @@ function checkerError(msg: string, line: int, col: int, suggestion: string = "")
     println("")
 }
 
+// ── Type inference + compatibility ────────────────────────────
+
+function checkerInferType(nodeId: int): string {
+    if (nodeId <= 0) { return "" }
+    const kind = nGetKind(nodeId)
+    if (kind == "INT_LIT") { return "int" }
+    if (kind == "DOUBLE_LIT") { return "double" }
+    if (kind == "STRING_LIT" || kind == "TEMPLATE_LIT") { return "string" }
+    if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
+    if (kind == "NULL_LIT") { return "" }
+    if (kind == "ARRAY_LIT") { return "Array" }
+    if (kind == "ARROW_FUNC") { return "fn" }
+    if (kind == "THIS") { return currentCheckerClass }
+    if (kind == "IDENT") {
+        const vType = lookupVar(nGetS1(nodeId))
+        if (vType != "") {
+            if (vType != "auto") { return vType }
+            return ""
+        }
+        if (lookupFunc(nGetS1(nodeId)) == 1) { return "fn" }
+        return ""
+    }
+    if (kind == "NEW_EXPR") { return nGetS1(nodeId) }
+    if (kind == "CALL") {
+        const callee = nGetS1(nodeId)
+        if (funcNames.has(callee) == 1) {
+            const retType = funcNames.getString(callee)
+            if (retType != "" && retType != "builtin") { return retType }
+        }
+        return ""
+    }
+    if (kind == "MEMBER_ACCESS") {
+        const objClass = inferCheckerClass(nGetI1(nodeId))
+        if (objClass != "") {
+            const fieldKey = `${objClass}.${nGetS1(nodeId)}`
+            if (checkerFieldTypes.has(fieldKey) == 1) {
+                return checkerFieldTypes.getString(fieldKey)
+            }
+        }
+        return ""
+    }
+    if (kind == "BINARY") {
+        const op = nGetS1(nodeId)
+        if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
+            return "int"
+        }
+        const blt = checkerInferType(nGetI1(nodeId))
+        const brt = checkerInferType(nGetI2(nodeId))
+        if (op == "Add" && (blt == "string" || brt == "string")) { return "string" }
+        if (blt == "double" || brt == "double") { return "double" }
+        if (blt == "int") { return "int" }
+        if (brt == "int") { return "int" }
+        return ""
+    }
+    if (kind == "UNARY") { return checkerInferType(nGetI1(nodeId)) }
+    if (kind == "GROUPING") { return checkerInferType(nGetI1(nodeId)) }
+    if (kind == "TERNARY") { return checkerInferType(nGetI2(nodeId)) }
+    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { return "int" }
+    if (kind == "NAMED_ARG") { return checkerInferType(nGetI1(nodeId)) }
+    if (kind == "SPREAD_ELEM") { return checkerInferType(nGetI1(nodeId)) }
+    return ""
+}
+
+function baseTypeName(t: string): string {
+    const ltIdx = t.indexOf("<")
+    if (ltIdx > 0) { return t.substring(0, ltIdx) }
+    return t
+}
+
+function isTypeCompatible(declared: string, actual: string): int {
+    if (declared == "" || actual == "") { return 1 }
+    if (declared == "auto" || actual == "auto") { return 1 }
+    if (declared == actual) { return 1 }
+    if (declared == "double" && actual == "int") { return 1 }
+    // bool is int in SS
+    if ((declared == "bool" && actual == "int") || (declared == "int" && actual == "bool")) { return 1 }
+    if (ifaceMethods.has(declared) == 1) { return 1 }
+    // Class inheritance: actual is subclass of declared
+    let parent = ""
+    if (checkerClassParents.has(actual) == 1) {
+        parent = checkerClassParents.getString(actual)
+    }
+    while (parent != "") {
+        if (parent == declared) { return 1 }
+        if (checkerClassParents.has(parent) == 1) {
+            parent = checkerClassParents.getString(parent)
+        } else {
+            parent = ""
+        }
+    }
+    // Generic types: compare base type (Array<int> compat with Array — imprecise but safe)
+    const declBase = baseTypeName(declared)
+    const actualBase = baseTypeName(actual)
+    if (declBase != declared || actualBase != actual) {
+        if (declBase == actualBase) { return 1 }
+    }
+    // List/Tuple are aliases for Array
+    if ((declBase == "Array" || declBase == "List" || declBase == "Tuple") && (actualBase == "Array" || actualBase == "List" || actualBase == "Tuple")) { return 1 }
+    return 0
+}
+
 // ── Public API ────────────────────────────────────────────────
 
 function check(rootId: int): int {
@@ -415,10 +520,31 @@ function check(rootId: int): int {
             const sk = nGetKind(s)
             if (sk == "FUNC_DECL") {
                 const fname = nGetS1(s)
+                if (funcNames.has(fname) == 1) {
+                    funcOverloaded.set(fname, "1")
+                }
                 defineFunc(fname, nGetS2(s))
                 const fRange = countParamRange(nGetList(s))
                 const fComma = fRange.indexOf(",")
                 defineFuncParams(fname, parseInt(fRange.substring(0, fComma)), parseInt(fRange.substring(fComma + 1, fRange.length() - fComma - 1)))
+                // Store parameter types for non-overloaded, non-generic user functions
+                if (funcOverloaded.has(fname) == 0 && nGetS3(s) == "") {
+                    const ptList = nGetList(s)
+                    if (ptList != "") {
+                        const ptParts = ptList.split(",")
+                        let ptIdx = 0
+                        for (pt in ptParts) {
+                            const ptId = parseInt(pt)
+                            if (ptId > 0 && nGetKind(ptId) == "PARAM") {
+                                const ptType = nGetS2(ptId)
+                                if (ptType != "") {
+                                    funcParamTypes.set(`${fname}:${ptIdx}`, ptType)
+                                }
+                                ptIdx = ptIdx + 1
+                            }
+                        }
+                    }
+                }
             }
             if (sk == "VAR_DECL") {
                 const vname = nGetS1(s)
@@ -441,8 +567,7 @@ function check(rootId: int): int {
                 // Register parent class (strip generic type args: "Box<int>" → "Box")
                 let parentName = nGetS2(s)
                 if (parentName != "") {
-                    const ltIdx = parentName.indexOf("<")
-                    if (ltIdx > 0) { parentName = parentName.substring(0, ltIdx) }
+                    parentName = baseTypeName(parentName)
                     checkerClassParents.set(className, parentName)
                 }
                 // Register field const status, types, and ordered field list
