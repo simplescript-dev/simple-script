@@ -1,6 +1,36 @@
 // Type inference, type helpers, and method overloading for bootstrap codegen
 // Extracted from gen_exprs.ss — pure query functions (no IR emission)
 
+// ── Tuple type helpers ────────────────────────────────────────
+
+function isTupleType(t: string): int {
+    if (t.startsWith("Tuple<") == 1) { return 1 }
+    return 0
+}
+
+// Extract the element type at a given index from a tuple type string
+// e.g. tupleElemTypeAtIndex("Tuple<int,string>", 1) → "string"
+function tupleElemTypeAtIndex(tupleType: string, idx: int): string {
+    const inner = tupleType.substring(6, tupleType.length() - 7)
+    let depth = 0
+    let start = 0
+    let pos = 0
+    let i = 0
+    while (i < inner.length()) {
+        const ch = inner.substring(i, 1)
+        if (ch == "<") { depth = depth + 1 }
+        if (ch == ">") { depth = depth - 1 }
+        if (ch == "," && depth == 0) {
+            if (pos == idx) { return inner.substring(start, i - start) }
+            pos = pos + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    if (pos == idx) { return inner.substring(start, inner.length() - start) }
+    return ""
+}
+
 // ── Type inference ────────────────────────────────────────────
 
 // Infer element type of an array expression (returns "string", "int", "double", or "")
@@ -179,6 +209,15 @@ function inferType(id: int): string {
     if (kind == "ARRAY_LIT") { return "ptr" }
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "INDEX_ACCESS") {
+        // Tuple type: positional element type inference
+        if (nGetKind(nGetI1(id)) == "IDENT") {
+            const iaVarType = getVarType(nGetS1(nGetI1(id)))
+            if (isTupleType(iaVarType) == 1 && nGetKind(nGetI2(id)) == "INT_LIT") {
+                const tIdx = parseInt(nGetS1(nGetI2(id)))
+                const tElem = tupleElemTypeAtIndex(iaVarType, tIdx)
+                if (tElem != "") { return tElem }
+            }
+        }
         const iaElem = inferArrayElemType(nGetI1(id))
         if (iaElem != "") { return iaElem }
         return "i64"

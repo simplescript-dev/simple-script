@@ -55,7 +55,15 @@ function genIndexAccess(id: int): string {
     }
     const idxVal = genExpr(nGetI2(id))
     const rawR = nextReg(); emitIR(`  ${rawR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idxVal})`)
-    const idxElem = inferArrayElemType(nGetI1(id))
+    // Tuple type: use positional element type
+    let idxElem = ""
+    if (nGetKind(nGetI1(id)) == "IDENT") {
+        const tvt = getVarType(nGetS1(nGetI1(id)))
+        if (isTupleType(tvt) == 1 && nGetKind(nGetI2(id)) == "INT_LIT") {
+            idxElem = tupleElemTypeAtIndex(tvt, parseInt(nGetS1(nGetI2(id))))
+        }
+    }
+    if (idxElem == "") { idxElem = inferArrayElemType(nGetI1(id)) }
     if (idxElem == "string") {
         const castR = nextReg()
         emitIR(`  ${castR} = inttoptr i64 ${rawR} to ptr`)
@@ -64,6 +72,11 @@ function genIndexAccess(id: int): string {
     if (idxElem == "int") {
         const castR = nextReg()
         emitIR(`  ${castR} = trunc i64 ${rawR} to i32`)
+        return castR
+    }
+    if (idxElem == "double") {
+        const castR = nextReg()
+        emitIR(`  ${castR} = bitcast i64 ${rawR} to double`)
         return castR
     }
     return rawR

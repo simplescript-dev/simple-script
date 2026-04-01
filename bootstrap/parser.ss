@@ -524,6 +524,17 @@ function parseTypeAnn(): string {
     if (k == "STRING_TYPE") { pAdvance(); return "string" }
     if (k == "BOOL_TYPE") { pAdvance(); return "bool" }
     if (k == "VOID_TYPE") { pAdvance(); return "void" }
+    // Tuple type: [type, type, ...]
+    if (k == "LBRACKET") {
+        pAdvance()
+        let types = parseTypeAnn()
+        while (curKind() == "COMMA") {
+            pAdvance()
+            types = listAppendStr(types, parseTypeAnn())
+        }
+        pExpect("RBRACKET")
+        return "Tuple<" + types + ">"
+    }
     if (k == "IDENT") {
         let name = curValue()
         pAdvance()

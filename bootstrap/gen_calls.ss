@@ -399,9 +399,10 @@ function genTemplateLit(id: int): string {
 function genArrayLit(id: int): string {
     const elemList = nGetList(id)
 
-    // Check if any spread elements exist + detect ptr elements
+    // Check if any spread elements exist + detect ptr/scalar element mix
     let hasSpread = 0
     let hasPtrElem = 0
+    let hasScalarElem = 0
     if (elemList != "") {
         const chkParts = elemList.split(",")
         for (cp in chkParts) {
@@ -410,14 +411,14 @@ function genArrayLit(id: int): string {
                 if (nGetKind(cid) == "SPREAD_ELEM") { hasSpread = 1 }
                 const eType = inferType(cid)
                 const eLLType = ssTypeToLLVM(eType)
-                if (eLLType == "ptr") { hasPtrElem = 1 }
+                if (eLLType == "ptr") { hasPtrElem = 1 } else { hasScalarElem = 1 }
             }
         }
     }
 
-    // Choose array constructor based on element type
+    // Choose array constructor: use scalar array for mixed types (tuple safety)
     let arrCtor = "@ss_newArray"
-    if (hasPtrElem == 1) { arrCtor = "@ss_newArrayPtr" }
+    if (hasPtrElem == 1 && hasScalarElem == 0) { arrCtor = "@ss_newArrayPtr" }
 
     // If spread exists, use push-based building
     if (hasSpread == 1) {

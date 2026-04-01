@@ -287,9 +287,12 @@ function genDestructureArray(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
     const arrVal = genExpr(initId)
+    // Detect tuple type from init expression
+    let tupleType = ""
+    const daInitType = inferType(initId)
+    if (isTupleType(daInitType) == 1) { tupleType = daInitType }
     let itemType = inferArrayElemType(initId)
-    if (itemType == "") { itemType = "i64" }
-    const llType = ssTypeToLLVM(itemType)
+    if (itemType == "" && tupleType == "") { itemType = "i64" }
     const parts = names.split(",")
     let idx = 0
     for (n in parts) {
@@ -306,12 +309,19 @@ function genDestructureArray(id: int) {
             if (currentFunc != "") { trackPtrVar(llName) }
             break
         }
+        // Per-element type for tuples, uniform type for arrays
+        let elemType = itemType
+        if (tupleType != "") {
+            elemType = tupleElemTypeAtIndex(tupleType, idx)
+            if (elemType == "") { elemType = "i64" }
+        }
+        const llType = ssTypeToLLVM(elemType)
         const llName = allocVarName(n)
         emitIR(`  %${llName} = alloca ${llType}, align 8`)
         const elemR = nextReg()
         emitIR(`  ${elemR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idx})`)
         // Convert i64 to target type
-        if (itemType == "string") {
+        if (elemType == "string") {
             const elemPtr = nextReg()
             emitIR(`  ${elemPtr} = inttoptr i64 ${elemR} to ptr`)
             emitIR(`  store ptr ${elemPtr}, ptr %${llName}, align 8`)
@@ -319,14 +329,18 @@ function genDestructureArray(id: int) {
                 trackPtrVar(llName)
                 emitIR(`  call void @ss_rc_retain(ptr ${elemPtr})`)
             }
-        } else if (itemType == "int") {
+        } else if (elemType == "int") {
             const elemI32 = nextReg()
             emitIR(`  ${elemI32} = trunc i64 ${elemR} to i32`)
             emitIR(`  store i32 ${elemI32}, ptr %${llName}, align 8`)
+        } else if (elemType == "double") {
+            const elemDb = nextReg()
+            emitIR(`  ${elemDb} = bitcast i64 ${elemR} to double`)
+            emitIR(`  store double ${elemDb}, ptr %${llName}, align 8`)
         } else {
             emitIR(`  store i64 ${elemR}, ptr %${llName}, align 8`)
         }
-        setVarType(n, itemType)
+        setVarType(n, elemType)
         idx = idx + 1
     }
 }
