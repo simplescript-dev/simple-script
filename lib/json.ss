@@ -299,6 +299,45 @@ function jnAddElement(arrId: int, childId: int) {
     }
 }
 
+// ── Hex / UTF-8 helpers ─────────────────────────────────────
+
+function jpHexDigit(ch: string): int {
+    const c = charCodeAt(ch, 0)
+    if (c >= 48 && c <= 57) { return c - 48 }
+    if (c >= 65 && c <= 70) { return c - 55 }
+    if (c >= 97 && c <= 102) { return c - 87 }
+    return 0
+}
+
+function jpHexChar(n: int): string {
+    if (n < 10) { return fromCharCode(48 + n) }
+    return fromCharCode(87 + n)
+}
+
+function jpCodePointToUtf8(cp: int): string {
+    if (cp < 128) {
+        return fromCharCode(cp)
+    }
+    if (cp < 2048) {
+        return fromCharCode(192 | (cp >> 6)) + fromCharCode(128 | (cp & 63))
+    }
+    if (cp < 65536) {
+        return fromCharCode(224 | (cp >> 12)) + fromCharCode(128 | ((cp >> 6) & 63)) + fromCharCode(128 | (cp & 63))
+    }
+    return fromCharCode(240 | (cp >> 18)) + fromCharCode(128 | ((cp >> 12) & 63)) + fromCharCode(128 | ((cp >> 6) & 63)) + fromCharCode(128 | (cp & 63))
+}
+
+function jpReadHex4(): int {
+    let val = 0
+    let i = 0
+    while (i < 4 && jpPos < jpSrc.length()) {
+        val = (val << 4) | jpHexDigit(jpSrc.charAt(jpPos))
+        jpPos = jpPos + 1
+        i = i + 1
+    }
+    return val
+}
+
 function jnEscapeString(s: string): string {
     let result = ""
     let i = 0
@@ -309,7 +348,16 @@ function jnEscapeString(s: string): string {
         else if (ch == "\n") { result = `${result}\\n` }
         else if (ch == "\t") { result = `${result}\\t` }
         else if (ch == "\r") { result = `${result}\\r` }
-        else { result = `${result}${ch}` }
+        else {
+            const code = charCodeAt(s, i)
+            if (code < 32) {
+                if (code == 8) { result = `${result}\\b` }
+                else if (code == 12) { result = `${result}\\f` }
+                else { result = `${result}\\u00${jpHexChar(code / 16)}${jpHexChar(code % 16)}` }
+            } else {
+                result = `${result}${ch}`
+            }
+        }
         i = i + 1
     }
     return result
@@ -471,6 +519,24 @@ function jpParseString(): int {
             else if (esc == "\"") { result = result + "\"" }
             else if (esc == "r") { result = result + "\r" }
             else if (esc == "/") { result = result + "/" }
+            else if (esc == "b") { result = result + fromCharCode(8) }
+            else if (esc == "f") { result = result + fromCharCode(12) }
+            else if (esc == "u") {
+                jpPos = jpPos + 1
+                const hex1 = jpReadHex4()
+                if (hex1 >= 55296 && hex1 <= 56319) {
+                    if (jpPos + 1 < jpSrc.length() && jpSrc.charAt(jpPos) == "\\" && jpSrc.charAt(jpPos + 1) == "u") {
+                        jpPos = jpPos + 2
+                        const hex2 = jpReadHex4()
+                        result = result + jpCodePointToUtf8(65536 + ((hex1 - 55296) << 10) + (hex2 - 56320))
+                    } else {
+                        result = result + jpCodePointToUtf8(hex1)
+                    }
+                } else {
+                    result = result + jpCodePointToUtf8(hex1)
+                }
+                jpPos = jpPos - 1
+            }
             else { result = result + esc }
         } else {
             result = result + ch
