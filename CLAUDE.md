@@ -271,6 +271,11 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **技术结论必须验证**：不确定就说不确定，不编理由
 - **参考最佳实践**：任何设计决策先研究 Go/Rust/Zig/Crystal 等成熟编译器的做法
 
+### 优先级
+
+- **先修后加**：`docs/4-issues/1-open/` 中的 open issues 优先于新功能和 stdlib 模块。不在已知问题（静默产出错误代码、崩溃、强制 workaround）未修复时添加新功能
+- **每轮开始先审 open issues**：读 handoff 后先检查 `docs/4-issues/1-open/`，优先处理未被语言能力阻塞的 issue
+
 ### 决策记录与上下文管理
 
 - **设计讨论产出决策 → 立即创建 D 文档**：每个确认的设计决策写入 `docs/3-decisions/D0XX-*.md`，一个决策一个文件。不等到实现完成再补

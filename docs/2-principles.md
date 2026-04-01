@@ -25,6 +25,10 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **P12: No dead code.** Deprecated code is deleted, not commented out. ← V5
 - **P13: Extract only when justified.** Three similar lines are better than a premature abstraction. ← V6
 
+## Priority
+
+- **P17: Fix before add.** Open issues (`docs/4-issues/1-open/`) take priority over new features or stdlib modules. Do not add new functionality while known issues silently produce wrong code, crash, or force workarounds. ← V3, P4
+
 ## Workflow
 
 - **P14: Atomic task execution.** Sequential steps of the same task (analyze → verify → commit) execute in one go. Handoff splits only at genuinely independent task boundaries. ← V6

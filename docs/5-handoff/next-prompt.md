@@ -18,18 +18,27 @@ Map.keys() 修复（D052）：Map.keys() 从返回换行分隔字符串改为返
 ## Task
 Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, **Map.keys() fix done**
 Scope:
-1. **Standard library cleanup**: Now that Map.keys() returns Array<string>, the stdlib modules (csv.ss, ini.ss, etc.) that used the global-Map-with-composite-keys workaround CAN be simplified. Consider refactoring them to use Maps directly as class fields.
-2. **Standard library expansion (continued)**:
-   - **New modules**: Consider `argparse.ss` (CLI argument parsing), `random.ss` (random utilities beyond Math.randomInt)
-   - **buffer.ss** deferred: SS strings are null-terminated, limiting byte buffer ops.
-   - **event.ss** deferred: Array<fn> not fully supported (inferArrayElemType doesn't handle fn type). Needs compiler enhancement first.
-3. **Phase 4 remaining features**:
-   - **String template tag functions** — Tagged templates (advanced, low priority)
-4. **Phase 2 remaining** (diminishing returns):
-   - Mutability inference — Fixed-point analysis marking function params as mutated/readonly
-5. **文件大小状态**: gen_class.ss ~615, gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
-6. **Standard library状态**: json.ss (578 LOC), crypto.ss (526 LOC), url.ss (442 LOC), regex.ss (440 LOC), template.ss (348 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), ini.ss (255 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), sort.ss (212 LOC), color.ss (178 LOC), http.ss (151 LOC), path.ss (148 LOC), assert.ss (139 LOC), math.ss (115 LOC), uuid.ss (114 LOC), log.ss (101 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~4862 LOC in lib/, 20 modules.
-7. **建议**: Map.keys() now returns Array<string> — this unblocks using Maps as class fields with key iteration. Consider refactoring csv.ss and ini.ss to use simpler architecture (Map fields instead of global composite-key Maps). Also consider new compiler features or stdlib modules. P4a principle now ensures compiler limitations are fixed rather than worked around.
+**P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
+
+### Open Issues (按优先级)
+1. **I003 — 语义分析不完整** [HIGH]: 类型不匹配时静默产出错误代码。Phase 4 需要将 inferType() 从 codegen 迁移到 checker 做预检。**不被语言能力阻塞，可以立即推进。**
+2. **I001 — 全局可变状态爆炸** [BLOCKED]: 55+ 全局变量。需要 struct 支持才能彻底解决（P10）。短期可分组 + init 函数。
+3. **I002 — 字符串类型系统** [BLOCKED]: 类型用 raw string 比较。需要 enum/struct。短期可统一解析函数。
+4. **I005 — AST list 用字符串** [PARTIAL]: 已有 helper，性能问题待 proper array type。
+5. **I006 — Runtime raw IR** [LOW]: 已大幅转换，剩 401 处 raw emitIR。
+6. **I008 — Parser 优先级硬编码** [LOW]: 能用，递归下降是标准做法。
+7. **I004 — 错误报告** [DONE]: 全部 4 阶段已完成，应移至 closed。
+
+### 次优先级
+8. **Standard library cleanup**: csv.ss/ini.ss 可用 Map 字段简化（Map.keys() 已修复）。
+9. **Standard library expansion**: argparse.ss, random.ss 等新模块。
+10. **Phase 4 remaining**: Tagged templates（低优先级）。
+11. **Phase 2 remaining**: Mutability inference（收益递减）。
+
+### 项目状态
+- **文件大小**: gen_class.ss ~615, gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
+- **Stdlib**: 20 modules, ~4862 LOC in lib/.
+- **Bootstrap**: 35 files, ~13450 LOC, 71 phase5 tests.
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 9. **Known compiler limitation**: Global `let` with negative int literals (e.g., `let x = -1`) doesn't work — parser treats `-1` as UNARY_MINUS(INT_LIT(1)), which falls into non-literal init path and gets typed as `ptr`. Workaround: initialize to 0 and set the real value inside functions.
 10. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
