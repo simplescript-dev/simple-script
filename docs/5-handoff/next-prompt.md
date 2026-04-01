@@ -1,4 +1,4 @@
-# Round 79
+# Round 80
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13723 LOC).
@@ -13,10 +13,10 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-I003 Phase 3 完成（D054）：添加 METHOD_CALL 参数类型检查。实现 `methodParamTypes`/`methodRetTypes` 双 Map 存储方法参数和返回类型，`lookupMethodParamType`/`lookupMethodRetType` 沿继承链查找，`checkerInferType`/`inferCheckerClass` 扩展支持 METHOD_CALL（启用链式调用类型推断如 `a.getB().method()`）。Bootstrap 固定点验证通过，73 phase5 tests 全部通过。
+修复 parser 限制（D055）：`this.field = value` 现在可在 class 方法中直接使用。一行改动：`parseStmt()` 中 `THIS` token 路由到 `parseAssignOrExpr()`，后者的 member-assign 检测路径自然支持 `this.field`/`this.field += value`/`this.a.b = value`。Bootstrap 固定点验证通过，74 phase5 tests 全部通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), **METHOD_CALL type checking done (D054)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), **this.field assign fix done (D055)**
 Scope:
 **P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
 
@@ -29,7 +29,7 @@ Scope:
 6. **I008 — Parser 优先级硬编码** [LOW]: 能用，递归下降是标准做法。
 
 ### 次优先级
-7. **Standard library cleanup**: csv.ss/ini.ss 可用 Map 字段简化（Map.keys() 已修复）。
+7. **Standard library cleanup**: csv.ss/ini.ss 已检查，无需修改（用 count metadata 模式，不依赖 Map.keys()）。
 8. **Standard library expansion**: argparse.ss, random.ss 等新模块。
 9. **Phase 4 remaining**: Tagged templates（低优先级）。
 10. **Phase 2 remaining**: Mutability inference（收益递减）。
@@ -37,16 +37,15 @@ Scope:
 ### 项目状态
 - **文件大小**: checker.ss ~730, check_stmts.ss ~628, gen_class.ss ~615, gen_decls.ss ~579, parser.ss ~559, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
 - **Stdlib**: 20 modules, ~4862 LOC in lib/.
-- **Bootstrap**: 35 files, ~13723 LOC, 73 phase5 tests.
+- **Bootstrap**: 35 files, ~13723 LOC, 74 phase5 tests.
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 9. **Known compiler limitation**: Global `let` with negative int literals (e.g., `let x = -1`) doesn't work — parser treats `-1` as UNARY_MINUS(INT_LIT(1)), which falls into non-literal init path and gets typed as `ptr`. Workaround: initialize to 0 and set the real value inside functions.
 10. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
 11. **Known compiler limitation**: `inferArrayElemType()` only recognizes `<string>`, `<int>`, `<double>`. Does NOT handle `<fn>`, returning empty string. This prevents type-safe Array<fn> usage, blocking event emitter patterns.
-12. **Known parser limitation**: `this.field = value` not supported inside methods (parseStmt only enters parseAssignOrExpr for IDENT tokens, not THIS). Use `let self = this; self.field = value` pattern.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**. Compiler source CAN now use these features.
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules follow this pattern.
@@ -70,7 +69,7 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 73 tests.
+- **phase5 tests**: 74 tests.
 - **35 bootstrap files**, ~13723 LOC.
 
 ## Decision Criteria
@@ -85,8 +84,8 @@ Scope:
 - Known limitation: Global `let` with negative int literals typed as `ptr` instead of `int`. Use 0 initializer + function-level assignment.
 - Known convention: `arr.slice(start, end)` is start+end index semantics, NOT offset+length. Differs from `substring(offset, length)`.
 - Known limitation: `inferArrayElemType()` only handles string/int/double, not fn. Blocks Array<fn> support.
-- Known parser limitation: `this.field = value` not supported inside methods. Use `let self = this` pattern.
-- 35 bootstrap files total, ~13723 LOC, 73 phase5 tests.
+- **this.field = value now works** in class methods (D055). No more `let self = this` workaround needed.
+- 35 bootstrap files total, ~13723 LOC, 74 phase5 tests.
 
 ## When Done
 **P18: 单上下文单任务。完成当前任务或上下文不足时，更新 handoff 并停止。**

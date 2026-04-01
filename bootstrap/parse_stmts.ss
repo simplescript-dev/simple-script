@@ -39,7 +39,7 @@ function parseStmt(): int {
     if (k == "TRY") { return parseTryCatch() }
     if (k == "THROW") { return parseThrow() }
     if (k == "IMPORT") { return parseImport() }
-    if (k == "IDENT") { return parseAssignOrExpr() }
+    if (k == "IDENT" || k == "THIS") { return parseAssignOrExpr() }
     // Fallback: expression statement
     const exprId = parseExpr()
     expectNLOrRB()
