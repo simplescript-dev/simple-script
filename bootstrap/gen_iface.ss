@@ -35,9 +35,7 @@ function registerInterface(id: int) {
 
 // Generate switch-based dispatch functions for all interface methods
 function generateInterfaceDispatchers() {
-    const allIfaces = ifaceMethodsCG.keys()
-    if (allIfaces == "") { return }
-    const ifaceList = allIfaces.split("\n")
+    const ifaceList = ifaceMethodsCG.keys()
     for (iface in ifaceList) {
         if (iface == "") { continue }
         const methods = ifaceMethodsCG.getString(iface)

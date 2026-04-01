@@ -364,9 +364,7 @@ function genGenericNewExpr(id: int, className: string): string {
 // Generate code for pre-registered specialized classes that haven't been codegen'd yet.
 // Called after emitGlobalsAndCode to handle generic parents from extends (Case B).
 function generateDeferredSpecializations() {
-    const allKeys = specClassNodeId.keys()
-    if (allKeys == "") { return }
-    const keyList = allKeys.split("\n")
+    const keyList = specClassNodeId.keys()
     for (mn in keyList) {
         if (mn == "") { continue }
         if (specClassGenerated.has(mn) == 1) { continue }

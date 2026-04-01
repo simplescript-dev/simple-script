@@ -273,9 +273,7 @@ function canReachClass(fromClass: string, targetClass: string): int {
 }
 
 function detectCyclicOwnership() {
-    const allClasses = classFields.keys()
-    if (allClasses == "") { return }
-    const cList = allClasses.split("\n")
+    const cList = classFields.keys()
     for (cls in cList) {
         if (cls == "" || cls == "Map" || cls == "Math") { continue }
         const fieldStr = classFields.getString(cls)

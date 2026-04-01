@@ -83,9 +83,7 @@ function pirLivenessPass(pirBuf: string, funcName: string) {
     }
 
     // Step 3: Variables with no post-definition uses → RC_DEC at defining stmt
-    const allVarKeys = classVars.keys()
-    if (allVarKeys == "") { return }
-    const varList = allVarKeys.split("\n")
+    const varList = classVars.keys()
     for (vn in varList) {
         if (vn == "") { continue }
         if (escapedVars.has(vn) == 1) { continue }
@@ -214,9 +212,7 @@ function pirUniquenessPass(pirBuf: string) {
         }
     }
 
-    const allKeys = allocVars.keys()
-    if (allKeys == "") { return }
-    const varList = allKeys.split("\n")
+    const varList = allocVars.keys()
     for (vn in varList) {
         if (vn == "") { continue }
         if (nonUniqueVars.has(vn) == 1) { continue }

@@ -226,9 +226,7 @@ function registerClass(id: int) {
 let resolvedInheritance = ""
 function resolveInheritance() {
     resolvedInheritance = Map()
-    const allClasses = classFields.keys()
-    if (allClasses == "") { return }
-    const classList = allClasses.split("\n")
+    const classList = classFields.keys()
     for (cls in classList) {
         if (cls == "") { continue }
         resolveInheritanceForClass(cls)

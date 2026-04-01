@@ -5,9 +5,7 @@
 // Called after resolveInheritance() so inherited fields are known.
 
 function assignClassDtorTags() {
-    const allClasses = classFields.keys()
-    if (allClasses == "") { return }
-    const cList = allClasses.split("\n")
+    const cList = classFields.keys()
     for (c in cList) {
         if (c == "" || c == "Map") { continue }
         const fieldStr = classFields.getString(c)
@@ -36,9 +34,7 @@ function assignClassDtorTags() {
 // Called after resolveInheritance() so parent chains are complete.
 
 function buildClassVtables() {
-    const allClasses = classFields.keys()
-    if (allClasses == "") { return }
-    const classList = allClasses.split("\n")
+    const classList = classFields.keys()
     // Mark all classes that are part of an inheritance hierarchy
     for (cls in classList) {
         if (cls == "") { continue }

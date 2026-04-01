@@ -267,6 +267,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 ### 问题解决
 
 - **Root Cause 优先**：从根源修复问题，不用临时方案绕过
+- **编译器限制是 bug，不是边界条件**：当编译器限制迫使 stdlib 或用户代码使用丑陋 workaround 时，先修编译器。不要记为 "Known limitation" 然后绕过。同一个 workaround 出现第二次就该停下来修根因
 - **技术结论必须验证**：不确定就说不确定，不编理由
 - **参考最佳实践**：任何设计决策先研究 Go/Rust/Zig/Crystal 等成熟编译器的做法
 

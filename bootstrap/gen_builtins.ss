@@ -253,7 +253,7 @@ function genMapMethod(method: string, objVal: string, argList: string): string {
         return r
     }
     if (method == "size") { const r = nextReg(); emitIR(`  ${r} = call i32 @ss_mapSize(ptr ${objVal})`); return r }
-    if (method == "keys") { const r = nextReg(); emitIR(`  ${r} = call ptr @ss_mapKeys(ptr ${objVal})`); return r }
+    if (method == "keys") { const r = nextReg(); emitIR(`  ${r} = call ptr @ss_mapKeysArray(ptr ${objVal})`); return r }
     if (method == "delete") { const dk = genExpr(parseInt(argList)); emitIR(`  call void @ss_mapDelete(ptr ${objVal}, ptr ${dk})`); return "0" }
     return ""
 }

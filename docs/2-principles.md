@@ -8,6 +8,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **P2: Test before modify.** Confirm all tests pass before touching code. ← C1
 - **P3: Behavior-preserving refactoring.** Pure refactoring produces identical IR output. ← C1, V6
 - **P4: Root cause first.** Fix from source, no workarounds or hacks. ← V3
+- **P4a: Compiler limitation is a bug, not a boundary.** When a compiler limitation forces ugly patterns in stdlib or user code, fix the compiler first. Do NOT record it as "Known limitation" and work around it. If the same workaround appears twice, stop and fix the root cause. ← V3, C1
 - **P5: Verify, don't assume.** Technical conclusions must be validated. If uncertain, say so. ← V3
 
 ## Architecture
