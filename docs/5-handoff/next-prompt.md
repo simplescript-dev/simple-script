@@ -1,4 +1,4 @@
-# Round 69
+# Round 70
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13410 LOC).
@@ -13,20 +13,20 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-Assert 标准库模块（D044）：为 lib/ 添加轻量级测试断言库——15 个 Assert 静态方法（isTrue, isFalse, equal×2, notEqual×2, approxEqual, greaterThan, lessThan, greaterOrEqual, lessOrEqual, contains, startsWith, endsWith, fail）。利用 SS 函数重载为 equal/notEqual 提供 int 和 string 两个版本。assert.ss 139 LOC，纯 SS 无编译器改动，全量测试 + bootstrap 固定点验证通过。
+Color 标准库模块（D045）：为 lib/ 添加 ANSI 终端颜色库——32 个 Color 静态方法（6 修饰符 bold/dim/italic/underline/inverse/strikethrough + 8 基本前景色 + 8 亮色含 gray + 8 背景色 + strip/reset 工具方法）。核心 helper `colorWrap(text, open, close)` 用 `fromCharCode(27)` 生成 ESC 序列包裹文本。color.ss 178 LOC，纯 SS 无编译器改动，全量测试 + bootstrap 固定点验证通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done
 Scope:
 1. **Standard library expansion (continued)**:
-   - **New modules**: Consider `color.ss` (ANSI terminal colors), `regex.ss` (basic pattern matching), `buffer.ss` (byte buffer operations)
+   - **New modules**: Consider `regex.ss` (basic pattern matching), `buffer.ss` (byte buffer operations), `template.ss` (simple template engine)
 2. **Phase 4 remaining features**:
    - **String template tag functions** — Tagged templates (advanced, low priority)
 3. **Phase 2 remaining** (diminishing returns):
    - Mutability inference — Fixed-point analysis marking function params as mutated/readonly
 4. **文件大小状态**: gen_class.ss ~615 (approaching limit), gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507. gen_class.ss may need a split if further features add to it.
-5. **Standard library状态**: json.ss (578 LOC), url.ss (442 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), http.ss (151 LOC), path.ss (148 LOC), assert.ss (139 LOC), math.ss (115 LOC), uuid.ss (114 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~2802 LOC in lib/, 13 modules.
-6. **建议**: Assert module now complete. Standard library covers most common needs (JSON, URL, CSV, DateTime, SHA256, UUID, HTTP, Path, FS, Math, Base64, StringUtils, Assert). Consider new language features like string template tag functions, or new stdlib modules like color.ss (ANSI escape codes) or buffer.ss (byte-level operations). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
+5. **Standard library状态**: json.ss (578 LOC), url.ss (442 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), color.ss (178 LOC), http.ss (151 LOC), path.ss (148 LOC), assert.ss (139 LOC), math.ss (115 LOC), uuid.ss (114 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~2980 LOC in lib/, 14 modules.
+6. **建议**: Standard library now covers 14 modules with broad coverage. Consider new language features like string template tag functions, or new stdlib modules like regex.ss (basic pattern matching) or buffer.ss (byte-level operations). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
 7. **Known compiler limitation**: `Map.keys()` is unreliable when called on a Map passed as a function parameter. Workaround: use parallel arrays or call `.keys()` before passing to function. Does not affect Maps created/used within the same scope.
 
 ## Watch Out For
@@ -35,6 +35,13 @@ Scope:
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules (string_utils.ss, csv.ss) follow this pattern.
+- **Color module (D045, Round 69)**:
+  - **Architecture**: Pure SS, static method pattern (like UUID, Assert).
+  - **Core helper**: `colorWrap(text, open, close)` wraps text with `ESC[{open}m...ESC[{close}m` using `fromCharCode(27)`.
+  - **Color static methods (32)**: 6 modifiers (bold, dim, italic, underline, inverse, strikethrough) + 8 FG colors (black, red, green, yellow, blue, magenta, cyan, white) + 8 bright FG (gray, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite) + 8 BG colors (bgBlack, bgRed, bgGreen, bgYellow, bgBlue, bgMagenta, bgCyan, bgWhite) + strip + reset.
+  - **Composition**: Via nesting — `Color.bold(Color.red("text"))`.
+  - **strip()**: Scans for ESC[...m sequences and removes them.
+  - **Import**: `import { Color } from "@/lib/color"`.
 - **Assert module (D044, Round 68)**:
   - **Architecture**: Pure SS, static method pattern (like UUID, DateTime, Path).
   - **Assert static methods (15)**: `isTrue(value, msg)`, `isFalse(value, msg)`, `equal(int/string overload)`, `notEqual(int/string overload)`, `approxEqual(actual, expected, eps, msg)`, `greaterThan(actual, expected, msg)`, `lessThan(actual, expected, msg)`, `greaterOrEqual(actual, expected, msg)`, `lessOrEqual(actual, expected, msg)`, `contains(text, substr, msg)`, `startsWith(text, prefix, msg)`, `endsWith(text, suffix, msg)`, `fail(msg)`.
@@ -70,14 +77,6 @@ Scope:
   - **Encoding trick**: `dtCivil()` returns `year*10000 + month*100 + day` as single int for multi-value return.
   - **substring semantics**: SS `substring(offset, length)` — offset + length, NOT start + end.
   - **Known limitations**: i32 timestamps valid through 2038-01-19. UTC only, no timezone support.
-- **String utils (D038, Round 62)**:
-  - **16 methods**: trimStart, trimEnd, capitalize, reverse, isBlank, isDigit, isAlpha, isAlphaNumeric, padCenter, truncate, count, removePrefix, removeSuffix, equalsIgnoreCase, lines, words.
-  - **Pure SS**: No compiler changes. Uses static method pattern (`StringUtil.capitalize("hello")`).
-- **Math enhancements (D037, Round 61)**:
-  - **New builtins**: `Math.tan(x)`, `Math.asin(x)`, `Math.acos(x)`, `Math.atan(x)`, `Math.atan2(y,x)`, `Math.exp(x)`, `Math.log10(x)`, `Math.log2(x)`, `Math.trunc(x)`, `Math.sign(x)`, `Math.hypot(x,y)`, `Math.cbrt(x)`, `Math.fmod(x,y)`.
-  - **All return double**: Auto int→double conversion via `isMathClass` in `genStaticMethodCall()`. Exception: `Math.randomInt` returns int and skips conversion.
-  - **lib/math.ss (MathUtil)**: `clamp(v,lo,hi)`, `lerp(a,b,t)`, `inverseLerp(a,b,v)`, `mapRange(v,inMin,inMax,outMin,outMax)`, `toDegrees(rad)`, `toRadians(deg)`, `approxEqual(a,b,eps)`, `isEven(n)`, `isOdd(n)`, `gcd(a,b)`, `lcm(a,b)`, `isPowerOfTwo(n)`.
-  - **Constants as methods**: `MathUtil.PI()`, `MathUtil.E()`, `MathUtil.TAU()`, `MathUtil.EPSILON()`.
 - **Standard library pattern (D035, Round 59)**:
   - **Static method pattern**: `class Path()` + `function Path_join(...)` → user calls `Path.join(...)`.
   - **Import path**: `import { DateTime } from "@/lib/datetime"`, `import { Path } from "@/lib/path"`, etc.
@@ -96,19 +95,19 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 63 tests.
+- **phase5 tests**: 64 tests.
 - **35 bootstrap files**, ~13410 LOC.
 
 ## Decision Criteria
-- Standard library now has 13 modules: json.ss (578), url.ss (442), csv.ss (286), datetime.ss (258), sha256.ss (228), string_utils.ss (220), http.ss (151), path.ss (148), assert.ss (139), math.ss (115), uuid.ss (114), base64.ss (63), fs.ss (60). Total ~2802 LOC.
-- Assert module: 15 static methods with int/string overloaded equal/notEqual. Replaces per-test boilerplate.
+- Standard library now has 14 modules: json.ss (578), url.ss (442), csv.ss (286), datetime.ss (258), sha256.ss (228), string_utils.ss (220), color.ss (178), http.ss (151), path.ss (148), assert.ss (139), math.ss (115), uuid.ss (114), base64.ss (63), fs.ss (60). Total ~2980 LOC.
+- Color module: 32 static methods — 6 modifiers, 8 FG, 8 bright FG, 8 BG, strip, reset. Composition via nesting.
 - Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
 - File sizes: gen_class.ss ~615 (largest), gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532.
 - All existing features working: tuple types (D034), Phase 4 batch (D033), array methods, power operator (D032), multi-constraints (D031), type constraints, generic class inheritance (D030), destructuring, switch patterns (D029), explicit type args (D028), generic classes (D027), generic functions (D026), interfaces (D025).
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known issue: `genOptionalMethodCall` has same double-evaluation pattern that was fixed in `genOptionalMemberAccess`. Low priority since method call object is typically an IDENT.
 - Known limitation: `Map.keys()` unreliable on function-parameter Maps. Workaround: parallel arrays or caller-side `.keys()`.
-- 35 bootstrap files total, ~13410 LOC, 63 phase5 tests.
+- 35 bootstrap files total, ~13410 LOC, 64 phase5 tests.
 
 ## When Done
 1. Write tests for new features
