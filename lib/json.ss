@@ -104,6 +104,53 @@ class JsonNode(nodeId: int) {
         return parseInt(jnInt.getString(`${this.nodeId}`))
     }
 
+    function getDouble(key: string): double {
+        const childId = jnGetField(this.nodeId, key)
+        if (childId <= 0) { return 0.0 }
+        return parseDouble(jnInt.getString(`${childId}`))
+    }
+
+    function getBool(key: string): int {
+        return this.getInt(key)
+    }
+
+    function has(key: string): int {
+        const childId = jnGetField(this.nodeId, key)
+        if (childId > 0) { return 1 }
+        return 0
+    }
+
+    function keys(): Array<string> {
+        let result: Array<string> = []
+        if (this.type() != "object") { return result }
+        const fieldList = jnStr.getString(`${this.nodeId}`)
+        if (fieldList == "") { return result }
+        let remaining = fieldList
+        while (remaining != "") {
+            let entry = remaining
+            const commaIdx = remaining.indexOf(",")
+            if (commaIdx >= 0) {
+                entry = remaining.substring(0, commaIdx)
+                remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
+            } else {
+                remaining = ""
+            }
+            const colonIdx = entry.indexOf(":")
+            if (colonIdx >= 0) {
+                result = result.push(entry.substring(0, colonIdx))
+            }
+        }
+        return result
+    }
+
+    function asDouble(): double {
+        return parseDouble(jnInt.getString(`${this.nodeId}`))
+    }
+
+    function asBool(): int {
+        return this.asInt()
+    }
+
     // Builder methods (object)
     function put(key: string, value: string): JsonNode {
         const childId = jnNew("string")
@@ -130,6 +177,46 @@ class JsonNode(nodeId: int) {
     function add(value: int): JsonNode {
         const childId = jnNew("number")
         jnInt.set(`${childId}`, `${value}`)
+        jnAddElement(this.nodeId, childId)
+        return this
+    }
+
+    function put(key: string, value: double): JsonNode {
+        const childId = jnNew("number")
+        jnInt.set(`${childId}`, `${value}`)
+        jnSetField(this.nodeId, key, childId)
+        return this
+    }
+
+    function putBool(key: string, value: int): JsonNode {
+        const childId = jnNew("bool")
+        jnInt.set(`${childId}`, `${value}`)
+        jnSetField(this.nodeId, key, childId)
+        return this
+    }
+
+    function putNull(key: string): JsonNode {
+        const childId = jnNew("null")
+        jnSetField(this.nodeId, key, childId)
+        return this
+    }
+
+    function add(value: double): JsonNode {
+        const childId = jnNew("number")
+        jnInt.set(`${childId}`, `${value}`)
+        jnAddElement(this.nodeId, childId)
+        return this
+    }
+
+    function addBool(value: int): JsonNode {
+        const childId = jnNew("bool")
+        jnInt.set(`${childId}`, `${value}`)
+        jnAddElement(this.nodeId, childId)
+        return this
+    }
+
+    function addNull(): JsonNode {
+        const childId = jnNew("null")
         jnAddElement(this.nodeId, childId)
         return this
     }
@@ -212,11 +299,27 @@ function jnAddElement(arrId: int, childId: int) {
     }
 }
 
+function jnEscapeString(s: string): string {
+    let result = ""
+    let i = 0
+    while (i < s.length()) {
+        const ch = s.charAt(i)
+        if (ch == "\\") { result = `${result}\\\\` }
+        else if (ch == "\"") { result = `${result}\\"` }
+        else if (ch == "\n") { result = `${result}\\n` }
+        else if (ch == "\t") { result = `${result}\\t` }
+        else if (ch == "\r") { result = `${result}\\r` }
+        else { result = `${result}${ch}` }
+        i = i + 1
+    }
+    return result
+}
+
 function jnStringify(id: int): string {
     if (id <= 0) { return "null" }
     const t = jnType.getString(`${id}`)
     if (t == "string") {
-        return `"${jnStr.getString(`${id}`)}"`
+        return `"${jnEscapeString(jnStr.getString(`${id}`))}"`
     }
     if (t == "number") {
         return jnInt.getString(`${id}`)
@@ -366,6 +469,8 @@ function jpParseString(): int {
             else if (esc == "t") { result = result + "\t" }
             else if (esc == "\\") { result = result + "\\" }
             else if (esc == "\"") { result = result + "\"" }
+            else if (esc == "r") { result = result + "\r" }
+            else if (esc == "/") { result = result + "/" }
             else { result = result + esc }
         } else {
             result = result + ch
@@ -384,6 +489,21 @@ function jpParseNumber(): int {
         const ch = jpSrc.charAt(jpPos)
         if (ch != "0" && ch != "1" && ch != "2" && ch != "3" && ch != "4" && ch != "5" && ch != "6" && ch != "7" && ch != "8" && ch != "9" && ch != ".") { break }
         jpPos = jpPos + 1
+    }
+    if (jpPos < jpSrc.length()) {
+        const ech = jpSrc.charAt(jpPos)
+        if (ech == "e" || ech == "E") {
+            jpPos = jpPos + 1
+            if (jpPos < jpSrc.length()) {
+                const sign = jpSrc.charAt(jpPos)
+                if (sign == "+" || sign == "-") { jpPos = jpPos + 1 }
+            }
+            while (jpPos < jpSrc.length()) {
+                const d = jpSrc.charAt(jpPos)
+                if (d != "0" && d != "1" && d != "2" && d != "3" && d != "4" && d != "5" && d != "6" && d != "7" && d != "8" && d != "9") { break }
+                jpPos = jpPos + 1
+            }
+        }
     }
     const numStr = jpSrc.substring(start, jpPos - start)
     const id = jnNew("number")
