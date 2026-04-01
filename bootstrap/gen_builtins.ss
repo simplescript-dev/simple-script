@@ -91,6 +91,22 @@ function genHigherOrderMethod(method: string, objVal: string, argList: string): 
         emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, i64 ${cbVal})`)
         return r
     }
+    if (method == "findIndex" || method == "some" || method == "every") {
+        const cbVal = genExpr(parseInt(argList))
+        const fn = preludeName(`ss_${method}`)
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @${fn}(ptr ${objVal}, i64 ${cbVal})`)
+        return r
+    }
+    if (method == "find") {
+        const cbVal = genExpr(parseInt(argList))
+        const fn = preludeName("ss_find")
+        const r64 = nextReg()
+        emitIR(`  ${r64} = call i64 @${fn}(ptr ${objVal}, i64 ${cbVal})`)
+        const r = nextReg()
+        emitIR(`  ${r} = trunc i64 ${r64} to i32`)
+        return r
+    }
     if (method == "reduce") {
         const rArgs = argList.split(",")
         const cbVal = genExpr(parseInt(rArgs[0]))
@@ -152,6 +168,33 @@ function genArrayMethod(method: string, objVal: string, argList: string): string
     if (method == "concat") {
         const otherArr = genExpr(parseInt(argList))
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_arrayConcat(ptr ${objVal}, ptr ${otherArr})`); return r
+    }
+    if (method == "includes") {
+        const argId = parseInt(argList)
+        const argType = inferType(argId)
+        const sub = genExpr(argId)
+        if (argType == "int" || argType == "i64" || argType == "double") {
+            let val64 = sub
+            if (argType == "int") {
+                const sR = nextReg()
+                emitIR(`  ${sR} = sext i32 ${sub} to i64`)
+                val64 = sR
+            }
+            const idxR = nextReg()
+            emitIR(`  ${idxR} = call i32 @ss_arrayIndexOf(ptr ${objVal}, i64 ${val64})`)
+            const cmpR = nextReg()
+            emitIR(`  ${cmpR} = icmp sge i32 ${idxR}, 0`)
+            const r = nextReg()
+            emitIR(`  ${r} = zext i1 ${cmpR} to i32`)
+            return r
+        }
+        const idxR = nextReg()
+        emitIR(`  ${idxR} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`)
+        const cmpR = nextReg()
+        emitIR(`  ${cmpR} = icmp sge i32 ${idxR}, 0`)
+        const r = nextReg()
+        emitIR(`  ${r} = zext i1 ${cmpR} to i32`)
+        return r
     }
     return ""
 }

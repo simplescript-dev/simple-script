@@ -153,6 +153,11 @@ function inferType(id: int): string {
         if (ifaceMethodsCG.has(objType) == 1 && ifaceMethodRets.has(`${objType}.${method}`) == 1) {
             return ifaceMethodRets.getString(`${objType}.${method}`)
         }
+        // find() returns the array element type
+        if (method == "find") {
+            const elemType = inferArrayElemType(nGetI1(id))
+            if (elemType != "") { return elemType }
+        }
         // Built-in method return types (fallback for string/array/map methods)
         if (methodRetTypes.has(method) == 1) {
             return methodRetTypes.getString(method)

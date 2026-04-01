@@ -39,6 +39,46 @@ function _ss_forEach(arr: List<int>, callback: fn) {
     }
 }
 
+function _ss_find(arr: List<int>, predicate: fn): int {
+    const len = arr.length()
+    for (let i = 0; i < len; i++) {
+        if (predicate(arr[i]) == 1) {
+            return arr[i]
+        }
+    }
+    return 0
+}
+
+function _ss_findIndex(arr: List<int>, predicate: fn): int {
+    const len = arr.length()
+    for (let i = 0; i < len; i++) {
+        if (predicate(arr[i]) == 1) {
+            return i
+        }
+    }
+    return -1
+}
+
+function _ss_some(arr: List<int>, predicate: fn): int {
+    const len = arr.length()
+    for (let i = 0; i < len; i++) {
+        if (predicate(arr[i]) == 1) {
+            return 1
+        }
+    }
+    return 0
+}
+
+function _ss_every(arr: List<int>, predicate: fn): int {
+    const len = arr.length()
+    for (let i = 0; i < len; i++) {
+        if (predicate(arr[i]) == 0) {
+            return 0
+        }
+    }
+    return 1
+}
+
 // ── String methods ────────────────────────────────────────────
 
 function _ss_trim(s: string): string {
