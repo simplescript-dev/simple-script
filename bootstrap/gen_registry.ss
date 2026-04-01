@@ -79,6 +79,7 @@ function initFuncRetTypes() {
     funcRetTypes.set("Math_hypot", "double")
     funcRetTypes.set("Math_cbrt", "double")
     funcRetTypes.set("Math_fmod", "double")
+    funcRetTypes.set("Math_randomInt", "int")
     // Built-in function return types (from callReturnType hardcoded lists)
     funcRetTypes.set("readLine", "string")
     funcRetTypes.set("readFile", "string")
@@ -197,6 +198,7 @@ function initBuiltinMap() {
     builtinMap.set("Math_hypot", "ss_hypot")
     builtinMap.set("Math_cbrt", "ss_cbrt")
     builtinMap.set("Math_fmod", "ss_fmod")
+    builtinMap.set("Math_randomInt", "ss_randomInt")
     // All standard builtins: ss_ + callee
     const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
     const parts = names.split(",")

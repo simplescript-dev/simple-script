@@ -99,6 +99,7 @@ function initChecker() {
     registerMethodParams("Math", "hypot", 2, 2)
     registerMethodParams("Math", "cbrt", 1, 1)
     registerMethodParams("Math", "fmod", 2, 2)
+    registerMethodParams("Math", "randomInt", 1, 1)
     // Built-in functions (synced with codegen.ss funcRetTypes)
     const builtins = "println,print,readLine,readFile,writeFile,appendFile,args,arg,exit,system,parseInt,parseDouble,Map,Set,timeMs,timeUnix,fileSize,getenv,listDir,sha256,fromCharCode,charCodeAt,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpClose,mkdir,mkdirp,fileExists,removeFile,renameFile"
     const parts = builtins.split(",")

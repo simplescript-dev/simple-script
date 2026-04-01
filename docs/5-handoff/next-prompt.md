@@ -1,7 +1,7 @@
-# Round 67
+# Round 68
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13392 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13410 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
@@ -13,42 +13,48 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-URL 标准库模块（D042）：为 lib/ 添加 URL 解析/格式化库——7 个 URL 静态方法（parse, format, resolve, parseQuery, encodeQuery, encodeComponent, decodeComponent）+ 11 个 UrlParts 实例方法（protocol, username, password, hostname, port, pathname, search, hash, host, origin, href）。解析器为多步骤提取（fragment→query→scheme→authority/path），支持 IPv6 括号、userinfo、RFC 3986 percent 编解码、query string 解析。url.ss 442 LOC，全量测试 + bootstrap 固定点验证通过。
+UUID 标准库模块（D043）：为 lib/ 添加 UUID v4 生成/验证库——5 个 UUID 静态方法（v4, isValid, parse, version, nil）。同时添加 `Math.randomInt(max: int): int` builtin（解决 SS 缺少 double→int 转换的问题）和 `srand(time(0))` 自动播种（确保每次运行 Math.random/Math.randomInt 结果不同）。uuid.ss 114 LOC，编译器改动 +18 LOC（6 个 bootstrap 文件），全量测试 + bootstrap 固定点验证通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done
 Scope:
 1. **Standard library expansion (continued)**:
-   - **New modules**: Consider `uuid.ss` (v4 UUID generation, needs Math.random), `regex.ss` (basic pattern matching)
+   - **New modules**: Consider `regex.ss` (basic pattern matching), `assert.ss` (test assertions), `color.ss` (ANSI terminal colors)
 2. **Phase 4 remaining features**:
    - **String template tag functions** — Tagged templates (advanced, low priority)
 3. **Phase 2 remaining** (diminishing returns):
    - Mutability inference — Fixed-point analysis marking function params as mutated/readonly
-4. **文件大小状态**: gen_class.ss ~615 (approaching limit), gen_decls.ss ~576, parser.ss ~559, check_stmts.ss ~553, checker.ss ~531, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_calls.ss ~507. gen_class.ss may need a split if further features add to it.
-5. **Standard library状态**: json.ss (578 LOC), url.ss (442 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), http.ss (151 LOC), path.ss (148 LOC), math.ss (115 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~2549 LOC in lib/, 11 modules.
-6. **建议**: URL module now complete. Consider new stdlib modules like uuid.ss (v4 UUID, needs Math.random or system random), or new language features like numeric separators (1_000_000). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
+4. **文件大小状态**: gen_class.ss ~615 (approaching limit), gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507. gen_class.ss may need a split if further features add to it.
+5. **Standard library状态**: json.ss (578 LOC), url.ss (442 LOC), csv.ss (286 LOC), datetime.ss (258 LOC), sha256.ss (228 LOC), string_utils.ss (220 LOC), http.ss (151 LOC), path.ss (148 LOC), math.ss (115 LOC), uuid.ss (114 LOC), base64.ss (63 LOC), fs.ss (60 LOC). Total ~2663 LOC in lib/, 12 modules.
+6. **建议**: UUID module now complete. Standard library covers most common needs (JSON, URL, CSV, DateTime, SHA256, UUID, HTTP, Path, FS, Math, Base64, StringUtils). Consider new language features like numeric separators (1_000_000), or new stdlib modules like assert.ss (lightweight test assertions) or color.ss (ANSI escape codes). gen_class.ss at 615 lines may need splitting if more codegen features are added there.
 7. **Known compiler limitation**: `Map.keys()` is unreliable when called on a Map passed as a function parameter. Workaround: use parallel arrays or call `.keys()` before passing to function. Does not affect Maps created/used within the same scope.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**. Compiler source CAN now use these features.
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules (string_utils.ss, csv.ss) follow this pattern.
+- **Math.randomInt (D043, Round 67)**:
+  - **New builtin**: `Math.randomInt(max: int): int` — returns random integer in [0, max). Returns 0 if max <= 0.
+  - **Runtime**: `ss_randomInt(i32 %max)` calls `rand() % max` with guard for max <= 0.
+  - **Auto-seeding**: Every SS program calls `srand(time(0))` at startup in main() preamble.
+  - **isMathClass exception**: `gen_methods.ss` skips int→double auto-conversion for `randomInt` arg.
+- **UUID module (D043, Round 67)**:
+  - **Architecture**: Pure SS, static method pattern (like DateTime, Path).
+  - **UUID static methods (5)**: `v4()`, `isValid(str)`, `parse(str)`, `version(str)`, `nil()`.
+  - **v4 generation**: 32 random hex digits via `Math.randomInt(16)`, version=4 at position 12, variant=8/9/a/b at position 16.
+  - **Validation**: Checks 36-char length, 8-4-4-4-12 hex format, dash positions at 8/13/18/23.
+  - **Import**: `import { UUID } from "@/lib/uuid"`.
 - **URL module (D042, Round 66)**:
   - **Architecture**: Map-based storage (like json.ss/csv.ss): global `urlData` Map keyed by `"id.field"`.
   - **URL static methods (7)**: `parse(input)`, `format(parts)`, `resolve(base, ref)`, `parseQuery(qs)`, `encodeQuery(keys, values)`, `encodeComponent(str)`, `decodeComponent(str)`.
   - **UrlParts methods (11)**: `protocol()`, `username()`, `password()`, `hostname()`, `port()`, `pathname()`, `search()`, `hash()`, `host()`, `origin()`, `href()`.
-  - **Parser**: Multi-pass extraction: fragment → query → scheme → authority/path. Authority parsing handles userinfo@, IPv6 brackets, port detection.
-  - **Percent encoding**: RFC 3986 unreserved set (A-Z, a-z, 0-9, `-._~`). Decode supports both `%XX` and `+` as space.
-  - **encodeQuery**: Accepts parallel arrays `(keys: Array<string>, values: Array<string>)` not Map, due to Map.keys() parameter limitation.
-  - **Component values**: Returned without delimiters (Go/Python style) — protocol is `"https"` not `"https:"`, search is `"q=1"` not `"?q=1"`.
   - **Import**: `import { URL, UrlParts } from "@/lib/url"`.
 - **CSV module (D041, Round 65)**:
   - **Architecture**: Map-based storage (like json.ss): `csvCells` for cell data, `csvMeta` for dimensions.
   - **CSV static methods (5)**: `parse(input)`, `parseDelimited(input, delim)`, `stringify(table)`, `stringifyDelimited(table, delim)`, `create()`.
   - **CsvTable methods (8)**: `rowCount()`, `colCount()`, `get(row, col)`, `set(row, col, value)`, `getRow(row)`, `headers()`, `getByName(row, name)`, `addRow(values)`.
-  - **Parser**: Character-level state machine. Handles quoted fields (`"..."`), escaped quotes (`""`), newlines in quoted fields, CRLF normalization, empty fields.
   - **Import**: `import { CSV, CsvTable } from "@/lib/csv"`.
 - **JSON Unicode escape (D040, Round 64)**:
   - **Parse**: `\uXXXX` → 4 hex digits → code point → UTF-8 (1–4 bytes). Surrogate pairs `\uD800`–`\uDBFF` + `\uDC00`–`\uDFFF` combined into U+10000+ code points.
@@ -65,7 +71,7 @@ Scope:
   - **Pure SS**: No compiler changes. Uses static method pattern (`StringUtil.capitalize("hello")`).
 - **Math enhancements (D037, Round 61)**:
   - **New builtins**: `Math.tan(x)`, `Math.asin(x)`, `Math.acos(x)`, `Math.atan(x)`, `Math.atan2(y,x)`, `Math.exp(x)`, `Math.log10(x)`, `Math.log2(x)`, `Math.trunc(x)`, `Math.sign(x)`, `Math.hypot(x,y)`, `Math.cbrt(x)`, `Math.fmod(x,y)`.
-  - **All return double**: Auto int→double conversion via `isMathClass` in `genStaticMethodCall()`.
+  - **All return double**: Auto int→double conversion via `isMathClass` in `genStaticMethodCall()`. Exception: `Math.randomInt` returns int and skips conversion.
   - **lib/math.ss (MathUtil)**: `clamp(v,lo,hi)`, `lerp(a,b,t)`, `inverseLerp(a,b,v)`, `mapRange(v,inMin,inMax,outMin,outMax)`, `toDegrees(rad)`, `toRadians(deg)`, `approxEqual(a,b,eps)`, `isEven(n)`, `isOdd(n)`, `gcd(a,b)`, `lcm(a,b)`, `isPowerOfTwo(n)`.
   - **Constants as methods**: `MathUtil.PI()`, `MathUtil.E()`, `MathUtil.TAU()`, `MathUtil.EPSILON()`.
 - **Standard library pattern (D035, Round 59)**:
@@ -86,22 +92,20 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 61 tests.
-- **35 bootstrap files**, ~13392 LOC.
+- **phase5 tests**: 62 tests.
+- **35 bootstrap files**, ~13410 LOC.
 
 ## Decision Criteria
-- Standard library now has 11 modules: json.ss (578), url.ss (442), csv.ss (286), datetime.ss (258), sha256.ss (228), string_utils.ss (220), http.ss (151), path.ss (148), math.ss (115), base64.ss (63), fs.ss (60). Total ~2549 LOC.
-- URL module: 7 static methods + 11 UrlParts methods = 18 methods. RFC 3986 percent encoding.
-- CSV module: 5 static methods + 8 CsvTable methods = 13 methods. RFC 4180 compliant.
-- JSON spec string handling complete: all named escapes + Unicode \uXXXX + surrogate pairs.
-- DateTime: 21 functions. Math builtins: 25 total + 16 MathUtil. String utils: 16 methods.
+- Standard library now has 12 modules: json.ss (578), url.ss (442), csv.ss (286), datetime.ss (258), sha256.ss (228), string_utils.ss (220), http.ss (151), path.ss (148), math.ss (115), uuid.ss (114), base64.ss (63), fs.ss (60). Total ~2663 LOC.
+- UUID module: 5 static methods. RFC 4122 v4 compliant (version=4, variant=10xx).
+- Math.randomInt: fills double→int conversion gap for integer random use cases.
 - Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
-- File sizes: gen_class.ss ~615 (largest), gen_decls.ss ~576, parser.ss ~559, check_stmts.ss ~553, checker.ss ~531.
+- File sizes: gen_class.ss ~615 (largest), gen_decls.ss ~579, parser.ss ~559, check_stmts.ss ~553, checker.ss ~532.
 - All existing features working: tuple types (D034), Phase 4 batch (D033), array methods, power operator (D032), multi-constraints (D031), type constraints, generic class inheritance (D030), destructuring, switch patterns (D029), explicit type args (D028), generic classes (D027), generic functions (D026), interfaces (D025).
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known issue: `genOptionalMethodCall` has same double-evaluation pattern that was fixed in `genOptionalMemberAccess`. Low priority since method call object is typically an IDENT.
 - Known limitation: `Map.keys()` unreliable on function-parameter Maps. Workaround: parallel arrays or caller-side `.keys()`.
-- 35 bootstrap files total, ~13392 LOC, 61 phase5 tests.
+- 35 bootstrap files total, ~13410 LOC, 62 phase5 tests.
 
 ## When Done
 1. Write tests for new features

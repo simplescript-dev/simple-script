@@ -175,7 +175,7 @@ function genStaticMethodCall(method: string, objId: int, argList: string): strin
             if (argId > 0) {
                 let aVal = genExpr(argId)
                 let aType = inferType(argId)
-                if (isMathClass == 1 && (aType == "int" || aType == "auto")) {
+                if (isMathClass == 1 && method != "randomInt" && (aType == "int" || aType == "auto")) {
                     const cvR = nextReg()
                     emitIR(`  ${cvR} = sitofp i32 ${aVal} to double`)
                     aVal = cvR

@@ -79,6 +79,7 @@ function emitLibcDecls() {
     emitIR("declare double @hypot(double, double)")
     emitIR("declare double @fmod(double, double)")
     emitIR("declare i32 @rand()")
+    emitIR("declare void @srand(i32)")
     // Exception handling (setjmp/longjmp)
     emitIR("declare i32 @setjmp(ptr)")
     emitIR("declare void @longjmp(ptr, i32)")

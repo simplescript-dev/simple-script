@@ -87,6 +87,9 @@ function genFuncDecl(id: int) {
         emitIR("entry:")
         emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
         emitIR("  %_atexit = call i32 @atexit(ptr @ss_rc_atexit_cleanup)")
+        emitIR("  %_seedtime = call i64 @time(ptr null)")
+        emitIR("  %_seedtime32 = trunc i64 %_seedtime to i32")
+        emitIR("  call void @srand(i32 %_seedtime32)")
         regCount = 3
         emitGlobalInits()
     } else {
