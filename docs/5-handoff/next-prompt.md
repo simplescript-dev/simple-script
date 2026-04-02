@@ -1,7 +1,7 @@
-# Round 81
+# Round 82
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13729 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13749 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
@@ -13,10 +13,10 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-修复编译器 bug（D056）：全局 `let x = -1` 现在正确编译为 `global i32 -1`，不再误判为 `ptr` 类型。根因是 `genGlobalVar()` 只识别顶层字面量（INT_LIT 等），不识别 UNARY(Neg, INT_LIT)——现在在 else 分支前增加常量折叠处理。Bootstrap 固定点验证通过，75 tests 全部通过（含新增 global_neg_literal.ss）。
+修复编译器 bug（D057）：`inferArrayElemType()` 从 3 个硬编码类型检查改为通用 `<T>` 提取，现在支持所有泛型数组元素类型（fn、class 名、interface 等）。同时修复了所有 codegen 调用点（INDEX_ACCESS、for-in、解构赋值）的 ptr 类型元素处理，并补充了 for-in 的 double 分支。Bootstrap 固定点验证通过，77 tests 全部通过（含新增 array_fn_elem.ss + array_class_elem.ss）。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), **global negative literal fix done (D056)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), **generic array element type inference done (D057)**
 Scope:
 **P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
 
@@ -35,16 +35,16 @@ Scope:
 10. **Phase 2 remaining**: Mutability inference（收益递减）。
 
 ### 项目状态
-- **文件大小**: checker.ss ~730, check_stmts.ss ~628, gen_class.ss ~615, gen_decls.ss ~585, parser.ss ~559, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
+- **文件大小**: checker.ss ~730, check_stmts.ss ~628, gen_class.ss ~615, gen_decls.ss ~593, parser.ss ~559, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
 - **Stdlib**: 20 modules, ~4862 LOC in lib/.
-- **Bootstrap**: 35 files, ~13729 LOC, 75 phase5 tests.
+- **Bootstrap**: 35 files, ~13749 LOC, 77 phase5 tests.
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
-9. **Known compiler limitation**: `inferArrayElemType()` only recognizes `<string>`, `<int>`, `<double>`. Does NOT handle `<fn>`, returning empty string. This prevents type-safe Array<fn> usage, blocking event emitter patterns.
+9. **Known compiler limitation**: `genOptionalMethodCall` has same double-evaluation pattern that was fixed in `genOptionalMemberAccess`. Low priority since method call object is typically an IDENT.
 10. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**. Compiler source CAN now use these features.
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules follow this pattern.
@@ -63,28 +63,32 @@ Scope:
   - **lookupMethodParamType/lookupMethodRetType**: Walk `checkerClassParents` chain for inherited methods.
   - **Chain call inference**: `a.getB().method()` resolves via `inferCheckerClass(METHOD_CALL)` → receiver class → `lookupMethodRetType`.
   - **Receiver resolution**: 3 cases (THIS, IDENT with class type, NEW_EXPR). Generic class variables (e.g., `Box<int>`) not resolved (classConsMin key mismatch).
+- **Generic array element type (D057, Round 82)**:
+  - **inferArrayElemType()**: Now extracts type parameter generically via `indexOf("<")` + `substring()`. Handles `Array<fn>`, `Array<ClassName>`, any `Array<T>`.
+  - **Codegen call sites**: INDEX_ACCESS, for-in, destructuring all handle ptr-typed elements correctly (inttoptr i64 to ptr).
+  - **for-in double**: Now explicitly bitcasts i64 to double (was falling through to raw i64 store).
+  - **Destructuring ptr**: Does trackPtrVar + emitRetainForType (variable outlives expression). for-in does NOT retain (array alive during loop).
 - **Map.keys() fix (D052, Round 76)**: `ss_mapKeysArray` returns Array<string>. Both `funcRetTypes` and `methodRetTypes` updated. Compiler source migrated from `.keys().split("\n")` to `.keys()`.
 - **Dual RC systems**: Old (ss_rc_retain/ss_rc_release) for strings/arrays/maps via libc. New (ss_retain/ss_release) for class instances + closures + interface-typed vars via mimalloc.
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 75 tests.
-- **35 bootstrap files**, ~13729 LOC.
+- **phase5 tests**: 77 tests.
+- **35 bootstrap files**, ~13749 LOC.
 
 ## Decision Criteria
 - Standard library now has 20 modules, ~4862 LOC.
 - Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
 - I003 Phase 3 complete: type inference + 5 type check sites implemented (VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL, METHOD_CALL). Phase 4 (full inferType migration) is next if needed.
-- File sizes: checker.ss ~730 (largest), check_stmts.ss ~628, gen_class.ss ~615, gen_decls.ss ~585.
+- File sizes: checker.ss ~730 (largest), check_stmts.ss ~628, gen_class.ss ~615, gen_decls.ss ~593.
 - All existing features working: tuple types (D034), Phase 4 batch (D033), array methods, power operator (D032), multi-constraints (D031), type constraints, generic class inheritance (D030), destructuring, switch patterns (D029), explicit type args (D028), generic classes (D027), generic functions (D026), interfaces (D025).
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known issue: `genOptionalMethodCall` has same double-evaluation pattern that was fixed in `genOptionalMemberAccess`. Low priority since method call object is typically an IDENT.
 - Known limitation: SS strings are null-terminated. `hexToBytes` cannot produce strings with 0x00 bytes. HMAC uses on-the-fly hex decoding to avoid this.
 - Known convention: `arr.slice(start, end)` is start+end index semantics, NOT offset+length. Differs from `substring(offset, length)`.
-- Known limitation: `inferArrayElemType()` only handles string/int/double, not fn. Blocks Array<fn> support.
-- **Global negative literal fix (D056)**: `let x = -1` at global scope now works. `genGlobalVar()` constant-folds UNARY(Neg, INT_LIT/DOUBLE_LIT).
+- **inferArrayElemType now generic (D057)**: Handles all type parameters, not just string/int/double. Array<fn> and Array<ClassName> for-in/index/destructuring all work correctly.
 - **this.field = value works** in class methods (D055). No more `let self = this` workaround needed.
-- 35 bootstrap files total, ~13729 LOC, 75 phase5 tests.
+- 35 bootstrap files total, ~13749 LOC, 77 phase5 tests.
 
 ## When Done
 **P18: 单上下文单任务。完成当前任务或上下文不足时，更新 handoff 并停止。**
