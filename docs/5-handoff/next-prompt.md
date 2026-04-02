@@ -1,4 +1,4 @@
-# Round 85
+# Round 87
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13878 LOC).
@@ -13,42 +13,51 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-I003 Phase 3 继续推进：添加 RETURN 语句类型检查（D060），验证返回值类型与函数声明返回类型的兼容性。使用 `currentFuncRetType` 全局变量跟踪当前函数返回类型，支持嵌套函数和类方法。保守策略——仅在可推断类型且不兼容时报错。Bootstrap 固定点验证通过，80 tests 全部通过。
+D061 Phase A 完成：parser 支持 class body field 语法（TS/Java 风格 `class Foo { x: int }`），同时保留旧语法 `class Foo(x: int)`。添加 `isBodyFieldStart()` 和 `parseBodyField()` 辅助函数，body 内 IDENT+COLON 或 CONST 开头识别为 field，否则为 method。Bootstrap 固定点验证通过，81 tests 全部通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), **return type checking done (D060)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), **class body fields Phase A done (D061)**
 Scope:
-**下一步：D061 class body fields 迁移（方案B）。这是语法重构最高优先级。**
+**下一步：D061 Phase B — 代码迁移。将所有 `class Foo(fields)` 迁移为 `class Foo { fields }` 新语法。~120 个 class 声明，分布在 bootstrap/、lib/、tests/ 中。**
 **P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
 
-### Syntax Refactor (最高优先级)
-1. **D061 — Class fields in body**: 将 `class Foo(x: int)` Kotlin 风格迁移为 `class Foo { x: int }` TS/Java 风格。涉及 parser、checker、codegen、全部 bootstrap/stdlib/tests。需要分阶段执行（先支持新语法、再迁移代码、最后移除旧语法）。详见 `docs/3-decisions/D061-class-body-fields.md`。
+### D061 Phase B Migration Plan
+1. **Bootstrap files** (~35 files): 迁移编译器源码中的 class 声明。由于 seed 编译器已支持双语法，可以安全迁移。注意：编译器自身基本不用 class（Map-based AST），只有少量如 `main.ss` 中的辅助类。
+2. **Stdlib** (~20 modules in lib/): 迁移标准库中的 class 声明。
+3. **Tests** (~80 files in tests/): 迁移测试文件中的 class 声明。
+4. 每批迁移后运行 `bin/ss test tests/` + `./build.sh bootstrap` 验证。
+5. 迁移完成后，Phase C 移除旧语法支持。
+
+### Known Issue (pre-existing)
+- `generic_multi_call.ss` 编译失败：D060 return type checker 对 generic 函数返回 `T` 时过于严格，拒绝返回具体类型。需要在 `isTypeCompatible()` 中添加泛型类型参数的兼容性规则。
+
+### Syntax Refactor
+1. **D061 — Class fields in body**: Phase A done (parser dual-syntax). Phase B: migrate code. Phase C: remove old syntax. 详见 `docs/3-decisions/D061-class-body-fields.md`。
 2. **D062 — 语法借鉴原则**: Java/TS 优先，不借鉴 Kotlin/Scala。已写入 CLAUDE.md。
 
 ### Open Issues (按优先级)
-1. **I003 — 语义分析不完整** [MEDIUM]: Phase 3 大部分完成。6 个类型检查点（VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL args, METHOD_CALL args, RETURN）+ builtin 方法返回/参数类型注册（D059）。剩余：NEW_EXPR argument type checking（构造函数参数类型验证），Phase 4 inferType 迁移。**已降级为 MEDIUM，按需推进。**
-2. **I001 — 全局可变状态爆炸** [BLOCKED]: 55+ 全局变量。需要 struct 支持才能彻底解决（P10）。短期可分组 + init 函数。
-3. **I002 — 字符串类型系统** [BLOCKED]: 类型用 raw string 比较。需要 enum/struct。短期可统一解析函数。
+1. **I003 — 语义分析不完整** [MEDIUM]: Phase 3 大部分完成。6 个类型检查点 + builtin 方法返回/参数类型注册（D059）。剩余：NEW_EXPR argument type checking，Phase 4 inferType 迁移。
+2. **I001 — 全局可变状态爆炸** [BLOCKED]: 55+ 全局变量。需要 struct 支持。
+3. **I002 — 字符串类型系统** [BLOCKED]: 类型用 raw string 比较。需要 enum/struct。
 4. **I005 — AST list 用字符串** [PARTIAL]: 已有 helper，性能问题待 proper array type。
 5. **I006 — Runtime raw IR** [LOW]: 已大幅转换，剩 401 处 raw emitIR。
 6. **I008 — Parser 优先级硬编码** [LOW]: 能用，递归下降是标准做法。
 
 ### 次优先级
-7. **Standard library cleanup**: csv.ss/ini.ss 已检查，无需修改（用 count metadata 模式，不依赖 Map.keys()）。
-8. **Standard library expansion**: argparse.ss, random.ss 等新模块。
-9. **Phase 4 remaining**: Tagged templates（低优先级）。
-10. **Phase 2 remaining**: Mutability inference（收益递减）。
+7. **Standard library expansion**: argparse.ss, random.ss 等新模块。
+8. **Phase 4 remaining**: Tagged templates（低优先级）。
 
 ### 项目状态
-- **文件大小**: checker.ss ~854, check_stmts.ss ~627, gen_class.ss ~613, gen_decls.ss ~593, parser.ss ~559, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
+- **文件大小**: checker.ss ~854, check_stmts.ss ~627, gen_class.ss ~613, gen_decls.ss ~593, parser.ss ~597, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
 - **Stdlib**: 20 modules, ~4862 LOC in lib/.
-- **Bootstrap**: 35 files, ~13878 LOC, 80 phase5 tests.
+- **Bootstrap**: 35 files, ~13878 LOC, 81 phase5 tests.
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 9. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields dual-syntax (D061 Phase A)**. Compiler source CAN now use these features.
+- **Class body fields (D061)**: Both `class Foo(x: int)` and `class Foo { x: int }` are valid. Detection: `const` or IDENT+COLON in body → field; `function`/`@` → method. Both produce identical PARAM nodes in CLASS_DECL.List.
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules follow this pattern.
@@ -77,6 +86,7 @@ Scope:
   - **currentFuncRetType**: Global variable tracking enclosing function's declared return type. Save/restored per FUNC_DECL (supports nested functions + class methods).
   - **Conservative check**: Only errors when return type annotation exists, is non-void, return has a value, value type is inferable, and types are incompatible.
   - **6 type check sites total**: VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL args, METHOD_CALL args, RETURN.
+  - **Known issue**: Generic function return type `T` rejected when returning concrete type. Needs `isTypeCompatible()` update to recognize type parameters.
 - **Generic array element type (D057, Round 82)**:
   - **inferArrayElemType()**: Now extracts type parameter generically via `indexOf("<")` + `substring()`. Handles `Array<fn>`, `Array<ClassName>`, any `Array<T>`.
   - **Codegen call sites**: INDEX_ACCESS, for-in, destructuring all handle ptr-typed elements correctly (inttoptr i64 to ptr).
@@ -91,7 +101,7 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 80 tests.
+- **phase5 tests**: 81 tests (1 pre-existing failure: generic_multi_call.ss).
 - **35 bootstrap files**, ~13878 LOC.
 
 ## Decision Criteria
@@ -107,7 +117,8 @@ Scope:
 - **Builtin method types in checker (D059)**: string/Array/Map/Set/Math methods have return types. String methods also have param types.
 - **this.field = value works** in class methods (D055). No more `let self = this` workaround needed.
 - **Optional method call fixed (D058)**: No more double evaluation of object expression in `obj?.method()`.
-- 35 bootstrap files total, ~13878 LOC, 80 phase5 tests.
+- **Class body fields (D061 Phase A)**: Parser supports both `class Foo(x: int)` and `class Foo { x: int }`. ~120 class declarations need migration (Phase B).
+- 35 bootstrap files total, ~13878 LOC, 81 phase5 tests.
 
 ## When Done
 **P18: 单上下文单任务。完成当前任务或上下文不足时，更新 handoff 并停止。**

@@ -356,16 +356,21 @@ function parseClassDecl(): int {
         }
     }
     skipNL()
-    // Optional body with methods
+    // Optional body with fields and/or methods
     let methods = ""
     if (curKind() == "LBRACE") {
         pExpect("LBRACE")
         skipNL()
         while (curKind() != "RBRACE" && curKind() != "EOF") {
-            const mAnnotations = parseAnnotationList()
-            const mId = parseFuncDecl()
-            attachAnnotations(mId, mAnnotations)
-            methods = listAppend(methods, mId)
+            if (isBodyFieldStart() == 1) {
+                const pId = parseBodyField()
+                fields = listAppend(fields, pId)
+            } else {
+                const mAnnotations = parseAnnotationList()
+                const mId = parseFuncDecl()
+                attachAnnotations(mId, mAnnotations)
+                methods = listAppend(methods, mId)
+            }
             skipNL()
         }
         pExpect("RBRACE")
@@ -478,6 +483,46 @@ function parseImport(): int {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
+
+// Check if current token starts a field declaration in class body
+function isBodyFieldStart(): int {
+    if (curKind() == "CONST") { return 1 }
+    if (curKind() == "IDENT") {
+        const nextTok = tkKind(tkGet(tokens, tPos + 1))
+        if (nextTok == "COLON" || nextTok == "QUESTION") { return 1 }
+    }
+    return 0
+}
+
+// Parse a single field declaration in class body: [const] name[?]: type [= default]
+function parseBodyField(): int {
+    let isFieldConst = 0
+    if (curKind() == "CONST") {
+        isFieldConst = 1
+        pAdvance()
+    }
+    const pName = pExpectIdent()
+    let isOptional = 0
+    if (curKind() == "QUESTION") {
+        isOptional = 1
+        pAdvance()
+    }
+    pExpect("COLON")
+    const pType = parseTypeAnn()
+    let defId = 0
+    if (curKind() == "ASSIGN") {
+        pAdvance()
+        defId = parseExpr()
+    }
+    const pId = newNode("PARAM")
+    nSetS1(pId, pName)
+    nSetS2(pId, pType)
+    nSetI1(pId, defId)
+    nSetI2(pId, isOptional)
+    if (isFieldConst == 1) { nSetS3(pId, "const") }
+    expectNLOrRB()
+    return pId
+}
 
 function parseParams(): string {
     skipNL()

@@ -1,6 +1,6 @@
 # D061: Class Fields in Body (TS-style)
 
-**Status**: Planned
+**Status**: Phase A complete (parser supports both syntaxes)
 **Depends-on**: None
 
 ## Decision
@@ -58,8 +58,27 @@ Breaking change. All class declarations across bootstrap (~35 files), stdlib (~2
 - **Keep Kotlin-style**: User rejected. Not aligned with TS/Java conventions.
 - **`class Point3D(z: int) extends Point`**: Still Kotlin-style, just reordered.
 
+## Implementation Phases
+
+### Phase A — Parser dual-syntax support (DONE, Round 86)
+- Added `isBodyFieldStart()` and `parseBodyField()` in parser.ss
+- Modified `parseClassDecl()` body parsing to detect fields vs methods
+- Detection: `const` → field; `IDENT` + `:` or `?` → field; `function`/`@` → method
+- Body fields create identical PARAM nodes as old `(fields)` syntax
+- Bootstrap fixed-point verified; 81 tests pass
+- Seed compiler updated to support both syntaxes
+
+### Phase B — Code migration (TODO)
+- Migrate all `class Foo(fields)` → `class Foo { fields }` across bootstrap, stdlib, tests
+- Atomic per-file migration, re-bootstrap after each batch
+
+### Phase C — Remove old syntax (TODO)
+- Remove `(fields)` parsing from `parseClassDecl()`
+- Remove `parseParams()` reuse for class fields
+- Final bootstrap
+
 ## Tensions
 
 - Massive migration: every class in ~13878 LOC codebase.
 - Bootstrap complexity: seed compiler uses old syntax, new compiler must compile itself with new syntax.
-- Need careful phased approach: support both syntaxes temporarily during bootstrap transition.
+- Phase A resolved by supporting both syntaxes; seed now handles both.
