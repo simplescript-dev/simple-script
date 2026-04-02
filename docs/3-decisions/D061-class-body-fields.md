@@ -1,6 +1,6 @@
 # D061: Class Fields in Body (TS-style)
 
-**Status**: Phase B complete (all code migrated to new syntax)
+**Status**: Complete (all phases done)
 **Depends-on**: None
 
 ## Decision
@@ -74,10 +74,10 @@ Breaking change. All class declarations across bootstrap (~35 files), stdlib (~2
 - Python migration script `migrate_class_syntax.py` handled bulk conversion
 - Bootstrap fixed-point verified; 81 tests pass
 
-### Phase C — Remove old syntax (TODO)
-- Remove `(fields)` parsing from `parseClassDecl()`
-- Remove `parseParams()` reuse for class fields
-- Final bootstrap
+### Phase C — Remove old syntax (DONE, Round 88)
+- Removed `(fields)` parsing from `parseClassDecl()` (5 lines deleted)
+- Deleted migration script `migrate_class_syntax.py`
+- Bootstrap fixed-point verified; 81 tests pass
 
 ## Tensions
 

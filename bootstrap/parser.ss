@@ -340,11 +340,6 @@ function parseClassDecl(): int {
         extendsName = parseTypeAnn()
     }
     let fields = ""
-    if (curKind() == "LPAREN") {
-        pAdvance()
-        fields = parseParams()
-        pExpect("RPAREN")
-    }
     // Optional implements
     let implList = ""
     if (curKind() == "COLON") {
