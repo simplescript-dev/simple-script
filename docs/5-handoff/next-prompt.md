@@ -18,7 +18,12 @@ I003 Phase 3 继续推进：添加 RETURN 语句类型检查（D060），验证�
 ## Task
 Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), **return type checking done (D060)**
 Scope:
+**下一步：D061 class body fields 迁移（方案B）。这是语法重构最高优先级。**
 **P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
+
+### Syntax Refactor (最高优先级)
+1. **D061 — Class fields in body**: 将 `class Foo(x: int)` Kotlin 风格迁移为 `class Foo { x: int }` TS/Java 风格。涉及 parser、checker、codegen、全部 bootstrap/stdlib/tests。需要分阶段执行（先支持新语法、再迁移代码、最后移除旧语法）。详见 `docs/3-decisions/D061-class-body-fields.md`。
+2. **D062 — 语法借鉴原则**: Java/TS 优先，不借鉴 Kotlin/Scala。已写入 CLAUDE.md。
 
 ### Open Issues (按优先级)
 1. **I003 — 语义分析不完整** [MEDIUM]: Phase 3 大部分完成。6 个类型检查点（VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL args, METHOD_CALL args, RETURN）+ builtin 方法返回/参数类型注册（D059）。剩余：NEW_EXPR argument type checking（构造函数参数类型验证），Phase 4 inferType 迁移。**已降级为 MEDIUM，按需推进。**

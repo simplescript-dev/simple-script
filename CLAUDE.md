@@ -260,7 +260,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 
 ### 语法设计
 
-- **TS/JS 对标**：任何新语法必须在 TypeScript/JavaScript 中有直接对应物，不自创语法形式
+- **Java/TS 优先**：语法设计优先借鉴 Java 和 TypeScript/JavaScript，不借鉴 Kotlin/Scala 语法（如主构造函数参数、`: Parent` 继承、`val/var` 参数）。任何新语法必须在 TS/JS 或 Java 中有直接对应物，不自创语法形式
 - **不加新关键字**：优先复用现有关键字扩展功能，只有现有语法完全无法表达时才考虑新关键字
 - **编译器吸收复杂度**：用户不应看到内存管理、类型系统等内部机制的语法暴露
 
