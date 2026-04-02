@@ -14,7 +14,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 | 42 | Access Modifiers | ❌ | 无 export/protected/internal，无可见性控制 |
 | 43 | Null Safety | ❌ | 无 T? 类型，无编译期空安全 |
 | 34 | String Advanced | 🔶 | 模板字符串 + 基本方法 done。缺: UTF-8 proper (当前 null-terminated) |
-| 37 | Range & Tuple | 🔶 | Tuple done (D034), for-in done。缺: Range 语法 |
+| 37 | Range & Tuple | 🔶 | Tuple done (D034), for-in done。Range 语法不做（TS 无对应语法） |
 
 ## Memory & Error Handling
 
@@ -41,7 +41,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 | 32 | Inheritance | 🔶 | class/extends/interface done。缺: open/abstract 修饰符 |
 | 23 | Generics Advanced | 🔶 | 泛型函数/类/约束/多约束 done。缺: 协变/逆变 |
 | 44 | Generic Constraints | ✅ | D031 type constraints + multi-constraints |
-| 27 | Pattern Matching | 🔶 | switch enum/bool done (D029)。缺: 类型模式 + guard |
+| 27 | Pattern Matching | 🔶 | switch enum/bool done (D029)。类型模式 + guard 不做（TS 无对应语法） |
 | 36 | Destructuring | ✅ | array + object destructuring done |
 | 16 | Operator Overloading | ❌ | 无运算符重载 |
 | 35 | Scope Functions | 🚫 | 明确拒绝 Kotlin 风格 scope functions |

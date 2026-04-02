@@ -28,9 +28,11 @@ Scope:
 4. **I006 — Runtime raw IR** [LOW]: Mostly converted, 401 raw emitIR remaining.
 5. **I008 — Parser no precedence table** [LOW]: Works, recursive descent is standard.
 
-### Next Priority
-6. **Standard library expansion**: random.ss, toml.ss, etc.
-7. **Phase 4 remaining**: Tagged templates (low priority).
+### Next Priority (语言改进优先，stdlib 延后)
+6. **Null Safety (T?)** — TS 有 `T | null`，`?.` 已部分实现，编译期空安全
+7. **Access Modifiers** — TS 有 `export/private/protected`，模块可见性控制
+8. **Standard library expansion**: 延后，语言核心完善后再做
+9. **Phase 4 remaining**: Tagged templates (low priority).
 
 ### Project Status
 - **I003 resolved (D066)**: Phase 3 complete (8 type check sites), Phase 4 inferType migration analyzed and closed.
@@ -43,7 +45,9 @@ Scope:
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
 - **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields (D061 complete, old syntax removed)**, **generic type param compat (D063)**, **NEW_EXPR type checking (D064)**, **INDEX_ACCESS type inference + INDEX_ASSIGN checking + builtin return types (D065)**. Compiler source CAN now use these features.
-- **All open issues BLOCKED or LOW**: I001/I002/I005 need struct/enum support. I006/I008 are LOW priority. New features and stdlib expansion are now the primary work stream.
+- **All open issues BLOCKED or LOW**: I001/I002/I005 need struct/enum support. I006/I008 are LOW priority. Language improvements are the primary work stream; stdlib expansion is deferred.
+- **Rejected features**: Range syntax (`0..10`), pattern matching type patterns + guard — TS/JS 无对应语法，已明确拒绝。不要提议这些特性。
+- **Priority**: 语言核心改进优先于 stdlib 模块扩展。先完善 null safety、access modifiers 等语言特性。
 - **Class body fields (D061 complete)**: All code uses `class Foo { fields }` syntax. Old `class Foo(fields)` syntax removed from parser. Detection: `const` → field; `IDENT` + `:` or `?` → field; `function`/`@` → method. Body fields create PARAM nodes in CLASS_DECL.List.
 - **inferType architecture (D066)**: `inferType()` (gen_types.ss) returns LLVM-level types for instruction selection. `checkerInferType()` (checker.ss) returns source-level types for compile-time error detection. Two separate functions by design — do not attempt to unify.
 - **8 type check sites in checker**: VAR_DECL (D053), ASSIGN (D053), MEMBER_ASSIGN (D053), CALL args (D053), METHOD_CALL args (D054), RETURN (D060), NEW_EXPR args (D064), INDEX_ASSIGN (D065).
