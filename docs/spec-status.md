@@ -63,19 +63,19 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 
 | Spec | Topic | Status | Notes |
 |------|-------|--------|-------|
-| 06 | Stdlib Overview | 🔶 | 20 模块 ~4862 LOC。缺: 大量 spec 规划的模块 |
+| 06 | Stdlib Overview | 🔶 | 21 模块 ~5217 LOC。缺: 大量 spec 规划的模块 |
 | 26 | Collections Advanced | 🔶 | Array/Map/Set done。缺: Queue/Deque/Stack, immutable variants |
 | 54 | Date & Time | 🔶 | datetime.ss 基础版。缺: java.time 级别 API |
 | 53 | Environment | 🔶 | getenv/system/args done |
 | 24 | Interop & Ecosystem | ❌ | 无生态互操作 |
 
-### Stdlib 当前模块 (20 modules)
+### Stdlib 当前模块 (21 modules)
 
-json, csv, url, uuid, assert, color, template, crypto, regex, sort, log, ini, path, fs, datetime, math, string_utils, base64, sha256, http
+json, csv, url, uuid, assert, color, template, crypto, regex, sort, log, ini, path, fs, datetime, math, string_utils, base64, sha256, http, argparse
 
 ### Stdlib spec 规划但未实现
 
-argparse, random, toml, xml, gzip/zlib, aes, rsa, tls, dns, websocket, db, concurrent utils
+random, toml, xml, gzip/zlib, aes, rsa, tls, dns, websocket, db, concurrent utils
 
 ## Annotations & Metaprogramming
 

@@ -1,4 +1,4 @@
-# Round 93
+# Round 94
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~14046 LOC).
@@ -14,29 +14,29 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-D066 完成：分析了 63 个 `inferType` 调用点，证明 codegen `inferType()` 和 checker `checkerInferType()` 服务于根本不同的目的（LLVM 级 vs 源码级类型）。43/50 外部调用点依赖 LLVM 特有类型（`"i64"`, `"ptr"`, `"int"` default），迁移不可行。I003 Phase 4 关闭，Phase 3（8 个类型检查点）为实际完成点，I003 移至 resolved。
+新增 stdlib 模块 `argparse.ss`（347 LOC）——命令行参数解析库，支持 options（`--key value`、`--key=value`）、flags（`-v`）、positionals、`--` 停止解析、help 文本生成、`parseArray()` 用于测试。API: `ArgParse.create()` 工厂 → `ArgParser` 实例方法（`.option()/.flag()/.parse()/.help()`）→ `ArgResult` 查询（`.getString()/.getInt()/.getBool()/.has()/.positionals()`）。84 个 phase5 测试全部通过 + bootstrap 固定点验证通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), generic type param compat done (D063), NEW_EXPR type checking done (D064), INDEX_ACCESS type inference + INDEX_ASSIGN type checking + builtin function return types done (D065), **inferType migration analysis done — I003 closed (D066)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), generic type param compat done (D063), NEW_EXPR type checking done (D064), INDEX_ACCESS type inference + INDEX_ASSIGN type checking + builtin function return types done (D065), inferType migration analysis done — I003 closed (D066), **argparse stdlib module done**
 Scope:
-**P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
+**P17: Fix before add. Open issues take priority over new features. Check `docs/4-issues/1-open/` each round.**
 
-### Open Issues (按优先级)
-1. **I001 — 全局可变状态爆炸** [BLOCKED]: 55+ 全局变量。需要 struct 支持。
-2. **I002 — 字符串类型系统** [BLOCKED]: 类型用 raw string 比较。需要 enum/struct。
-3. **I005 — AST list 用字符串** [PARTIAL]: 已有 helper，性能问题待 proper array type。
-4. **I006 — Runtime raw IR** [LOW]: 已大幅转换，剩 401 处 raw emitIR。
-5. **I008 — Parser 优先级硬编码** [LOW]: 能用，递归下降是标准做法。
+### Open Issues (by priority)
+1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
+2. **I002 — String-based type system** [BLOCKED]: Types compared as raw strings. Needs enum/struct.
+3. **I005 — AST list as string** [PARTIAL]: Has helpers, perf issues need proper array type.
+4. **I006 — Runtime raw IR** [LOW]: Mostly converted, 401 raw emitIR remaining.
+5. **I008 — Parser no precedence table** [LOW]: Works, recursive descent is standard.
 
-### 次优先级
-6. **Standard library expansion**: argparse.ss, random.ss 等新模块。
-7. **Phase 4 remaining**: Tagged templates（低优先级）。
+### Next Priority
+6. **Standard library expansion**: random.ss, toml.ss, etc.
+7. **Phase 4 remaining**: Tagged templates (low priority).
 
-### 项目状态
-- **I003 resolved (D066)**: Phase 3 完成（8 个类型检查点），Phase 4 inferType 迁移已分析关闭——两个函数服务于不同目的。
-- **文件大小**: checker.ss ~929, check_stmts.ss ~680, gen_class.ss ~613, parser.ss ~599, gen_decls.ss ~593, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
-- **Stdlib**: 20 modules, ~4862 LOC in lib/.
-- **Bootstrap**: 35 files, ~14046 LOC, 83 phase5 tests (all passing).
+### Project Status
+- **I003 resolved (D066)**: Phase 3 complete (8 type check sites), Phase 4 inferType migration analyzed and closed.
+- **File sizes**: checker.ss ~929, check_stmts.ss ~680, gen_class.ss ~613, parser.ss ~599, gen_decls.ss ~593, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
+- **Stdlib**: 21 modules, ~5217 LOC in lib/.
+- **Bootstrap**: 35 files, ~14046 LOC, 84 phase5 tests (all passing).
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 9. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
 
@@ -65,11 +65,11 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 83 tests (all passing).
+- **phase5 tests**: 84 tests (all passing).
 - **35 bootstrap files**, ~14046 LOC.
 
 ## Decision Criteria
-- Standard library now has 20 modules, ~4862 LOC.
+- Standard library now has 21 modules, ~5217 LOC.
 - Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
 - D061 class body fields fully complete (all 3 phases). Old syntax removed.
 - I003 fully resolved (D066): Phase 3 has 8 type check sites + builtin types. Phase 4 inferType migration analyzed and closed — two-function architecture is correct by design.
@@ -80,10 +80,11 @@ Scope:
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known limitation: SS strings are null-terminated. `hexToBytes` cannot produce strings with 0x00 bytes. HMAC uses on-the-fly hex decoding to avoid this.
 - Known convention: `arr.slice(start, end)` is start+end index semantics, NOT offset+length. Differs from `substring(offset, length)`.
-- 35 bootstrap files total, ~14046 LOC, 83 phase5 tests (all passing).
+- 35 bootstrap files total, ~14046 LOC, 84 phase5 tests (all passing).
+- **argparse.ss module** (347 LOC): ArgParse.create() factory, ArgParser with option/flag/parse/parseArray/help, ArgResult with getString/getInt/getBool/has/positionals. Supports --key=value, -k value, --, positional args.
 
 ## When Done
-**P18: 单上下文单任务。完成当前任务或上下文不足时，更新 handoff 并停止。**
+**P18: One task per context. When done or context runs low, update handoff and stop.**
 1. Write tests for new features
 2. Verify against axioms and principles
 3. Self-review for contradictions
