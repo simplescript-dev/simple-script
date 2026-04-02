@@ -13,7 +13,7 @@
 
 import { hexByte, hexWord } from "@/lib/sha256"
 
-class Crypto()
+class Crypto {}
 
 // ── SHA-1 helpers ────────────────────────────────────────────
 

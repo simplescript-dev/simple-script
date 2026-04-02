@@ -1,7 +1,12 @@
 // Test: spec/71-perceus-rc.md key examples
 
 // §1.1 field-level const
-class Player(const name: string, health: int, x: int, y: int)
+class Player {
+    const name: string
+    health: int
+    x: int
+    y: int
+}
 
 // §1.2 Assignment semantics — shared reference
 function testSharedRef() {
@@ -34,8 +39,15 @@ function testFuncParamMutation() {
 }
 
 // §1.6 deepClone/shallowClone
-class Vec2(x: int, y: int)
-class Entity(const tag: string, hp: int, pos: Vec2)
+class Vec2 {
+    x: int
+    y: int
+}
+class Entity {
+    const tag: string
+    hp: int
+    pos: Vec2
+}
 
 function testDeepClone() {
     let a = new Entity("hero", 100, new Vec2(1, 2))

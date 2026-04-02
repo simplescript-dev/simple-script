@@ -1,6 +1,13 @@
 // Test: nested field assignment and shared references
-class Vec2(x: int, y: int)
-class Entity(name: string, hp: int, pos: Vec2)
+class Vec2 {
+    x: int
+    y: int
+}
+class Entity {
+    name: string
+    hp: int
+    pos: Vec2
+}
 
 function moveTo(e: Entity, nx: int, ny: int) {
     e.pos.x = nx

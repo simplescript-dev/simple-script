@@ -12,7 +12,7 @@
 // Levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=FATAL, 5=OFF
 // Default level: INFO (1). Default colors: on.
 
-class Log()
+class Log {}
 
 // ── Internal state ───────────────────────────────────────────
 

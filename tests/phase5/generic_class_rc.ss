@@ -1,12 +1,19 @@
-class Item(name: string)
+class Item {
+    name: string
+}
 
-class Box<T>(value: T) {
+class Box<T> {
+    value: T
+
     function getValue(): T {
         return this.value
     }
 }
 
-class Pair<A, B>(first: A, second: B)
+class Pair<A, B> {
+    first: A
+    second: B
+}
 
 function main() {
     // Generic class holding a class instance (RC tracking)

@@ -1,5 +1,11 @@
-class Point(x: int, y: int)
-class Player(const name: string, health: int)
+class Point {
+    x: int
+    y: int
+}
+class Player {
+    const name: string
+    health: int
+}
 
 function testPoint() {
     const p = new Point(3, 4)

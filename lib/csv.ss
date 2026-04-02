@@ -66,7 +66,9 @@ function csvSetMeta(tid: int, rows: int, cols: int) {
 
 // ── CsvTable class ───────────────────────────────────────────
 
-class CsvTable(tableId: int) {
+class CsvTable {
+    tableId: int
+
     function rowCount(): int {
         return csvGetRows(this.tableId)
     }
@@ -129,7 +131,7 @@ class CsvTable(tableId: int) {
 
 // ── CSV class (static methods) ───────────────────────────────
 
-class CSV()
+class CSV {}
 
 // ── Parse implementation ─────────────────────────────────────
 

@@ -9,7 +9,7 @@
 //   Sort.min([4, 2, 7])                           // 2
 //   Sort.shuffle([1, 2, 3, 4])                    // random order
 
-class Sort()
+class Sort {}
 
 // ── Internal helpers ─────────────────────────────────────────
 

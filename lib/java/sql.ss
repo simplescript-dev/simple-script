@@ -5,7 +5,12 @@
 // ── ResultSet ────────────────────────────────────────────────
 // Wraps a query result. Internal: rows stored as "col1\tcol2\n" per row.
 
-class ResultSet(data: string, columns: string, rowCount: int, currentRow: int) {
+class ResultSet {
+    data: string
+    columns: string
+    rowCount: int
+    currentRow: int
+
     function next(): int {
         if (this.currentRow >= this.rowCount) { return 0 }
         return 1
@@ -103,7 +108,9 @@ function rsGetValue(data: string, columns: string, row: int, colLabel: string): 
 // ── Statement ────────────────────────────────────────────────
 // Placeholder — actual implementation in driver
 
-class Statement(dbHandle: string) {
+class Statement {
+    dbHandle: string
+
     function executeQuery(sql: string): ResultSet {
         return stmtExecuteQuery(this.dbHandle, sql)
     }
@@ -123,7 +130,11 @@ class Statement(dbHandle: string) {
 
 // ── Connection ───────────────────────────────────────────────
 
-class Connection(dbHandle: string, url: string, closed: int) {
+class Connection {
+    dbHandle: string
+    url: string
+    closed: int
+
     function createStatement(): Statement {
         return new Statement(this.dbHandle)
     }

@@ -1,6 +1,9 @@
 // Test: optional field chaining (obj?.field)
 
-class Config(host: string, port: int)
+class Config {
+    host: string
+    port: int
+}
 
 function getConfig(useNull: int): Config {
     if (useNull == 1) { return null }

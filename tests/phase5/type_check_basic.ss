@@ -1,9 +1,14 @@
 // Type checking: verify that correctly-typed code compiles and runs.
 // Tests exercise checkerInferType + isTypeCompatible paths.
 
-class Animal(const name: string, age: int)
+class Animal {
+    const name: string
+    age: int
+}
 
-class Dog extends Animal(breed: string)
+class Dog extends Animal {
+    breed: string
+}
 
 function addInts(a: int, b: int): int {
     return a + b

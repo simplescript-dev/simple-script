@@ -1,5 +1,8 @@
 // Test: PIR with method calls and class instances passed as arguments
-class Rect(w: int, h: int) {
+class Rect {
+    w: int
+    h: int
+
     function area(): int {
         return this.w * this.h
     }

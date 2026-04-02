@@ -9,7 +9,7 @@
 //   UUID.parse(id)                 // normalized lowercase
 //   UUID.nil()                     // "00000000-0000-0000-0000-000000000000"
 
-class UUID()
+class UUID {}
 
 // ── Internal helpers ─────────────────────────────────────────
 

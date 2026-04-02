@@ -1,6 +1,13 @@
 // Test: class field holding another class instance (RC correctness)
-class Weapon(name: string, damage: int)
-class Player(name: string, health: int, weapon: Weapon)
+class Weapon {
+    name: string
+    damage: int
+}
+class Player {
+    name: string
+    health: int
+    weapon: Weapon
+}
 
 function main() {
     let sword = new Weapon("Sword", 50)

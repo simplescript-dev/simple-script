@@ -25,7 +25,7 @@
 //   |            alternation
 //   \\           escape special character
 
-class Regex()
+class Regex {}
 
 // ── Global match state ───────────────────────────────────────
 

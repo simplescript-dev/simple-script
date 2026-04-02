@@ -15,7 +15,11 @@ import { JdbcTemplate } from "@/lib/spring/jdbc"
 //   repo.deleteById(1)
 //   repo.count() → int
 
-class JpaRepository(tableName: string, columns: string, jdbc: JdbcTemplate) {
+class JpaRepository {
+    tableName: string
+    columns: string
+    jdbc: JdbcTemplate
+
 
     function execute(sql: string): int {
         return this.jdbc.execute(sql)

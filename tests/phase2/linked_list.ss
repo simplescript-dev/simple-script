@@ -1,4 +1,7 @@
-class Node(value: int, next: int) {
+class Node {
+    value: int
+    next: int
+
     function getValue(): int {
         return this.value
     }

@@ -5,7 +5,10 @@ import { Connection, DriverManager } from "@/lib/java/sql"
 
 // ── HikariConfig ─────────────────────────────────────────────
 
-class HikariConfig(jdbcUrl: string, maximumPoolSize: int) {
+class HikariConfig {
+    jdbcUrl: string
+    maximumPoolSize: int
+
     function getJdbcUrl(): string { return this.jdbcUrl }
     function getMaximumPoolSize(): int { return this.maximumPoolSize }
 }
@@ -14,7 +17,10 @@ class HikariConfig(jdbcUrl: string, maximumPoolSize: int) {
 // For SQLite (single-file DB), pooling means reusing one connection.
 // For MySQL/PostgreSQL (future), would maintain actual pool.
 
-class HikariDataSource(config: HikariConfig, conn: Connection) {
+class HikariDataSource {
+    config: HikariConfig
+    conn: Connection
+
     function getConnection(): Connection {
         return this.conn
     }

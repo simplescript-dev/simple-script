@@ -13,7 +13,9 @@ interface DataSource {
 
 // ── SimpleDataSource (no pooling, direct connection) ─────────
 
-class SimpleDataSource(url: string): DataSource {
+class SimpleDataSource : DataSource {
+    url: string
+
     function getConnection(): Connection {
         return DriverManager.getConnection(this.url)
     }

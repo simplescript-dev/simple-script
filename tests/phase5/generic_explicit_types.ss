@@ -6,13 +6,18 @@ function first<A, B>(a: A, b: B): A {
     return a
 }
 
-class Box<T>(value: T) {
+class Box<T> {
+    value: T
+
     function getValue(): T {
         return this.value
     }
 }
 
-class Pair<A, B>(first: A, second: B)
+class Pair<A, B> {
+    first: A
+    second: B
+}
 
 function main() {
     // Explicit type args on generic function calls

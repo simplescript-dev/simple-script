@@ -1,6 +1,13 @@
 // Test: shallowClone — first-layer copy, internal refs shared
-class Vec2(x: int, y: int)
-class Entity(name: string, hp: int, pos: Vec2)
+class Vec2 {
+    x: int
+    y: int
+}
+class Entity {
+    name: string
+    hp: int
+    pos: Vec2
+}
 
 function main() {
     let a = new Entity("hero", 100, new Vec2(5, 10))

@@ -9,7 +9,7 @@
 //   Path.isAbsolute("/usr")            → 1
 //   Path.normalize("/usr/../local/./bin") → "/local/bin"
 
-class Path()
+class Path {}
 
 // ── join ─────────────────────────────────────────────────────
 

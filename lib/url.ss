@@ -65,7 +65,9 @@ function urlSliceFrom(s: string, start: int): string {
 
 // ── UrlParts class ───────────────────────────────────────────
 
-class UrlParts(urlId: int) {
+class UrlParts {
+    urlId: int
+
     function protocol(): string {
         return urlGet(this.urlId, "protocol")
     }
@@ -119,7 +121,7 @@ class UrlParts(urlId: int) {
 
 // ── URL class (static methods) ───────────────────────────────
 
-class URL()
+class URL {}
 
 // ── URL.parse — parse URL string into UrlParts ──────────────
 

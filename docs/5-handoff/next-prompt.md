@@ -1,4 +1,4 @@
-# Round 87
+# Round 88
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13878 LOC).
@@ -13,26 +13,25 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-D061 Phase A 完成：parser 支持 class body field 语法（TS/Java 风格 `class Foo { x: int }`），同时保留旧语法 `class Foo(x: int)`。添加 `isBodyFieldStart()` 和 `parseBodyField()` 辅助函数，body 内 IDENT+COLON 或 CONST 开头识别为 field，否则为 method。Bootstrap 固定点验证通过，81 tests 全部通过。
+D061 Phase B 完成：使用 Python 迁移脚本将所有 85 个 class 声明（83 个文件）从旧语法 `class Foo(fields)` 迁移为新语法 `class Foo { fields }`。覆盖 lib/、tests/、examples/ 三个目录，bootstrap/ 无需迁移（Map-based AST 不用 class）。Bootstrap 固定点验证通过，81 tests 全部通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), **class body fields Phase A done (D061)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), **class body fields Phase A done (D061)**, **class body fields Phase B migration done (D061)**
 Scope:
-**下一步：D061 Phase B — 代码迁移。将所有 `class Foo(fields)` 迁移为 `class Foo { fields }` 新语法。~120 个 class 声明，分布在 bootstrap/、lib/、tests/ 中。**
+**下一步：D061 Phase C — 移除旧语法支持。从 parser 中移除 `class Foo(fields)` 语法解析。**
 **P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
 
-### D061 Phase B Migration Plan
-1. **Bootstrap files** (~35 files): 迁移编译器源码中的 class 声明。由于 seed 编译器已支持双语法，可以安全迁移。注意：编译器自身基本不用 class（Map-based AST），只有少量如 `main.ss` 中的辅助类。
-2. **Stdlib** (~20 modules in lib/): 迁移标准库中的 class 声明。
-3. **Tests** (~80 files in tests/): 迁移测试文件中的 class 声明。
-4. 每批迁移后运行 `bin/ss test tests/` + `./build.sh bootstrap` 验证。
-5. 迁移完成后，Phase C 移除旧语法支持。
+### D061 Phase C — Remove Old Syntax
+1. **Remove `(fields)` parsing** from `parseClassDecl()` in parser.ss: delete the branch that parses fields between `(` and `)` after class name/extends.
+2. **Clean up**: Remove any dual-syntax detection code that is no longer needed.
+3. **Verify**: `bin/ss test tests/` + `./build.sh bootstrap` must pass.
+4. **Delete migration script**: Remove `migrate_class_syntax.py` (no longer needed).
 
 ### Known Issue (pre-existing)
 - `generic_multi_call.ss` 编译失败：D060 return type checker 对 generic 函数返回 `T` 时过于严格，拒绝返回具体类型。需要在 `isTypeCompatible()` 中添加泛型类型参数的兼容性规则。
 
 ### Syntax Refactor
-1. **D061 — Class fields in body**: Phase A done (parser dual-syntax). Phase B: migrate code. Phase C: remove old syntax. 详见 `docs/3-decisions/D061-class-body-fields.md`。
+1. **D061 — Class fields in body**: Phase A done (parser). Phase B done (migration). Phase C: remove old syntax. 详见 `docs/3-decisions/D061-class-body-fields.md`。
 2. **D062 — 语法借鉴原则**: Java/TS 优先，不借鉴 Kotlin/Scala。已写入 CLAUDE.md。
 
 ### Open Issues (按优先级)
@@ -57,7 +56,7 @@ Scope:
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
 - **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields dual-syntax (D061 Phase A)**. Compiler source CAN now use these features.
-- **Class body fields (D061)**: Both `class Foo(x: int)` and `class Foo { x: int }` are valid. Detection: `const` or IDENT+COLON in body → field; `function`/`@` → method. Both produce identical PARAM nodes in CLASS_DECL.List.
+- **Class body fields (D061)**: Phase B done — all code migrated to `class Foo { fields }`. Old `class Foo(fields)` syntax still parsed (Phase C will remove). Detection: `const` or IDENT+COLON in body → field; `function`/`@` → method. Both produce identical PARAM nodes in CLASS_DECL.List.
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
 - **Array push returns new array**: In SS, `arr.push(val)` returns a new array. The correct pattern is `arr = arr.push(val)`, NOT `arr.push(val)`. This is critical for any code that builds arrays dynamically. All stdlib modules follow this pattern.
@@ -117,7 +116,7 @@ Scope:
 - **Builtin method types in checker (D059)**: string/Array/Map/Set/Math methods have return types. String methods also have param types.
 - **this.field = value works** in class methods (D055). No more `let self = this` workaround needed.
 - **Optional method call fixed (D058)**: No more double evaluation of object expression in `obj?.method()`.
-- **Class body fields (D061 Phase A)**: Parser supports both `class Foo(x: int)` and `class Foo { x: int }`. ~120 class declarations need migration (Phase B).
+- **Class body fields (D061)**: Phase A done (parser dual-syntax), Phase B done (all code migrated). Phase C next: remove old syntax.
 - 35 bootstrap files total, ~13878 LOC, 81 phase5 tests.
 
 ## When Done

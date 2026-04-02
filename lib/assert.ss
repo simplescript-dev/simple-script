@@ -9,7 +9,7 @@
 //   Assert.approxEqual(3.14, 3.14159, 0.01, "pi")
 //   Assert.contains("hello world", "world", "has world")
 
-class Assert()
+class Assert {}
 
 // ── Internal ─────────────────────────────────────────────────
 

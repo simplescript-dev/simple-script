@@ -4,14 +4,20 @@
 
 // ── Cookie ───────────────────────────────────────────────────
 
-class Cookie(name: string, value: string) {
+class Cookie {
+    name: string
+    value: string
+
     function getName(): string { return this.name }
     function getValue(): string { return this.value }
 }
 
 // ── HttpServletRequest ───────────────────────────────────────
 
-class HttpServletRequest(headers: Map<string, string>, attributes: Map<string, string>) {
+class HttpServletRequest {
+    headers: Map<string, string>
+    attributes: Map<string, string>
+
     function getMethod(): string {
         return this.headers.getString("method")
     }
@@ -92,7 +98,12 @@ class HttpServletRequest(headers: Map<string, string>, attributes: Map<string, s
 
 // ── HttpServletResponse ──────────────────────────────────────
 
-class HttpServletResponse(status: int, contentType: string, body: string, responseHeaders: Map<string, string>) {
+class HttpServletResponse {
+    status: int
+    contentType: string
+    body: string
+    responseHeaders: Map<string, string>
+
     function setStatus(code: int): HttpServletResponse {
         return new HttpServletResponse(code, this.contentType, this.body, this.responseHeaders)
     }

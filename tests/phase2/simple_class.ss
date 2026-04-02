@@ -1,4 +1,6 @@
-class Dog(name: string) {
+class Dog {
+    name: string
+
     function bark(): string {
         return `${this.name} says woof!`
     }

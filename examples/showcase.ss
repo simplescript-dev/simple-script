@@ -2,7 +2,12 @@
 // Compile: ss build --release examples/showcase.ss -o showcase
 // Run:     ./showcase
 
-class Stats(total: int, min: int, max: int, sum: int) {
+class Stats {
+    total: int
+    min: int
+    max: int
+    sum: int
+
     function average(): double {
         return 0.0
     }

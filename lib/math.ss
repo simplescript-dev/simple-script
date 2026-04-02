@@ -13,7 +13,7 @@
 //   MathUtil.E      → 2.718281828459045
 //   MathUtil.TAU    → 6.283185307179586
 
-class MathUtil()
+class MathUtil {}
 
 // ── Constants (as zero-arg methods) ─────────────────────────
 

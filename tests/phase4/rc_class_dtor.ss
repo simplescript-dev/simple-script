@@ -1,19 +1,28 @@
 // Test: Class field destructors via RC
 // When a class instance's rc drops to 0, ptr fields should be released
 
-class Person(name: string, age: int) {
+class Person {
+    name: string
+    age: int
+
     function greet(): string {
         return `Hello, ${this.name}`
     }
 }
 
-class Pair(first: string, second: string) {
+class Pair {
+    first: string
+    second: string
+
     function toString(): string {
         return `(${this.first}, ${this.second})`
     }
 }
 
-class Container(label: string, value: int) {
+class Container {
+    label: string
+    value: int
+
 }
 
 function testBasicClassDtor() {

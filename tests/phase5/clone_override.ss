@@ -1,7 +1,14 @@
 // Test: user-defined deepClone override (spec §1.6)
-class Config(name: string, value: int)
+class Config {
+    name: string
+    value: int
+}
 
-class Player(const id: string, health: int, config: Config) {
+class Player {
+    const id: string
+    health: int
+    config: Config
+
     // User overrides deepClone — doubles health on clone
     function deepClone(): Player {
         return new Player(this.id, this.health * 2, this.config.deepClone())

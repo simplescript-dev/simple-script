@@ -1,4 +1,8 @@
-class Todo(id: int, title: string, done: int) {
+class Todo {
+    id: int
+    title: string
+    done: int
+
     function getTitle(): string {
         return this.title
     }

@@ -4,7 +4,9 @@
 
 // ── EntityManager ────────────────────────────────────────────
 
-class EntityManager(dataDir: string) {
+class EntityManager {
+    dataDir: string
+
     function ensureDir() {
         mkdirp(this.dataDir)
     }

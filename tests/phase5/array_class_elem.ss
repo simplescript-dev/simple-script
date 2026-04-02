@@ -1,4 +1,7 @@
-class Point(x: int, y: int)
+class Point {
+    x: int
+    y: int
+}
 
 function main() {
     let p1 = new Point(1, 2)

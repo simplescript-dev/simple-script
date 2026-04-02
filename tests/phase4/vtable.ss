@@ -1,6 +1,8 @@
 // Test: vtable virtual method dispatch (true polymorphism)
 
-class Shape(kind: string) {
+class Shape {
+    kind: string
+
     function area(): int {
         return 0
     }
@@ -9,13 +11,18 @@ class Shape(kind: string) {
     }
 }
 
-class Circle extends Shape(radius: int) {
+class Circle extends Shape {
+    radius: int
+
     function area(): int {
         return this.radius * this.radius * 3
     }
 }
 
-class Rect extends Shape(width: int, height: int) {
+class Rect extends Shape {
+    width: int
+    height: int
+
     function area(): int {
         return this.width * this.height
     }

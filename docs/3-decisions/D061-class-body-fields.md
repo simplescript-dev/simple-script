@@ -1,6 +1,6 @@
 # D061: Class Fields in Body (TS-style)
 
-**Status**: Phase A complete (parser supports both syntaxes)
+**Status**: Phase B complete (all code migrated to new syntax)
 **Depends-on**: None
 
 ## Decision
@@ -68,9 +68,11 @@ Breaking change. All class declarations across bootstrap (~35 files), stdlib (~2
 - Bootstrap fixed-point verified; 81 tests pass
 - Seed compiler updated to support both syntaxes
 
-### Phase B — Code migration (TODO)
-- Migrate all `class Foo(fields)` → `class Foo { fields }` across bootstrap, stdlib, tests
-- Atomic per-file migration, re-bootstrap after each batch
+### Phase B — Code migration (DONE, Round 87)
+- Migrated 85 class declarations across 83 files (lib/, tests/, examples/)
+- Bootstrap files have no class declarations (Map-based AST architecture)
+- Python migration script `migrate_class_syntax.py` handled bulk conversion
+- Bootstrap fixed-point verified; 81 tests pass
 
 ### Phase C — Remove old syntax (TODO)
 - Remove `(fields)` parsing from `parseClassDecl()`

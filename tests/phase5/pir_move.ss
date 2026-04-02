@@ -2,13 +2,19 @@
 // When let b = a and a is never used after, the retain+release pair is eliminated.
 // Correctness: b owns the reference, final RC_DEC frees it properly.
 
-class Vec2(x: int, y: int) {
+class Vec2 {
+    x: int
+    y: int
+
     function mag(): int {
         return this.x * this.x + this.y * this.y
     }
 }
 
-class Box(label: string, value: int)
+class Box {
+    label: string
+    value: int
+}
 
 // Case 1: simple move — a not used after let b = a
 function testSimpleMove() {

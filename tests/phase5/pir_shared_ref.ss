@@ -1,5 +1,8 @@
 // Test: PIR shared references — RC_INC on assignment from another variable
-class Point(x: int, y: int) {
+class Point {
+    x: int
+    y: int
+
     function distSq(): int {
         return this.x * this.x + this.y * this.y
     }

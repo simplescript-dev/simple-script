@@ -2,13 +2,19 @@ interface Rankable {
     function rank(): int
 }
 
-class Player(name: string, score: int) : Rankable {
+class Player : Rankable {
+    name: string
+    score: int
+
     function rank(): int {
         return this.score
     }
 }
 
-class Team(label: string, wins: int) : Rankable {
+class Team : Rankable {
+    label: string
+    wins: int
+
     function rank(): int {
         return this.wins
     }

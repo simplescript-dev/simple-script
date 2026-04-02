@@ -1,7 +1,11 @@
 // Case C: generic class extends generic class (type param forwarding)
-class Box<T>(value: T)
+class Box<T> {
+    value: T
+}
 
-class LabeledBox<T> extends Box<T>(label: string) {
+class LabeledBox<T> extends Box<T> {
+    label: string
+
     function info(): string {
         return `${this.label}: labeled`
     }

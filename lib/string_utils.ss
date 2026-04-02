@@ -9,7 +9,7 @@
 //   StringUtil.count("ababa", "ab")            → 2
 //   StringUtil.isBlank("  \t\n")               → 1
 
-class StringUtil()
+class StringUtil {}
 
 // ── Trimming ─────────────────────────────────────────────────
 

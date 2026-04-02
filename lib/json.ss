@@ -36,7 +36,9 @@ function jnNew(nodeType: string): int {
 
 // ── JsonNode wrapper ─────────────────────────────────────────
 
-class JsonNode(nodeId: int) {
+class JsonNode {
+    nodeId: int
+
     function type(): string {
         return jnType.getString(`${this.nodeId}`)
     }
@@ -224,7 +226,7 @@ class JsonNode(nodeId: int) {
 
 // ── JSON static methods ──────────────────────────────────────
 
-class JSON()
+class JSON {}
 
 function JSON_parse(source: string): JsonNode {
     initJson()

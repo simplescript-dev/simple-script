@@ -11,7 +11,7 @@
 // Algorithm: Howard Hinnant's civil_from_days (C++20 <chrono>)
 // Limitation: i32 timestamps valid through 2038-01-19. UTC only.
 
-class DateTime()
+class DateTime {}
 
 // ── helpers (internal) ───────────────────────────────────────
 

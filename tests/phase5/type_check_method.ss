@@ -1,12 +1,19 @@
 // Test: METHOD_CALL argument type checking (D054)
 
-class Weapon(const name: string, damage: int) {
+class Weapon {
+    const name: string
+    damage: int
+
     function getDamage(): int {
         return this.damage
     }
 }
 
-class Player(const name: string, health: int, weapon: Weapon) {
+class Player {
+    const name: string
+    health: int
+    weapon: Weapon
+
     function getHealth(): int {
         return this.health
     }
@@ -20,13 +27,17 @@ class Player(const name: string, health: int, weapon: Weapon) {
     }
 }
 
-class Animal(const species: string) {
+class Animal {
+    const species: string
+
     function getSpecies(): string {
         return this.species
     }
 }
 
-class Dog extends Animal(const dogName: string) {
+class Dog extends Animal {
+    const dogName: string
+
     function greet(msg: string): string {
         return `${this.dogName}: ${msg}`
     }

@@ -1,6 +1,9 @@
 // Comprehensive test — exercises all language features
 
-class Counter(name: string, count: int) {
+class Counter {
+    name: string
+    count: int
+
     function increment(): int {
         return this.count + 1
     }

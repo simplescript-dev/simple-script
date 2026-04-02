@@ -1,10 +1,15 @@
-class Animal(name: string, sound: string) {
+class Animal {
+    name: string
+    sound: string
+
     function speak(): string {
         return this.name + " says " + this.sound
     }
 }
 
-class Dog extends Animal(breed: string) {
+class Dog extends Animal {
+    breed: string
+
     function info(): string {
         return this.breed
     }

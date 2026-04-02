@@ -8,7 +8,7 @@
 //   println(Color.bgYellow(Color.black("warning")))
 //   const clean = Color.strip(Color.red("text"))  // "text"
 
-class Color()
+class Color {}
 
 // ── Internal helper ──────────────────────────────────────────
 

@@ -1,11 +1,16 @@
 // Test: PIR with class inheritance — vtable dispatch + RC management
-class Animal(name: string, legs: int) {
+class Animal {
+    name: string
+    legs: int
+
     function describe(): string {
         return `${this.name} has ${this.legs} legs`
     }
 }
 
-class Cat extends Animal(indoor: int) {
+class Cat extends Animal {
+    indoor: int
+
     function describe(): string {
         if (this.indoor == 1) {
             return `${this.name} is an indoor cat`

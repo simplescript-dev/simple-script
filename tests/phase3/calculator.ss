@@ -1,4 +1,6 @@
-class Calculator(result: double) {
+class Calculator {
+    result: double
+
     function add(n: double): double {
         return this.result + n
     }

@@ -1,9 +1,18 @@
 // Test: deepClone with inheritance — child class fields cloned correctly
-class Weapon(const name: string, damage: int)
+class Weapon {
+    const name: string
+    damage: int
+}
 
-class Entity(const tag: string, hp: int, weapon: Weapon)
+class Entity {
+    const tag: string
+    hp: int
+    weapon: Weapon
+}
 
-class Hero extends Entity(level: int) {
+class Hero extends Entity {
+    level: int
+
     function info(): string {
         return `${this.tag} lv${this.level} hp${this.hp} w=${this.weapon.name}(${this.weapon.damage})`
     }

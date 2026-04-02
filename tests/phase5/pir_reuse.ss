@@ -2,11 +2,21 @@
 // When a unique variable is dropped and the next statement allocates
 // the same type, memory is reused (ss_drop_fields + new_reuse).
 
-class Point(x: int, y: int)
+class Point {
+    x: int
+    y: int
+}
 
-class Weapon(const name: string, damage: int)
+class Weapon {
+    const name: string
+    damage: int
+}
 
-class Hero(const name: string, health: int, weapon: Weapon)
+class Hero {
+    const name: string
+    health: int
+    weapon: Weapon
+}
 
 // Basic same-type reuse: drop Point, alloc Point
 function testBasicReuse() {

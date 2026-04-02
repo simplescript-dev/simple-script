@@ -1,6 +1,9 @@
 // SimpleScript — Final Demo
 
-class Point(x: int, y: int) {
+class Point {
+    x: int
+    y: int
+
     function toString(): string {
         return "(" + this.x + ", " + this.y + ")"
     }

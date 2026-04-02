@@ -31,7 +31,11 @@ enum HttpStatus {
 //   ResponseEntity.notFound().build()
 //   ResponseEntity.noContent().build()
 
-class ResponseEntity(statusCode: int, contentType: string, responseBody: string) {
+class ResponseEntity {
+    statusCode: int
+    contentType: string
+    responseBody: string
+
     // Instance methods (builder chain)
     function body(data: string): ResponseEntity {
         return new ResponseEntity(this.statusCode, this.contentType, data)

@@ -2,7 +2,9 @@ interface Greeter {
     function greet(): string
 }
 
-class Dog(name: string) : Greeter {
+class Dog : Greeter {
+    name: string
+
     function greet(): string {
         return `${this.name} says woof!`
     }

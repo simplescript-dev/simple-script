@@ -1,9 +1,14 @@
 // Type checking: verify return type consistency.
 // Tests that functions with declared return types compile when returning compatible values.
 
-class Point(x: int, y: int)
+class Point {
+    x: int
+    y: int
+}
 
-class Point3D extends Point(z: int)
+class Point3D extends Point {
+    z: int
+}
 
 // Basic return types
 function getInt(): int {
@@ -62,7 +67,9 @@ function isPositive(x: int): int {
 }
 
 // Method return type
-class Calculator(value: int) {
+class Calculator {
+    value: int
+
     function getValue(): int {
         return this.value
     }

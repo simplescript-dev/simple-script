@@ -1,5 +1,8 @@
 // Test: this.field = value inside methods
-class Counter(value: int, name: string) {
+class Counter {
+    value: int
+    name: string
+
     function increment() {
         this.value += 1
     }
@@ -14,9 +17,15 @@ class Counter(value: int, name: string) {
     }
 }
 
-class Weapon(damage: int)
+class Weapon {
+    damage: int
+}
 
-class Player(name: string, health: int, weapon: Weapon) {
+class Player {
+    name: string
+    health: int
+    weapon: Weapon
+
     function takeDamage(amount: int) {
         this.health -= amount
     }

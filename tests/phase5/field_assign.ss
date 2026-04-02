@@ -1,6 +1,11 @@
 // Test: field assignment (mutable fields)
 // Note: seed compiler cannot parse "const" in field decl, so we use all mutable for now
-class Player(name: string, health: int, x: int, y: int)
+class Player {
+    name: string
+    health: int
+    x: int
+    y: int
+}
 
 function damage(p: Player, amount: int) {
     p.health -= amount

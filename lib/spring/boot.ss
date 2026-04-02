@@ -47,7 +47,7 @@ function dispatcherServlet(request: HttpServletRequest, response: HttpServletRes
 
 // ── SpringApplication ────────────────────────────────────────
 
-class SpringApplication() {
+class SpringApplication {
     function run(port: int) {
         println("")
         println("  .   ____          _            __ _ _")

@@ -3,7 +3,9 @@ interface Shape {
     function name(): string
 }
 
-class Circle(r: int) : Shape {
+class Circle : Shape {
+    r: int
+
     function area(): int {
         return this.r * this.r * 3
     }
@@ -12,7 +14,10 @@ class Circle(r: int) : Shape {
     }
 }
 
-class Rect(w: int, h: int) : Shape {
+class Rect : Shape {
+    w: int
+    h: int
+
     function area(): int {
         return this.w * this.h
     }

@@ -7,7 +7,10 @@ import { HttpServletRequest, HttpServletResponse, createServletRequest, createSe
 
 // ── Connector ────────────────────────────────────────────────
 
-class Connector(port: int, protocol: string) {
+class Connector {
+    port: int
+    protocol: string
+
     function getPort(): int { return this.port }
     function getProtocol(): string { return this.protocol }
 }
@@ -20,7 +23,11 @@ interface Servlet {
 
 // ── Tomcat ───────────────────────────────────────────────────
 
-class Tomcat(port: int, hostname: string, baseDir: string) {
+class Tomcat {
+    port: int
+    hostname: string
+    baseDir: string
+
     function setPort(p: int): Tomcat {
         return new Tomcat(p, this.hostname, this.baseDir)
     }

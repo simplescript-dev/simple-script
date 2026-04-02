@@ -2,13 +2,17 @@ interface Animal {
     function speak(): string
 }
 
-class Dog(name: string) : Animal {
+class Dog : Animal {
+    name: string
+
     function speak(): string {
         return "woof"
     }
 }
 
-class Cat(name: string) : Animal {
+class Cat : Animal {
+    name: string
+
     function speak(): string {
         return "meow"
     }

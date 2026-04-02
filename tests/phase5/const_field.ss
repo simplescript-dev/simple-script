@@ -1,6 +1,10 @@
 // Test: const field — mutable field operations only
 // (const field compile error is verified manually with ss check)
-class Config(name: string, value: int, enabled: int)
+class Config {
+    name: string
+    value: int
+    enabled: int
+}
 
 function toggle(c: Config) {
     if (c.enabled == 1) {

@@ -1,4 +1,7 @@
-class Point(x: int, y: int) {
+class Point {
+    x: int
+    y: int
+
     function getX(): int { return this.x }
     function getY(): int { return this.y }
 }

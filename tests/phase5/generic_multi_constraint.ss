@@ -11,7 +11,10 @@ interface Rankable {
 }
 
 // Implements both Printable and Scorable
-class Player(name: string, score: int) : Printable, Scorable {
+class Player : Printable, Scorable {
+    name: string
+    score: int
+
     function display(): string {
         return this.name
     }
@@ -21,7 +24,11 @@ class Player(name: string, score: int) : Printable, Scorable {
 }
 
 // Implements all three
-class Hero(name: string, score: int, level: int) : Printable, Scorable, Rankable {
+class Hero : Printable, Scorable, Rankable {
+    name: string
+    score: int
+    level: int
+
     function display(): string {
         return `${this.name} L${this.level}`
     }
@@ -34,7 +41,9 @@ class Hero(name: string, score: int, level: int) : Printable, Scorable, Rankable
 }
 
 // Implements only Printable
-class Label(text: string) : Printable {
+class Label : Printable {
+    text: string
+
     function display(): string {
         return this.text
     }
@@ -56,7 +65,9 @@ function labeled<T extends Printable & Scorable, U>(item: T, tag: U): string {
 }
 
 // ── Class with multi-constraint ──
-class Wrapper<T extends Printable & Scorable>(item: T) {
+class Wrapper<T extends Printable & Scorable> {
+    item: T
+
     function info(): string {
         return `${this.item.display()}: ${this.item.getScore()}`
     }

@@ -5,7 +5,9 @@ import { Connection, ResultSet, rsNext, stmtExecuteQuery, stmtExecuteUpdate } fr
 
 // ── JdbcTemplate ─────────────────────────────────────────────
 
-class JdbcTemplate(dbHandle: string) {
+class JdbcTemplate {
+    dbHandle: string
+
     function execute(sql: string): int {
         return stmtExecuteUpdate(this.dbHandle, sql)
     }

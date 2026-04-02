@@ -1,5 +1,8 @@
 // Test: PIR basic — class instances in function body get PIR-managed RC
-class Dog(name: string, age: int) {
+class Dog {
+    name: string
+    age: int
+
     function bark(): string {
         return `${this.name} says woof!`
     }

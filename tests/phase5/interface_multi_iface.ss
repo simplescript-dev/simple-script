@@ -6,7 +6,10 @@ interface Serializable {
     function toStr(): string
 }
 
-class Item(name: string, value: int) : Printable, Serializable {
+class Item : Printable, Serializable {
+    name: string
+    value: int
+
     function display(): string {
         return `Item(${this.name})`
     }

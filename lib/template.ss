@@ -27,7 +27,7 @@
 //   // Strip all tags
 //   Template.strip("Hello {{name}}!")  // "Hello !"
 
-class Template()
+class Template {}
 
 // ── Internal Helpers ─────────────────────────────────────────
 

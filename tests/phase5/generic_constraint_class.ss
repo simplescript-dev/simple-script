@@ -2,19 +2,26 @@ interface Displayable {
     function display(): string
 }
 
-class Item(label: string) : Displayable {
+class Item : Displayable {
+    label: string
+
     function display(): string {
         return this.label
     }
 }
 
-class Wrapper<T extends Displayable>(value: T) {
+class Wrapper<T extends Displayable> {
+    value: T
+
     function show(): string {
         return this.value.display()
     }
 }
 
-class Pair<A extends Displayable, B extends Displayable>(first: A, second: B) {
+class Pair<A extends Displayable, B extends Displayable> {
+    first: A
+    second: B
+
     function showBoth(): string {
         return `${this.first.display()} and ${this.second.display()}`
     }

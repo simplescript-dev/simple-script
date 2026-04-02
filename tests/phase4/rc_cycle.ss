@@ -2,9 +2,15 @@
 // Node.children: Array<Node> creates a self-referential type graph
 // The compiler detects the cycle and marks children as non-owning
 
-class Node(value: int, children: Array<Node>)
+class Node {
+    value: int
+    children: Array<Node>
+}
 
-class Parent(name: string, kids: Array<Parent>)
+class Parent {
+    name: string
+    kids: Array<Parent>
+}
 
 function testSelfRef() {
     const a = new Node(1, [])

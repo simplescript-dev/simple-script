@@ -2,7 +2,9 @@
 
 let callCount = 0
 
-class Box(value: int) {
+class Box {
+    value: int
+
     function getValue(): int {
         return this.value
     }

@@ -7,7 +7,7 @@
 //   if (FS.exists("config.json")) { ... }
 //   const entries = FS.readDir("/tmp")
 
-class FS()
+class FS {}
 
 // ── Read/Write ───────────────────────────────────────────────
 

@@ -1,13 +1,19 @@
 // Case B: non-generic class extends specialized generic class
-class Box<T>(value: T) {
+class Box<T> {
+    value: T
+
     function getValue(): T {
         return this.value
     }
 }
 
-class IntBox extends Box<int>(label: string)
+class IntBox extends Box<int> {
+    label: string
+}
 
-class StringBox extends Box<string>(tag: int) {
+class StringBox extends Box<string> {
+    tag: int
+
     function info(): string {
         return `${this.getValue()}#${this.tag}`
     }

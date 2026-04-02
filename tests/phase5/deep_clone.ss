@@ -1,6 +1,13 @@
 // Test: deepClone — fully independent copy
-class Vec2(x: int, y: int)
-class Player(const name: string, health: int, pos: Vec2)
+class Vec2 {
+    x: int
+    y: int
+}
+class Player {
+    const name: string
+    health: int
+    pos: Vec2
+}
 
 function main() {
     let a = new Player("Alice", 100, new Vec2(1, 2))

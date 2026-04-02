@@ -2,7 +2,10 @@ interface Scorable {
     function getScore(): int
 }
 
-class Entry(name: string, score: int) : Scorable {
+class Entry : Scorable {
+    name: string
+    score: int
+
     function getScore(): int {
         return this.score
     }

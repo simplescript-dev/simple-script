@@ -3,9 +3,16 @@
 // (ss_drop_ClassName instead of ss_release) when released.
 // NOTE: avoid template literals referencing class vars (seed bug workaround)
 
-class Weapon(const name: string, damage: int)
+class Weapon {
+    const name: string
+    damage: int
+}
 
-class Hero(const name: string, health: int, weapon: Weapon) {
+class Hero {
+    const name: string
+    health: int
+    weapon: Weapon
+
     function info(): string {
         return this.name
     }

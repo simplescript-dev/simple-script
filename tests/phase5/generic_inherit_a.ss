@@ -1,7 +1,11 @@
 // Case A: generic class extends non-generic class
-class Container(label: string)
+class Container {
+    label: string
+}
 
-class Box<T> extends Container(value: T) {
+class Box<T> extends Container {
+    value: T
+
     function describe(): string {
         return `${this.label}: box`
     }

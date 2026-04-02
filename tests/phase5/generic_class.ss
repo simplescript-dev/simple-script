@@ -1,6 +1,11 @@
-class Box<T>(value: T)
+class Box<T> {
+    value: T
+}
 
-class Pair<A, B>(first: A, second: B)
+class Pair<A, B> {
+    first: A
+    second: B
+}
 
 function main() {
     // Basic: int

@@ -1,6 +1,8 @@
 // SimpleScript v1.3 — Complete Feature Demo
 
-class Shape(name: string) {
+class Shape {
+    name: string
+
     function toString(): string {
         return this.name
     }
@@ -9,7 +11,9 @@ class Shape(name: string) {
     }
 }
 
-class Circle extends Shape(radius: double) {
+class Circle extends Shape {
+    radius: double
+
     function toString(): string {
         return "Circle(r=" + this.radius + ")"
     }
@@ -18,7 +22,10 @@ class Circle extends Shape(radius: double) {
     }
 }
 
-class Rect extends Shape(w: double, h: double) {
+class Rect extends Shape {
+    w: double
+    h: double
+
     function toString(): string {
         return "Rect(" + this.w + "x" + this.h + ")"
     }

@@ -1,8 +1,16 @@
 // Test: named parameter construction for classes
 
-class Point(x: int, y: int)
+class Point {
+    x: int
+    y: int
+}
 
-class Player(const name: string, health: int, x: int, y: int)
+class Player {
+    const name: string
+    health: int
+    x: int
+    y: int
+}
 
 function main() {
     // Basic named params (reordered)

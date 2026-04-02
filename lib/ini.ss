@@ -105,7 +105,9 @@ function iniRemoveKey(id: int, section: string, key: string) {
 
 // ── IniData class ────────────────────────────────────────────
 
-class IniData(tableId: int) {
+class IniData {
+    tableId: int
+
     function get(section: string, key: string): string {
         return iniGetValue(this.tableId, section, key)
     }
@@ -154,7 +156,7 @@ class IniData(tableId: int) {
 
 // ── Ini class (static methods) ───────────────────────────────
 
-class Ini()
+class Ini {}
 
 function Ini_parse(text: string): IniData {
     const id = iniNewId()
