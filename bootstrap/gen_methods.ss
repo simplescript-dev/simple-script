@@ -31,9 +31,10 @@ function genOptionalMethodCall(id: int): string {
     emitIR(`  br i1 ${cmpR}, label %${endLabel}, label %${callLabel}`)
 
     // Call method normally (clear the optional flag so genMethodCall doesn't loop)
+    // Pass pre-evaluated objVal to avoid double evaluation of object expression
     emitIR(`${callLabel}:`)
     nSetI3(id, 0)
-    const callResult = genMethodCall(id)
+    const callResult = genMethodCall(id, objVal)
     emitIR(`  store ${llRetType} ${callResult}, ptr ${resultAlloca}, align 8`)
     emitIR(`  br label %${endLabel}`)
 
@@ -235,17 +236,22 @@ function genIndexOfMethod(objVal: string, argList: string): string {
 
 // ── Main method call dispatcher ─────────────────────────────────
 
-function genMethodCall(id: int): string {
+function genMethodCall(id: int, preObj: string = ""): string {
     const method = nGetS1(id)
     const objId = nGetI1(id)
     const argList = nGetList(id)
 
     // Static method: ClassName.method()
-    if (nGetKind(objId) == "IDENT" && getVarType(nGetS1(objId)) == "" && classFields.has(nGetS1(objId)) == 1) {
+    if (preObj == "" && nGetKind(objId) == "IDENT" && getVarType(nGetS1(objId)) == "" && classFields.has(nGetS1(objId)) == 1) {
         return genStaticMethodCall(method, objId, argList)
     }
 
-    let objVal = genExpr(objId)
+    let objVal = ""
+    if (preObj != "") {
+        objVal = preObj
+    } else {
+        objVal = genExpr(objId)
+    }
     const objType = inferType(objId)
     if (objType == "i64") {
         const castR = nextReg()
