@@ -8,7 +8,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 |------|-------|--------|-------|
 | 00 | Language Overview | ✅ | 设计理念已实现，语言可自举 |
 | 01 | Syntax & Type System | 🔶 | int/double/string/bool done。缺: byte/short/long/float/char/uint/ulong/any |
-| 31 | Type Inference | 🔶 | checkerInferType 8 check sites (D053-D065)。缺: 完整 inferType 迁移 |
+| 31 | Type Inference | ✅ | checkerInferType 8 check sites (D053-D065)。inferType 迁移已分析关闭 (D066) |
 | 40 | Numeric Types | 🔶 | 只有 int (i32) + double (f64)。缺: byte/short/long/float/unsigned |
 | 41 | Grammar Summary | 📄 | 参考文档 |
 | 42 | Access Modifiers | ❌ | 无 export/protected/internal，无可见性控制 |
@@ -152,8 +152,8 @@ argparse, random, toml, xml, gzip/zlib, aes, rsa, tls, dns, websocket, db, concu
 
 | Status | Count |
 |--------|-------|
-| ✅ Done | 9 |
-| 🔶 Partial | 17 |
+| ✅ Done | 10 |
+| 🔶 Partial | 16 |
 | ❌ Not started | 40 |
 | 📄 Doc only | 4 |
 | 🚫 Rejected | 1 |
