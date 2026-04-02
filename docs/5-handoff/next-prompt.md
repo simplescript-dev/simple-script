@@ -1,7 +1,7 @@
-# Round 90
+# Round 91
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~13930 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~14010 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
@@ -13,15 +13,15 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-D063 完成：修复 `isTypeCompatible()` 对泛型类型参数的误报。添加 `currentTypeParams` 全局变量追踪当前函数的类型参数，在 FUNC_DECL 处保存/恢复，`isTypeCompatible()` 遇到类型参数时返回兼容。`generic_multi_call.ss` 测试现在通过，81 tests 全部通过，bootstrap 固定点验证通过。
+D064 完成：为 NEW_EXPR 添加构造函数参数类型检查。`lookupConsParamType()` 沿继承链查找字段类型（parent fields first），`checkerGenericClasses` 追踪泛型类防止误报。位置参数和命名参数均已覆盖，82 tests 全部通过，bootstrap 固定点验证通过。
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), **generic type param compat done (D063)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), generic type param compat done (D063), **NEW_EXPR type checking done (D064)**
 Scope:
 **P17: 先修后加。Open issues 优先于新功能。每轮开始先读 `docs/4-issues/1-open/`。**
 
 ### Open Issues (按优先级)
-1. **I003 — 语义分析不完整** [MEDIUM]: Phase 3 大部分完成。6 个类型检查点 + builtin 方法返回/参数类型注册（D059）+ 泛型类型参数兼容（D063）。剩余：NEW_EXPR argument type checking，Phase 4 inferType 迁移。
+1. **I003 — 语义分析不完整** [MEDIUM]: Phase 3 完成。7 个类型检查点 + builtin 方法返回/参数类型注册（D059）+ 泛型类型参数兼容（D063）+ NEW_EXPR 参数类型检查（D064）。剩余：Phase 4 inferType 迁移。
 2. **I001 — 全局可变状态爆炸** [BLOCKED]: 55+ 全局变量。需要 struct 支持。
 3. **I002 — 字符串类型系统** [BLOCKED]: 类型用 raw string 比较。需要 enum/struct。
 4. **I005 — AST list 用字符串** [PARTIAL]: 已有 helper，性能问题待 proper array type。
@@ -33,16 +33,17 @@ Scope:
 8. **Phase 4 remaining**: Tagged templates（低优先级）。
 
 ### 项目状态
-- **文件大小**: checker.ss ~863, check_stmts.ss ~630, gen_class.ss ~613, parser.ss ~599, gen_decls.ss ~593, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
+- **文件大小**: checker.ss ~905, check_stmts.ss ~668, gen_class.ss ~613, parser.ss ~599, gen_decls.ss ~593, parse_exprs.ss ~531, parse_stmts.ss ~519, gen_runtime.ss ~507, gen_calls.ss ~507.
 - **Stdlib**: 20 modules, ~4862 LOC in lib/.
-- **Bootstrap**: 35 files, ~13930 LOC, 81 phase5 tests (all passing).
+- **Bootstrap**: 35 files, ~14010 LOC, 82 phase5 tests (all passing).
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 9. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields (D061 complete, old syntax removed)**, **generic type param compat (D063)**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields (D061 complete, old syntax removed)**, **generic type param compat (D063)**, **NEW_EXPR type checking (D064)**. Compiler source CAN now use these features.
 - **Class body fields (D061 complete)**: All code uses `class Foo { fields }` syntax. Old `class Foo(fields)` syntax removed from parser. Detection: `const` → field; `IDENT` + `:` or `?` → field; `function`/`@` → method. Body fields create PARAM nodes in CLASS_DECL.List.
+- **NEW_EXPR type checking (D064)**: `lookupConsParamType(className, paramIndex)` walks parent chain root→leaf, returns field type at paramIndex. `checkerGenericClasses` Map tracks generic classes — their fields are skipped in type checking to prevent false positives. Both positional and named args checked. 7 type check sites total.
 - **Generic type param compat (D063)**: `currentTypeParams` tracks current function's type params (from FUNC_DECL S3). `isTypeCompatible()` returns 1 if either side is a type param. Save/restore in FUNC_DECL handler (same pattern as `currentFuncRetType`).
 - **Compiler source uses Map-based AST**: No class instances in compiler (all Maps). New syntax features don't apply to compiler source architecture.
 - **Syntax design rule (CLAUDE.md)**: Any new syntax MUST have a direct TypeScript/JavaScript equivalent. Do NOT introduce new keywords or unfamiliar syntax forms. Complexity stays in the compiler, not user code.
@@ -71,12 +72,17 @@ Scope:
 - **Return type checking (D060, Round 85)**:
   - **currentFuncRetType**: Global variable tracking enclosing function's declared return type. Save/restored per FUNC_DECL (supports nested functions + class methods).
   - **Conservative check**: Only errors when return type annotation exists, is non-void, return has a value, value type is inferable, and types are incompatible.
-  - **6 type check sites total**: VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL args, METHOD_CALL args, RETURN.
+  - **7 type check sites total**: VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL args, METHOD_CALL args, RETURN, NEW_EXPR args.
 - **Generic type param compat (D063, Round 89)**:
   - **currentTypeParams**: Global variable tracking current function's type parameters (from FUNC_DECL S3, comma-separated).
   - **isTypeCompatible()**: If either declared or actual matches a current type param → return 1 (compatible).
   - **Save/restore**: In FUNC_DECL handler, same save/restore pattern as `currentFuncRetType`.
-  - **Scope**: Applies to all 6 type check sites, not just RETURN.
+  - **Scope**: Applies to all 7 type check sites, not just RETURN.
+- **NEW_EXPR type checking (D064, Round 90)**:
+  - **lookupConsParamType(className, paramIndex)**: Builds parent chain root→leaf, walks fields in order, returns type at index. Returns "" for generic class fields.
+  - **checkerGenericClasses**: Map tracking generic classes (set during CLASS_DECL when `classTypeParams(s) != ""`).
+  - **Positional args**: Iterate args, lookup expected type by index, infer actual via `checkerInferType`, check with `isTypeCompatible`.
+  - **Named args**: In `checkNamedConstructorArgs`, after field-exists check, walk parent chain to find field owner, check value type vs field type. Skip generic class-owned fields.
 - **Generic array element type (D057, Round 82)**:
   - **inferArrayElemType()**: Now extracts type parameter generically via `indexOf("<")` + `substring()`. Handles `Array<fn>`, `Array<ClassName>`, any `Array<T>`.
   - **Codegen call sites**: INDEX_ACCESS, for-in, destructuring all handle ptr-typed elements correctly (inttoptr i64 to ptr).
@@ -91,25 +97,25 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 81 tests (all passing).
-- **35 bootstrap files**, ~13930 LOC.
+- **phase5 tests**: 82 tests (all passing).
+- **35 bootstrap files**, ~14010 LOC.
 
 ## Decision Criteria
 - Standard library now has 20 modules, ~4862 LOC.
 - Phase 4 essentially complete (tuples done, numeric separators done, tag functions deferred).
 - D061 class body fields fully complete (all 3 phases). Old syntax removed.
-- D063 generic type param compat done. All pre-existing test failures resolved.
-- I003 Phase 3 mostly complete: type inference + 6 type check sites + builtin method types (D059) + generic type param compat (D063). Phase 4 remainder: full inferType migration to checker. Also: NEW_EXPR argument type checking.
-- File sizes: checker.ss ~863 (largest), check_stmts.ss ~630, gen_class.ss ~613, parser.ss ~599, gen_decls.ss ~593.
+- D064 NEW_EXPR type checking done. Phase 3 type checking complete: 7 check sites + builtin method types + generic type param compat + NEW_EXPR args.
+- I003 Phase 3 fully complete. Phase 4 remainder: full inferType migration to checker.
+- File sizes: checker.ss ~905 (largest), check_stmts.ss ~668, gen_class.ss ~613, parser.ss ~599, gen_decls.ss ~593.
 - All existing features working: tuple types (D034), Phase 4 batch (D033), array methods, power operator (D032), multi-constraints (D031), type constraints, generic class inheritance (D030), destructuring, switch patterns (D029), explicit type args (D028), generic classes (D027), generic functions (D026), interfaces (D025).
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known limitation: SS strings are null-terminated. `hexToBytes` cannot produce strings with 0x00 bytes. HMAC uses on-the-fly hex decoding to avoid this.
 - Known convention: `arr.slice(start, end)` is start+end index semantics, NOT offset+length. Differs from `substring(offset, length)`.
-- **6 type check sites in checker**: VAR_DECL (D053), ASSIGN (D053), MEMBER_ASSIGN (D053), CALL args (D053), METHOD_CALL args (D054), RETURN (D060).
+- **7 type check sites in checker**: VAR_DECL (D053), ASSIGN (D053), MEMBER_ASSIGN (D053), CALL args (D053), METHOD_CALL args (D054), RETURN (D060), NEW_EXPR args (D064).
 - **Builtin method types in checker (D059)**: string/Array/Map/Set/Math methods have return types. String methods also have param types.
 - **this.field = value works** in class methods (D055). No more `let self = this` workaround needed.
 - **Optional method call fixed (D058)**: No more double evaluation of object expression in `obj?.method()`.
-- 35 bootstrap files total, ~13930 LOC, 81 phase5 tests (all passing).
+- 35 bootstrap files total, ~14010 LOC, 82 phase5 tests (all passing).
 
 ## When Done
 **P18: 单上下文单任务。完成当前任务或上下文不足时，更新 handoff 并停止。**
