@@ -245,6 +245,18 @@ function checkStmt(id: int) {
         const valId = nGetI2(id)
         if (indexId > 0) { checkExpr(indexId) }
         if (valId > 0) { checkExpr(valId) }
+        // Type check: array element type vs assigned value
+        const arrName = nGetS1(id)
+        const arrType = lookupVar(arrName)
+        if (arrType != "" && arrType != "auto" && valId > 0) {
+            const elemType = extractElemType(arrType)
+            if (elemType != "") {
+                const vType = checkerInferType(valId)
+                if (vType != "" && isTypeCompatible(elemType, vType) == 0) {
+                    checkerError(`type mismatch: cannot assign '${vType}' to element of '${arrType}'`, nGetLine(id), nGetCol(id))
+                }
+            }
+        }
         return
     }
     if (kind == "EXPR_STMT") {

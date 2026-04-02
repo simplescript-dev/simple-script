@@ -226,13 +226,20 @@ function initChecker() {
     methodRetTypes.set("Array.map", "Array")
     methodRetTypes.set("Array.filter", "Array")
     methodRetTypes.set("Array.forEach", "void")
-    // Built-in functions (synced with codegen.ss funcRetTypes)
-    const builtins = "println,print,readLine,readFile,writeFile,appendFile,args,arg,exit,system,parseInt,parseDouble,Map,Set,timeMs,timeUnix,fileSize,getenv,listDir,sha256,fromCharCode,charCodeAt,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpClose,mkdir,mkdirp,fileExists,removeFile,renameFile"
-    const parts = builtins.split(",")
-    for (name in parts) {
-        funcNames.set(name, "builtin")
-    }
-    allFuncNameList = builtins
+    // Built-in functions with return types (synced with gen_registry.ss)
+    const strFns = "readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode"
+    const sf = strFns.split(",")
+    for (s in sf) { funcNames.set(s, "string") }
+    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize"
+    const intf = intFns.split(",")
+    for (i in intf) { funcNames.set(i, "int") }
+    const voidFns = "println,print,writeFile,appendFile,exit,tcpClose"
+    const vf = voidFns.split(",")
+    for (v in vf) { funcNames.set(v, "void") }
+    funcNames.set("parseDouble", "double")
+    funcNames.set("Map", "Map")
+    funcNames.set("Set", "Set")
+    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,Map,Set`
     // Built-in namespaces (accessed as Math.sqrt() etc.)
     defineVar("Math", "namespace", 0)
     // Built-in param counts
@@ -658,6 +665,17 @@ function checkerInferType(nodeId: int): string {
         }
         return ""
     }
+    if (kind == "INDEX_ACCESS") {
+        const arrType = checkerInferType(nGetI1(nodeId))
+        if (arrType != "") {
+            const base = baseTypeName(arrType)
+            if (base == "Array" || base == "List" || base == "Tuple") {
+                const elemType = extractElemType(arrType)
+                if (elemType != "") { return elemType }
+            }
+        }
+        return ""
+    }
     if (kind == "BINARY") {
         const op = nGetS1(nodeId)
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
@@ -684,6 +702,12 @@ function baseTypeName(t: string): string {
     const ltIdx = t.indexOf("<")
     if (ltIdx > 0) { return t.substring(0, ltIdx) }
     return t
+}
+
+function extractElemType(t: string): string {
+    const ltIdx = t.indexOf("<")
+    if (ltIdx < 0) { return "" }
+    return t.substring(ltIdx + 1, t.length() - ltIdx - 2)
 }
 
 function isTypeCompatible(declared: string, actual: string): int {
