@@ -9,6 +9,7 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 ## Read These Files
 - docs/1-axioms.md
 - docs/2-principles.md
+- docs/spec-status.md
 - spec/71-perceus-rc.md
 - docs/5-handoff/phase1-plan.md
 
