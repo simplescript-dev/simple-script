@@ -67,7 +67,11 @@ function checkStmt(id: int) {
         const paramList = nGetList(id)
         checkParamList(paramList)
         const bodyId = nGetI1(id)
+        // Track return type for RETURN statement type checking
+        const prevFuncRetType = currentFuncRetType
+        currentFuncRetType = nGetS2(id)
         checkBlock(bodyId)
+        currentFuncRetType = prevFuncRetType
         popScope()
         // Return path analysis: non-void functions must return on all paths
         const retType = nGetS2(id)
@@ -248,6 +252,13 @@ function checkStmt(id: int) {
     if (kind == "RETURN") {
         const valId = nGetI1(id)
         if (valId > 0) { checkExpr(valId) }
+        // Type check: return value type vs function return type
+        if (currentFuncRetType != "" && currentFuncRetType != "void" && valId > 0) {
+            const retValType = checkerInferType(valId)
+            if (retValType != "" && isTypeCompatible(currentFuncRetType, retValType) == 0) {
+                checkerError(`type mismatch: cannot return '${retValType}' from function with return type '${currentFuncRetType}'`, nGetLine(id), nGetCol(id))
+            }
+        }
         return
     }
     if (kind == "IF") {

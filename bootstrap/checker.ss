@@ -34,6 +34,7 @@ let funcParamTypes = ""     // "funcName:paramIndex" -> type string
 let funcOverloaded = ""     // "funcName" -> "1" if overloaded (skip type check)
 let methodParamTypes = ""   // "ClassName.methodName:paramIndex" -> type string
 let methodRetTypes = ""     // "ClassName.methodName" -> return type string
+let currentFuncRetType = "" // current function's declared return type (for RETURN type checking)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -61,6 +62,7 @@ function initChecker() {
     funcOverloaded = Map()
     methodParamTypes = Map()
     methodRetTypes = Map()
+    currentFuncRetType = ""
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")

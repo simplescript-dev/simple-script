@@ -2,7 +2,7 @@
 id: I003
 title: Semantic analysis incomplete — missing return path, type checking, inferType pre-pass
 severity: high
-related-decisions: [D003, D007, D012, D053, D054]
+related-decisions: [D003, D007, D012, D053, D054, D060]
 related-principles: [P8]
 origin: design-improvements.md DI-4 Phase 2-4
 ---
@@ -15,11 +15,12 @@ Pipeline: `Lexer → Parser → Checker → Codegen`. checker.ss currently valid
 - ✅ Checker integrated into compile pipeline (`ss build` runs checker)
 
 **Not checked** (silently produces wrong code or crashes):
-- Function argument type matching
-- Return type consistency
-- Assignment type compatibility
-- Field type mismatches
-- METHOD_CALL / NEW_EXPR argument count (needs type inference)
+- ~~Function argument type matching~~ ✅ (D053, D054)
+- ~~Return type consistency~~ ✅ (D060)
+- ~~Assignment type compatibility~~ ✅ (D053)
+- ~~Field type mismatches~~ ✅ (D053)
+- ~~METHOD_CALL / NEW_EXPR argument count~~ ✅ (D012)
+- NEW_EXPR argument type matching (constructor param types vs arg types)
 
 ## Impact
 - Missing `return` in non-void function → LLVM returns garbage → silent wrong results
@@ -46,10 +47,11 @@ Implemented. `blockAlwaysReturns`/`stmtAlwaysReturns` walk AST to verify all con
 - ✅ CALL argument type checking: parameter types vs argument types for non-overloaded, non-generic functions (D053)
 - ✅ METHOD_CALL argument type checking: method parameter types vs argument types, parent chain walk for inherited methods (D054)
 - ✅ METHOD_CALL return type inference: `checkerInferType` + `inferCheckerClass` handle METHOD_CALL via `methodRetTypes`, enabling chain call type resolution (D054)
-- Remaining: full inferType migration to checker (Phase 4), builtin method param type registration
+- ✅ RETURN type checking: return value type vs declared function return type (D060)
+- Remaining: full inferType migration to checker (Phase 4), NEW_EXPR argument type checking
 
 ### Phase 4: Migrate inferType to checker
 Move `inferType()` from gen_exprs.ss to checker.ss as a pre-pass. Checker populates type info for all expressions. Codegen reads cached types instead of re-inferring. This enables I002 (structured types) to be addressed independently.
 
 ## Context
-Files: checker.ss (~700 lines), check_stmts.ss (~620 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). D053 added `checkerInferType()` for compile-time type inference and basic type checking at 4 sites (VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL). D054 completed Phase 3 by adding METHOD_CALL argument type checking with method param/return type storage, parent chain walk, and chain call resolution via `inferCheckerClass`/`checkerInferType` METHOD_CALL support.
+Files: checker.ss (~855 lines), check_stmts.ss (~625 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). D053 added `checkerInferType()` for compile-time type inference and basic type checking at 4 sites (VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL). D054 completed Phase 3 by adding METHOD_CALL argument type checking with method param/return type storage, parent chain walk, and chain call resolution via `inferCheckerClass`/`checkerInferType` METHOD_CALL support. D060 added RETURN type checking (6th type check site).
