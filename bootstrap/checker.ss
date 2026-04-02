@@ -36,6 +36,7 @@ let methodParamTypes = ""   // "ClassName.methodName:paramIndex" -> type string
 let methodRetTypes = ""     // "ClassName.methodName" -> return type string
 let currentFuncRetType = "" // current function's declared return type (for RETURN type checking)
 let currentTypeParams = ""  // current function's type parameters (comma-separated, for generic compat)
+let checkerGenericClasses = "" // "ClassName" -> "1" if class has type parameters
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -65,6 +66,7 @@ function initChecker() {
     methodRetTypes = Map()
     currentFuncRetType = ""
     currentTypeParams = ""
+    checkerGenericClasses = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -486,6 +488,45 @@ function totalConstructorParams(className: string): string {
     return `${totalMin},${totalMax}`
 }
 
+// Look up constructor param type by walking parent chain (parent fields first).
+// Returns "" if type unknown (generic class field, out of range, etc).
+function lookupConsParamType(className: string, paramIndex: int): string {
+    // Build parent chain from root to leaf
+    let chain = ""
+    let cls = className
+    while (cls != "") {
+        if (chain == "") { chain = cls }
+        else { chain = `${cls},${chain}` }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    // Walk chain from root to leaf, counting fields
+    let idx = 0
+    const chainParts = chain.split(",")
+    for (cp in chainParts) {
+        if (checkerClassFields.has(cp) == 0) { continue }
+        const fields = checkerClassFields.getString(cp)
+        if (fields == "") { continue }
+        const isGeneric = checkerGenericClasses.has(cp)
+        const fParts = fields.split(",")
+        for (fp in fParts) {
+            if (idx == paramIndex) {
+                if (isGeneric == 1) { return "" }
+                const key = `${cp}.${fp}`
+                if (checkerFieldTypes.has(key) == 1) {
+                    return checkerFieldTypes.getString(key)
+                }
+                return ""
+            }
+            idx = idx + 1
+        }
+    }
+    return ""
+}
+
 // Count min/max required params from a PARAM node list. Returns "min,max".
 function countParamRange(paramListStr: string): string {
     let pMin = 0
@@ -777,6 +818,7 @@ function check(rootId: int): int {
                     // Generic class: accept any arg count (specialized at codegen)
                     classConsMin.set(className, "0")
                     classConsMax.set(className, "99")
+                    checkerGenericClasses.set(className, "1")
                 } else {
                     const consRange = countParamRange(nGetList(s))
                     const consComma = consRange.indexOf(",")

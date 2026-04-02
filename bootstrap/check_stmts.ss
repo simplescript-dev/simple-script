@@ -512,6 +512,23 @@ function checkExpr(id: int) {
                 const ctComma = consTotal.indexOf(",")
                 checkArgCount("constructor", className, argCount, parseInt(consTotal.substring(0, ctComma)), parseInt(consTotal.substring(ctComma + 1, consTotal.length() - ctComma - 1)), nGetLine(id), nGetCol(id))
             }
+            // Check positional argument types
+            if (hasSpreadArg(argList) == 0 && argList != "") {
+                const newArgs = argList.split(",")
+                let newArgIdx = 0
+                for (na in newArgs) {
+                    const naId = parseInt(na)
+                    if (naId <= 0) { continue }
+                    const expType = lookupConsParamType(className, newArgIdx)
+                    if (expType != "") {
+                        const actType = checkerInferType(naId)
+                        if (actType != "" && isTypeCompatible(expType, actType) == 0) {
+                            checkerError(`argument ${newArgIdx + 1} of constructor '${className}': expected '${expType}', got '${actType}'`, nGetLine(naId), nGetCol(naId))
+                        }
+                    }
+                    newArgIdx = newArgIdx + 1
+                }
+            }
         }
         checkArgList(argList)
         return
@@ -618,6 +635,27 @@ function checkNamedConstructorArgs(className: string, argList: string, line: int
         }
         if (found == 0) {
             checkerError(`'${argName}' is not a field of class '${className}'`, nGetLine(argId), nGetCol(argId))
+        } else {
+            // Check named arg type against field type
+            let fieldOwner = ""
+            let fcls = className
+            while (fcls != "") {
+                if (checkerFieldTypes.has(`${fcls}.${argName}`) == 1) {
+                    fieldOwner = fcls
+                    fcls = ""
+                } else if (checkerClassParents.has(fcls) == 1) {
+                    fcls = checkerClassParents.getString(fcls)
+                } else {
+                    fcls = ""
+                }
+            }
+            if (fieldOwner != "" && checkerGenericClasses.has(fieldOwner) == 0) {
+                const naExpType = checkerFieldTypes.getString(`${fieldOwner}.${argName}`)
+                const naActType = checkerInferType(nGetI1(argId))
+                if (naActType != "" && naExpType != "" && isTypeCompatible(naExpType, naActType) == 0) {
+                    checkerError(`field '${argName}' of constructor '${className}': expected '${naExpType}', got '${naActType}'`, nGetLine(argId), nGetCol(argId))
+                }
+            }
         }
     }
     // Check all required fields are provided

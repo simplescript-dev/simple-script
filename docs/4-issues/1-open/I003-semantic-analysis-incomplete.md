@@ -2,7 +2,7 @@
 id: I003
 title: Semantic analysis incomplete — missing return path, type checking, inferType pre-pass
 severity: high
-related-decisions: [D003, D007, D012, D053, D054, D060, D063]
+related-decisions: [D003, D007, D012, D053, D054, D060, D063, D064]
 related-principles: [P8]
 origin: design-improvements.md DI-4 Phase 2-4
 ---
@@ -20,7 +20,7 @@ Pipeline: `Lexer → Parser → Checker → Codegen`. checker.ss currently valid
 - ~~Assignment type compatibility~~ ✅ (D053)
 - ~~Field type mismatches~~ ✅ (D053)
 - ~~METHOD_CALL / NEW_EXPR argument count~~ ✅ (D012)
-- NEW_EXPR argument type matching (constructor param types vs arg types)
+- ~~NEW_EXPR argument type matching~~ ✅ (D064)
 
 ## Impact
 - Missing `return` in non-void function → LLVM returns garbage → silent wrong results
@@ -49,10 +49,11 @@ Implemented. `blockAlwaysReturns`/`stmtAlwaysReturns` walk AST to verify all con
 - ✅ METHOD_CALL return type inference: `checkerInferType` + `inferCheckerClass` handle METHOD_CALL via `methodRetTypes`, enabling chain call type resolution (D054)
 - ✅ RETURN type checking: return value type vs declared function return type (D060)
 - ✅ Generic type parameter compatibility: `isTypeCompatible()` recognizes type params like `T` via `currentTypeParams` tracking (D063)
-- Remaining: full inferType migration to checker (Phase 4), NEW_EXPR argument type checking
+- ✅ NEW_EXPR argument type checking: positional + named args vs field types, inheritance chain walk, generic class skip (D064)
+- Remaining: full inferType migration to checker (Phase 4)
 
 ### Phase 4: Migrate inferType to checker
 Move `inferType()` from gen_exprs.ss to checker.ss as a pre-pass. Checker populates type info for all expressions. Codegen reads cached types instead of re-inferring. This enables I002 (structured types) to be addressed independently.
 
 ## Context
-Files: checker.ss (~857 lines), check_stmts.ss (~628 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). D053 added `checkerInferType()` for compile-time type inference and basic type checking at 4 sites (VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL). D054 completed Phase 3 by adding METHOD_CALL argument type checking with method param/return type storage, parent chain walk, and chain call resolution via `inferCheckerClass`/`checkerInferType` METHOD_CALL support. D060 added RETURN type checking (6th type check site). D063 added generic type parameter compatibility — `isTypeCompatible()` recognizes type params via `currentTypeParams` tracking, fixing false positives on generic functions.
+Files: checker.ss (~870 lines), check_stmts.ss (~660 lines). D003 established the incremental approach — each phase is independently verifiable. D012 extended arg count checking to constructors (with inheritance) and methods (with parent chain). D053 added `checkerInferType()` for compile-time type inference and basic type checking at 4 sites (VAR_DECL, ASSIGN, MEMBER_ASSIGN, CALL). D054 completed Phase 3 by adding METHOD_CALL argument type checking with method param/return type storage, parent chain walk, and chain call resolution via `inferCheckerClass`/`checkerInferType` METHOD_CALL support. D060 added RETURN type checking (6th type check site). D063 added generic type parameter compatibility — `isTypeCompatible()` recognizes type params via `currentTypeParams` tracking, fixing false positives on generic functions. D064 added NEW_EXPR argument type checking for both positional and named constructor args, with inheritance chain walk and generic class skip.
