@@ -424,24 +424,12 @@ function checkExpr(id: int) {
         const methodName = nGetS1(id)
         const objId = nGetI1(id)
         const argCount = countArgs(nGetList(id))
-        // Resolve receiver class
+        // Resolve receiver class (inferCheckerClass handles base type normalization)
         let recvClass = ""
         if (objId > 0) {
-            const objKind = nGetKind(objId)
-            if (objKind == "THIS") {
-                recvClass = currentCheckerClass
-            } else if (objKind == "IDENT") {
-                const identName = nGetS1(objId)
-                const varType = lookupVar(identName)
-                // Variable with known class type (e.g., let dog: Dog = ...)
-                if (varType != "" && varType != "auto" && classConsMin.has(varType) == 1) {
-                    recvClass = varType
-                }
-                // Identifier is a class/namespace name directly (e.g., Math.sqrt())
-                if (recvClass == "" && classConsMin.has(identName) == 1) {
-                    recvClass = identName
-                }
-            } else if (objKind == "NEW_EXPR") {
+            recvClass = inferCheckerClass(objId)
+            // Namespace fallback (Math.sqrt() → "Math" IDENT has type "namespace")
+            if (classConsMin.has(recvClass) == 0 && nGetKind(objId) == "IDENT" && classConsMin.has(nGetS1(objId)) == 1) {
                 recvClass = nGetS1(objId)
             }
         }

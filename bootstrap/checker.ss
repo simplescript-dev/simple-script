@@ -108,6 +108,118 @@ function initChecker() {
     registerMethodParams("Math", "cbrt", 1, 1)
     registerMethodParams("Math", "fmod", 2, 2)
     registerMethodParams("Math", "randomInt", 1, 1)
+    // Map method return types
+    methodRetTypes.set("Map.set", "void")
+    methodRetTypes.set("Map.getString", "string")
+    methodRetTypes.set("Map.has", "int")
+    methodRetTypes.set("Map.delete", "void")
+    methodRetTypes.set("Map.size", "int")
+    methodRetTypes.set("Map.keys", "Array<string>")
+    // Set method return types
+    methodRetTypes.set("Set.add", "void")
+    methodRetTypes.set("Set.has", "int")
+    methodRetTypes.set("Set.remove", "void")
+    methodRetTypes.set("Set.size", "int")
+    methodRetTypes.set("Set.values", "string")
+    // Math method return types (all double except randomInt → int)
+    const mathDoubleMethods = "sqrt,abs,floor,ceil,round,log,sin,cos,tan,asin,acos,atan,exp,log10,log2,trunc,sign,cbrt,random,pow,min,max,atan2,hypot,fmod"
+    const mdParts = mathDoubleMethods.split(",")
+    for (md in mdParts) {
+        methodRetTypes.set(`Math.${md}`, "double")
+    }
+    methodRetTypes.set("Math.randomInt", "int")
+    // Built-in type: string (pseudo-class for method dispatch)
+    classConsMin.set("string", "0")
+    classConsMax.set("string", "0")
+    registerMethodParams("string", "charAt", 1, 1)
+    registerMethodParams("string", "charCodeAt", 1, 1)
+    registerMethodParams("string", "substring", 2, 2)
+    registerMethodParams("string", "indexOf", 1, 1)
+    registerMethodParams("string", "contains", 1, 1)
+    registerMethodParams("string", "startsWith", 1, 1)
+    registerMethodParams("string", "endsWith", 1, 1)
+    registerMethodParams("string", "replace", 2, 2)
+    registerMethodParams("string", "split", 1, 1)
+    registerMethodParams("string", "trim", 0, 0)
+    registerMethodParams("string", "toUpperCase", 0, 0)
+    registerMethodParams("string", "toLowerCase", 0, 0)
+    registerMethodParams("string", "repeat", 1, 1)
+    registerMethodParams("string", "padStart", 2, 2)
+    registerMethodParams("string", "padEnd", 2, 2)
+    registerMethodParams("string", "length", 0, 0)
+    registerMethodParams("string", "includes", 1, 1)
+    // String method param types
+    methodParamTypes.set("string.charAt:0", "int")
+    methodParamTypes.set("string.charCodeAt:0", "int")
+    methodParamTypes.set("string.substring:0", "int")
+    methodParamTypes.set("string.substring:1", "int")
+    methodParamTypes.set("string.indexOf:0", "string")
+    methodParamTypes.set("string.contains:0", "string")
+    methodParamTypes.set("string.startsWith:0", "string")
+    methodParamTypes.set("string.endsWith:0", "string")
+    methodParamTypes.set("string.replace:0", "string")
+    methodParamTypes.set("string.replace:1", "string")
+    methodParamTypes.set("string.split:0", "string")
+    methodParamTypes.set("string.repeat:0", "int")
+    methodParamTypes.set("string.padStart:0", "int")
+    methodParamTypes.set("string.padStart:1", "string")
+    methodParamTypes.set("string.padEnd:0", "int")
+    methodParamTypes.set("string.padEnd:1", "string")
+    methodParamTypes.set("string.includes:0", "string")
+    // String method return types
+    methodRetTypes.set("string.charAt", "string")
+    methodRetTypes.set("string.charCodeAt", "int")
+    methodRetTypes.set("string.substring", "string")
+    methodRetTypes.set("string.indexOf", "int")
+    methodRetTypes.set("string.contains", "int")
+    methodRetTypes.set("string.startsWith", "int")
+    methodRetTypes.set("string.endsWith", "int")
+    methodRetTypes.set("string.replace", "string")
+    methodRetTypes.set("string.split", "Array<string>")
+    methodRetTypes.set("string.trim", "string")
+    methodRetTypes.set("string.toUpperCase", "string")
+    methodRetTypes.set("string.toLowerCase", "string")
+    methodRetTypes.set("string.repeat", "string")
+    methodRetTypes.set("string.padStart", "string")
+    methodRetTypes.set("string.padEnd", "string")
+    methodRetTypes.set("string.length", "int")
+    methodRetTypes.set("string.includes", "int")
+    // Built-in type: Array (pseudo-class for method dispatch)
+    classConsMin.set("Array", "0")
+    classConsMax.set("Array", "99")
+    registerMethodParams("Array", "push", 1, 1)
+    registerMethodParams("Array", "slice", 2, 2)
+    registerMethodParams("Array", "concat", 1, 1)
+    registerMethodParams("Array", "reverse", 0, 0)
+    registerMethodParams("Array", "sort", 0, 0)
+    registerMethodParams("Array", "includes", 1, 1)
+    registerMethodParams("Array", "indexOf", 1, 1)
+    registerMethodParams("Array", "length", 0, 0)
+    registerMethodParams("Array", "join", 1, 1)
+    registerMethodParams("Array", "map", 1, 1)
+    registerMethodParams("Array", "filter", 1, 1)
+    registerMethodParams("Array", "forEach", 1, 1)
+    registerMethodParams("Array", "find", 1, 1)
+    registerMethodParams("Array", "findIndex", 1, 1)
+    registerMethodParams("Array", "some", 1, 1)
+    registerMethodParams("Array", "every", 1, 1)
+    registerMethodParams("Array", "reduce", 2, 2)
+    // Array method return types
+    methodRetTypes.set("Array.push", "Array")
+    methodRetTypes.set("Array.slice", "Array")
+    methodRetTypes.set("Array.concat", "Array")
+    methodRetTypes.set("Array.reverse", "Array")
+    methodRetTypes.set("Array.sort", "Array")
+    methodRetTypes.set("Array.includes", "int")
+    methodRetTypes.set("Array.indexOf", "int")
+    methodRetTypes.set("Array.length", "int")
+    methodRetTypes.set("Array.join", "string")
+    methodRetTypes.set("Array.findIndex", "int")
+    methodRetTypes.set("Array.some", "int")
+    methodRetTypes.set("Array.every", "int")
+    methodRetTypes.set("Array.map", "Array")
+    methodRetTypes.set("Array.filter", "Array")
+    methodRetTypes.set("Array.forEach", "void")
     // Built-in functions (synced with codegen.ss funcRetTypes)
     const builtins = "println,print,readLine,readFile,writeFile,appendFile,args,arg,exit,system,parseInt,parseDouble,Map,Set,timeMs,timeUnix,fileSize,getenv,listDir,sha256,fromCharCode,charCodeAt,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpClose,mkdir,mkdirp,fileExists,removeFile,renameFile"
     const parts = builtins.split(",")
@@ -194,35 +306,45 @@ function isVarConst(name: string): int {
     return 0
 }
 
-// Infer class name from an expression node (for const field checking)
+// Normalize generic type to base class name for method dispatch (Array<int> → Array)
+function resolveCheckerClass(cls: string): string {
+    if (cls == "" || classConsMin.has(cls) == 1) { return cls }
+    const base = baseTypeName(cls)
+    if (base != cls && classConsMin.has(base) == 1) { return base }
+    return cls
+}
+
+// Infer class name from an expression node (for method dispatch / field checking)
 function inferCheckerClass(nodeId: int): string {
     if (nodeId <= 0) { return "" }
     const kind = nGetKind(nodeId)
     if (kind == "IDENT") {
-        return lookupVar(nGetS1(nodeId))
+        return resolveCheckerClass(lookupVar(nGetS1(nodeId)))
     }
     if (kind == "THIS") { return currentCheckerClass }
     if (kind == "NEW_EXPR") { return nGetS1(nodeId) }
+    if (kind == "STRING_LIT" || kind == "TEMPLATE_LIT") { return "string" }
+    if (kind == "ARRAY_LIT") { return "Array" }
     if (kind == "MEMBER_ACCESS") {
         const objClass = inferCheckerClass(nGetI1(nodeId))
         if (objClass == "") { return "" }
         const fieldKey = `${objClass}.${nGetS1(nodeId)}`
         if (checkerFieldTypes.has(fieldKey) == 1) {
-            return checkerFieldTypes.getString(fieldKey)
+            return resolveCheckerClass(checkerFieldTypes.getString(fieldKey))
         }
         return ""
     }
     if (kind == "CALL") {
         const fname = nGetS1(nodeId)
         if (funcNames.has(fname) == 1) {
-            return funcNames.getString(fname)
+            return resolveCheckerClass(funcNames.getString(fname))
         }
         return ""
     }
     if (kind == "METHOD_CALL") {
         const objClass = inferCheckerClass(nGetI1(nodeId))
         if (objClass != "" && classConsMin.has(objClass) == 1) {
-            return lookupMethodRetType(objClass, nGetS1(nodeId))
+            return resolveCheckerClass(lookupMethodRetType(objClass, nGetS1(nodeId)))
         }
         return ""
     }
