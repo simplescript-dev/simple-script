@@ -67,11 +67,14 @@ function checkStmt(id: int) {
         const paramList = nGetList(id)
         checkParamList(paramList)
         const bodyId = nGetI1(id)
-        // Track return type for RETURN statement type checking
+        // Track return type and type params for RETURN statement type checking
         const prevFuncRetType = currentFuncRetType
+        const prevTypeParams = currentTypeParams
         currentFuncRetType = nGetS2(id)
+        currentTypeParams = nGetS3(id)
         checkBlock(bodyId)
         currentFuncRetType = prevFuncRetType
+        currentTypeParams = prevTypeParams
         popScope()
         // Return path analysis: non-void functions must return on all paths
         const retType = nGetS2(id)

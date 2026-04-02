@@ -35,6 +35,7 @@ let funcOverloaded = ""     // "funcName" -> "1" if overloaded (skip type check)
 let methodParamTypes = ""   // "ClassName.methodName:paramIndex" -> type string
 let methodRetTypes = ""     // "ClassName.methodName" -> return type string
 let currentFuncRetType = "" // current function's declared return type (for RETURN type checking)
+let currentTypeParams = ""  // current function's type parameters (comma-separated, for generic compat)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -63,6 +64,7 @@ function initChecker() {
     methodParamTypes = Map()
     methodRetTypes = Map()
     currentFuncRetType = ""
+    currentTypeParams = ""
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -651,6 +653,13 @@ function isTypeCompatible(declared: string, actual: string): int {
     // bool is int in SS
     if ((declared == "bool" && actual == "int") || (declared == "int" && actual == "bool")) { return 1 }
     if (ifaceMethods.has(declared) == 1) { return 1 }
+    // Generic type parameters: T is compatible with any concrete type
+    if (currentTypeParams != "") {
+        const tpParts = currentTypeParams.split(",")
+        for (tp in tpParts) {
+            if (declared == tp || actual == tp) { return 1 }
+        }
+    }
     // Class inheritance: actual is subclass of declared
     let parent = ""
     if (checkerClassParents.has(actual) == 1) {
