@@ -346,6 +346,14 @@ function genDestructureArray(id: int) {
             const elemDb = nextReg()
             emitIR(`  ${elemDb} = bitcast i64 ${elemR} to double`)
             emitIR(`  store double ${elemDb}, ptr %${llName}, align 8`)
+        } else if (llType == "ptr") {
+            const elemPtr = nextReg()
+            emitIR(`  ${elemPtr} = inttoptr i64 ${elemR} to ptr`)
+            emitIR(`  store ptr ${elemPtr}, ptr %${llName}, align 8`)
+            if (currentFunc != "") {
+                trackPtrVar(llName)
+                emitRetainForType(elemPtr, elemType)
+            }
         } else {
             emitIR(`  store i64 ${elemR}, ptr %${llName}, align 8`)
         }

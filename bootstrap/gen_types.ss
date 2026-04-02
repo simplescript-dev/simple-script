@@ -33,15 +33,16 @@ function tupleElemTypeAtIndex(tupleType: string, idx: int): string {
 
 // ── Type inference ────────────────────────────────────────────
 
-// Infer element type of an array expression (returns "string", "int", "double", or "")
+// Infer element type of an array expression (returns element type string, or "" if unknown)
 function inferArrayElemType(arrId: int): string {
     if (arrId <= 0) { return "" }
     const aeKind = nGetKind(arrId)
     if (aeKind == "IDENT") {
         const aeType = getVarType(nGetS1(arrId))
-        if (aeType.contains("<string>") == 1) { return "string" }
-        if (aeType.contains("<int>") == 1) { return "int" }
-        if (aeType.contains("<double>") == 1) { return "double" }
+        const ltIdx = aeType.indexOf("<")
+        if (ltIdx >= 0 && aeType.length() > ltIdx + 2) {
+            return aeType.substring(ltIdx + 1, aeType.length() - ltIdx - 2)
+        }
     }
     if (aeKind == "METHOD_CALL") {
         const aeMethod = nGetS1(arrId)

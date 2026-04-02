@@ -339,6 +339,12 @@ function genForIn(id: int) {
     } else if (itemType == "int") {
         const elemI32 = nextReg(); emitIR(`  ${elemI32} = trunc i64 ${elemVal} to i32`)
         emitIR(`  store i32 ${elemI32}, ptr %${itemLLName}, align 8`)
+    } else if (itemType == "double") {
+        const elemDb = nextReg(); emitIR(`  ${elemDb} = bitcast i64 ${elemVal} to double`)
+        emitIR(`  store double ${elemDb}, ptr %${itemLLName}, align 8`)
+    } else if (itemLLType == "ptr") {
+        const elemPtr = nextReg(); emitIR(`  ${elemPtr} = inttoptr i64 ${elemVal} to ptr`)
+        emitIR(`  store ptr ${elemPtr}, ptr %${itemLLName}, align 8`)
     } else {
         emitIR(`  store i64 ${elemVal}, ptr %${itemLLName}, align 8`)
     }

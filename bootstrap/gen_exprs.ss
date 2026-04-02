@@ -79,6 +79,11 @@ function genIndexAccess(id: int): string {
         emitIR(`  ${castR} = bitcast i64 ${rawR} to double`)
         return castR
     }
+    if (ssTypeToLLVM(idxElem) == "ptr") {
+        const castR = nextReg()
+        emitIR(`  ${castR} = inttoptr i64 ${rawR} to ptr`)
+        return castR
+    }
     return rawR
 }
 
