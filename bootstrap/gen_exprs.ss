@@ -325,6 +325,15 @@ function genBinary(id: int): string {
     }
     if (op == "NullCoalesce") { return genNullCoalesce(leftId, rightId) }
     if (op == "And" || op == "Or") { return genShortCircuit(op, leftId, rightId) }
+    // instanceof: call ss_isinstance(obj, className)
+    if (op == "Instanceof") {
+        const objReg = genExpr(leftId)
+        const className = nGetS1(rightId)
+        const nameStr = addStringConst(className)
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @ss_isinstance(ptr ${objReg}, ptr ${nameStr})`)
+        return r
+    }
 
     // Numeric: evaluate operands
     let left = genExpr(leftId)

@@ -881,7 +881,7 @@ function checkerInferType(nodeId: int): string {
             if (ncRight != "") { return ncRight }
             return ""
         }
-        if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
+        if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or" || op == "Instanceof") {
             return "int"
         }
         const blt = checkerInferType(nGetI1(nodeId))

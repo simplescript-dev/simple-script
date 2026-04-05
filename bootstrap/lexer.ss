@@ -475,6 +475,7 @@ function keywordKind(text: string): string {
     if (text == "static") { return "STATIC" }
     if (text == "abstract") { return "ABSTRACT" }
     if (text == "finally") { return "FINALLY" }
+    if (text == "instanceof") { return "INSTANCEOF" }
     return "IDENT"
 }
 

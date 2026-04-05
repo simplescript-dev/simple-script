@@ -102,12 +102,12 @@ function parseEquality(): int {
 
 function parseComparison(): int {
     let left = parseAdditive()
-    while (curKind() == "LT" || curKind() == "GT" || curKind() == "LE" || curKind() == "GE") {
+    while (curKind() == "LT" || curKind() == "GT" || curKind() == "LE" || curKind() == "GE" || curKind() == "INSTANCEOF") {
         const op = curKind()
         pAdvance()
         const right = parseAdditive()
         const id = newNode("BINARY")
-        if (op == "LT") { nSetS1(id, "Lt") } else if (op == "GT") { nSetS1(id, "Gt") } else if (op == "LE") { nSetS1(id, "Le") } else { nSetS1(id, "Ge") }
+        if (op == "LT") { nSetS1(id, "Lt") } else if (op == "GT") { nSetS1(id, "Gt") } else if (op == "LE") { nSetS1(id, "Le") } else if (op == "GE") { nSetS1(id, "Ge") } else { nSetS1(id, "Instanceof") }
         nSetI1(id, left)
         nSetI2(id, right)
         left = id

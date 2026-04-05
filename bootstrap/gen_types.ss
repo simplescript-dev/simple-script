@@ -143,7 +143,7 @@ function inferType(id: int): string {
             const brt2 = inferType(nGetI2(id))
             if (brt2 == "string") { return "string" }
         }
-        if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
+        if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or" || op == "Instanceof") {
             return "int"
         }
         const binLt = inferType(nGetI1(id))

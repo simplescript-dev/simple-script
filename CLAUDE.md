@@ -244,6 +244,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **Arrow 函数**: `(x: int): int => x * 2`（编译为顶层函数+函数指针）
 - **高阶方法**: `arr.map(fn)`, `arr.filter(fn)`, `arr.reduce(fn, init)`, `arr.forEach(fn)`
 - **try/catch/throw/finally**: `try { } catch (e: IOError) { } catch (e) { } finally { }`（setjmp/longjmp 实现，Java 风格 typed catch + finally，D073）
+- **instanceof**: `obj instanceof ClassName` 运行时类型检查，支持继承链（D074）
 - **Error class**: 内置 `class Error { message: string }`，用户可 `extends Error` 自定义错误类型
 - **throw class instances**: `throw(new IOError("msg", "/path"))` 抛 Error 对象，`throw("msg")` 向后兼容
 - **?? 空值合并**: `value ?? "default"`
