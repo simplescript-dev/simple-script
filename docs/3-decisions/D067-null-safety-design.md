@@ -1,6 +1,6 @@
 # D067: Null Safety Design — Kotlin/Dart Style, No Escape Hatch
 
-**Status**: Phase 2 Implemented
+**Status**: Phase 3 Implemented (Complete)
 **Depends-on**: D053 (type checking), D033 (`?.` `??` operators), D058 (optional method fix)
 **Related**: I002 (string-based type system), spec/43
 
@@ -109,9 +109,11 @@ greet(u)                          // OK
 | `?.` optional field access | ✅ | D033 |
 | `?.` optional method call | ✅ | D033 + D058 (no double-eval) |
 | `??` null coalescing | ✅ | D033 |
-| `T?` type annotation parsing | 🔶 | Parser accepts, checker ignores |
+| `T?` type annotation parsing | ✅ | D067 Phase 1 |
 | Compile-time null checking | ✅ | D067 Phase 1 |
 | Smart narrowing | ✅ | D067 Phase 2 |
+| `?.` returns `T?` type | ✅ | D067 Phase 3 |
+| `??` returns `T` type | ✅ | D067 Phase 3 |
 
 ### What Needs Implementation
 
