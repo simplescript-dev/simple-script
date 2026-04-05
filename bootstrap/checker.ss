@@ -347,6 +347,12 @@ function inferCheckerClass(nodeId: int): string {
         return resolveCheckerClass(lookupVar(nGetS1(nodeId)))
     }
     if (kind == "THIS") { return currentCheckerClass }
+    if (kind == "SUPER") {
+        if (currentCheckerClass != "" && checkerClassParents.has(currentCheckerClass) == 1) {
+            return checkerClassParents.getString(currentCheckerClass)
+        }
+        return ""
+    }
     if (kind == "NEW_EXPR") { return nGetS1(nodeId) }
     if (kind == "STRING_LIT" || kind == "TEMPLATE_LIT") { return "string" }
     if (kind == "ARRAY_LIT") { return "Array" }
@@ -726,6 +732,12 @@ function checkerInferType(nodeId: int): string {
     if (kind == "ARRAY_LIT") { return "Array" }
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "THIS") { return currentCheckerClass }
+    if (kind == "SUPER") {
+        if (currentCheckerClass != "" && checkerClassParents.has(currentCheckerClass) == 1) {
+            return checkerClassParents.getString(currentCheckerClass)
+        }
+        return ""
+    }
     if (kind == "IDENT") {
         const name = nGetS1(nodeId)
         const vType = lookupVar(name)

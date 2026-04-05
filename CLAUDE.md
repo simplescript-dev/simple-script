@@ -228,6 +228,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 
 - const/let（TypeScript 风格），类型后置 `name: Type`
 - function, class/new/this/extends（继承，父类字段/方法链查找）
+- **`super` keyword**: `super.method(args)` calls parent class method directly, bypassing vtable (D069)
 - **Access modifiers**: `private` (class-only) and `protected` (class + subclasses) keywords for class fields/methods — compile-time access control (D068)
 - **Field-level const**: `class Player(const name: string, health: int)` — const 字段构造后不可赋值
 - **Field assignment**: `obj.field = value`, `obj.field += value`, 支持嵌套 `a.b.c = v`

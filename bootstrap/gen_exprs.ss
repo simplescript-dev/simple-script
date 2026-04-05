@@ -110,6 +110,7 @@ function genExpr(id: int): string {
     if (kind == "FALSE_LIT") { return "0" }
     if (kind == "NULL_LIT") { return "null" }
     if (kind == "THIS") { return genThisExpr() }
+    if (kind == "SUPER") { return genThisExpr() }
     if (kind == "IDENT") { return genIdent(id) }
     if (kind == "BINARY") { return genBinary(id) }
     if (kind == "UNARY") { return genUnary(id) }

@@ -71,6 +71,10 @@ function resolveObjClass(nodeId: int): string {
     }
     // this → current class
     if (kind == "THIS" && currentClassName != "") { return currentClassName }
+    // super → parent class
+    if (kind == "SUPER" && currentClassName != "" && classParents.has(currentClassName) == 1) {
+        return classParents.getString(currentClassName)
+    }
     // new ClassName() → class name directly (mangled for generic classes)
     if (kind == "NEW_EXPR") {
         const neCn = nGetS1(nodeId)
@@ -117,6 +121,12 @@ function inferType(id: int): string {
     if (kind == "TEMPLATE_LIT") { return "string" }
     if (kind == "THIS") {
         if (currentClassName != "") { return currentClassName }
+        return "ptr"
+    }
+    if (kind == "SUPER") {
+        if (currentClassName != "" && classParents.has(currentClassName) == 1) {
+            return classParents.getString(currentClassName)
+        }
         return "ptr"
     }
     if (kind == "IDENT") {

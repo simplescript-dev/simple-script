@@ -485,6 +485,14 @@ function checkExpr(id: int) {
     if (kind == "INT_LIT" || kind == "DOUBLE_LIT" || kind == "STRING_LIT") { return }
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT" || kind == "NULL_LIT") { return }
     if (kind == "THIS") { return }
+    if (kind == "SUPER") {
+        if (currentCheckerClass == "") {
+            checkerError("'super' can only be used inside a class method", nGetLine(id), nGetCol(id))
+        } else if (checkerClassParents.has(currentCheckerClass) == 0) {
+            checkerError(`'super' cannot be used in class '${currentCheckerClass}' which has no parent class`, nGetLine(id), nGetCol(id))
+        }
+        return
+    }
     if (kind == "IDENT") {
         const name = nGetS1(id)
         if (lookupVar(name) == "" && lookupFunc(name) == 0) {

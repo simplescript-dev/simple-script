@@ -372,6 +372,10 @@ function parseAtom(): int {
         pAdvance()
         return newNode("THIS")
     }
+    if (k == "SUPER") {
+        pAdvance()
+        return newNode("SUPER")
+    }
     if (k == "NEW") {
         pAdvance()
         const className = pExpectIdent()

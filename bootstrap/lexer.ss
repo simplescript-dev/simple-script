@@ -471,6 +471,7 @@ function keywordKind(text: string): string {
     if (text == "void") { return "VOID_TYPE" }
     if (text == "private") { return "PRIVATE" }
     if (text == "protected") { return "PROTECTED" }
+    if (text == "super") { return "SUPER" }
     return "IDENT"
 }
 

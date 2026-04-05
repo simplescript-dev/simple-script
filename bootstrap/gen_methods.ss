@@ -126,6 +126,57 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
     return r
 }
 
+// ── Super method call (direct static dispatch to parent) ───────
+
+function genSuperMethodCall(method: string, argList: string): string {
+    const parentClass = classParents.getString(currentClassName)
+    // Walk from parent to find method definition
+    let methodClass = parentClass
+    while (methodClass != "") {
+        if (funcRetTypes.has(`${methodClass}_${method}`) == 1) { break }
+        if (classParents.has(methodClass) == 1) {
+            methodClass = classParents.getString(methodClass)
+        } else {
+            methodClass = parentClass
+            break
+        }
+    }
+    // Build args: this as first arg
+    const thisVal = genThisExpr()
+    let callArgs = `ptr ${thisVal}`
+    if (argList != "") {
+        const argParts = argList.split(",")
+        for (ap in argParts) {
+            const argId = parseInt(ap)
+            if (argId > 0) {
+                const aVal = genExpr(argId)
+                const aType = inferType(argId)
+                callArgs = `${callArgs}, ${ssTypeToLLVM(aType)} ${aVal}`
+            }
+        }
+    }
+    // Resolve overloaded method name
+    let resolved = `${methodClass}_${method}`
+    if (isOverloaded(resolved) == 1) {
+        const sig = argsSig(argList)
+        if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
+            resolved = `${resolved}_${sig}`
+        }
+    }
+    let retType = "ptr"
+    if (funcRetTypes.has(resolved) == 1) {
+        retType = ssTypeToLLVM(funcRetTypes.getString(resolved))
+    }
+    // Always static dispatch (bypass vtable)
+    if (retType == "void") {
+        emitIR(`  call void @${resolved}(${callArgs})`)
+        return "0"
+    }
+    const r = nextReg()
+    emitIR(`  ${r} = call ${retType} @${resolved}(${callArgs})`)
+    return r
+}
+
 // ── Class method lookup helpers ─────────────────────────────────
 
 // Check if a class (or its parents) has a user-defined method in classMethods
@@ -244,6 +295,11 @@ function genMethodCall(id: int, preObj: string = ""): string {
     // Static method: ClassName.method()
     if (preObj == "" && nGetKind(objId) == "IDENT" && getVarType(nGetS1(objId)) == "" && classFields.has(nGetS1(objId)) == 1) {
         return genStaticMethodCall(method, objId, argList)
+    }
+
+    // Super method call: super.method() → direct static dispatch to parent method
+    if (preObj == "" && nGetKind(objId) == "SUPER") {
+        return genSuperMethodCall(method, argList)
     }
 
     let objVal = ""

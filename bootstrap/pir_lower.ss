@@ -197,6 +197,7 @@ function pirExtractRootVar(exprId: int): string {
     if (kind == "IDENT") { return nGetS1(exprId) }
     if (kind == "MEMBER_ACCESS") { return pirExtractRootVar(nGetI1(exprId)) }
     if (kind == "THIS") { return "this" }
+    if (kind == "SUPER") { return "this" }
     return ""
 }
 
