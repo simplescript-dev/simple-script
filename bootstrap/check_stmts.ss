@@ -223,6 +223,10 @@ function checkStmt(id: int) {
                 if (fieldExists == 0) {
                     checkerError(`'${fieldName}' is not a field of class '${objClass}'`, nGetLine(id), nGetCol(id))
                 }
+                const doPfOwner = lookupPrivateOwner(objClass, fieldName, 0)
+                if (doPfOwner != "" && currentCheckerClass != doPfOwner) {
+                    checkerError(`cannot access private field '${fieldName}' of class '${doPfOwner}'`, nGetLine(id), nGetCol(id))
+                }
             }
             let vType = "auto"
             const ftKey = `${objClass}.${fieldName}`
@@ -269,6 +273,10 @@ function checkStmt(id: int) {
             const fieldKey = `${objClass}.${fieldName}`
             if (constFields.has(fieldKey) == 1) {
                 checkerError(`cannot assign to const field '${fieldName}' of class '${objClass}'`, nGetLine(id), nGetCol(id))
+            }
+            const pfOwner = lookupPrivateOwner(objClass, fieldName, 0)
+            if (pfOwner != "" && currentCheckerClass != pfOwner) {
+                checkerError(`cannot access private field '${fieldName}' of class '${pfOwner}'`, nGetLine(id), nGetCol(id))
             }
             // Type check: field type vs assigned value
             if (nGetS2(id) == "ASSIGN" && checkerFieldTypes.has(fieldKey) == 1 && valId > 0) {
@@ -537,6 +545,13 @@ function checkExpr(id: int) {
                 recvClass = nGetS1(objId)
             }
         }
+        // D068: Check private method access
+        if (recvClass != "") {
+            const pmOwner = lookupPrivateOwner(recvClass, methodName, 1)
+            if (pmOwner != "" && currentCheckerClass != pmOwner) {
+                checkerError(`cannot access private method '${methodName}' of class '${pmOwner}'`, nGetLine(id), nGetCol(id))
+            }
+        }
         // Check method arg count if receiver class is known
         if (recvClass != "") {
             const mParams = lookupMethodParams(recvClass, methodName)
@@ -576,6 +591,13 @@ function checkExpr(id: int) {
     }
     if (kind == "MEMBER_ACCESS") {
         checkExpr(nGetI1(id))
+        const maObjClass = inferCheckerClass(nGetI1(id))
+        if (maObjClass != "") {
+            const maPfOwner = lookupPrivateOwner(maObjClass, nGetS1(id), 0)
+            if (maPfOwner != "" && currentCheckerClass != maPfOwner) {
+                checkerError(`cannot access private field '${nGetS1(id)}' of class '${maPfOwner}'`, nGetLine(id), nGetCol(id))
+            }
+        }
         return
     }
     if (kind == "INDEX_ACCESS") {

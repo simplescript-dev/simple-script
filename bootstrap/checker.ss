@@ -38,6 +38,8 @@ let currentFuncRetType = "" // current function's declared return type (for RETU
 let currentTypeParams = ""  // current function's type parameters (comma-separated, for generic compat)
 let checkerGenericClasses = "" // "ClassName" -> "1" if class has type parameters
 let narrowedTypes = ""         // Map: "varName" -> narrowed type (D067 Phase 2: smart narrowing)
+let privateFields = ""         // "ClassName.fieldName" -> "1" if private (D068)
+let privateMethods = ""        // "ClassName.methodName" -> "1" if private (D068)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -69,6 +71,8 @@ function initChecker() {
     currentTypeParams = ""
     checkerGenericClasses = Map()
     narrowedTypes = Map()
+    privateFields = Map()
+    privateMethods = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -470,6 +474,25 @@ function lookupMethodRetType(className: string, methodName: string): string {
         const key = `${cls}.${methodName}`
         if (methodRetTypes.has(key) == 1) {
             return methodRetTypes.getString(key)
+        }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return ""
+}
+
+// D068: Walk parent chain to find which class owns a private field/method
+function lookupPrivateOwner(className: string, memberName: string, isMethod: int): string {
+    let cls = className
+    while (cls != "") {
+        const key = `${cls}.${memberName}`
+        if (isMethod == 1) {
+            if (privateMethods.has(key) == 1) { return cls }
+        } else {
+            if (privateFields.has(key) == 1) { return cls }
         }
         if (checkerClassParents.has(cls) == 1) {
             cls = checkerClassParents.getString(cls)
@@ -904,6 +927,9 @@ function check(rootId: int): int {
                             if (nGetS3(fId) == "const") {
                                 constFields.set(`${className}.${fName}`, "1")
                             }
+                            if (nGetI3(fId) == 1) {
+                                privateFields.set(`${className}.${fName}`, "1")
+                            }
                         }
                     }
                 }
@@ -930,6 +956,9 @@ function check(rootId: int): int {
                             const cmId = parseInt(cm)
                             if (cmId > 0 && nGetKind(cmId) == "FUNC_DECL") {
                                 const mName = nGetS1(cmId)
+                                if (nGetI3(cmId) == 1) {
+                                    privateMethods.set(`${className}.${mName}`, "1")
+                                }
                                 const mRange = countParamRange(nGetList(cmId))
                                 const mComma = mRange.indexOf(",")
                                 registerMethodParams(className, mName, parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))

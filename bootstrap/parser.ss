@@ -361,9 +361,15 @@ function parseClassDecl(): int {
                 const pId = parseBodyField()
                 fields = listAppend(fields, pId)
             } else {
+                let isPrivateMethod = 0
+                if (curKind() == "PRIVATE") {
+                    isPrivateMethod = 1
+                    pAdvance()
+                }
                 const mAnnotations = parseAnnotationList()
                 const mId = parseFuncDecl()
                 attachAnnotations(mId, mAnnotations)
+                if (isPrivateMethod == 1) { nSetI3(mId, 1) }
                 methods = listAppend(methods, mId)
             }
             skipNL()
@@ -482,6 +488,15 @@ function parseImport(): int {
 // Check if current token starts a field declaration in class body
 function isBodyFieldStart(): int {
     if (curKind() == "CONST") { return 1 }
+    if (curKind() == "PRIVATE") {
+        const nextTok = tkKind(tkGet(tokens, tPos + 1))
+        if (nextTok == "CONST") { return 1 }
+        if (nextTok == "IDENT") {
+            const nextNextTok = tkKind(tkGet(tokens, tPos + 2))
+            if (nextNextTok == "COLON" || nextNextTok == "QUESTION") { return 1 }
+        }
+        return 0
+    }
     if (curKind() == "IDENT") {
         const nextTok = tkKind(tkGet(tokens, tPos + 1))
         if (nextTok == "COLON" || nextTok == "QUESTION") { return 1 }
@@ -489,8 +504,13 @@ function isBodyFieldStart(): int {
     return 0
 }
 
-// Parse a single field declaration in class body: [const] name[?]: type [= default]
+// Parse a single field declaration in class body: [private] [const] name[?]: type [= default]
 function parseBodyField(): int {
+    let isPrivate = 0
+    if (curKind() == "PRIVATE") {
+        isPrivate = 1
+        pAdvance()
+    }
     let isFieldConst = 0
     if (curKind() == "CONST") {
         isFieldConst = 1
@@ -515,6 +535,7 @@ function parseBodyField(): int {
     nSetI1(pId, defId)
     nSetI2(pId, isOptional)
     if (isFieldConst == 1) { nSetS3(pId, "const") }
+    if (isPrivate == 1) { nSetI3(pId, 1) }
     expectNLOrRB()
     return pId
 }

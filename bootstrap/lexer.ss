@@ -469,6 +469,7 @@ function keywordKind(text: string): string {
     if (text == "string") { return "STRING_TYPE" }
     if (text == "bool") { return "BOOL_TYPE" }
     if (text == "void") { return "VOID_TYPE" }
+    if (text == "private") { return "PRIVATE" }
     return "IDENT"
 }
 
