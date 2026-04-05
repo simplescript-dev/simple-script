@@ -106,11 +106,15 @@ function checkStmt(id: int) {
         const prevTypeParams = currentTypeParams
         currentFuncRetType = nGetS2(id)
         currentTypeParams = nGetS3(id)
+        // D070: Track static method context
+        const prevStaticMethod = currentStaticMethod
+        if (nGetI2(id) == 1) { currentStaticMethod = 1 }
         // D067 Phase 2: fresh narrowing scope per function
         const prevNarrowedTypes = narrowedTypes
         narrowedTypes = Map()
         checkBlock(bodyId)
         narrowedTypes = prevNarrowedTypes
+        currentStaticMethod = prevStaticMethod
         currentFuncRetType = prevFuncRetType
         currentTypeParams = prevTypeParams
         popScope()
@@ -484,8 +488,17 @@ function checkExpr(id: int) {
     const kind = nGetKind(id)
     if (kind == "INT_LIT" || kind == "DOUBLE_LIT" || kind == "STRING_LIT") { return }
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT" || kind == "NULL_LIT") { return }
-    if (kind == "THIS") { return }
+    if (kind == "THIS") {
+        if (currentStaticMethod == 1) {
+            checkerError("'this' cannot be used in a static method", nGetLine(id), nGetCol(id))
+        }
+        return
+    }
     if (kind == "SUPER") {
+        if (currentStaticMethod == 1) {
+            checkerError("'super' cannot be used in a static method", nGetLine(id), nGetCol(id))
+            return
+        }
         if (currentCheckerClass == "") {
             checkerError("'super' can only be used inside a class method", nGetLine(id), nGetCol(id))
         } else if (checkerClassParents.has(currentCheckerClass) == 0) {

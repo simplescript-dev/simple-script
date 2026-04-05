@@ -346,9 +346,11 @@ function genClassMethod(className: string, id: int) {
     let retType = resolveTypeParam(funcRetType(id))
     if (retType == "") { retType = "void" }
     const llRetType = ssTypeToLLVM(retType)
+    const isStatic = nGetI2(id) == 1 ? 1 : 0
 
-    // Build param list (this + declared params)
-    let paramStr = "ptr %this.ptr"
+    // Build param list: static methods skip 'this'
+    let paramStr = ""
+    if (isStatic == 0) { paramStr = "ptr %this.ptr" }
     const paramList = funcParams(id)
     if (paramList != "") {
         const parts = paramList.split(",")
@@ -358,7 +360,8 @@ function genClassMethod(className: string, id: int) {
                 const pName = nGetS1(pId)
                 const pType = resolveTypeParam(nGetS2(pId))
                 const llType = ssTypeToLLVM(pType)
-                paramStr = `${paramStr}, ${llType} %${pName}.arg`
+                if (paramStr != "") { paramStr = `${paramStr}, ` }
+                paramStr = `${paramStr}${llType} %${pName}.arg`
             }
         }
     }
@@ -381,10 +384,12 @@ function genClassMethod(className: string, id: int) {
     emitIR(`define ${llRetType} @${llMethodName}(${paramStr}) {`)
     emitIR("entry:")
 
-    // Alloca this
-    emitIR("  %this = alloca ptr, align 8")
-    emitIR("  store ptr %this.ptr, ptr %this, align 8")
-    setVarType("this", className)
+    // Alloca this (skip for static methods)
+    if (isStatic == 0) {
+        emitIR("  %this = alloca ptr, align 8")
+        emitIR("  store ptr %this.ptr, ptr %this, align 8")
+        setVarType("this", className)
+    }
 
     emitParamAllocas(paramList, 0)
 

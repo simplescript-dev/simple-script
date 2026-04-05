@@ -42,6 +42,8 @@ let privateFields = ""         // "ClassName.fieldName" -> "1" if private (D068)
 let privateMethods = ""        // "ClassName.methodName" -> "1" if private (D068)
 let protectedFields = ""       // "ClassName.fieldName" -> "1" if protected (D068 Phase 2)
 let protectedMethods = ""      // "ClassName.methodName" -> "1" if protected (D068 Phase 2)
+let staticMethods = ""         // "ClassName.methodName" -> "1" if static (D070)
+let currentStaticMethod = 0    // 1 when inside a static method body (D070)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -77,6 +79,8 @@ function initChecker() {
     privateMethods = Map()
     protectedFields = Map()
     protectedMethods = Map()
+    staticMethods = Map()
+    currentStaticMethod = 0
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -1010,6 +1014,9 @@ function check(rootId: int): int {
                                 }
                                 if (nGetI3(cmId) == 2) {
                                     protectedMethods.set(`${className}.${mName}`, "1")
+                                }
+                                if (nGetI2(cmId) == 1) {
+                                    staticMethods.set(`${className}.${mName}`, "1")
                                 }
                                 const mRange = countParamRange(nGetList(cmId))
                                 const mComma = mRange.indexOf(",")

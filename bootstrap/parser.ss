@@ -369,10 +369,16 @@ function parseClassDecl(): int {
                     methodAccess = 2
                     pAdvance()
                 }
+                let isStatic = 0
+                if (curKind() == "STATIC") {
+                    isStatic = 1
+                    pAdvance()
+                }
                 const mAnnotations = parseAnnotationList()
                 const mId = parseFuncDecl()
                 attachAnnotations(mId, mAnnotations)
                 if (methodAccess > 0) { nSetI3(mId, methodAccess) }
+                if (isStatic == 1) { nSetI2(mId, 1) }
                 methods = listAppend(methods, mId)
             }
             skipNL()

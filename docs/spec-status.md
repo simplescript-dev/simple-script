@@ -38,7 +38,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 
 | Spec | Topic | Status | Notes |
 |------|-------|--------|-------|
-| 32 | Inheritance | 🔶 | class/extends/interface/super done (D069)。缺: open/abstract 修饰符 |
+| 32 | Inheritance | 🔶 | class/extends/interface/super/static done (D069/D070)。缺: abstract 修饰符 |
 | 23 | Generics Advanced | 🔶 | 泛型函数/类/约束/多约束 done。缺: 协变/逆变 |
 | 44 | Generic Constraints | ✅ | D031 type constraints + multi-constraints |
 | 27 | Pattern Matching | 🔶 | switch enum/bool done (D029)。类型模式 + guard 不做（TS 无对应语法） |
