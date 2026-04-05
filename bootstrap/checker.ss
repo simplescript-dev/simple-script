@@ -37,6 +37,7 @@ let methodRetTypes = ""     // "ClassName.methodName" -> return type string
 let currentFuncRetType = "" // current function's declared return type (for RETURN type checking)
 let currentTypeParams = ""  // current function's type parameters (comma-separated, for generic compat)
 let checkerGenericClasses = "" // "ClassName" -> "1" if class has type parameters
+let narrowedTypes = ""         // Map: "varName" -> narrowed type (D067 Phase 2: smart narrowing)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -67,6 +68,7 @@ function initChecker() {
     currentFuncRetType = ""
     currentTypeParams = ""
     checkerGenericClasses = Map()
+    narrowedTypes = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -640,6 +642,14 @@ function stripNullable(t: string): string {
     return t
 }
 
+// D067 Phase 2: Get narrowed type for a variable (from null guard narrowing)
+function getNarrowedType(name: string): string {
+    if (narrowedTypes.has(name) == 1) {
+        return narrowedTypes.getString(name)
+    }
+    return ""
+}
+
 // ── Type inference + compatibility ────────────────────────────
 
 function checkerInferType(nodeId: int): string {
@@ -654,12 +664,18 @@ function checkerInferType(nodeId: int): string {
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "THIS") { return currentCheckerClass }
     if (kind == "IDENT") {
-        const vType = lookupVar(nGetS1(nodeId))
+        const name = nGetS1(nodeId)
+        const vType = lookupVar(name)
         if (vType != "") {
-            if (vType != "auto") { return vType }
+            if (vType != "auto") {
+                // D067 Phase 2: check narrowed type from null guards
+                const narrowed = getNarrowedType(name)
+                if (narrowed != "") { return narrowed }
+                return vType
+            }
             return ""
         }
-        if (lookupFunc(nGetS1(nodeId)) == 1) { return "fn" }
+        if (lookupFunc(name) == 1) { return "fn" }
         return ""
     }
     if (kind == "NEW_EXPR") { return nGetS1(nodeId) }

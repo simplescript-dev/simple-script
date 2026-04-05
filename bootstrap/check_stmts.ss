@@ -64,6 +64,33 @@ function rejectPrimitiveNullable(t: string, nodeId: int) {
     }
 }
 
+// D067 Phase 2: Extract variable name from null check condition (x == null / x != null)
+// Returns "varName" if condition is a null check on a simple IDENT, else ""
+function extractNullCheckVar(condId: int): string {
+    if (condId <= 0) { return "" }
+    if (nGetKind(condId) != "BINARY") { return "" }
+    const op = nGetS1(condId)
+    if (op != "Eq" && op != "Ne") { return "" }
+    const left = nGetI1(condId)
+    const right = nGetI2(condId)
+    if (nGetKind(left) == "IDENT" && nGetKind(right) == "NULL_LIT") {
+        return nGetS1(left)
+    }
+    if (nGetKind(right) == "IDENT" && nGetKind(left) == "NULL_LIT") {
+        return nGetS1(right)
+    }
+    return ""
+}
+
+// D067 Phase 2: Restore narrowing to previous state
+function restoreNarrowing(ncVar: string, ncOldNarrow: string) {
+    if (ncOldNarrow != "") {
+        narrowedTypes.set(ncVar, ncOldNarrow)
+    } else {
+        narrowedTypes.delete(ncVar)
+    }
+}
+
 // ── Statement checking ────────────────────────────────────────
 
 function checkStmt(id: int) {
@@ -79,7 +106,11 @@ function checkStmt(id: int) {
         const prevTypeParams = currentTypeParams
         currentFuncRetType = nGetS2(id)
         currentTypeParams = nGetS3(id)
+        // D067 Phase 2: fresh narrowing scope per function
+        const prevNarrowedTypes = narrowedTypes
+        narrowedTypes = Map()
         checkBlock(bodyId)
+        narrowedTypes = prevNarrowedTypes
         currentFuncRetType = prevFuncRetType
         currentTypeParams = prevTypeParams
         popScope()
@@ -222,6 +253,8 @@ function checkStmt(id: int) {
                 }
             }
         }
+        // D067 Phase 2: reassignment resets narrowing
+        narrowedTypes.delete(name)
         return
     }
     if (kind == "MEMBER_ASSIGN") {
@@ -285,15 +318,50 @@ function checkStmt(id: int) {
         return
     }
     if (kind == "IF") {
-        checkExpr(nGetI1(id))
+        const condId = nGetI1(id)
+        checkExpr(condId)
+        // D067 Phase 2: detect null check for smart narrowing
+        const ncVar = extractNullCheckVar(condId)
+        let ncType = ""
+        let ncOldNarrow = ""
+        if (ncVar != "") {
+            const ncVarType = lookupVar(ncVar)
+            if (isNullableType(ncVarType) == 1) {
+                ncType = stripNullable(ncVarType)
+                ncOldNarrow = getNarrowedType(ncVar)
+            }
+        }
+        // nGetS1(condId) is "Eq" or "Ne" (extractNullCheckVar verified BINARY Eq/Ne)
+        const isEqNull = ncType != "" && nGetS1(condId) == "Eq" ? 1 : 0
         pushScope()
+        if (ncType != "" && isEqNull == 0) {
+            narrowedTypes.set(ncVar, ncType)
+        }
         checkBlock(nGetI2(id))
+        if (ncType != "" && isEqNull == 0) {
+            restoreNarrowing(ncVar, ncOldNarrow)
+        }
         popScope()
         const elseId = nGetI3(id)
         if (elseId > 0) {
             pushScope()
+            if (ncType != "" && isEqNull == 1) {
+                narrowedTypes.set(ncVar, ncType)
+            }
             checkBlock(elseId)
+            if (ncType != "" && isEqNull == 1) {
+                restoreNarrowing(ncVar, ncOldNarrow)
+            }
             popScope()
+        }
+        // Early exit: if the null-path always returns, narrow after the if
+        if (ncType != "") {
+            if (isEqNull == 1 && blockAlwaysReturns(nGetI2(id)) == 1) {
+                narrowedTypes.set(ncVar, ncType)
+            }
+            if (isEqNull == 0 && elseId > 0 && blockAlwaysReturns(elseId) == 1) {
+                narrowedTypes.set(ncVar, ncType)
+            }
         }
         return
     }
