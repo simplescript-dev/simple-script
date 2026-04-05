@@ -748,17 +748,15 @@ function isTypeCompatible(declared: string, actual: string): int {
     if (declared == "" || actual == "") { return 1 }
     if (declared == "auto" || actual == "auto") { return 1 }
     if (declared == actual) { return 1 }
-    // Null safety (D067): null literal is only assignable to nullable types
+    // Null safety (D067)
+    const declNullable = isNullableType(declared)
+    const actualNullable = isNullableType(actual)
     if (actual == "null") {
-        if (isNullableType(declared) == 1) { return 1 }
+        if (declNullable == 1) { return 1 }
         return 0
     }
-    // T? is NOT assignable to T (must narrow first)
-    if (isNullableType(actual) == 1 && isNullableType(declared) == 0) {
-        return 0
-    }
-    // T is assignable to T? — check base type compatibility
-    if (isNullableType(declared) == 1) {
+    if (actualNullable == 1 && declNullable == 0) { return 0 }
+    if (declNullable == 1) {
         return isTypeCompatible(stripNullable(declared), stripNullable(actual))
     }
     if (declared == "double" && actual == "int") { return 1 }
