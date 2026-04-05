@@ -11,7 +11,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 | 31 | Type Inference | ✅ | checkerInferType 8 check sites (D053-D065)。inferType 迁移已分析关闭 (D066) |
 | 40 | Numeric Types | 🔶 | 只有 int (i32) + double (f64)。缺: byte/short/long/float/unsigned |
 | 41 | Grammar Summary | 📄 | 参考文档 |
-| 42 | Access Modifiers | 🔶 | `private` keyword for class fields/methods done (D068)。缺: protected, module-level export |
+| 42 | Access Modifiers | ���� | `private` + `protected` keywords for class fields/methods done (D068)。缺: module-level export |
 | 43 | Null Safety | ✅ | D067 Phase 1-3 done：T? 类型、checker null 检查、smart narrowing、?. 返回 T?、?? 返回 T |
 | 34 | String Advanced | 🔶 | 模板字符串 + 基本方法 done。缺: UTF-8 proper (当前 null-terminated) |
 | 37 | Range & Tuple | 🔶 | Tuple done (D034), for-in done。Range 语法不做（TS 无对应语法） |

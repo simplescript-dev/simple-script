@@ -40,6 +40,8 @@ let checkerGenericClasses = "" // "ClassName" -> "1" if class has type parameter
 let narrowedTypes = ""         // Map: "varName" -> narrowed type (D067 Phase 2: smart narrowing)
 let privateFields = ""         // "ClassName.fieldName" -> "1" if private (D068)
 let privateMethods = ""        // "ClassName.methodName" -> "1" if private (D068)
+let protectedFields = ""       // "ClassName.fieldName" -> "1" if protected (D068 Phase 2)
+let protectedMethods = ""      // "ClassName.methodName" -> "1" if protected (D068 Phase 2)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -73,6 +75,8 @@ function initChecker() {
     narrowedTypes = Map()
     privateFields = Map()
     privateMethods = Map()
+    protectedFields = Map()
+    protectedMethods = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -503,6 +507,36 @@ function lookupPrivateOwner(className: string, memberName: string, isMethod: int
     return ""
 }
 
+// D068 Phase 2: Walk parent chain to find which class owns a protected field/method
+function lookupProtectedOwner(className: string, memberName: string, isMethod: int): string {
+    let cls = className
+    while (cls != "") {
+        const key = `${cls}.${memberName}`
+        if (isMethod == 1) {
+            if (protectedMethods.has(key) == 1) { return cls }
+        } else {
+            if (protectedFields.has(key) == 1) { return cls }
+        }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return ""
+}
+
+// D068 Phase 2: Check if child class is a subclass of ancestor (walks parent chain)
+function isSubclassOf(child: string, ancestor: string): int {
+    if (child == "" || ancestor == "") { return 0 }
+    let cls = child
+    while (checkerClassParents.has(cls) == 1) {
+        cls = checkerClassParents.getString(cls)
+        if (cls == ancestor) { return 1 }
+    }
+    return 0
+}
+
 // Walk parent chain and sum constructor params (own + inherited). Returns "min,max".
 function totalConstructorParams(className: string): string {
     let totalMin = 0
@@ -930,6 +964,9 @@ function check(rootId: int): int {
                             if (nGetI3(fId) == 1) {
                                 privateFields.set(`${className}.${fName}`, "1")
                             }
+                            if (nGetI3(fId) == 2) {
+                                protectedFields.set(`${className}.${fName}`, "1")
+                            }
                         }
                     }
                 }
@@ -958,6 +995,9 @@ function check(rootId: int): int {
                                 const mName = nGetS1(cmId)
                                 if (nGetI3(cmId) == 1) {
                                     privateMethods.set(`${className}.${mName}`, "1")
+                                }
+                                if (nGetI3(cmId) == 2) {
+                                    protectedMethods.set(`${className}.${mName}`, "1")
                                 }
                                 const mRange = countParamRange(nGetList(cmId))
                                 const mComma = mRange.indexOf(",")

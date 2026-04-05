@@ -470,6 +470,7 @@ function keywordKind(text: string): string {
     if (text == "bool") { return "BOOL_TYPE" }
     if (text == "void") { return "VOID_TYPE" }
     if (text == "private") { return "PRIVATE" }
+    if (text == "protected") { return "PROTECTED" }
     return "IDENT"
 }
 

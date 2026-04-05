@@ -227,6 +227,10 @@ function checkStmt(id: int) {
                 if (doPfOwner != "" && currentCheckerClass != doPfOwner) {
                     checkerError(`cannot access private field '${fieldName}' of class '${doPfOwner}'`, nGetLine(id), nGetCol(id))
                 }
+                const doPtOwner = lookupProtectedOwner(objClass, fieldName, 0)
+                if (doPtOwner != "" && currentCheckerClass != doPtOwner && isSubclassOf(currentCheckerClass, doPtOwner) == 0) {
+                    checkerError(`cannot access protected field '${fieldName}' of class '${doPtOwner}'`, nGetLine(id), nGetCol(id))
+                }
             }
             let vType = "auto"
             const ftKey = `${objClass}.${fieldName}`
@@ -277,6 +281,10 @@ function checkStmt(id: int) {
             const pfOwner = lookupPrivateOwner(objClass, fieldName, 0)
             if (pfOwner != "" && currentCheckerClass != pfOwner) {
                 checkerError(`cannot access private field '${fieldName}' of class '${pfOwner}'`, nGetLine(id), nGetCol(id))
+            }
+            const ptOwner = lookupProtectedOwner(objClass, fieldName, 0)
+            if (ptOwner != "" && currentCheckerClass != ptOwner && isSubclassOf(currentCheckerClass, ptOwner) == 0) {
+                checkerError(`cannot access protected field '${fieldName}' of class '${ptOwner}'`, nGetLine(id), nGetCol(id))
             }
             // Type check: field type vs assigned value
             if (nGetS2(id) == "ASSIGN" && checkerFieldTypes.has(fieldKey) == 1 && valId > 0) {
@@ -545,11 +553,15 @@ function checkExpr(id: int) {
                 recvClass = nGetS1(objId)
             }
         }
-        // D068: Check private method access
+        // D068: Check private/protected method access
         if (recvClass != "") {
             const pmOwner = lookupPrivateOwner(recvClass, methodName, 1)
             if (pmOwner != "" && currentCheckerClass != pmOwner) {
                 checkerError(`cannot access private method '${methodName}' of class '${pmOwner}'`, nGetLine(id), nGetCol(id))
+            }
+            const ptmOwner = lookupProtectedOwner(recvClass, methodName, 1)
+            if (ptmOwner != "" && currentCheckerClass != ptmOwner && isSubclassOf(currentCheckerClass, ptmOwner) == 0) {
+                checkerError(`cannot access protected method '${methodName}' of class '${ptmOwner}'`, nGetLine(id), nGetCol(id))
             }
         }
         // Check method arg count if receiver class is known
@@ -596,6 +608,10 @@ function checkExpr(id: int) {
             const maPfOwner = lookupPrivateOwner(maObjClass, nGetS1(id), 0)
             if (maPfOwner != "" && currentCheckerClass != maPfOwner) {
                 checkerError(`cannot access private field '${nGetS1(id)}' of class '${maPfOwner}'`, nGetLine(id), nGetCol(id))
+            }
+            const maPtOwner = lookupProtectedOwner(maObjClass, nGetS1(id), 0)
+            if (maPtOwner != "" && currentCheckerClass != maPtOwner && isSubclassOf(currentCheckerClass, maPtOwner) == 0) {
+                checkerError(`cannot access protected field '${nGetS1(id)}' of class '${maPtOwner}'`, nGetLine(id), nGetCol(id))
             }
         }
         return

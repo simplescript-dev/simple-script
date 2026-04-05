@@ -361,15 +361,18 @@ function parseClassDecl(): int {
                 const pId = parseBodyField()
                 fields = listAppend(fields, pId)
             } else {
-                let isPrivateMethod = 0
+                let methodAccess = 0
                 if (curKind() == "PRIVATE") {
-                    isPrivateMethod = 1
+                    methodAccess = 1
+                    pAdvance()
+                } else if (curKind() == "PROTECTED") {
+                    methodAccess = 2
                     pAdvance()
                 }
                 const mAnnotations = parseAnnotationList()
                 const mId = parseFuncDecl()
                 attachAnnotations(mId, mAnnotations)
-                if (isPrivateMethod == 1) { nSetI3(mId, 1) }
+                if (methodAccess > 0) { nSetI3(mId, methodAccess) }
                 methods = listAppend(methods, mId)
             }
             skipNL()
@@ -488,7 +491,7 @@ function parseImport(): int {
 // Check if current token starts a field declaration in class body
 function isBodyFieldStart(): int {
     if (curKind() == "CONST") { return 1 }
-    if (curKind() == "PRIVATE") {
+    if (curKind() == "PRIVATE" || curKind() == "PROTECTED") {
         const nextTok = tkKind(tkGet(tokens, tPos + 1))
         if (nextTok == "CONST") { return 1 }
         if (nextTok == "IDENT") {
@@ -504,11 +507,14 @@ function isBodyFieldStart(): int {
     return 0
 }
 
-// Parse a single field declaration in class body: [private] [const] name[?]: type [= default]
+// Parse a single field declaration in class body: [private|protected] [const] name[?]: type [= default]
 function parseBodyField(): int {
-    let isPrivate = 0
+    let accessLevel = 0
     if (curKind() == "PRIVATE") {
-        isPrivate = 1
+        accessLevel = 1
+        pAdvance()
+    } else if (curKind() == "PROTECTED") {
+        accessLevel = 2
         pAdvance()
     }
     let isFieldConst = 0
@@ -535,7 +541,7 @@ function parseBodyField(): int {
     nSetI1(pId, defId)
     nSetI2(pId, isOptional)
     if (isFieldConst == 1) { nSetS3(pId, "const") }
-    if (isPrivate == 1) { nSetI3(pId, 1) }
+    if (accessLevel > 0) { nSetI3(pId, accessLevel) }
     expectNLOrRB()
     return pId
 }
