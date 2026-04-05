@@ -22,7 +22,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 |------|-------|--------|-------|
 | 03 | Memory (ARC) | ✅ | Perceus RC Phase 1 complete, mimalloc 集成 |
 | 71 | Perceus RC | ✅ | TypeInfo + drop/clone gen + PIR liveness + REUSE |
-| 02 | Error Handling | ❌ | 当前 try/catch (setjmp/longjmp)。需: Result<T,E> + ? 操作符 |
+| 02 | Error Handling | 🔶 | try/catch/finally + Error class + typed catch done (D073)。Result<T,E> rejected (D072) |
 | 29 | Error Codes | 🔶 | checker 错误有源码位置 + 建议。缺: 完整错误编号体系 |
 | 38 | Exception Interop | ❌ | 无 panic/recover 区分 |
 

@@ -123,6 +123,8 @@ spec/                 # 语言规范文档
 - `METHOD_CALL`: S1=方法名, I1=对象表达式, List=参数
 - `MEMBER_ASSIGN`: S1=字段名, S2=操作符, I1=对象表达式, I2=值表达式
 - `NAMED_ARG`: S1=参数名, I1=值表达式
+- `TRY`: I1=try body, I3=finally body (0=无), List=CATCH_CLAUSE 节点列表 (D073)
+- `CATCH_CLAUSE`: S1=变量名, S2=类型标注 (""=untyped catch-all), I1=catch body (D073)
 
 ### Codegen 状态管理
 
@@ -241,7 +243,9 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **Set\<T\>**: Map wrapper（`add`, `has`, `remove`, `size`, `values`）
 - **Arrow 函数**: `(x: int): int => x * 2`（编译为顶层函数+函数指针）
 - **高阶方法**: `arr.map(fn)`, `arr.filter(fn)`, `arr.reduce(fn, init)`, `arr.forEach(fn)`
-- **try/catch/throw**: `try { } catch (e) { }`（setjmp/longjmp 实现）
+- **try/catch/throw/finally**: `try { } catch (e: IOError) { } catch (e) { } finally { }`（setjmp/longjmp 实现，Java 风格 typed catch + finally，D073）
+- **Error class**: 内置 `class Error { message: string }`，用户可 `extends Error` 自定义错误类型
+- **throw class instances**: `throw(new IOError("msg", "/path"))` 抛 Error 对象，`throw("msg")` 向后兼容
 - **?? 空值合并**: `value ?? "default"`
 - **Enum 带值**: `enum Color { Red = 1, Green = 2, Blue = 3 }`
 - **泛型类型约束**: `<T extends Interface>`、多约束 `<T extends A & B>`（编译期验证，D031）

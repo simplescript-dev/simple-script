@@ -22,16 +22,41 @@ function emitCondToI1(condId: int, condVal: string): string {
     return r
 }
 
+function emitExcDepthDec() {
+    const d = nextReg()
+    emitIR(`  ${d} = load i32, ptr @ss_exc_depth`)
+    const d1 = nextReg()
+    emitIR(`  ${d1} = sub i32 ${d}, 1`)
+    emitIR(`  store i32 ${d1}, ptr @ss_exc_depth`)
+}
+
+function emitRethrow(finallyBody: int) {
+    if (finallyBody > 0) {
+        genNestedBlock(finallyBody)
+    }
+    const msg = nextReg()
+    emitIR(`  ${msg} = load ptr, ptr @ss_exc_msg`)
+    emitIR(`  call void @ss_throw(ptr ${msg})`)
+    emitIR("  unreachable")
+}
+
 function genTryCatch(id: int) {
     const tryBody = nGetI1(id)
-    const catchBody = nGetI2(id)
-    const errName = nGetS1(id)
+    const finallyBody = nGetI3(id)
+    const catchList = nGetList(id)
 
     const tryLabel = nextLabel("try")
     const catchLabel = nextLabel("catch")
     const endLabel = nextLabel("try.end")
 
-    // Push exception handler: increment depth, get jmpbuf slot
+    let finallyLabel = ""
+    let convergeLabel = endLabel
+    if (finallyBody > 0) {
+        finallyLabel = nextLabel("finally")
+        convergeLabel = finallyLabel
+    }
+
+    // Push exception handler
     const depthR = nextReg()
     emitIR(`  ${depthR} = load i32, ptr @ss_exc_depth`)
     const newDepth = nextReg()
@@ -44,51 +69,118 @@ function genTryCatch(id: int) {
     const bufPtr = nextReg()
     emitIR(`  ${bufPtr} = getelementptr i8, ptr @ss_jmpbuf, i64 ${off64}`)
 
-    // setjmp returns 0 normally, non-zero when longjmp is called
     const sjRet = nextReg()
     emitIR(`  ${sjRet} = call i32 @setjmp(ptr ${bufPtr})`)
     const isExc = nextReg()
     emitIR(`  ${isExc} = icmp ne i32 ${sjRet}, 0`)
     emitIR(`  br i1 ${isExc}, label %${catchLabel}, label %${tryLabel}`)
 
-    // Try block
+    // ── Try block ──
     emitIR(`${tryLabel}:`)
     const savedTerm = terminated
     terminated = 0
     genNestedBlock(tryBody)
     if (terminated == 0) {
-        // Pop handler and skip catch
-        const d2 = nextReg()
-        emitIR(`  ${d2} = load i32, ptr @ss_exc_depth`)
-        const d3 = nextReg()
-        emitIR(`  ${d3} = sub i32 ${d2}, 1`)
-        emitIR(`  store i32 ${d3}, ptr @ss_exc_depth`)
-        emitIR(`  br label %${endLabel}`)
+        emitExcDepthDec()
+        emitIR(`  br label %${convergeLabel}`)
     }
 
-    // Catch block
+    // ── Catch dispatch ──
     emitIR(`${catchLabel}:`)
     terminated = 0
-    // Pop handler
-    const d4 = nextReg()
-    emitIR(`  ${d4} = load i32, ptr @ss_exc_depth`)
-    const d5 = nextReg()
-    emitIR(`  ${d5} = sub i32 ${d4}, 1`)
-    emitIR(`  store i32 ${d5}, ptr @ss_exc_depth`)
-    // Bind error variable
-    const errLLName = allocVarName(errName)
-    emitIR(`  %${errLLName} = alloca ptr, align 8`)
-    const excMsg = nextReg()
-    emitIR(`  ${excMsg} = load ptr, ptr @ss_exc_msg`)
-    emitIR(`  store ptr ${excMsg}, ptr %${errLLName}, align 8`)
-    setVarType(errName, "string")
-    genNestedBlock(catchBody)
-    if (terminated == 0) {
-        emitIR(`  br label %${endLabel}`)
+    emitExcDepthDec()
+
+    if (catchList == "") {
+        emitRethrow(finallyBody)
+    } else {
+        genCatchClauses(catchList, convergeLabel, finallyBody)
+    }
+
+    // ── Finally block ──
+    if (finallyBody > 0) {
+        emitIR(`${finallyLabel}:`)
+        terminated = 0
+        genNestedBlock(finallyBody)
+        if (terminated == 0) {
+            emitIR(`  br label %${endLabel}`)
+        }
     }
 
     emitIR(`${endLabel}:`)
     terminated = savedTerm
+}
+
+function genCatchClauses(catchList: string, convergeLabel: string, finallyBody: int) {
+    const parts = catchList.split(",")
+    const numClauses = parts.length()
+    const rethrowLabel = nextLabel("catch.rethrow")
+
+    // Load is-obj flag once (invariant across all catch clauses)
+    const isObj = nextReg()
+    emitIR(`  ${isObj} = load i32, ptr @ss_exc_is_obj`)
+    const isObjBool = nextReg()
+    emitIR(`  ${isObjBool} = icmp eq i32 ${isObj}, 1`)
+
+    let clauseIdx = 0
+    for (cp in parts) {
+        const cid = parseInt(cp)
+        const errType = nGetS2(cid)
+        const errName = nGetS1(cid)
+        const catchBody = nGetI1(cid)
+        const bodyLabel = nextLabel("catch.body")
+
+        let fallLabel = rethrowLabel
+        if (clauseIdx + 1 < numClauses) {
+            fallLabel = nextLabel("catch.next")
+        }
+
+        if (errType != "") {
+            const typeCheckLabel = nextLabel("catch.tc")
+            emitIR(`  br i1 ${isObjBool}, label %${typeCheckLabel}, label %${fallLabel}`)
+            emitIR(`${typeCheckLabel}:`)
+            const obj = nextReg()
+            emitIR(`  ${obj} = load ptr, ptr @ss_exc_obj`)
+            const nameStr = addStringConst(errType)
+            const matchResult = nextReg()
+            emitIR(`  ${matchResult} = call i32 @ss_isinstance(ptr ${obj}, ptr ${nameStr})`)
+            const matched = nextReg()
+            emitIR(`  ${matched} = icmp eq i32 ${matchResult}, 1`)
+            emitIR(`  br i1 ${matched}, label %${bodyLabel}, label %${fallLabel}`)
+        } else {
+            emitIR(`  br label %${bodyLabel}`)
+        }
+
+        emitIR(`${bodyLabel}:`)
+        terminated = 0
+        const errLLName = allocVarName(errName)
+        emitIR(`  %${errLLName} = alloca ptr, align 8`)
+        if (errType != "") {
+            const obj2 = nextReg()
+            emitIR(`  ${obj2} = load ptr, ptr @ss_exc_obj`)
+            emitIR(`  store ptr ${obj2}, ptr %${errLLName}, align 8`)
+            setVarType(errName, errType)
+            setObjClass(errName, errType)
+        } else {
+            const msg = nextReg()
+            emitIR(`  ${msg} = load ptr, ptr @ss_exc_msg`)
+            emitIR(`  store ptr ${msg}, ptr %${errLLName}, align 8`)
+            setVarType(errName, "string")
+        }
+        genNestedBlock(catchBody)
+        if (terminated == 0) {
+            emitIR(`  br label %${convergeLabel}`)
+        }
+
+        if (clauseIdx + 1 < numClauses) {
+            emitIR(`${fallLabel}:`)
+            terminated = 0
+        }
+
+        clauseIdx = clauseIdx + 1
+    }
+
+    emitIR(`${rethrowLabel}:`)
+    emitRethrow(finallyBody)
 }
 
 function registerEnum(id: int) {
@@ -146,8 +238,19 @@ function genIndexAssign(id: int) {
 }
 
 function genThrow(id: int) {
-    const msgVal = genExpr(nGetI1(id))
-    emitIR(`  call void @ss_throw(ptr ${msgVal})`)
+    const exprId = nGetI1(id)
+    const exprVal = genExpr(exprId)
+    const exprType = inferType(exprId)
+    if (classFields.has(exprType) == 1 && classFieldTypes.has(`${exprType}.message`) == 1) {
+        emitIR(`  store i32 1, ptr @ss_exc_is_obj`)
+        emitIR(`  store ptr ${exprVal}, ptr @ss_exc_obj`)
+        const msgReg = emitFieldLoad(exprType, exprVal, "message")
+        emitIR(`  call void @ss_throw(ptr ${msgReg})`)
+    } else {
+        emitIR(`  store i32 0, ptr @ss_exc_is_obj`)
+        emitIR(`  store ptr null, ptr @ss_exc_obj`)
+        emitIR(`  call void @ss_throw(ptr ${exprVal})`)
+    }
     emitIR("  unreachable")
     terminated = 1
 }

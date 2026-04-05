@@ -4,7 +4,7 @@ import { emitRuntimeStringOps, emitRuntimeConversions } from "./gen_rt_string"
 import { emitRuntimeArrayOps } from "./gen_rt_array"
 import { emitRuntimeIO, emitRuntimeProcess, emitRuntimeMath } from "./gen_rt_io"
 import { emitRuntimeMap } from "./gen_rt_map"
-import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeSQLite } from "./gen_rt_system"
+import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeSQLite } from "./gen_rt_system"
 
 function emitRuntimeDefs() {
     emitLibcDecls()
@@ -21,6 +21,7 @@ function emitRuntimeDefs() {
     emitRuntimeNet()
     emitRuntimeMap()
     emitRuntimeExceptions()
+    emitRuntimeIsInstance()
     emitRuntimeSQLite()
 }
 
@@ -137,6 +138,8 @@ function emitRuntimeGlobals() {
     emitIR("@ss_jmpbuf = internal global [3200 x i8] zeroinitializer, align 16")
     emitIR("@ss_exc_depth = internal global i32 0, align 4")
     emitIR("@ss_exc_msg = internal global ptr null, align 8")
+    emitIR("@ss_exc_obj = internal global ptr null, align 8")
+    emitIR("@ss_exc_is_obj = internal global i32 0, align 4")
     emitIR(`@.rt.str.uncaught = private constant [21 x i8] c"uncaught exception: \\00"`)
     // Format strings (use @.rt. prefix to avoid collision with user string consts)
     emitIR(`@.rt.fmt.d = private constant [3 x i8] c"%d\\00"`)
@@ -152,7 +155,7 @@ function emitRuntimeGlobals() {
     // Class destructor table: tag >= 10 indexes into this (tag-10)
     emitIR("@ss_class_dtor = internal global [100 x ptr] zeroinitializer")
     // TypeInfo type: { drop_fn, deep_clone_fn, shallow_clone_fn, size, name, class_id }
-    emitIR("%TypeInfo = type { ptr, ptr, ptr, i64, ptr, i32 }")
+    emitIR("%TypeInfo = type { ptr, ptr, ptr, i64, ptr, i32, ptr }")
     // ObjHeader type: { rc:i32, type_info:ptr } — first two fields of every class instance
     emitIR("%ObjHeader = type { i32, ptr }")
     emitIR("")

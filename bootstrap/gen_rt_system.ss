@@ -280,6 +280,39 @@ function emitRuntimeExceptions() {
     emitIR("")
 }
 
+function emitRuntimeIsInstance() {
+    // ss_isinstance(ptr %obj, ptr %target_name) → i32 (1=match, 0=no)
+    // Walks TypeInfo parent chain comparing class name with target
+    emitIR("define i32 @ss_isinstance(ptr %obj, ptr %target_name) {")
+    irLabel("entry")
+    // Load TypeInfo pointer (offset 1 in object)
+    emitIR("  %ti_gep = getelementptr ptr, ptr %obj, i32 1")
+    emitIR("  %ti = load ptr, ptr %ti_gep, align 8")
+    emitIR("  br label %loop")
+    irLabel("loop")
+    emitIR("  %cur_ti = phi ptr [ %ti, %entry ], [ %parent_ti, %next ]")
+    emitIR("  %is_null = icmp eq ptr %cur_ti, null")
+    emitIR("  br i1 %is_null, label %no_match, label %check")
+    irLabel("check")
+    // Load name (index 4 in TypeInfo)
+    emitIR("  %name_gep = getelementptr %TypeInfo, ptr %cur_ti, i32 0, i32 4")
+    emitIR("  %name = load ptr, ptr %name_gep, align 8")
+    emitIR("  %cmp = call i32 @strcmp(ptr %name, ptr %target_name)")
+    emitIR("  %eq = icmp eq i32 %cmp, 0")
+    emitIR("  br i1 %eq, label %match, label %next")
+    irLabel("next")
+    // Load parent TypeInfo (index 6 in TypeInfo)
+    emitIR("  %parent_gep = getelementptr %TypeInfo, ptr %cur_ti, i32 0, i32 6")
+    emitIR("  %parent_ti = load ptr, ptr %parent_gep, align 8")
+    emitIR("  br label %loop")
+    irLabel("match")
+    emitIR("  ret i32 1")
+    irLabel("no_match")
+    emitIR("  ret i32 0")
+    emitIR("}")
+    emitIR("")
+}
+
 // ── SQLite bindings ───────────────────────────────────────────
 
 function emitRuntimeSQLite() {

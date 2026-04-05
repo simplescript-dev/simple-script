@@ -200,13 +200,19 @@ function emitClassTypeInfo(name: string, fieldStr: string, hasVtable: int) {
     const nameLen = name.length() + 1
     emitIR(`@.rt.str.${name} = private constant [${nameLen} x i8] c"${name}\\00"`)
     const cid = classIds.has(name) == 1 ? classIds.getString(name) : "0"
+    const parentName = classParents.has(name) == 1 ? classParents.getString(name) : ""
+    let parentTIRef = "null"
+    if (parentName != "") {
+        parentTIRef = `@${parentName}_type_info`
+    }
     emitIR(`@${name}_type_info = constant %TypeInfo {`)
     emitIR(`  ptr @ss_drop_${name},`)
     emitIR(`  ptr @ss_deep_clone_${name},`)
     emitIR(`  ptr @ss_shallow_clone_${name},`)
     emitIR(`  i64 ptrtoint (ptr getelementptr (%${name}, ptr null, i32 1) to i64),`)
     emitIR(`  ptr @.rt.str.${name},`)
-    emitIR(`  i32 ${cid}`)
+    emitIR(`  i32 ${cid},`)
+    emitIR(`  ptr ${parentTIRef}`)
     emitIR("}")
     emitIR("")
 }

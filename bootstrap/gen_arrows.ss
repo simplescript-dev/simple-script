@@ -225,7 +225,7 @@ function genArrowFunc(id: int): string {
         emitIR("")
         // TypeInfo for this closure
         const closureNameStr = addStringConst(`closure_${arrowCount}`)
-        emitIR(`@__closure_${arrowCount}_type_info = global %TypeInfo { ptr @${dropName}, ptr null, ptr null, i64 0, ptr ${closureNameStr}, i32 0 }`)
+        emitIR(`@__closure_${arrowCount}_type_info = global %TypeInfo { ptr @${dropName}, ptr null, ptr null, i64 0, ptr ${closureNameStr}, i32 0, ptr null }`)
         emitIR("")
     }
 

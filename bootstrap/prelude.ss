@@ -1,6 +1,12 @@
 // Runtime prelude — pure SS implementations of string/array methods
 // _ss_ prefix avoids conflict with C runtime declarations
 
+// ── Built-in classes ─────────────────────────────────────────
+
+class Error {
+    message: string
+}
+
 // ── Higher-order array methods ────────────────────────────────
 
 function _ss_map(arr: List<int>, callback: fn): List<int> {

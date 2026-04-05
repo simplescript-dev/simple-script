@@ -36,8 +36,16 @@ function stmtAlwaysReturns(id: int): int {
         return 0
     }
     if (kind == "TRY") {
-        if (blockAlwaysReturns(nGetI1(id)) == 1 && blockAlwaysReturns(nGetI2(id)) == 1) { return 1 }
-        return 0
+        if (blockAlwaysReturns(nGetI1(id)) == 0) { return 0 }
+        // All catch clauses must also always return
+        const cl = nGetList(id)
+        if (cl == "") { return 0 }
+        const cps = cl.split(",")
+        for (cp2 in cps) {
+            const cc = parseInt(cp2)
+            if (cc > 0 && blockAlwaysReturns(nGetI1(cc)) == 0) { return 0 }
+        }
+        return 1
     }
     if (kind == "SWITCH") {
         const defId = nGetI2(id)
@@ -440,10 +448,30 @@ function checkStmt(id: int) {
         pushScope()
         checkBlock(nGetI1(id))
         popScope()
-        pushScope()
-        defineVar(nGetS1(id), "string", 0)
-        checkBlock(nGetI2(id))
-        popScope()
+        // Check catch clauses
+        const catchList = nGetList(id)
+        if (catchList != "") {
+            const cparts = catchList.split(",")
+            for (cp in cparts) {
+                const cid = parseInt(cp)
+                if (cid > 0) {
+                    pushScope()
+                    const errType = nGetS2(cid)
+                    if (errType != "") {
+                        defineVar(nGetS1(cid), errType, 0)
+                    } else {
+                        defineVar(nGetS1(cid), "string", 0)
+                    }
+                    checkBlock(nGetI1(cid))
+                    popScope()
+                }
+            }
+        }
+        if (nGetI3(id) > 0) {
+            pushScope()
+            checkBlock(nGetI3(id))
+            popScope()
+        }
         return
     }
     if (kind == "THROW") {

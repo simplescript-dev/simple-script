@@ -54,20 +54,40 @@ function parseStmt(): int {
     return id
 }
 
-// try { ... } catch (e) { ... }
+// try { ... } catch (e) { ... } catch (e: Type) { ... } finally { ... }
 function parseTryCatch(): int {
     pExpect("TRY")
     const tryBody = parseBlock()
     skipNL()
-    pExpect("CATCH")
-    pExpect("LPAREN")
-    const errName = pExpectIdent()
-    pExpect("RPAREN")
-    const catchBody = parseBlock()
+    // Parse catch clauses (multiple allowed)
+    let catchClauses = ""
+    while (curKind() == "CATCH") {
+        pAdvance()
+        pExpect("LPAREN")
+        const errName = pExpectIdent()
+        let errType = ""
+        if (curKind() == "COLON") {
+            pAdvance()
+            errType = parseTypeAnn()
+        }
+        pExpect("RPAREN")
+        const catchBody = parseBlock()
+        skipNL()
+        const clause = newNode("CATCH_CLAUSE")
+        nSetS1(clause, errName)
+        nSetS2(clause, errType)
+        nSetI1(clause, catchBody)
+        catchClauses = listAppend(catchClauses, clause)
+    }
+    let finallyBody = 0
+    if (curKind() == "FINALLY") {
+        pAdvance()
+        finallyBody = parseBlock()
+    }
     const id = newNode("TRY")
     nSetI1(id, tryBody)
-    nSetI2(id, catchBody)
-    nSetS1(id, errName)
+    nSetI3(id, finallyBody)
+    nSetList(id, catchClauses)
     return id
 }
 
