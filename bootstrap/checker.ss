@@ -642,6 +642,12 @@ function stripNullable(t: string): string {
     return t
 }
 
+function makeNullable(t: string): string {
+    if (t == "" || t == "null") { return t }
+    if (isNullableType(t) == 1) { return t }
+    return `${t}?`
+}
+
 // D067 Phase 2: Get narrowed type for a variable (from null guard narrowing)
 function getNarrowedType(name: string): string {
     if (narrowedTypes.has(name) == 1) {
@@ -690,7 +696,9 @@ function checkerInferType(nodeId: int): string {
     if (kind == "METHOD_CALL") {
         const mcRecv = inferCheckerClass(nGetI1(nodeId))
         if (mcRecv != "" && classConsMin.has(mcRecv) == 1) {
-            return lookupMethodRetType(mcRecv, nGetS1(nodeId))
+            const mRetType = lookupMethodRetType(mcRecv, nGetS1(nodeId))
+            if (nGetI3(nodeId) > 0) { return makeNullable(mRetType) }
+            return mRetType
         }
         return ""
     }
@@ -699,7 +707,9 @@ function checkerInferType(nodeId: int): string {
         if (objClass != "") {
             const fieldKey = `${objClass}.${nGetS1(nodeId)}`
             if (checkerFieldTypes.has(fieldKey) == 1) {
-                return checkerFieldTypes.getString(fieldKey)
+                const fType = checkerFieldTypes.getString(fieldKey)
+                if (nGetI3(nodeId) > 0) { return makeNullable(fType) }
+                return fType
             }
         }
         return ""
