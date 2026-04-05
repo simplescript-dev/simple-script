@@ -169,7 +169,7 @@ function registerClass(id: int) {
                 const fName = paramName(pId)
                 const fType = paramType(pId)
                 fieldNames = listAppendStr(fieldNames, fName)
-                classFieldTypes.set(`${name}.${fName}`, fType)
+                classFieldTypes.set(`${name}.${fName}`, stripNullableCG(fType))
                 if (nGetS3(pId) == "const") {
                     classConstFields.set(`${name}.${fName}`, "1")
                 }
@@ -193,7 +193,7 @@ function registerClass(id: int) {
                 if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
                     const mName = funcName(mId)
                     methodNames = listAppendStr(methodNames, mName)
-                    let mRet = funcRetType(mId)
+                    let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
                     funcRetTypes.set(`${name}_${mName}`, mRet)
                     const mSig = paramSig(funcParams(mId))

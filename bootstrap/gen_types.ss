@@ -347,6 +347,8 @@ function resolveTypeParam(t: string): string {
 function ssTypeToLLVM(t: string): string {
     // Generic type param substitution (active during specialization)
     if (genericTypeSubs.has(t) == 1) { return ssTypeToLLVM(genericTypeSubs.getString(t)) }
+    // Nullable types (T?) → always ptr (D067)
+    if (t.length() > 1 && t.charAt(t.length() - 1) == "?") { return "ptr" }
     if (t == "int" || t == "bool" || t == "auto" || t == "") { return "i32" }
     if (t == "double") { return "double" }
     if (t == "string") { return "ptr" }
@@ -365,8 +367,16 @@ function ssTypeToLLVM(t: string): string {
     return "i32"
 }
 
+// Strip nullable suffix — codegen treats T? same as T (D067: nullability is checker-only)
+function stripNullableCG(t: string): string {
+    if (t.length() > 1 && t.charAt(t.length() - 1) == "?") {
+        return t.substring(0, t.length() - 1)
+    }
+    return t
+}
+
 function setVarType(name: string, varType: string) {
-    varTypes.set(`${currentFunc}:${name}`, varType)
+    varTypes.set(`${currentFunc}:${name}`, stripNullableCG(varType))
 }
 
 function getVarType(name: string): string {
@@ -384,15 +394,16 @@ function getVarType(name: string): string {
 // ── Method overloading: type signature ───────────────────────
 
 function typeSig(ssType: string): string {
-    if (genericTypeSubs.has(ssType) == 1) { return typeSig(genericTypeSubs.getString(ssType)) }
-    if (ssType == "int" || ssType == "bool" || ssType == "auto" || ssType == "") { return "i" }
-    if (ssType == "double") { return "d" }
-    if (ssType == "string") { return "s" }
-    if (ssType == "fn") { return "f" }
-    if (ssType == "void") { return "v" }
-    if (ssType.contains("<") == 1) { return "p" }
+    const st = stripNullableCG(ssType)
+    if (genericTypeSubs.has(st) == 1) { return typeSig(genericTypeSubs.getString(st)) }
+    if (st == "int" || st == "bool" || st == "auto" || st == "") { return "i" }
+    if (st == "double") { return "d" }
+    if (st == "string") { return "s" }
+    if (st == "fn") { return "f" }
+    if (st == "void") { return "v" }
+    if (st.contains("<") == 1) { return "p" }
     // Class name → use full name
-    return ssType
+    return st
 }
 
 function paramSig(paramList: string): string {

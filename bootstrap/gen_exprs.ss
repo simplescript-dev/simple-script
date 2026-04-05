@@ -195,10 +195,18 @@ function genNullCoalesce(leftId: int, rightId: int): string {
     emitIR(`  ${ncResult} = alloca ptr, align 8`)
     const ncLeft = genExpr(leftId)
     emitIR(`  store ptr ${ncLeft}, ptr ${ncResult}, align 8`)
-    const ncLen = nextReg()
-    emitIR(`  ${ncLen} = call i32 @ss_stringLength(ptr ${ncLeft})`)
-    const ncCmp = nextReg()
-    emitIR(`  ${ncCmp} = icmp eq i32 ${ncLen}, 0`)
+    // String: check length == 0; class/other ptr: check == null (D067)
+    const ncLType = inferType(leftId)
+    let ncCmp = ""
+    if (ncLType == "string") {
+        const ncLen = nextReg()
+        emitIR(`  ${ncLen} = call i32 @ss_stringLength(ptr ${ncLeft})`)
+        ncCmp = nextReg()
+        emitIR(`  ${ncCmp} = icmp eq i32 ${ncLen}, 0`)
+    } else {
+        ncCmp = nextReg()
+        emitIR(`  ${ncCmp} = icmp eq ptr ${ncLeft}, null`)
+    }
     const ncThen = nextLabel("nc.then")
     const ncEnd = nextLabel("nc.end")
     emitIR(`  br i1 ${ncCmp}, label %${ncThen}, label %${ncEnd}`)
@@ -349,6 +357,15 @@ function genBinary(id: int): string {
 
     if (blt == "double" || brt == "double") {
         return genDoubleBinary(op, left, right, blt, brt)
+    }
+    // Pointer comparison: class/null Eq/Ne — both sides must be ptr (D067)
+    if ((op == "Eq" || op == "Ne") && ssTypeToLLVM(blt) == "ptr" && ssTypeToLLVM(brt) == "ptr") {
+        const pcOp = op == "Eq" ? "eq" : "ne"
+        const pcR = nextReg()
+        emitIR(`  ${pcR} = icmp ${pcOp} ptr ${left}, ${right}`)
+        const pcR2 = nextReg()
+        emitIR(`  ${pcR2} = zext i1 ${pcR} to i32`)
+        return pcR2
     }
     return genIntBinary(op, left, right)
 }

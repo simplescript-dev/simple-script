@@ -24,8 +24,9 @@ function emitParamAllocas(paramList: string, useVarAlias: int) {
         emitIR(`  %${llName} = alloca ${llType}, align 8`)
         emitIR(`  store ${llType} %${pName}.arg, ptr %${llName}, align 8`)
         setVarType(pName, pType)
-        if (classFields.has(pType) == 1 || ifaceMethodsCG.has(pType) == 1) {
-            setObjClass(pName, pType)
+        const pTypeBase = stripNullableCG(pType)
+        if (classFields.has(pTypeBase) == 1 || ifaceMethodsCG.has(pTypeBase) == 1) {
+            setObjClass(pName, pTypeBase)
         }
     }
 }

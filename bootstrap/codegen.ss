@@ -235,7 +235,7 @@ function registerAllDecls(rootId: int) {
         const sk = nGetKind(sid)
         if (sk == "FUNC_DECL") {
             const fname = nGetS1(sid)
-            let fret = nGetS2(sid)
+            let fret = stripNullableCG(nGetS2(sid))
             if (fret == "") { fret = "void" }
             funcRetTypes.set(fname, fret)
             // Register mangled name + track overload count

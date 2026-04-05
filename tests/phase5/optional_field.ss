@@ -5,7 +5,7 @@ class Config {
     port: int
 }
 
-function getConfig(useNull: int): Config {
+function getConfig(useNull: int): Config? {
     if (useNull == 1) { return null }
     return new Config("localhost", 8080)
 }

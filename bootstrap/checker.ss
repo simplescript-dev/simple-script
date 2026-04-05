@@ -319,12 +319,14 @@ function isVarConst(name: string): int {
     return 0
 }
 
-// Normalize generic type to base class name for method dispatch (Array<int> → Array)
+// Normalize generic type to base class name for method dispatch (Array<int> → Array, Player? → Player)
 function resolveCheckerClass(cls: string): string {
-    if (cls == "" || classConsMin.has(cls) == 1) { return cls }
-    const base = baseTypeName(cls)
-    if (base != cls && classConsMin.has(base) == 1) { return base }
-    return cls
+    if (cls == "" || cls == "null") { return "" }
+    const stripped = stripNullable(cls)
+    if (classConsMin.has(stripped) == 1) { return stripped }
+    const base = baseTypeName(stripped)
+    if (base != stripped && classConsMin.has(base) == 1) { return base }
+    return stripped
 }
 
 // Infer class name from an expression node (for method dispatch / field checking)
@@ -617,6 +619,27 @@ function checkerError(msg: string, line: int, col: int, suggestion: string = "")
     println("")
 }
 
+// ── Null safety helpers (D067) ────────────────────────────────
+
+function isNullableType(t: string): int {
+    if (t == "" || t == "null") { return 0 }
+    if (t.charAt(t.length() - 1) == "?") { return 1 }
+    return 0
+}
+
+// Primitive types cannot be nullable (stack values have no null representation)
+function isPrimitiveNullable(t: string): int {
+    if (t == "int?" || t == "double?" || t == "bool?") { return 1 }
+    return 0
+}
+
+function stripNullable(t: string): string {
+    if (isNullableType(t) == 1) {
+        return t.substring(0, t.length() - 1)
+    }
+    return t
+}
+
 // ── Type inference + compatibility ────────────────────────────
 
 function checkerInferType(nodeId: int): string {
@@ -626,7 +649,7 @@ function checkerInferType(nodeId: int): string {
     if (kind == "DOUBLE_LIT") { return "double" }
     if (kind == "STRING_LIT" || kind == "TEMPLATE_LIT") { return "string" }
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
-    if (kind == "NULL_LIT") { return "" }
+    if (kind == "NULL_LIT") { return "null" }
     if (kind == "ARRAY_LIT") { return "Array" }
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "THIS") { return currentCheckerClass }
@@ -678,6 +701,15 @@ function checkerInferType(nodeId: int): string {
     }
     if (kind == "BINARY") {
         const op = nGetS1(nodeId)
+        // ?? (null coalescing): result is non-nullable (D067)
+        if (op == "NullCoalesce") {
+            const ncLeft = checkerInferType(nGetI1(nodeId))
+            if (isNullableType(ncLeft) == 1) { return stripNullable(ncLeft) }
+            const ncRight = checkerInferType(nGetI2(nodeId))
+            if (ncLeft != "" && ncLeft != "null") { return ncLeft }
+            if (ncRight != "") { return ncRight }
+            return ""
+        }
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or") {
             return "int"
         }
@@ -699,21 +731,36 @@ function checkerInferType(nodeId: int): string {
 }
 
 function baseTypeName(t: string): string {
-    const ltIdx = t.indexOf("<")
-    if (ltIdx > 0) { return t.substring(0, ltIdx) }
-    return t
+    const raw = stripNullable(t)
+    const ltIdx = raw.indexOf("<")
+    if (ltIdx > 0) { return raw.substring(0, ltIdx) }
+    return raw
 }
 
 function extractElemType(t: string): string {
-    const ltIdx = t.indexOf("<")
+    const raw = stripNullable(t)
+    const ltIdx = raw.indexOf("<")
     if (ltIdx < 0) { return "" }
-    return t.substring(ltIdx + 1, t.length() - ltIdx - 2)
+    return raw.substring(ltIdx + 1, raw.length() - ltIdx - 2)
 }
 
 function isTypeCompatible(declared: string, actual: string): int {
     if (declared == "" || actual == "") { return 1 }
     if (declared == "auto" || actual == "auto") { return 1 }
     if (declared == actual) { return 1 }
+    // Null safety (D067): null literal is only assignable to nullable types
+    if (actual == "null") {
+        if (isNullableType(declared) == 1) { return 1 }
+        return 0
+    }
+    // T? is NOT assignable to T (must narrow first)
+    if (isNullableType(actual) == 1 && isNullableType(declared) == 0) {
+        return 0
+    }
+    // T is assignable to T? — check base type compatibility
+    if (isNullableType(declared) == 1) {
+        return isTypeCompatible(stripNullable(declared), stripNullable(actual))
+    }
     if (declared == "double" && actual == "int") { return 1 }
     // bool is int in SS
     if ((declared == "bool" && actual == "int") || (declared == "int" && actual == "bool")) { return 1 }

@@ -78,7 +78,7 @@ function preRegisterSpecializedClass(classNodeId: int, mangledName: string, subs
                 let fType = paramType(pId)
                 if (subs.has(fType) == 1) { fType = subs.getString(fType) }
                 fieldNames = listAppendStr(fieldNames, fName)
-                classFieldTypes.set(`${mangledName}.${fName}`, fType)
+                classFieldTypes.set(`${mangledName}.${fName}`, stripNullableCG(fType))
                 if (nGetS3(pId) == "const") {
                     classConstFields.set(`${mangledName}.${fName}`, "1")
                 }
@@ -100,7 +100,7 @@ function preRegisterSpecializedClass(classNodeId: int, mangledName: string, subs
                 if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
                     const mName = funcName(mId)
                     methodNames = listAppendStr(methodNames, mName)
-                    let mRet = funcRetType(mId)
+                    let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
                     if (subs.has(mRet) == 1) { mRet = subs.getString(mRet) }
                     funcRetTypes.set(`${mangledName}_${mName}`, mRet)

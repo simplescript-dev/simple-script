@@ -557,12 +557,21 @@ function parseParams(): string {
     return params
 }
 
+// Check for nullable suffix '?' after a parsed type (D067)
+function maybeNullable(baseType: string): string {
+    if (curKind() == "QUESTION") {
+        pAdvance()
+        return baseType + "?"
+    }
+    return baseType
+}
+
 function parseTypeAnn(): string {
     const k = curKind()
-    if (k == "INT_TYPE") { pAdvance(); return "int" }
-    if (k == "DOUBLE_TYPE") { pAdvance(); return "double" }
-    if (k == "STRING_TYPE") { pAdvance(); return "string" }
-    if (k == "BOOL_TYPE") { pAdvance(); return "bool" }
+    if (k == "INT_TYPE") { pAdvance(); return maybeNullable("int") }
+    if (k == "DOUBLE_TYPE") { pAdvance(); return maybeNullable("double") }
+    if (k == "STRING_TYPE") { pAdvance(); return maybeNullable("string") }
+    if (k == "BOOL_TYPE") { pAdvance(); return maybeNullable("bool") }
     if (k == "VOID_TYPE") { pAdvance(); return "void" }
     // Tuple type: [type, type, ...]
     if (k == "LBRACKET") {
@@ -573,7 +582,7 @@ function parseTypeAnn(): string {
             types = listAppendStr(types, parseTypeAnn())
         }
         pExpect("RBRACKET")
-        return "Tuple<" + types + ">"
+        return maybeNullable("Tuple<" + types + ">")
     }
     if (k == "IDENT") {
         let name = curValue()
@@ -589,9 +598,9 @@ function parseTypeAnn(): string {
                 typeArgs = listAppendStr(typeArgs, parseTypeAnn())
             }
             pExpect("GT")
-            return name + "<" + typeArgs + ">"
+            return maybeNullable(name + "<" + typeArgs + ">")
         }
-        return name
+        return maybeNullable(name)
     }
     println(`parse error at line ${curLineNum()}: expected type, found ${k}`)
     exit(1)

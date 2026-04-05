@@ -63,6 +63,11 @@ function stmtAlwaysReturns(id: int): int {
 function checkStmt(id: int) {
     const kind = nGetKind(id)
     if (kind == "FUNC_DECL") {
+        // Reject primitive nullable return types (D067)
+        const fnRetType = nGetS2(id)
+        if (isPrimitiveNullable(fnRetType) == 1) {
+            checkerError(`primitive type '${stripNullable(fnRetType)}' cannot be nullable`, nGetLine(id), nGetCol(id))
+        }
         pushScope()
         const paramList = nGetList(id)
         checkParamList(paramList)
@@ -124,6 +129,10 @@ function checkStmt(id: int) {
         const initId = nGetI1(id)
         if (initId > 0) { checkExpr(initId) }
         if (typeAnn == "") { typeAnn = "auto" }
+        // Reject primitive nullable types (D067: int/double/bool are stack values)
+        if (isPrimitiveNullable(typeAnn) == 1) {
+            checkerError(`primitive type '${stripNullable(typeAnn)}' cannot be nullable`, nGetLine(id), nGetCol(id))
+        }
         // Infer class type from new expression initializer
         if (typeAnn == "auto" && initId > 0 && nGetKind(initId) == "NEW_EXPR") {
             typeAnn = nGetS1(initId)
@@ -377,7 +386,11 @@ function checkParamList(listStr: string) {
         if (paramId > 0) {
             const pk = nGetKind(paramId)
             if (pk == "PARAM") {
-                defineVar(nGetS1(paramId), nGetS2(paramId), 0)
+                const pType = nGetS2(paramId)
+                if (isPrimitiveNullable(pType) == 1) {
+                    checkerError(`primitive type '${stripNullable(pType)}' cannot be nullable`, nGetLine(paramId), nGetCol(paramId))
+                }
+                defineVar(nGetS1(paramId), pType, 0)
             }
         }
     }

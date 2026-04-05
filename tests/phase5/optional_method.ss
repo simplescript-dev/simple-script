@@ -18,7 +18,7 @@ function makeBox(): Box {
     return new Box(42)
 }
 
-function makeNull(): Box {
+function makeNull(): Box? {
     callCount = callCount + 1
     return null
 }
@@ -30,7 +30,7 @@ function main() {
     if (v1 != 10) { throw("basic optional method failed") }
 
     // Optional method call on null — returns 0 for int
-    let nullBox: Box = null
+    let nullBox: Box? = null
     const v2 = nullBox?.getValue()
     if (v2 != 0) { throw("null optional method should return 0") }
 
