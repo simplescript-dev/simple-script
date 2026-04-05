@@ -28,6 +28,7 @@ let deferredStructDefs = ""  // comma-separated mangled names needing struct emi
 let specClassNodeId = ""     // Map: mangledName -> classNodeId (for deferred codegen)
 let specClassTypeArgs = ""   // Map: mangledName -> "int,string" (for deferred codegen)
 let specClassGenerated = ""  // Map: mangledName -> "1" (code already generated)
+let abstractMethodsCG = ""   // "ClassName.methodName" -> "1" (D071: abstract methods in codegen)
 
 function initClassState() {
     if (classStateReady == 1) { return }
@@ -57,6 +58,7 @@ function initClassState() {
     classMethods.set("Set", "add,has,remove,size,values")
     // Register Math as built-in class with static methods (Java/JS style)
     classFields.set("Math", "")
+    abstractMethodsCG = Map()
     classStateReady = 1
 }
 
@@ -193,6 +195,10 @@ function registerClass(id: int) {
                 if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
                     const mName = funcName(mId)
                     methodNames = listAppendStr(methodNames, mName)
+                    // D071: track abstract methods
+                    if (nGetI4(mId) == 1) {
+                        abstractMethodsCG.set(`${name}.${mName}`, "1")
+                    }
                     let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
                     funcRetTypes.set(`${name}_${mName}`, mRet)
@@ -342,6 +348,8 @@ function genClassDecl(id: int) {
 }
 
 function genClassMethod(className: string, id: int) {
+    // D071: skip abstract methods (no body to generate)
+    if (nGetI4(id) == 1) { return }
     const mName = funcName(id)
     let retType = resolveTypeParam(funcRetType(id))
     if (retType == "") { retType = "void" }

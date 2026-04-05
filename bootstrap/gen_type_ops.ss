@@ -92,8 +92,12 @@ function buildVtableForClass(cls: string) {
             if (found == 0) {
                 slots = listAppendStr(slots, m)
             }
-            // Set implementation for this class
-            classVtableImpl.set(`${cls}.${m}`, `${cls}_${m}`)
+            // Set implementation for this class (null for abstract methods D071)
+            if (abstractMethodsCG.has(`${cls}.${m}`) == 1) {
+                classVtableImpl.set(`${cls}.${m}`, "null")
+            } else {
+                classVtableImpl.set(`${cls}.${m}`, `${cls}_${m}`)
+            }
         }
     }
     classVtableSlots.set(cls, slots)
@@ -112,7 +116,11 @@ function emitClassVtableConst(name: string, hasVtable: int) {
         if (sp == "") { continue }
         const impl = classVtableImpl.getString(`${name}.${sp}`)
         if (vtCount > 0) { vtEntries = vtEntries + ", " }
-        vtEntries = `${vtEntries}ptr @${impl}`
+        if (impl == "null") {
+            vtEntries = `${vtEntries}ptr null`
+        } else {
+            vtEntries = `${vtEntries}ptr @${impl}`
+        }
         vtCount = vtCount + 1
     }
     emitIR(`@${name}_vtable = constant [${vtCount} x ptr] [${vtEntries}]`)

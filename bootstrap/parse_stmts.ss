@@ -12,8 +12,14 @@ function parseStmt(): int {
         attachAnnotations(fId, annotations)
         return fId
     }
-    if (k == "CLASS") {
+    if (k == "CLASS" || k == "ABSTRACT") {
+        let isAbstractClass = 0
+        if (k == "ABSTRACT") {
+            isAbstractClass = 1
+            pAdvance()
+        }
         const cId = parseClassDecl()
+        if (isAbstractClass == 1) { nSetI1(cId, 1) }
         attachAnnotations(cId, annotations)
         return cId
     }

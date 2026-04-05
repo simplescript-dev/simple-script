@@ -113,8 +113,8 @@ spec/                 # 语言规范文档
 访问器：`nGetKind(id)`, `nGetS1(id)`, `nSetI1(id, val)`, `nGetLine(id)`, `nGetCol(id)`, `listAppend(list, id)` 等。
 
 **关键节点 slot 约定**：
-- `FUNC_DECL`: S1=名称, S2=返回类型, S3=类型参数, List=参数, I1=函数体, I2=isStatic (0=no, 1=yes) (D070), I3=access level (0=public, 1=private, 2=protected) (D068), I4=annotations
-- `CLASS_DECL`: S1=类名, S2=父类名, List=字段, I2=方法块
+- `FUNC_DECL`: S1=名称, S2=返回类型, S3=类型参数, List=参数, I1=函数体, I2=isStatic (0=no, 1=yes) (D070), I3=access level (0=public, 1=private, 2=protected) (D068), I4=isAbstract (0=no, 1=yes) (D071)
+- `CLASS_DECL`: S1=类名, S2=父类名, List=字段, I1=isAbstract (0=no, 1=yes) (D071), I2=方法块
 - `VAR_DECL`: S1=变量名, S2=CONST/LET, S3=类型标注, I1=初始值
 - `PARAM`: S1=参数名, S2=类型, S3="const"（字段级 const 标记）, I1=默认值, I2=isOptional, I3=access level (0=public, 1=private, 2=protected) (D068)
 - `BINARY`: S1=操作符, I1=左, I2=右
@@ -231,6 +231,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **`super` keyword**: `super.method(args)` calls parent class method directly, bypassing vtable (D069)
 - **Access modifiers**: `private` (class-only) and `protected` (class + subclasses) keywords for class fields/methods — compile-time access control (D068)
 - **`static` methods**: `static function method()` in class body — no `this`, called via `ClassName.method()` (D070)
+- **`abstract` classes/methods**: `abstract class Shape { abstract function area(): double }` — cannot instantiate, concrete subclasses must implement (D071)
 - **Field-level const**: `class Player(const name: string, health: int)` — const 字段构造后不可赋值
 - **Field assignment**: `obj.field = value`, `obj.field += value`, 支持嵌套 `a.b.c = v`
 - **Named params**: `new Player(name: "Alice", health: 100)`

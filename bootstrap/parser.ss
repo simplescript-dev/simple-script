@@ -21,6 +21,7 @@ let nList = ""
 let nLine = ""
 let nCol = ""
 let mapsReady = 0
+let parsingAbstractMethod = 0  // D071: skip body parsing for abstract methods
 
 function initParser() {
     if (mapsReady == 1) { return }
@@ -311,8 +312,6 @@ function parseFuncDecl(): int {
         pAdvance()
         retType = parseTypeAnn()
     }
-    skipNL()
-    const bodyId = parseBlock()
     const id = newNode("FUNC_DECL")
     nSetLine(id, startLine)
     nSetCol(id, startCol)
@@ -320,7 +319,14 @@ function parseFuncDecl(): int {
     nSetS2(id, retType)
     nSetS3(id, typeParams)
     nSetList(id, params)
-    nSetI1(id, bodyId)
+    if (parsingAbstractMethod == 1) {
+        // D071: abstract method — no body
+        parsingAbstractMethod = 0
+    } else {
+        skipNL()
+        const bodyId = parseBlock()
+        nSetI1(id, bodyId)
+    }
     return id
 }
 
@@ -370,15 +376,21 @@ function parseClassDecl(): int {
                     pAdvance()
                 }
                 let isStatic = 0
+                let isAbstract = 0
                 if (curKind() == "STATIC") {
                     isStatic = 1
                     pAdvance()
+                } else if (curKind() == "ABSTRACT") {
+                    isAbstract = 1
+                    pAdvance()
                 }
+                if (isAbstract == 1) { parsingAbstractMethod = 1 }
                 const mAnnotations = parseAnnotationList()
                 const mId = parseFuncDecl()
                 attachAnnotations(mId, mAnnotations)
                 if (methodAccess > 0) { nSetI3(mId, methodAccess) }
                 if (isStatic == 1) { nSetI2(mId, 1) }
+                if (isAbstract == 1) { nSetI4(mId, 1) }
                 methods = listAppend(methods, mId)
             }
             skipNL()

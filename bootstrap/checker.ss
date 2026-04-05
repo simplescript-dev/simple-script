@@ -44,6 +44,9 @@ let protectedFields = ""       // "ClassName.fieldName" -> "1" if protected (D06
 let protectedMethods = ""      // "ClassName.methodName" -> "1" if protected (D068 Phase 2)
 let staticMethods = ""         // "ClassName.methodName" -> "1" if static (D070)
 let currentStaticMethod = 0    // 1 when inside a static method body (D070)
+let abstractClasses = ""       // "ClassName" -> "1" if abstract class (D071)
+let abstractMethods = ""       // "ClassName.methodName" -> "1" if abstract method (D071)
+let classMethodNames = ""      // "ClassName" -> ",method1,method2," for abstract impl check (D071)
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -81,6 +84,9 @@ function initChecker() {
     protectedMethods = Map()
     staticMethods = Map()
     currentStaticMethod = 0
+    abstractClasses = Map()
+    abstractMethods = Map()
+    classMethodNames = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -416,6 +422,72 @@ function checkInterfaceImpl(classNodeId: int, className: string, implList: strin
                     }
                 }
             }
+        }
+    }
+}
+
+// D071: Check that a non-abstract class implements all inherited abstract methods
+function checkAbstractImpl(className: string, parentName: string, ownMethods: string, line: int, col: int) {
+    // Collect all concrete method names from self + parent chain (non-abstract)
+    let allImpl = ownMethods
+    let p = parentName
+    while (p != "") {
+        if (classMethodNames.has(p) == 1) {
+            const pMethods = classMethodNames.getString(p)
+            if (pMethods != ",") {
+                // Add each non-abstract parent method
+                let rem = pMethods.substring(1, pMethods.length() - 1)
+                while (rem != "") {
+                    let m = rem
+                    const ci = rem.indexOf(",")
+                    if (ci >= 0) {
+                        m = rem.substring(0, ci)
+                        rem = rem.substring(ci + 1, rem.length() - ci - 1)
+                    } else {
+                        rem = ""
+                    }
+                    if (m != "" && abstractMethods.has(`${p}.${m}`) == 0) {
+                        if (allImpl.contains(`,${m},`) == 0) {
+                            allImpl = `${allImpl}${m},`
+                        }
+                    }
+                }
+            }
+        }
+        if (checkerClassParents.has(p) == 1) {
+            p = checkerClassParents.getString(p)
+        } else {
+            p = ""
+        }
+    }
+    // Check all abstract methods from parent chain are implemented
+    p = parentName
+    while (p != "") {
+        if (classMethodNames.has(p) == 1) {
+            const pMethods = classMethodNames.getString(p)
+            if (pMethods != ",") {
+                let rem = pMethods.substring(1, pMethods.length() - 1)
+                while (rem != "") {
+                    let m = rem
+                    const ci = rem.indexOf(",")
+                    if (ci >= 0) {
+                        m = rem.substring(0, ci)
+                        rem = rem.substring(ci + 1, rem.length() - ci - 1)
+                    } else {
+                        rem = ""
+                    }
+                    if (m != "" && abstractMethods.has(`${p}.${m}`) == 1) {
+                        if (allImpl.contains(`,${m},`) == 0) {
+                            checkerError(`class '${className}' must implement abstract method '${m}' from '${p}'`, line, col)
+                        }
+                    }
+                }
+            }
+        }
+        if (checkerClassParents.has(p) == 1) {
+            p = checkerClassParents.getString(p)
+        } else {
+            p = ""
         }
     }
 }
@@ -956,6 +1028,10 @@ function check(rootId: int): int {
             if (sk == "CLASS_DECL") {
                 const className = nGetS1(s)
                 defineVar(className, "class", 0)
+                // D071: Register abstract class
+                if (nGetI1(s) == 1) {
+                    abstractClasses.set(className, "1")
+                }
                 // Register parent class (strip generic type args: "Box<int>" → "Box")
                 let parentName = nGetS2(s)
                 if (parentName != "") {
@@ -1000,6 +1076,7 @@ function check(rootId: int): int {
                     classConsMax.set(className, consRange.substring(consComma + 1, consRange.length() - consComma - 1))
                 }
                 // Register method params
+                let clsMethodNameList = ","
                 const clsMethodsBlock = nGetI2(s)
                 if (clsMethodsBlock > 0) {
                     const clsML = nGetList(clsMethodsBlock)
@@ -1009,6 +1086,7 @@ function check(rootId: int): int {
                             const cmId = parseInt(cm)
                             if (cmId > 0 && nGetKind(cmId) == "FUNC_DECL") {
                                 const mName = nGetS1(cmId)
+                                clsMethodNameList = `${clsMethodNameList}${mName},`
                                 if (nGetI3(cmId) == 1) {
                                     privateMethods.set(`${className}.${mName}`, "1")
                                 }
@@ -1017,6 +1095,22 @@ function check(rootId: int): int {
                                 }
                                 if (nGetI2(cmId) == 1) {
                                     staticMethods.set(`${className}.${mName}`, "1")
+                                }
+                                // D071: Register abstract method + validate rules
+                                if (nGetI4(cmId) == 1) {
+                                    abstractMethods.set(`${className}.${mName}`, "1")
+                                    // R4: abstract method must be in abstract class
+                                    if (abstractClasses.has(className) == 0) {
+                                        checkerError(`abstract method '${mName}' can only be declared in an abstract class`, nGetLine(cmId), nGetCol(cmId))
+                                    }
+                                    // R5: private abstract is invalid
+                                    if (nGetI3(cmId) == 1) {
+                                        checkerError(`'private' modifier cannot be used with 'abstract' modifier`, nGetLine(cmId), nGetCol(cmId))
+                                    }
+                                    // R6: static abstract is invalid
+                                    if (nGetI2(cmId) == 1) {
+                                        checkerError(`'static' modifier cannot be used with 'abstract' modifier`, nGetLine(cmId), nGetCol(cmId))
+                                    }
                                 }
                                 const mRange = countParamRange(nGetList(cmId))
                                 const mComma = mRange.indexOf(",")
@@ -1046,6 +1140,11 @@ function check(rootId: int): int {
                             }
                         }
                     }
+                }
+                classMethodNames.set(className, clsMethodNameList)
+                // D071 R2: Non-abstract class must implement all inherited abstract methods
+                if (abstractClasses.has(className) == 0 && parentName != "") {
+                    checkAbstractImpl(className, parentName, clsMethodNameList, nGetLine(s), nGetCol(s))
                 }
             }
             if (sk == "ENUM_DECL") {

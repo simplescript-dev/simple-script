@@ -97,6 +97,13 @@ function checkStmt(id: int) {
     const kind = nGetKind(id)
     if (kind == "FUNC_DECL") {
         rejectPrimitiveNullable(nGetS2(id), id)
+        // D071: abstract methods have no body — just check params
+        if (nGetI4(id) == 1) {
+            pushScope()
+            checkParamList(nGetList(id))
+            popScope()
+            return
+        }
         pushScope()
         const paramList = nGetList(id)
         checkParamList(paramList)
@@ -644,6 +651,10 @@ function checkExpr(id: int) {
     }
     if (kind == "NEW_EXPR") {
         const className = nGetS1(id)
+        // D071 R1: Cannot instantiate abstract class
+        if (abstractClasses.has(className) == 1) {
+            checkerError(`cannot create an instance of abstract class '${className}'`, nGetLine(id), nGetCol(id))
+        }
         const argList = nGetList(id)
         // Check if args contain NAMED_ARG nodes
         let hasNamed = 0
