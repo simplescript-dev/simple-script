@@ -187,8 +187,7 @@ function registerEnum(id: int) {
     if (enumReady == 0) { enumValues = Map(); enumTypes = Map(); enumReady = 1 }
     const eName = nGetS1(id)
     const isStringEnum = nGetI1(id)
-    if (isStringEnum == 1) { enumTypes.set(eName, "string") }
-    else { enumTypes.set(eName, "int") }
+    if (isStringEnum == 1) { enumTypes.set(eName, "1") }
     const vl = nGetList(id)
     if (vl == "") { return }
     const parts = vl.split(",")
@@ -560,14 +559,18 @@ function genSwitch(id: int) {
             // Compare subject with pattern
             let cmpResult = ""
             let resolvedVal = patVal
+            let useStringCmp = 0
+            if (patType == "STRING" || subjectType == "string") { useStringCmp = 1 }
             if (patType == "ENUM") {
                 if (enumValues.has(patVal) == 0) {
                     println(`error: unknown enum value '${patVal}' in switch case`)
                     exit(1)
                 }
                 resolvedVal = enumValues.getString(patVal)
+                const dotIdx = patVal.indexOf(".")
+                if (dotIdx > 0 && enumTypes.has(patVal.substring(0, dotIdx)) == 1) { useStringCmp = 1 }
             }
-            if (patType == "STRING" || subjectType == "string") {
+            if (useStringCmp == 1) {
                 const patStr = addStringConst(resolvedVal)
                 const cmp = nextReg(); emitIR(`  ${cmp} = call i32 @ss_string_eq(ptr ${subjectVal}, ptr ${patStr})`)
                 const br = nextReg(); emitIR(`  ${br} = icmp ne i32 ${cmp}, 0`)

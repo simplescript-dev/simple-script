@@ -218,7 +218,7 @@ function inferType(id: int): string {
             const eName = nGetS1(mObj)
             const eKey = `${eName}.${nGetS1(id)}`
             if (enumValues.has(eKey) == 1) {
-                if (enumTypes.getString(eName) == "string") { return "string" }
+                if (enumTypes.has(eName) == 1) { return "string" }
                 return "int"
             }
         }

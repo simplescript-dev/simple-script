@@ -577,7 +577,7 @@ function genMemberAccess(id: int): string {
         const eName = nGetS1(objId)
         const enumKey = `${eName}.${member}`
         if (enumValues.has(enumKey) == 1) {
-            if (enumTypes.getString(eName) == "string") {
+            if (enumTypes.has(eName) == 1) {
                 return addStringConst(enumValues.getString(enumKey))
             }
             return enumValues.getString(enumKey)
