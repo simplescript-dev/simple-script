@@ -3,6 +3,38 @@
 
 import { genStringMethod, genHigherOrderMethod, genArrayMethod, genMapMethod, genSetMethod } from "./gen_builtins"
 
+// ── Enum methods ────────────────────────────────────────────────
+
+// useNames=1 → variant names (always string); useNames=0 → variant values (int or string)
+function genEnumArray(eName: string, useNames: int): string {
+    const variants = enumVariantNames.getString(eName)
+    const parts = variants.split("|")
+    const count = parts.length()
+    const isString = useNames == 1 || enumTypes.has(eName) == 1
+    let arrCtor = "@ss_newArray"
+    if (isString) { arrCtor = "@ss_newArrayPtr" }
+    const arrReg = nextReg()
+    emitIR(`  ${arrReg} = call ptr ${arrCtor}(i32 ${count})`)
+    let idx = 0
+    for (p in parts) {
+        if (isString) {
+            let str = p
+            if (useNames == 0) { str = enumValues.getString(`${eName}.${p}`) }
+            const sR = addStringConst(str)
+            const s64 = nextReg()
+            emitIR(`  ${s64} = ptrtoint ptr ${sR} to i64`)
+            emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${s64})`)
+        } else {
+            const val = enumValues.getString(`${eName}.${p}`)
+            const i64R = nextReg()
+            emitIR(`  ${i64R} = sext i32 ${val} to i64`)
+            emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${i64R})`)
+        }
+        idx = idx + 1
+    }
+    return arrReg
+}
+
 // ── Optional method call ────────────────────────────────────────
 
 // obj?.method() — if obj is "", return default; otherwise call normally
@@ -291,6 +323,12 @@ function genMethodCall(id: int, preObj: string = ""): string {
     const method = nGetS1(id)
     const objId = nGetI1(id)
     const argList = nGetList(id)
+
+    // Enum methods: EnumName.values(), EnumName.names()
+    if (preObj == "" && enumReady == 1 && nGetKind(objId) == "IDENT" && enumVariantNames.has(nGetS1(objId)) == 1) {
+        if (method == "values") { return genEnumArray(nGetS1(objId), 0) }
+        if (method == "names") { return genEnumArray(nGetS1(objId), 1) }
+    }
 
     // Static method: ClassName.method()
     if (preObj == "" && nGetKind(objId) == "IDENT" && getVarType(nGetS1(objId)) == "" && classFields.has(nGetS1(objId)) == 1) {

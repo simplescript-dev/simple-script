@@ -464,11 +464,10 @@ function parseEnumDecl(): int {
             if (curKind() == "STRING") {
                 nSetS2(vId, curValue())
                 isStringEnum = 1
-                pAdvance()
             } else {
                 nextVal = parseInt(curValue())
-                pAdvance()
             }
+            pAdvance()
         }
         if (isStringEnum == 0) {
             nSetI1(vId, nextVal)

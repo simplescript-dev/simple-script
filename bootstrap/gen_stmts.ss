@@ -184,17 +184,19 @@ function genCatchClauses(catchList: string, convergeLabel: string, finallyBody: 
 }
 
 function registerEnum(id: int) {
-    if (enumReady == 0) { enumValues = Map(); enumTypes = Map(); enumReady = 1 }
+    if (enumReady == 0) { enumValues = Map(); enumTypes = Map(); enumVariantNames = Map(); enumReady = 1 }
     const eName = nGetS1(id)
     const isStringEnum = nGetI1(id)
     if (isStringEnum == 1) { enumTypes.set(eName, "1") }
     const vl = nGetList(id)
     if (vl == "") { return }
     const parts = vl.split(",")
+    let nameList = ""
     for (p in parts) {
         const vid = parseInt(p)
         if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
             const vName = nGetS1(vid)
+            if (nameList == "") { nameList = vName } else { nameList = `${nameList}|${vName}` }
             if (isStringEnum == 1) {
                 enumValues.set(`${eName}.${vName}`, nGetS2(vid))
             } else {
@@ -203,6 +205,7 @@ function registerEnum(id: int) {
             }
         }
     }
+    enumVariantNames.set(eName, nameList)
 }
 
 // ── Statement handlers ──────────────────────────────────────

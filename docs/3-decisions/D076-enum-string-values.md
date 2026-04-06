@@ -83,4 +83,4 @@ enum Bad { A = "hello", B = 42 }  // error: cannot mix string and integer values
 ## Interfaces
 
 - `enumValues` Map: stores `"EnumName.VariantName" → value` (string for both int and string enums)
-- `enumTypes` Map: stores `"EnumName" → "string"` or `"EnumName" → "int"`
+- `enumTypes` Map: Set semantics — only string enums are stored (`"EnumName" → "1"`). `has(name)` = string enum, absent = int enum.
