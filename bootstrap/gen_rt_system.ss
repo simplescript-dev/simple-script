@@ -285,12 +285,16 @@ function emitRuntimeIsInstance() {
     // Walks TypeInfo parent chain comparing class name with target
     emitIR("define i32 @ss_isinstance(ptr %obj, ptr %target_name) {")
     irLabel("entry")
+    // Null object check — return 0 (false) for null
+    emitIR("  %obj_null = icmp eq ptr %obj, null")
+    emitIR("  br i1 %obj_null, label %no_match, label %load_ti")
+    irLabel("load_ti")
     // Load TypeInfo pointer (offset 1 in object)
     emitIR("  %ti_gep = getelementptr ptr, ptr %obj, i32 1")
     emitIR("  %ti = load ptr, ptr %ti_gep, align 8")
     emitIR("  br label %loop")
     irLabel("loop")
-    emitIR("  %cur_ti = phi ptr [ %ti, %entry ], [ %parent_ti, %next ]")
+    emitIR("  %cur_ti = phi ptr [ %ti, %load_ti ], [ %parent_ti, %next ]")
     emitIR("  %is_null = icmp eq ptr %cur_ti, null")
     emitIR("  br i1 %is_null, label %no_match, label %check")
     irLabel("check")

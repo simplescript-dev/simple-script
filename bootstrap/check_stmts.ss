@@ -549,6 +549,20 @@ function checkExpr(id: int) {
         return
     }
     if (kind == "BINARY") {
+        const binOp = nGetS1(id)
+        if (binOp == "Instanceof") {
+            checkExpr(nGetI1(id))
+            const rightId = nGetI2(id)
+            if (nGetKind(rightId) != "IDENT") {
+                checkerError("instanceof requires a class name on the right side", nGetLine(id), nGetCol(id), "")
+            } else {
+                const className = nGetS1(rightId)
+                if (checkerClassFields.has(className) == 0) {
+                    checkerError(`unknown class '${className}' in instanceof`, nGetLine(rightId), nGetCol(rightId), findSuggestion(className))
+                }
+            }
+            return
+        }
         checkExpr(nGetI1(id))
         checkExpr(nGetI2(id))
         return
