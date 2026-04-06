@@ -554,6 +554,14 @@ function checkExpr(id: int) {
             checkExpr(nGetI1(id))
             const rightId = nGetI2(id)
             const opName = binOp == "Instanceof" ? "instanceof" : "as"
+            // Validate left side is a class or interface type
+            const leftType = checkerInferType(nGetI1(id))
+            if (leftType != "" && leftType != "null") {
+                const stripped = stripNullable(leftType)
+                if (stripped != "" && checkerClassFields.has(stripped) == 0 && ifaceMethods.has(stripped) == 0) {
+                    checkerError(`${opName} requires a class instance on the left side, got '${leftType}'`, nGetLine(id), nGetCol(id), "")
+                }
+            }
             if (nGetKind(rightId) != "IDENT") {
                 checkerError(`${opName} requires a class name on the right side`, nGetLine(id), nGetCol(id), "")
             } else {

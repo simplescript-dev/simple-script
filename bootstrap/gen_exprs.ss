@@ -334,22 +334,22 @@ function genBinary(id: int): string {
         return r
     }
     if (op == "As") {
-        const castObj = genExpr(leftId)
-        const castClass = nGetS1(rightId)
-        const castNameStr = addStringConst(castClass)
-        const castChk = nextReg()
-        emitIR(`  ${castChk} = call i32 @ss_isinstance(ptr ${castObj}, ptr ${castNameStr})`)
-        const castOk = nextReg()
-        emitIR(`  ${castOk} = icmp eq i32 ${castChk}, 1`)
-        const castOkL = nextLabel("cast.ok")
-        const castFailL = nextLabel("cast.fail")
-        emitIR(`  br i1 ${castOk}, label %${castOkL}, label %${castFailL}`)
-        emitIR(`${castFailL}:`)
-        const castErr = addStringConst(`type cast failed: expected ${castClass}`)
-        emitIR(`  call void @ss_throw(ptr ${castErr})`)
+        const objReg = genExpr(leftId)
+        const className = nGetS1(rightId)
+        const nameStr = addStringConst(className)
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @ss_isinstance(ptr ${objReg}, ptr ${nameStr})`)
+        const ok = nextReg()
+        emitIR(`  ${ok} = icmp eq i32 ${r}, 1`)
+        const okL = nextLabel("cast.ok")
+        const failL = nextLabel("cast.fail")
+        emitIR(`  br i1 ${ok}, label %${okL}, label %${failL}`)
+        emitIR(`${failL}:`)
+        const errMsg = addStringConst(`type cast failed: expected ${className}`)
+        emitIR(`  call void @ss_throw(ptr ${errMsg})`)
         emitIR("  unreachable")
-        emitIR(`${castOkL}:`)
-        return castObj
+        emitIR(`${okL}:`)
+        return objReg
     }
 
     // Numeric: evaluate operands

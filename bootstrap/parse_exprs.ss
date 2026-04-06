@@ -107,7 +107,7 @@ function parseComparison(): int {
         pAdvance()
         const right = parseAdditive()
         const id = newNode("BINARY")
-        if (op == "LT") { nSetS1(id, "Lt") } else if (op == "GT") { nSetS1(id, "Gt") } else if (op == "LE") { nSetS1(id, "Le") } else if (op == "GE") { nSetS1(id, "Ge") } else if (op == "INSTANCEOF") { nSetS1(id, "Instanceof") } else { nSetS1(id, "As") }
+        if (op == "LT") { nSetS1(id, "Lt") } else if (op == "GT") { nSetS1(id, "Gt") } else if (op == "LE") { nSetS1(id, "Le") } else if (op == "GE") { nSetS1(id, "Ge") } else if (op == "INSTANCEOF") { nSetS1(id, "Instanceof") } else if (op == "AS") { nSetS1(id, "As") }
         nSetI1(id, left)
         nSetI2(id, right)
         left = id
