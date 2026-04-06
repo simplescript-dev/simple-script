@@ -333,6 +333,24 @@ function genBinary(id: int): string {
         emitIR(`  ${r} = call i32 @ss_isinstance(ptr ${objReg}, ptr ${nameStr})`)
         return r
     }
+    if (op == "As") {
+        const castObj = genExpr(leftId)
+        const castClass = nGetS1(rightId)
+        const castNameStr = addStringConst(castClass)
+        const castChk = nextReg()
+        emitIR(`  ${castChk} = call i32 @ss_isinstance(ptr ${castObj}, ptr ${castNameStr})`)
+        const castOk = nextReg()
+        emitIR(`  ${castOk} = icmp eq i32 ${castChk}, 1`)
+        const castOkL = nextLabel("cast.ok")
+        const castFailL = nextLabel("cast.fail")
+        emitIR(`  br i1 ${castOk}, label %${castOkL}, label %${castFailL}`)
+        emitIR(`${castFailL}:`)
+        const castErr = addStringConst(`type cast failed: expected ${castClass}`)
+        emitIR(`  call void @ss_throw(ptr ${castErr})`)
+        emitIR("  unreachable")
+        emitIR(`${castOkL}:`)
+        return castObj
+    }
 
     // Numeric: evaluate operands
     let left = genExpr(leftId)

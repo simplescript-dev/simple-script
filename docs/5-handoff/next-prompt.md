@@ -1,7 +1,7 @@
-# Round 104
+# Round 105
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~14849 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~14896 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
@@ -14,10 +14,10 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - docs/5-handoff/phase1-plan.md
 
 ## Last Round (max 3 sentences)
-D074 `instanceof` operator — binary operator at comparison precedence level. Lexer keyword + parser in `parseComparison` + codegen calls existing `ss_isinstance` from D073. ~10 lines across 5 files, 2 new phase5 tests, 102 total phase5 tests all passing + bootstrap fixed-point verified.
+D075 `as` type casting operator — TypeScript-style `expr as ClassName` with runtime check via `ss_isinstance`. Throws on failure (catchable via try/catch). ~20 lines across 6 files, 1 new phase5 test, 103 total phase5 tests all passing + bootstrap fixed-point verified.
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), generic type param compat done (D063), NEW_EXPR type checking done (D064), INDEX_ACCESS type inference + INDEX_ASSIGN type checking + builtin function return types done (D065), inferType migration analysis done — I003 closed (D066), argparse stdlib module done, null safety complete (D067 all 3 phases), **access modifiers complete — private + protected keywords (D068 Phase 1+2)**, **super keyword complete (D069)**, **static methods complete (D070)**, **abstract classes/methods complete (D071)**, **Java-style error handling complete (D073 — finally + Error class + throw objects + typed catch)**, **instanceof operator complete (D074)**
+Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), generic type param compat done (D063), NEW_EXPR type checking done (D064), INDEX_ACCESS type inference + INDEX_ASSIGN type checking + builtin function return types done (D065), inferType migration analysis done — I003 closed (D066), argparse stdlib module done, null safety complete (D067 all 3 phases), **access modifiers complete — private + protected keywords (D068 Phase 1+2)**, **super keyword complete (D069)**, **static methods complete (D070)**, **abstract classes/methods complete (D071)**, **Java-style error handling complete (D073 — finally + Error class + throw objects + typed catch)**, **instanceof operator complete (D074)**, **as type casting complete (D075)**
 Scope:
 **P17: Fix before add. Open issues take priority over new features. Check `docs/4-issues/1-open/` each round.**
 
@@ -28,12 +28,13 @@ Scope:
 4. **I006 — Runtime raw IR** [LOW]: Mostly converted, 401 raw emitIR remaining.
 5. **I008 — Parser no precedence table** [LOW]: Works, recursive descent is standard.
 
-### Next Priority (语言改进优先，stdlib 延后)
+### Next Priority (language improvements first, stdlib deferred)
 6. **Module-level export**: Access modifiers Phase 3 — `export` keyword for module visibility (needs module system maturity)
-7. **Standard library expansion**: 延后，语言核心完善后再做
+7. **Standard library expansion**: deferred, language core first
 8. **Phase 4 remaining**: Tagged templates (low priority).
 
 ### Project Status
+- **D075 complete**: `as` type casting. `expr as ClassName` at comparison precedence. Runtime-checked via `ss_isinstance`, throws on failure. Codegen: genExpr(left) → ss_isinstance check → branch to throw or continue.
 - **D074 complete**: `instanceof` operator. `obj instanceof ClassName` at comparison precedence. Calls existing `ss_isinstance` runtime (TypeInfo parent chain walk). Works with inheritance.
 - **D073 complete**: Java-style error handling. `finally` block. Built-in `Error` class. `throw(new Error("msg"))`. Typed catch `catch (e: IOError)` with multi-catch + `ss_isinstance` runtime.
 - **D072 rejected**: Result<T,E> + ? operator — Rust syntax, doesn't fit TS/Java design principle.
@@ -43,18 +44,19 @@ Scope:
 - **D068 complete (Phase 1+2)**: `private` and `protected` keywords for class fields and methods.
 - **File sizes**: checker.ss ~1187 (largest), check_stmts.ss ~828, parser.ss ~653, gen_class.ss ~626.
 - **Stdlib**: 21 modules, ~5217 LOC in lib/.
-- **Bootstrap**: 35 files, ~14849 LOC, 102 phase5 tests (all passing).
+- **Bootstrap**: 35 files, ~14896 LOC, 103 phase5 tests (all passing).
 8. **Known stdlib limitation**: SS strings are null-terminated (strlen-based length). `hexToBytes` cannot produce strings containing 0x00 bytes. HMAC functions handle this internally via on-the-fly hex decoding in flex hash functions.
 9. **Known stdlib convention**: `arr.slice(start, end)` uses start+end index semantics (NOT offset+length like `substring`). `arr.slice(0, mid)` gets first mid elements; `arr.slice(mid, n)` gets elements from mid to end.
 
 ## Watch Out For
 - **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields (D061 complete, old syntax removed)**, **generic type param compat (D063)**, **NEW_EXPR type checking (D064)**, **INDEX_ACCESS type inference + INDEX_ASSIGN checking + builtin return types (D065)**, **null safety complete: T? types, checker enforcement, smart narrowing, ?. returns T?, ?? returns T (D067)**, **private + protected keywords for class fields/methods (D068 Phase 1+2)**, **super keyword for parent method calls (D069)**, **static methods for classes (D070)**, **abstract classes/methods (D071)**, **Java-style error handling: finally + Error class + throw objects + typed catch (D073)**, **instanceof operator (D074)**. Compiler source CAN now use these features.
+- **Seed is current**: `bin/ss` supports all Phase 1-4 features including: Perceus RC, field assign, named params, List<T>, Set<T>, uniqueness, REUSE, closures, interfaces, generic functions, generic classes, explicit type args, switch enum/bool patterns, destructuring, generic class inheritance, type constraints, multi-constraints, `**` operator, array methods, string `.includes()`, `for-of`, `?.field`, `?.method()` (no double-eval), spread in calls, **tuple types `[T, U]`**, **Math builtins (13 new)**, **Math.randomInt(max)**, **Map.keys() → Array<string>**, **basic type checking (D053)**, **METHOD_CALL type checking (D054)**, **this.field = value in methods (D055)**, **global negative literal init (D056)**, **generic array element type inference (D057)**, **optional method call fix (D058)**, **builtin method type inference (D059)**, **return type checking (D060)**, **class body fields (D061 complete, old syntax removed)**, **generic type param compat (D063)**, **NEW_EXPR type checking (D064)**, **INDEX_ACCESS type inference + INDEX_ASSIGN checking + builtin return types (D065)**, **null safety complete: T? types, checker enforcement, smart narrowing, ?. returns T?, ?? returns T (D067)**, **private + protected keywords for class fields/methods (D068 Phase 1+2)**, **super keyword for parent method calls (D069)**, **static methods for classes (D070)**, **abstract classes/methods (D071)**, **Java-style error handling: finally + Error class + throw objects + typed catch (D073)**, **instanceof operator (D074)**, **as type casting (D075)**. Compiler source CAN now use these features.
 - **All open issues BLOCKED or LOW**: I001/I002/I005 need struct/enum support. I006/I008 are LOW priority. Language improvements are the primary work stream; stdlib expansion is deferred.
-- **Rejected features**: Range syntax (`0..10`), pattern matching type patterns + guard — TS/JS 无对应语法。Result<T,E> + ? operator — Rust 语法。不要提议这些特性。
-- **Priority**: 语言核心改进优先于 stdlib 模块扩展。All access modifiers (private + protected) complete. Module-level export deferred until module system matures.
+- **Rejected features**: Range syntax (`0..10`), pattern matching type patterns + guard — TS/JS no equivalent. Result<T,E> + ? operator — Rust syntax. Do not propose these features.
+- **Priority**: Language core improvements over stdlib module expansion. All access modifiers (private + protected) complete. Module-level export deferred until module system matures.
 - **Error handling (D073)**: `try { } catch (e: Type) { } finally { }`. Multiple typed catch clauses supported. Untyped `catch(e)` gives string (backward compatible). Typed `catch(e: IOError)` gives Error object. `throw("string")` works (backward compat). `throw(new Error("msg"))` extracts message for untyped catch. TypeInfo now has parent_typeinfo ptr (field index 6). `ss_isinstance(obj, targetName)` walks TypeInfo chain. `@ss_exc_is_obj` and `@ss_exc_obj` globals track thrown object. CATCH_CLAUSE AST node: S1=var name, S2=type, I1=body.
 - **instanceof (D074)**: `expr instanceof ClassName` at comparison precedence. BINARY node S1="Instanceof". Codegen: genExpr(left) → addStringConst(rightName) → call ss_isinstance. Returns i32 (1/0). Works with inheritance (TypeInfo parent chain walk).
+- **as type casting (D075)**: `expr as ClassName` at comparison precedence. BINARY node S1="As". Codegen: genExpr(left) → ss_isinstance check → branch: fail throws "type cast failed: expected ClassName", ok returns same pointer. `inferType` and `resolveObjClass` return target class name. Enables downcast pattern: `if (x instanceof Dog) { let d = x as Dog; d.bark() }`.
 - **Class body fields (D061 complete)**: All code uses `class Foo { fields }` syntax. Old `class Foo(fields)` syntax removed from parser. Detection: `const` → field; `private`/`protected` → field or method; `IDENT` + `:` or `?` → field; `function`/`@` → method. Body fields create PARAM nodes in CLASS_DECL.List.
 - **Access modifiers (D068 complete)**: `private` and `protected` modifiers for class fields and methods. AST: I3=0 public, I3=1 private, I3=2 protected on PARAM (field) and FUNC_DECL (method) nodes. Checker: `privateFields`/`privateMethods` + `protectedFields`/`protectedMethods` Maps keyed by `"ClassName.memberName"`. `lookupPrivateOwner()` and `lookupProtectedOwner()` walk parent chain. `isSubclassOf(child, ancestor)` walks parent chain for protected inheritance check. 4 enforcement sites: MEMBER_ACCESS, MEMBER_ASSIGN, METHOD_CALL, DESTRUCTURE_OBJECT. Private: same-class only (TS semantics). Protected: same-class + subclasses.
 - **Super keyword (D069 complete)**: `super.method(args)` calls parent class method directly. Lexer: SUPER token. Parser: SUPER node in parseAtom(), postfix `.method()` creates METHOD_CALL with I1=SUPER. Checker: validates inside class method + has parent. Codegen: `genSuperMethodCall()` walks parent chain from parent class, always static dispatch (no vtable). `genExpr(SUPER)` = `genThisExpr()` (same object pointer). `resolveObjClass(SUPER)` returns parent class. D068 checks work unmodified (private blocked, protected allowed).
@@ -81,8 +83,8 @@ Scope:
 - **Closure implementation**: Tag-bit closures. CLOSURE_HDR_SLOTS = 3. All closure code in gen_arrows.ss.
 - **PIR**: Map-based IR. All keys use `id + ""`. Pass 1 liveness → Pass 2 move → Pass 3 uniqueness → Pass 5 reuse.
 - **Split structure**: parser.ss + parse_stmts.ss + parse_exprs.ss. lexer.ss + lex_ops.ss. checker.ss + check_stmts.ss + check_suggest.ss. gen_stmts.ss + gen_decls.ss + gen_assigns.ss. gen_exprs.ss + gen_calls.ss + gen_arrows.ss + gen_methods.ss + gen_builtins.ss. gen_class.ss + gen_iface.ss + gen_generic_class.ss + gen_type_ops.ss. gen_pir.ss + pir_lower.ss + pir_opt.ss. gen_runtime.ss + gen_rt_*.ss.
-- **phase5 tests**: 102 tests (all passing).
-- **35 bootstrap files**, ~14849 LOC.
+- **phase5 tests**: 103 tests (all passing).
+- **35 bootstrap files**, ~14896 LOC.
 
 ## Decision Criteria
 - Standard library now has 21 modules, ~5217 LOC.
@@ -96,8 +98,9 @@ Scope:
 - **D071 abstract classes/methods complete**: `abstract class` + `abstract function`. 6 checker rules. Vtable null entries. Completes OOP model.
 - **D073 Java-style error handling complete**: `finally` block. Built-in `Error` class. `throw` class instances. Typed catch with multi-catch + inheritance matching. Backward compatible with string throw/catch.
 - **D074 instanceof operator complete**: `obj instanceof ClassName`. Comparison precedence. Uses existing `ss_isinstance` runtime.
+- **D075 as type casting complete**: `expr as ClassName`. Comparison precedence. Runtime-checked via `ss_isinstance`, throws on failure. Enables downcasting.
 - All remaining open issues are BLOCKED (I001/I002/I005 need struct/enum) or LOW (I006/I008).
-- **OOP model fully complete**: extends + override + super + private + protected + static + abstract + instanceof.
+- **OOP model fully complete**: extends + override + super + private + protected + static + abstract + instanceof + as.
 - **Error handling improved**: finally + Error class + typed catch (Java-style).
 - **Next: review open issues or consider next language improvement.** Critical path: package manager (spec 07), testing framework (spec 17), or other language improvements.
 - File sizes: checker.ss ~1187 (largest), check_stmts.ss ~828, parser.ss ~653, gen_class.ss ~626.
@@ -105,7 +108,7 @@ Scope:
 - PIR Passes 1-3 + REUSE (Pass 5) + closures all working.
 - Known limitation: SS strings are null-terminated. `hexToBytes` cannot produce strings with 0x00 bytes. HMAC uses on-the-fly hex decoding to avoid this.
 - Known convention: `arr.slice(start, end)` is start+end index semantics, NOT offset+length. Differs from `substring(offset, length)`.
-- 35 bootstrap files total, ~14849 LOC, 102 phase5 tests (all passing).
+- 35 bootstrap files total, ~14896 LOC, 103 phase5 tests (all passing).
 - **argparse.ss module** (347 LOC): ArgParse.create() factory, ArgParser with option/flag/parse/parseArray/help, ArgResult with getString/getInt/getBool/has/positionals. Supports --key=value, -k value, --, positional args.
 
 ## When Done

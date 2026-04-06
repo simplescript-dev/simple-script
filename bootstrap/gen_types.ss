@@ -98,6 +98,10 @@ function resolveObjClass(nodeId: int): string {
         if (ifaceMethodsCG.has(rt) == 1) { return rt }
         return ""
     }
+    // as cast → target class
+    if (kind == "BINARY" && nGetS1(nodeId) == "As") {
+        return nGetS1(nGetI2(nodeId))
+    }
     // Member access → resolve object class, look up field type
     if (kind == "MEMBER_ACCESS") {
         const objClass = resolveObjClass(nGetI1(nodeId))
@@ -142,6 +146,9 @@ function inferType(id: int): string {
             if (blt2 == "string") { return "string" }
             const brt2 = inferType(nGetI2(id))
             if (brt2 == "string") { return "string" }
+        }
+        if (op == "As") {
+            return nGetS1(nGetI2(id))
         }
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or" || op == "Instanceof") {
             return "int"

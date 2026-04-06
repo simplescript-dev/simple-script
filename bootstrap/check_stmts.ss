@@ -550,15 +550,16 @@ function checkExpr(id: int) {
     }
     if (kind == "BINARY") {
         const binOp = nGetS1(id)
-        if (binOp == "Instanceof") {
+        if (binOp == "Instanceof" || binOp == "As") {
             checkExpr(nGetI1(id))
             const rightId = nGetI2(id)
+            const opName = binOp == "Instanceof" ? "instanceof" : "as"
             if (nGetKind(rightId) != "IDENT") {
-                checkerError("instanceof requires a class name on the right side", nGetLine(id), nGetCol(id), "")
+                checkerError(`${opName} requires a class name on the right side`, nGetLine(id), nGetCol(id), "")
             } else {
                 const className = nGetS1(rightId)
                 if (checkerClassFields.has(className) == 0) {
-                    checkerError(`unknown class '${className}' in instanceof`, nGetLine(rightId), nGetCol(rightId), findSuggestion(className))
+                    checkerError(`unknown class '${className}' in ${opName}`, nGetLine(rightId), nGetCol(rightId), findSuggestion(className))
                 }
             }
             return
