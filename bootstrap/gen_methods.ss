@@ -5,32 +5,54 @@ import { genStringMethod, genHigherOrderMethod, genArrayMethod, genMapMethod, ge
 
 // ── Enum methods ────────────────────────────────────────────────
 
-// useNames=1 → variant names (always string); useNames=0 → variant values (int or string)
-function genEnumArray(eName: string, useNames: int): string {
-    const variants = enumVariantNames.getString(eName)
-    const parts = variants.split("|")
+function genEnumValues(eName: string): string {
+    const enumId = parseInt(enumDeclNodes.getString(eName))
+    const vl = nGetList(enumId)
+    const parts = vl.split(",")
     const count = parts.length()
-    const isString = useNames == 1 || enumTypes.has(eName) == 1
+    const isString = enumTypes.has(eName) == 1
     let arrCtor = "@ss_newArray"
     if (isString) { arrCtor = "@ss_newArrayPtr" }
     const arrReg = nextReg()
     emitIR(`  ${arrReg} = call ptr ${arrCtor}(i32 ${count})`)
     let idx = 0
     for (p in parts) {
-        if (isString) {
-            let str = p
-            if (useNames == 0) { str = enumValues.getString(`${eName}.${p}`) }
-            const sR = addStringConst(str)
+        const vid = parseInt(p)
+        if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+            const val = enumValues.getString(`${eName}.${nGetS1(vid)}`)
+            if (isString) {
+                const sR = addStringConst(val)
+                const s64 = nextReg()
+                emitIR(`  ${s64} = ptrtoint ptr ${sR} to i64`)
+                emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${s64})`)
+            } else {
+                const i64R = nextReg()
+                emitIR(`  ${i64R} = sext i32 ${val} to i64`)
+                emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${i64R})`)
+            }
+            idx = idx + 1
+        }
+    }
+    return arrReg
+}
+
+function genEnumNames(eName: string): string {
+    const enumId = parseInt(enumDeclNodes.getString(eName))
+    const vl = nGetList(enumId)
+    const parts = vl.split(",")
+    const count = parts.length()
+    const arrReg = nextReg()
+    emitIR(`  ${arrReg} = call ptr @ss_newArrayPtr(i32 ${count})`)
+    let idx = 0
+    for (p in parts) {
+        const vid = parseInt(p)
+        if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+            const sR = addStringConst(nGetS1(vid))
             const s64 = nextReg()
             emitIR(`  ${s64} = ptrtoint ptr ${sR} to i64`)
             emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${s64})`)
-        } else {
-            const val = enumValues.getString(`${eName}.${p}`)
-            const i64R = nextReg()
-            emitIR(`  ${i64R} = sext i32 ${val} to i64`)
-            emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${i64R})`)
+            idx = idx + 1
         }
-        idx = idx + 1
     }
     return arrReg
 }
@@ -325,9 +347,9 @@ function genMethodCall(id: int, preObj: string = ""): string {
     const argList = nGetList(id)
 
     // Enum methods: EnumName.values(), EnumName.names()
-    if (preObj == "" && enumReady == 1 && nGetKind(objId) == "IDENT" && enumVariantNames.has(nGetS1(objId)) == 1) {
-        if (method == "values") { return genEnumArray(nGetS1(objId), 0) }
-        if (method == "names") { return genEnumArray(nGetS1(objId), 1) }
+    if (preObj == "" && enumReady == 1 && nGetKind(objId) == "IDENT" && enumDeclNodes.has(nGetS1(objId)) == 1) {
+        if (method == "values") { return genEnumValues(nGetS1(objId)) }
+        if (method == "names") { return genEnumNames(nGetS1(objId)) }
     }
 
     // Static method: ClassName.method()

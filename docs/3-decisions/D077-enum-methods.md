@@ -33,20 +33,18 @@ Direction.names()   // ["Up", "Down"]    (Array<string>)
 
 ### Files Changed
 
-1. **codegen.ss**: Add `enumVariantNames` global Map ("|"-separated variant name list per enum).
-2. **gen_stmts.ss**: `registerEnum()` populates `enumVariantNames` alongside `enumValues`.
-3. **gen_methods.ss**: `genEnumArray(eName, useNames)` generates array construction IR. Dispatch added at top of `genMethodCall()` before static method check.
+1. **codegen.ss**: Add `enumDeclNodes` global Map (enum name → AST node ID).
+2. **gen_stmts.ss**: `registerEnum()` stores enum declaration node ID in `enumDeclNodes`.
+3. **gen_methods.ss**: `genEnumValues()` / `genEnumNames()` walk AST to generate array IR. Dispatch at top of `genMethodCall()`.
 4. **gen_types.ss**: `inferType()` returns "ptr" for enum `.values()`/`.names()` calls.
 
 ### Codegen Flow
 
-1. `registerEnum()` stores `"Color" → "Red|Green|Blue"` in `enumVariantNames`
+1. `registerEnum()` stores `"Color" → "42"` (AST node ID) in `enumDeclNodes`
 2. When `Color.values()` is encountered in `genMethodCall()`:
-   - Detect: `enumReady == 1 && objKind == "IDENT" && enumVariantNames.has(objName)`
-   - Call `genEnumArray(eName, 0)` for values, `genEnumArray(eName, 1)` for names
-3. `genEnumArray()` emits:
-   - `ss_newArray(count)` for int enums, `ss_newArrayPtr(count)` for string enums/names
-   - Loop: `ss_arraySet` for each variant value or name
+   - Detect: `enumReady == 1 && objKind == "IDENT" && enumDeclNodes.has(objName)`
+   - Dispatch to `genEnumValues(eName)` or `genEnumNames(eName)`
+3. `genEnumValues()` / `genEnumNames()` retrieve AST via `nGetList(enumId)`, walk variant nodes, emit array IR
 
 ### Checker
 
@@ -54,5 +52,5 @@ No checker changes needed. Enum registered as type "enum" by checker, METHOD_CAL
 
 ## Interfaces
 
-- `enumVariantNames` Map: `"EnumName" → "Var1|Var2|Var3"` ("|"-separated variant names, insertion order preserved)
-- `genEnumArray(eName, useNames)`: useNames=1 for names, useNames=0 for values
+- `enumDeclNodes` Map: `"EnumName" → "nodeId"` (AST node ID as string)
+- `genEnumValues(eName)` / `genEnumNames(eName)`: walk AST, generate array construction IR inline

@@ -182,11 +182,11 @@ function inferType(id: int): string {
     if (kind == "METHOD_CALL") {
         const method = nGetS1(id)
         const mcObj = nGetI1(id)
-        if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumVariantNames.has(nGetS1(mcObj)) == 1) {
+        if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {
             if (method == "values" || method == "names") { return "ptr" }
         }
         // Resolve object type FIRST via unified inferType (recursive)
-        const objType = resolveObjClass(nGetI1(id))
+        const objType = resolveObjClass(mcObj)
         // If object is a known class, look up method return type in class chain
         if (objType != "" && objType != "string" && objType != "int" && objType != "double") {
             let lookupClass = objType
