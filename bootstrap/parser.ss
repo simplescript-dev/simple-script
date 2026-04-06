@@ -455,25 +455,34 @@ function parseEnumDecl(): int {
     skipNL()
     let variants = ""
     let nextVal = 0
+    let isStringEnum = 0
     while (curKind() != "RBRACE" && curKind() != "EOF") {
         const vId = newNode("ENUM_VARIANT")
         nSetS1(vId, pExpectIdent())
         if (curKind() == "ASSIGN") {
             pAdvance()
-            nextVal = parseInt(curValue())
-            pAdvance()
+            if (curKind() == "STRING") {
+                nSetS2(vId, curValue())
+                isStringEnum = 1
+                pAdvance()
+            } else {
+                nextVal = parseInt(curValue())
+                pAdvance()
+            }
         }
-        nSetI1(vId, nextVal)
-        nextVal = nextVal + 1
+        if (isStringEnum == 0) {
+            nSetI1(vId, nextVal)
+            nextVal = nextVal + 1
+        }
         variants = listAppend(variants, vId)
         if (curKind() == "COMMA") { pAdvance() }
         skipNL()
     }
     pExpect("RBRACE")
-    // Rebuild variants properly
     const id = newNode("ENUM_DECL")
     nSetS1(id, name)
     nSetList(id, variants)
+    if (isStringEnum == 1) { nSetI1(id, 1) }
     return id
 }
 

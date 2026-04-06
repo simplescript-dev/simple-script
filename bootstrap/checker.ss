@@ -1152,6 +1152,19 @@ function check(rootId: int): int {
             }
             if (sk == "ENUM_DECL") {
                 defineVar(nGetS1(s), "enum", 0)
+                // D076: string enum — all variants must have explicit string values, no mixing
+                if (nGetI1(s) == 1) {
+                    const evl = nGetList(s)
+                    if (evl != "") {
+                        const evParts = evl.split(",")
+                        for (ev in evParts) {
+                            const evId = parseInt(ev)
+                            if (evId > 0 && nGetS2(evId) == "") {
+                                checkerError(`enum '${nGetS1(s)}' cannot mix string and integer values`, nGetLine(evId), nGetCol(evId))
+                            }
+                        }
+                    }
+                }
             }
             if (sk == "INTERFACE_DECL") {
                 const ifName = nGetS1(s)

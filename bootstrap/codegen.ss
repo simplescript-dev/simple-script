@@ -59,6 +59,7 @@ let breakLabel = ""
 let continueLabel = ""
 // RC state moved to gen_rc.ss (localPtrVars, rcBlockDepth, blockPtrVarStack, etc.)
 let enumValues = ""
+let enumTypes = ""
 let enumReady = 0
 let annotatedRoutes = ""
 
@@ -420,6 +421,7 @@ function resetCodegen() {
     initPir()
     // Enum / routes
     enumValues = ""
+    enumTypes = ""
     enumReady = 0
     annotatedRoutes = ""
     // Arrow functions (gen_exprs.ss)

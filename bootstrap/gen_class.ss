@@ -572,10 +572,14 @@ function genMemberAccess(id: int): string {
     const member = nGetS1(id)
     const objId = nGetI1(id)
     const objKind = nGetKind(objId)
-    // Enum value access: EnumName.Variant → integer constant
+    // Enum value access: EnumName.Variant
     if (objKind == "IDENT" && enumReady == 1) {
-        const enumKey = `${nGetS1(objId)}.${member}`
+        const eName = nGetS1(objId)
+        const enumKey = `${eName}.${member}`
         if (enumValues.has(enumKey) == 1) {
+            if (enumTypes.getString(eName) == "string") {
+                return addStringConst(enumValues.getString(enumKey))
+            }
             return enumValues.getString(enumKey)
         }
     }

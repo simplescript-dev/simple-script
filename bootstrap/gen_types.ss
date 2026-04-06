@@ -213,8 +213,16 @@ function inferType(id: int): string {
         return "int"
     }
     if (kind == "MEMBER_ACCESS") {
-        const mField = nGetS1(id)
         const mObj = nGetI1(id)
+        if (nGetKind(mObj) == "IDENT" && enumReady == 1) {
+            const eName = nGetS1(mObj)
+            const eKey = `${eName}.${nGetS1(id)}`
+            if (enumValues.has(eKey) == 1) {
+                if (enumTypes.getString(eName) == "string") { return "string" }
+                return "int"
+            }
+        }
+        const mField = nGetS1(id)
         let maClassName = resolveObjClass(mObj)
         if (maClassName != "" && classFieldTypes.has(`${maClassName}.${mField}`) == 1) {
             return classFieldTypes.getString(`${maClassName}.${mField}`)
