@@ -29,6 +29,11 @@ let specClassNodeId = ""     // Map: mangledName -> classNodeId (for deferred co
 let specClassTypeArgs = ""   // Map: mangledName -> "int,string" (for deferred codegen)
 let specClassGenerated = ""  // Map: mangledName -> "1" (code already generated)
 let abstractMethodsCG = ""   // "ClassName.methodName" -> "1" (D071: abstract methods in codegen)
+// D078: Static fields
+let staticFieldGlobals = ""  // "ClassName.fieldName" -> "@ClassName_fieldName"
+let staticFieldTypes = ""    // "ClassName.fieldName" -> SS type
+let sfPendingInits = ""      // comma-separated "ClassName.fieldName" entries needing runtime init
+let sfInitExprs = ""         // "ClassName.fieldName" -> initNodeId (int)
 
 function initClassState() {
     if (classStateReady == 1) { return }
@@ -59,6 +64,10 @@ function initClassState() {
     // Register Math as built-in class with static methods (Java/JS style)
     classFields.set("Math", "")
     abstractMethodsCG = Map()
+    staticFieldGlobals = Map()
+    staticFieldTypes = Map()
+    sfPendingInits = ""
+    sfInitExprs = Map()
     classStateReady = 1
 }
 
@@ -118,6 +127,63 @@ function emitReleaseForType(reg: string, ssType: string) {
 import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { splitParentType, emitDeferredStructDefs, preRegisterSpecializedClass, genGenericNewExpr, generateDeferredSpecializations } from "./gen_generic_class"
 
+// ── D078: Static field support ────────────────────────────────
+
+function registerStaticField(className: string, fieldName: string, fieldType: string, initId: int) {
+    const key = `${className}.${fieldName}`
+    const globalName = `@${className}_${fieldName}`
+    staticFieldGlobals.set(key, globalName)
+    staticFieldTypes.set(key, fieldType)
+    const llType = ssTypeToLLVM(fieldType)
+    if (initId > 0) {
+        const ik = nGetKind(initId)
+        if (ik == "INT_LIT") {
+            emitIR(`${globalName} = global i32 ${nGetS1(initId)}, align 4`)
+        } else if (ik == "DOUBLE_LIT") {
+            emitIR(`${globalName} = global double ${nGetS1(initId)}, align 8`)
+        } else if (ik == "TRUE_LIT") {
+            emitIR(`${globalName} = global i32 1, align 4`)
+        } else if (ik == "FALSE_LIT") {
+            emitIR(`${globalName} = global i32 0, align 4`)
+        } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "INT_LIT") {
+            emitIR(`${globalName} = global i32 -${nGetS1(nGetI1(initId))}, align 4`)
+        } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "DOUBLE_LIT") {
+            emitIR(`${globalName} = global double -${nGetS1(nGetI1(initId))}, align 8`)
+        } else if (ik == "STRING_LIT") {
+            const strConst = addStringConst(nGetS1(initId))
+            emitIR(`${globalName} = global ptr ${strConst}, align 8`)
+        } else {
+            let zeroVal = "0"
+            if (llType == "double") { zeroVal = "0.0" }
+            if (llType == "ptr") { zeroVal = "null" }
+            emitIR(`${globalName} = global ${llType} ${zeroVal}, align 8`)
+            sfPendingInits = listAppendStr(sfPendingInits, key)
+            sfInitExprs.set(key, initId)
+        }
+    } else {
+        if (llType == "i32") {
+            emitIR(`${globalName} = global i32 0, align 4`)
+        } else if (llType == "double") {
+            emitIR(`${globalName} = global double 0.0, align 8`)
+        } else {
+            emitIR(`${globalName} = global ptr null, align 8`)
+        }
+    }
+}
+
+function emitStaticFieldInits() {
+    if (sfPendingInits == "") { return }
+    const parts = sfPendingInits.split(",")
+    for (p in parts) {
+        const globalName = staticFieldGlobals.getString(p)
+        const initId = sfInitExprs.get(p)
+        const fType = staticFieldTypes.getString(p)
+        const llType = ssTypeToLLVM(fType)
+        const val = genExpr(initId)
+        emitIR(`  store ${llType} ${val}, ptr ${globalName}, align 8`)
+    }
+}
+
 // ── Class support ─────────────────────────────────────────────
 
 function registerClass(id: int) {
@@ -161,7 +227,7 @@ function registerClass(id: int) {
         }
     }
     const paramList = classFieldList(id)
-    // Collect field names and types
+    // Collect field names and types — D078: separate static fields from instance fields
     let fieldNames = ""
     if (paramList != "") {
         const parts = paramList.split(",")
@@ -170,10 +236,16 @@ function registerClass(id: int) {
             if (pId > 0 && nGetKind(pId) == "PARAM") {
                 const fName = paramName(pId)
                 const fType = paramType(pId)
-                fieldNames = listAppendStr(fieldNames, fName)
-                classFieldTypes.set(`${name}.${fName}`, stripNullableCG(fType))
+                const strippedType = stripNullableCG(fType)
                 if (nGetS3(pId) == "const") {
                     classConstFields.set(`${name}.${fName}`, "1")
+                }
+                // D078: static field → emit global variable, skip from instance fields
+                if (nGetI4(pId) == 1) {
+                    registerStaticField(name, fName, strippedType, nGetI1(pId))
+                } else {
+                    fieldNames = listAppendStr(fieldNames, fName)
+                    classFieldTypes.set(`${name}.${fName}`, strippedType)
                 }
             }
         }
@@ -581,6 +653,18 @@ function genMemberAccess(id: int): string {
                 return addStringConst(enumValues.getString(enumKey))
             }
             return enumValues.getString(enumKey)
+        }
+    }
+    // D078: Static field access: ClassName.field
+    if (objKind == "IDENT") {
+        const sfKey = `${nGetS1(objId)}.${member}`
+        if (staticFieldGlobals.has(sfKey) == 1) {
+            const sfGlobal = staticFieldGlobals.getString(sfKey)
+            const sfType = staticFieldTypes.getString(sfKey)
+            const sfLLType = ssTypeToLLVM(sfType)
+            const sfReg = nextReg()
+            emitIR(`  ${sfReg} = load ${sfLLType}, ptr ${sfGlobal}, align 8`)
+            return sfReg
         }
     }
     if (objKind == "THIS") {

@@ -517,9 +517,29 @@ function parseImport(): int {
 // Check if current token starts a field declaration in class body
 function isBodyFieldStart(): int {
     if (curKind() == "CONST") { return 1 }
+    // D078: static [const] field: Type — but NOT static function (that's a method)
+    if (curKind() == "STATIC") {
+        const nextTok = tkKind(tkGet(tokens, tPos + 1))
+        if (nextTok == "CONST") { return 1 }
+        if (nextTok == "IDENT") {
+            const afterIdent = tkKind(tkGet(tokens, tPos + 2))
+            if (afterIdent == "COLON" || afterIdent == "QUESTION") { return 1 }
+        }
+        return 0
+    }
     if (curKind() == "PRIVATE" || curKind() == "PROTECTED") {
         const nextTok = tkKind(tkGet(tokens, tPos + 1))
         if (nextTok == "CONST") { return 1 }
+        // D078: private/protected static field
+        if (nextTok == "STATIC") {
+            const afterStatic = tkKind(tkGet(tokens, tPos + 2))
+            if (afterStatic == "CONST") { return 1 }
+            if (afterStatic == "IDENT") {
+                const afterIdent = tkKind(tkGet(tokens, tPos + 3))
+                if (afterIdent == "COLON" || afterIdent == "QUESTION") { return 1 }
+            }
+            return 0
+        }
         if (nextTok == "IDENT") {
             const nextNextTok = tkKind(tkGet(tokens, tPos + 2))
             if (nextNextTok == "COLON" || nextNextTok == "QUESTION") { return 1 }
@@ -533,7 +553,7 @@ function isBodyFieldStart(): int {
     return 0
 }
 
-// Parse a single field declaration in class body: [private|protected] [const] name[?]: type [= default]
+// Parse a single field declaration in class body: [private|protected] [static] [const] name[?]: type [= default]
 function parseBodyField(): int {
     let accessLevel = 0
     if (curKind() == "PRIVATE") {
@@ -541,6 +561,12 @@ function parseBodyField(): int {
         pAdvance()
     } else if (curKind() == "PROTECTED") {
         accessLevel = 2
+        pAdvance()
+    }
+    // D078: static fields
+    let isStatic = 0
+    if (curKind() == "STATIC") {
+        isStatic = 1
         pAdvance()
     }
     let isFieldConst = 0
@@ -568,6 +594,7 @@ function parseBodyField(): int {
     nSetI2(pId, isOptional)
     if (isFieldConst == 1) { nSetS3(pId, "const") }
     if (accessLevel > 0) { nSetI3(pId, accessLevel) }
+    if (isStatic == 1) { nSetI4(pId, 1) }
     expectNLOrRB()
     return pId
 }

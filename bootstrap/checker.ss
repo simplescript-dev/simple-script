@@ -43,6 +43,7 @@ let privateMethods = ""        // "ClassName.methodName" -> "1" if private (D068
 let protectedFields = ""       // "ClassName.fieldName" -> "1" if protected (D068 Phase 2)
 let protectedMethods = ""      // "ClassName.methodName" -> "1" if protected (D068 Phase 2)
 let staticMethods = ""         // "ClassName.methodName" -> "1" if static (D070)
+let staticFields = ""          // "ClassName.fieldName" -> "1" if static (D078)
 let currentStaticMethod = 0    // 1 when inside a static method body (D070)
 let abstractClasses = ""       // "ClassName" -> "1" if abstract class (D071)
 let abstractMethods = ""       // "ClassName.methodName" -> "1" if abstract method (D071)
@@ -83,6 +84,7 @@ function initChecker() {
     protectedFields = Map()
     protectedMethods = Map()
     staticMethods = Map()
+    staticFields = Map()
     currentStaticMethod = 0
     abstractClasses = Map()
     abstractMethods = Map()
@@ -848,7 +850,15 @@ function checkerInferType(nodeId: int): string {
         return ""
     }
     if (kind == "MEMBER_ACCESS") {
-        const objClass = inferCheckerClass(nGetI1(nodeId))
+        const ciObjNode = nGetI1(nodeId)
+        // D078: ClassName.staticField → resolve via class name directly
+        if (nGetKind(ciObjNode) == "IDENT" && lookupVar(nGetS1(ciObjNode)) == "class") {
+            const sfFieldKey = `${nGetS1(ciObjNode)}.${nGetS1(nodeId)}`
+            if (checkerFieldTypes.has(sfFieldKey) == 1) {
+                return checkerFieldTypes.getString(sfFieldKey)
+            }
+        }
+        const objClass = inferCheckerClass(ciObjNode)
         if (objClass != "") {
             const fieldKey = `${objClass}.${nGetS1(nodeId)}`
             if (checkerFieldTypes.has(fieldKey) == 1) {
@@ -1044,6 +1054,8 @@ function check(rootId: int): int {
                 // Register field const status, types, and ordered field list
                 const fieldList = nGetList(s)
                 let fieldNameList = ""
+                // D078: build instance-only param list for constructor counting (skip static fields)
+                let instanceParamList = ""
                 if (fieldList != "") {
                     const flds = fieldList.split(",")
                     for (f in flds) {
@@ -1051,29 +1063,35 @@ function check(rootId: int): int {
                         if (fId > 0 && nGetKind(fId) == "PARAM") {
                             const fName = nGetS1(fId)
                             const fType = nGetS2(fId)
-                            checkerFieldTypes.set(`${className}.${fName}`, fType)
-                            fieldNameList = listAppendStr(fieldNameList, fName)
+                            const fKey = `${className}.${fName}`
+                            checkerFieldTypes.set(fKey, fType)
+                            // D078: static fields — register but exclude from instance fields
+                            if (nGetI4(fId) == 1) {
+                                staticFields.set(fKey, "1")
+                            } else {
+                                fieldNameList = listAppendStr(fieldNameList, fName)
+                                instanceParamList = listAppend(instanceParamList, fId)
+                            }
                             if (nGetS3(fId) == "const") {
-                                constFields.set(`${className}.${fName}`, "1")
+                                constFields.set(fKey, "1")
                             }
                             if (nGetI3(fId) == 1) {
-                                privateFields.set(`${className}.${fName}`, "1")
+                                privateFields.set(fKey, "1")
                             }
                             if (nGetI3(fId) == 2) {
-                                protectedFields.set(`${className}.${fName}`, "1")
+                                protectedFields.set(fKey, "1")
                             }
                         }
                     }
                 }
                 checkerClassFields.set(className, fieldNameList)
-                // Register constructor params (CLASS_DECL List = constructor PARAM nodes)
+                // Register constructor params — D078: use instance-only params (skip static)
                 if (classTypeParams(s) != "") {
-                    // Generic class: accept any arg count (specialized at codegen)
                     classConsMin.set(className, "0")
                     classConsMax.set(className, "99")
                     checkerGenericClasses.set(className, "1")
                 } else {
-                    const consRange = countParamRange(nGetList(s))
+                    const consRange = countParamRange(instanceParamList)
                     const consComma = consRange.indexOf(",")
                     classConsMin.set(className, consRange.substring(0, consComma))
                     classConsMax.set(className, consRange.substring(consComma + 1, consRange.length() - consComma - 1))

@@ -104,6 +104,15 @@ function resolveObjClass(nodeId: int): string {
     }
     // Member access → resolve object class, look up field type
     if (kind == "MEMBER_ACCESS") {
+        // D078: Static field → resolve type as class name
+        if (nGetKind(nGetI1(nodeId)) == "IDENT") {
+            const sfKey = `${nGetS1(nGetI1(nodeId))}.${nGetS1(nodeId)}`
+            if (staticFieldTypes.has(sfKey) == 1) {
+                const sfType = staticFieldTypes.getString(sfKey)
+                if (classFields.has(sfType) == 1) { return sfType }
+                return ""
+            }
+        }
         const objClass = resolveObjClass(nGetI1(nodeId))
         if (objClass != "") {
             const fType = classFieldTypes.getString(`${objClass}.${nGetS1(nodeId)}`)
@@ -224,6 +233,13 @@ function inferType(id: int): string {
             if (enumValues.has(eKey) == 1) {
                 if (enumTypes.has(eName) == 1) { return "string" }
                 return "int"
+            }
+        }
+        // D078: Static field type inference
+        if (nGetKind(mObj) == "IDENT") {
+            const sfKey = `${nGetS1(mObj)}.${nGetS1(id)}`
+            if (staticFieldTypes.has(sfKey) == 1) {
+                return staticFieldTypes.getString(sfKey)
             }
         }
         const mField = nGetS1(id)

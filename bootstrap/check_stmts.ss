@@ -290,10 +290,42 @@ function checkStmt(id: int) {
         const valId = nGetI2(id)
         if (objExpr > 0) { checkExpr(objExpr) }
         if (valId > 0) { checkExpr(valId) }
+        // D078: ClassName.staticField = value
+        if (nGetKind(objExpr) == "IDENT" && lookupVar(nGetS1(objExpr)) == "class") {
+            const maClassName = nGetS1(objExpr)
+            const sfKey = `${maClassName}.${fieldName}`
+            if (staticFields.has(sfKey) == 0) {
+                checkerError(`field '${fieldName}' is not static; assign it via an instance, not '${maClassName}'`, nGetLine(id), nGetCol(id))
+            }
+            if (constFields.has(sfKey) == 1) {
+                checkerError(`cannot assign to const static field '${fieldName}' of class '${maClassName}'`, nGetLine(id), nGetCol(id))
+            }
+            const sfPfOwner = lookupPrivateOwner(maClassName, fieldName, 0)
+            if (sfPfOwner != "" && currentCheckerClass != sfPfOwner) {
+                checkerError(`cannot access private static field '${fieldName}' of class '${sfPfOwner}'`, nGetLine(id), nGetCol(id))
+            }
+            const sfPtOwner = lookupProtectedOwner(maClassName, fieldName, 0)
+            if (sfPtOwner != "" && currentCheckerClass != sfPtOwner && isSubclassOf(currentCheckerClass, sfPtOwner) == 0) {
+                checkerError(`cannot access protected static field '${fieldName}' of class '${sfPtOwner}'`, nGetLine(id), nGetCol(id))
+            }
+            if (nGetS2(id) == "ASSIGN" && checkerFieldTypes.has(sfKey) == 1 && valId > 0) {
+                const sfType = checkerFieldTypes.getString(sfKey)
+                const sfvType = checkerInferType(valId)
+                if (sfvType != "" && isTypeCompatible(sfType, sfvType) == 0) {
+                    checkerError(`type mismatch: cannot assign '${sfvType}' to static field '${fieldName}' of type '${sfType}'`, nGetLine(id), nGetCol(id))
+                }
+            }
+            return
+        }
         // Check if field is const
         const objClass = inferCheckerClass(objExpr)
         if (objClass != "") {
             const fieldKey = `${objClass}.${fieldName}`
+            // D078: reject instance.staticField = value
+            if (staticFields.has(fieldKey) == 1) {
+                checkerError(`static field '${fieldName}' should be assigned via class name '${objClass}', not via instance`, nGetLine(id), nGetCol(id))
+                return
+            }
             if (constFields.has(fieldKey) == 1) {
                 checkerError(`cannot assign to const field '${fieldName}' of class '${objClass}'`, nGetLine(id), nGetCol(id))
             }
@@ -682,15 +714,41 @@ function checkExpr(id: int) {
     }
     if (kind == "MEMBER_ACCESS") {
         checkExpr(nGetI1(id))
-        const maObjClass = inferCheckerClass(nGetI1(id))
-        if (maObjClass != "") {
-            const maPfOwner = lookupPrivateOwner(maObjClass, nGetS1(id), 0)
-            if (maPfOwner != "" && currentCheckerClass != maPfOwner) {
-                checkerError(`cannot access private field '${nGetS1(id)}' of class '${maPfOwner}'`, nGetLine(id), nGetCol(id))
+        // D078: ClassName.staticField access
+        const maObjNode = nGetI1(id)
+        const maFieldName = nGetS1(id)
+        if (nGetKind(maObjNode) == "IDENT" && lookupVar(nGetS1(maObjNode)) == "class") {
+            const maClassName = nGetS1(maObjNode)
+            const maSfKey = `${maClassName}.${maFieldName}`
+            if (checkerFieldTypes.has(maSfKey) == 1 && staticFields.has(maSfKey) == 0) {
+                checkerError(`field '${maFieldName}' is not static; access it via an instance, not '${maClassName}'`, nGetLine(id), nGetCol(id))
             }
-            const maPtOwner = lookupProtectedOwner(maObjClass, nGetS1(id), 0)
+            if (staticFields.has(maSfKey) == 1) {
+                const maSfPfOwner = lookupPrivateOwner(maClassName, maFieldName, 0)
+                if (maSfPfOwner != "" && currentCheckerClass != maSfPfOwner) {
+                    checkerError(`cannot access private static field '${maFieldName}' of class '${maSfPfOwner}'`, nGetLine(id), nGetCol(id))
+                }
+                const maSfPtOwner = lookupProtectedOwner(maClassName, maFieldName, 0)
+                if (maSfPtOwner != "" && currentCheckerClass != maSfPtOwner && isSubclassOf(currentCheckerClass, maSfPtOwner) == 0) {
+                    checkerError(`cannot access protected static field '${maFieldName}' of class '${maSfPtOwner}'`, nGetLine(id), nGetCol(id))
+                }
+            }
+            return
+        }
+        const maObjClass = inferCheckerClass(maObjNode)
+        if (maObjClass != "") {
+            // D078: reject instance.staticField
+            if (staticFields.has(`${maObjClass}.${maFieldName}`) == 1) {
+                checkerError(`static field '${maFieldName}' should be accessed via class name '${maObjClass}', not via instance`, nGetLine(id), nGetCol(id))
+                return
+            }
+            const maPfOwner = lookupPrivateOwner(maObjClass, maFieldName, 0)
+            if (maPfOwner != "" && currentCheckerClass != maPfOwner) {
+                checkerError(`cannot access private field '${maFieldName}' of class '${maPfOwner}'`, nGetLine(id), nGetCol(id))
+            }
+            const maPtOwner = lookupProtectedOwner(maObjClass, maFieldName, 0)
             if (maPtOwner != "" && currentCheckerClass != maPtOwner && isSubclassOf(currentCheckerClass, maPtOwner) == 0) {
-                checkerError(`cannot access protected field '${nGetS1(id)}' of class '${maPtOwner}'`, nGetLine(id), nGetCol(id))
+                checkerError(`cannot access protected field '${maFieldName}' of class '${maPtOwner}'`, nGetLine(id), nGetCol(id))
             }
         }
         return

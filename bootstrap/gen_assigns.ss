@@ -9,6 +9,13 @@ function genMemberAssign(id: int) {
     const op = nGetS2(id)
     const valExpr = nGetI2(id)
 
+    // D078: Static field assignment: ClassName.field = value
+    const sfKey = nGetKind(objExpr) == "IDENT" ? `${nGetS1(objExpr)}.${fieldName}` : ""
+    if (sfKey != "" && staticFieldGlobals.has(sfKey) == 1) {
+        genStaticFieldAssign(sfKey, op, valExpr)
+        return
+    }
+
     // Resolve object class and generate object pointer
     const objClass = resolveObjClass(objExpr)
     if (objClass == "") {
@@ -220,6 +227,100 @@ function genAssign(id: int) {
         emitIR(`  store ${llType} ${r3}, ptr ${lnRef}, align 8`)
         // RC: for string +=, release old value (concat result is new owned)
         if (op == "PLUS_ASSIGN" && vType == "string" && currentFunc != "" && isTrackedPtrVar(llVarName(name)) == 1) {
+            emitIR(`  call void @ss_rc_release(ptr ${r1})`)
+        }
+    }
+}
+
+// D078: Static field assignment
+function genStaticFieldAssign(sfKey: string, op: string, valExpr: int) {
+    const globalName = staticFieldGlobals.getString(sfKey)
+    const fType = staticFieldTypes.getString(sfKey)
+    const llType = ssTypeToLLVM(fType)
+    if (op == "ASSIGN") {
+        let val = genExpr(valExpr)
+        if (llType == "ptr") {
+            const oldVal = nextReg()
+            emitIR(`  ${oldVal} = load ptr, ptr ${globalName}, align 8`)
+            if (isOwnedExpr(valExpr) == 0) {
+                emitRetainForType(val, fType)
+            }
+            emitIR(`  store ptr ${val}, ptr ${globalName}, align 8`)
+            emitReleaseForType(oldVal, fType)
+        } else {
+            emitIR(`  store ${llType} ${val}, ptr ${globalName}, align 8`)
+        }
+    } else if (op == "POWER_ASSIGN") {
+        const r1 = nextReg()
+        emitIR(`  ${r1} = load ${llType}, ptr ${globalName}, align 8`)
+        let r2 = genExpr(valExpr)
+        const r2Type = inferType(valExpr)
+        if (r2Type == "i64" && fType != "i64") {
+            const trR = nextReg()
+            emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
+            r2 = trR
+        }
+        let pd1 = r1
+        let pd2 = r2
+        if (fType != "double") {
+            const cv1 = nextReg()
+            emitIR(`  ${cv1} = sitofp i32 ${r1} to double`)
+            pd1 = cv1
+            const cv2 = nextReg()
+            emitIR(`  ${cv2} = sitofp i32 ${r2} to double`)
+            pd2 = cv2
+        }
+        const powRes = nextReg()
+        emitIR(`  ${powRes} = call double @ss_pow(double ${pd1}, double ${pd2})`)
+        if (fType != "double") {
+            const intRes = nextReg()
+            emitIR(`  ${intRes} = fptosi double ${powRes} to i32`)
+            emitIR(`  store ${llType} ${intRes}, ptr ${globalName}, align 8`)
+        } else {
+            emitIR(`  store double ${powRes}, ptr ${globalName}, align 8`)
+        }
+    } else {
+        const r1 = nextReg()
+        emitIR(`  ${r1} = load ${llType}, ptr ${globalName}, align 8`)
+        let r2 = genExpr(valExpr)
+        const r2Type = inferType(valExpr)
+        if (r2Type == "i64" && fType != "i64") {
+            const trR = nextReg()
+            emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
+            r2 = trR
+        }
+        const r3 = nextReg()
+        if (op == "PLUS_ASSIGN") {
+            if (fType == "string") {
+                emitIR(`  ${r3} = call ptr @ss_string_concat(ptr ${r1}, ptr ${r2})`)
+            } else if (fType == "double") {
+                emitIR(`  ${r3} = fadd double ${r1}, ${r2}`)
+            } else {
+                emitIR(`  ${r3} = add ${llType} ${r1}, ${r2}`)
+            }
+        } else if (op == "MINUS_ASSIGN") {
+            if (fType == "double") {
+                emitIR(`  ${r3} = fsub double ${r1}, ${r2}`)
+            } else {
+                emitIR(`  ${r3} = sub ${llType} ${r1}, ${r2}`)
+            }
+        } else if (op == "STAR_ASSIGN") {
+            if (fType == "double") {
+                emitIR(`  ${r3} = fmul double ${r1}, ${r2}`)
+            } else {
+                emitIR(`  ${r3} = mul ${llType} ${r1}, ${r2}`)
+            }
+        } else if (op == "SLASH_ASSIGN") {
+            if (fType == "double") {
+                emitIR(`  ${r3} = fdiv double ${r1}, ${r2}`)
+            } else {
+                emitIR(`  ${r3} = sdiv ${llType} ${r1}, ${r2}`)
+            }
+        } else {
+            emitIR(`  ${r3} = srem ${llType} ${r1}, ${r2}`)
+        }
+        emitIR(`  store ${llType} ${r3}, ptr ${globalName}, align 8`)
+        if (op == "PLUS_ASSIGN" && fType == "string") {
             emitIR(`  call void @ss_rc_release(ptr ${r1})`)
         }
     }

@@ -93,6 +93,7 @@ function genFuncDecl(id: int) {
         emitIR("  call void @srand(i32 %_seedtime32)")
         regCount = 3
         emitGlobalInits()
+        emitStaticFieldInits()
     } else {
         // Collect param types (MVP: all int for now)
         const paramList = nGetList(id)
