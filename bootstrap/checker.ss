@@ -255,7 +255,7 @@ function initChecker() {
     const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize"
     const intf = intFns.split(",")
     for (i in intf) { funcNames.set(i, "int") }
-    const voidFns = "println,print,writeFile,appendFile,exit,tcpClose"
+    const voidFns = "println,print,writeFile,appendFile,exit,tcpClose,test"
     const vf = voidFns.split(",")
     for (v in vf) { funcNames.set(v, "void") }
     funcNames.set("parseDouble", "double")
@@ -282,7 +282,7 @@ function initChecker() {
         funcParamMin.set(o, "1")
         funcParamMax.set(o, "1")
     }
-    const twoArgFns = "writeFile,appendFile,tcpWrite,renameFile,charCodeAt"
+    const twoArgFns = "writeFile,appendFile,tcpWrite,renameFile,charCodeAt,test"
     const ta = twoArgFns.split(",")
     for (t in ta) {
         funcParamMin.set(t, "2")

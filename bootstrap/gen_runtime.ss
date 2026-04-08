@@ -23,6 +23,7 @@ function emitRuntimeDefs() {
     emitRuntimeExceptions()
     emitRuntimeIsInstance()
     emitRuntimeSQLite()
+    emitRuntimeTestFramework()
 }
 
 // ── libc declarations ─────────────────────────────────────────
@@ -58,6 +59,7 @@ function emitLibcDecls() {
     emitIR("declare i32 @atoi(ptr)")
     emitIR("declare double @atof(ptr)")
     emitIR("declare i32 @snprintf(ptr, i64, ptr, ...)")
+    emitIR("declare i32 @printf(ptr, ...)")
     // Math
     emitIR("declare double @sqrt(double)")
     emitIR("declare double @fabs(double)")
@@ -152,6 +154,17 @@ function emitRuntimeGlobals() {
     emitIR(`@.rt.str.w = private constant [2 x i8] c"w\\00"`)
     emitIR(`@.rt.str.a = private constant [2 x i8] c"a\\00"`)
     emitIR(`@.rt.str.nl = private constant [2 x i8] c"\\0A\\00"`)
+    // D079: Test framework globals
+    emitIR("@ss_test_total = internal global i32 0, align 4")
+    emitIR("@ss_test_passed = internal global i32 0, align 4")
+    emitIR("@ss_test_failed = internal global i32 0, align 4")
+    emitIR(`@.rt.str.test_pass = private constant [9 x i8] c"  PASS: \\00"`)
+    emitIR(`@.rt.str.test_fail = private constant [9 x i8] c"  FAIL: \\00"`)
+    emitIR(`@.rt.str.test_sep = private constant [4 x i8] c" - \\00"`)
+    emitIR(`@.rt.str.test_summary1 = private constant [8 x i8] c"Tests: \\00"`)
+    emitIR(`@.rt.str.test_passed = private constant [10 x i8] c" passed, \\00"`)
+    emitIR(`@.rt.str.test_failed = private constant [10 x i8] c" failed, \\00"`)
+    emitIR(`@.rt.str.test_total = private constant [7 x i8] c" total\\00"`)
     // Class destructor table: tag >= 10 indexes into this (tag-10)
     emitIR("@ss_class_dtor = internal global [100 x ptr] zeroinitializer")
     // TypeInfo type: { drop_fn, deep_clone_fn, shallow_clone_fn, size, name, class_id }
@@ -506,5 +519,48 @@ function emitRuntimeRC() {
     irRetVoid()
     emitIR("}")
     emitIR("")
+}
 
+// ── D079: Test framework runtime ─────────────────────────────
+
+function emitRuntimeTestFramework() {
+    // ss_test_summary — called via atexit, prints pass/fail/total and exits 1 on failure
+    emitIR("define void @ss_test_summary() {")
+    emitIR("entry:")
+    emitIR("  %total = load i32, ptr @ss_test_total, align 4")
+    emitIR("  %no_tests = icmp eq i32 %total, 0")
+    emitIR("  br i1 %no_tests, label %skip, label %report")
+    emitIR("report:")
+    // Print newline
+    emitIR("  %nl = call i32 (ptr, ...) @printf(ptr @.rt.str.nl)")
+    // Print "Tests: <passed> passed, <failed> failed, <total> total"
+    emitIR("  %passed = load i32, ptr @ss_test_passed, align 4")
+    emitIR("  %failed = load i32, ptr @ss_test_failed, align 4")
+    // Build summary: "Tests: "
+    emitIR("  %p1 = call i32 (ptr, ...) @printf(ptr @.rt.str.test_summary1)")
+    // passed count
+    emitIR("  %p2 = call i32 (ptr, ...) @printf(ptr @.rt.fmt.d, i32 %passed)")
+    emitIR("  %p3 = call i32 (ptr, ...) @printf(ptr @.rt.str.test_passed)")
+    // failed count
+    emitIR("  %p4 = call i32 (ptr, ...) @printf(ptr @.rt.fmt.d, i32 %failed)")
+    emitIR("  %p5 = call i32 (ptr, ...) @printf(ptr @.rt.str.test_failed)")
+    // total count
+    emitIR("  %p6 = call i32 (ptr, ...) @printf(ptr @.rt.fmt.d, i32 %total)")
+    emitIR("  %p7 = call i32 (ptr, ...) @printf(ptr @.rt.str.test_total)")
+    emitIR("  %p8 = call i32 (ptr, ...) @printf(ptr @.rt.str.nl)")
+    // Flush stdout
+    emitIR("  %stdout_ptr = load ptr, ptr @stdout, align 8")
+    emitIR("  %ff = call i32 @fflush(ptr %stdout_ptr)")
+    // Exit 1 if any failures
+    emitIR("  %has_fail = icmp sgt i32 %failed, 0")
+    emitIR("  br i1 %has_fail, label %exit_fail, label %exit_ok")
+    emitIR("exit_fail:")
+    emitIR("  call void @exit(i32 1)")
+    emitIR("  unreachable")
+    emitIR("exit_ok:")
+    emitIR("  ret void")
+    emitIR("skip:")
+    emitIR("  ret void")
+    emitIR("}")
+    emitIR("")
 }

@@ -117,6 +117,8 @@ function initFuncRetTypes() {
     funcRetTypes.set("fileSize", "i64")
     funcRetTypes.set("Map", "Map")
     funcRetTypes.set("Set", "Set")
+    // D079: test framework
+    funcRetTypes.set("test", "void")
     // Built-in method return types (type-agnostic fallback for string/array methods)
     methodRetTypes = Map()
     methodRetTypes.set("length", "int")

@@ -50,6 +50,132 @@ function genPrintCall(callee: string, argList: string): string {
     return "0"
 }
 
+// ── D079: test() call codegen ───────────────────────────────────
+
+function genTestCall(argList: string) {
+    // Parse arguments: test("name", () => { ... })
+    const parts = argList.split(",")
+    let nameId = 0
+    let fnId = 0
+    let idx = 0
+    for (p in parts) {
+        const aid = parseInt(p)
+        if (aid > 0) {
+            if (idx == 0) { nameId = aid }
+            if (idx == 1) { fnId = aid }
+            idx = idx + 1
+        }
+    }
+
+    const nameReg = genExpr(nameId)
+    const fnReg = genExpr(fnId)
+
+    const t0 = nextReg()
+    emitIR(`  ${t0} = load i32, ptr @ss_test_total, align 4`)
+    const t1 = nextReg()
+    emitIR(`  ${t1} = add i32 ${t0}, 1`)
+    emitIR(`  store i32 ${t1}, ptr @ss_test_total, align 4`)
+
+    // Set up try/catch using setjmp (same pattern as genTryCatch)
+    const depthR = nextReg()
+    emitIR(`  ${depthR} = load i32, ptr @ss_exc_depth`)
+    const newDepth = nextReg()
+    emitIR(`  ${newDepth} = add i32 ${depthR}, 1`)
+    emitIR(`  store i32 ${newDepth}, ptr @ss_exc_depth`)
+    const offset = nextReg()
+    emitIR(`  ${offset} = mul i32 ${depthR}, 200`)
+    const off64 = nextReg()
+    emitIR(`  ${off64} = sext i32 ${offset} to i64`)
+    const bufPtr = nextReg()
+    emitIR(`  ${bufPtr} = getelementptr i8, ptr @ss_jmpbuf, i64 ${off64}`)
+
+    const sjRet = nextReg()
+    emitIR(`  ${sjRet} = call i32 @setjmp(ptr ${bufPtr})`)
+    const isExc = nextReg()
+    emitIR(`  ${isExc} = icmp ne i32 ${sjRet}, 0`)
+
+    const tryLabel = nextLabel("test.try")
+    const catchLabel = nextLabel("test.catch")
+    const passLabel = nextLabel("test.pass")
+    const endLabel = nextLabel("test.end")
+
+    emitIR(`  br i1 ${isExc}, label %${catchLabel}, label %${tryLabel}`)
+
+    // ── Try: call the callback ──
+    emitIR(`${tryLabel}:`)
+    // Call fn (check closure vs direct)
+    const tagBit = nextReg()
+    emitIR(`  ${tagBit} = and i64 ${fnReg}, 1`)
+    const isClosure = nextReg()
+    emitIR(`  ${isClosure} = icmp eq i64 ${tagBit}, 1`)
+    const closureLabel = nextLabel("test.closure")
+    const directLabel = nextLabel("test.direct")
+    emitIR(`  br i1 ${isClosure}, label %${closureLabel}, label %${directLabel}`)
+
+    // Closure path
+    emitIR(`${closureLabel}:`)
+    const untagged = nextReg()
+    emitIR(`  ${untagged} = and i64 ${fnReg}, -2`)
+    const closurePtr = nextReg()
+    emitIR(`  ${closurePtr} = inttoptr i64 ${untagged} to ptr`)
+    const fnField = nextReg()
+    emitIR(`  ${fnField} = getelementptr ptr, ptr ${closurePtr}, i32 2`)
+    const fnPtr = nextReg()
+    emitIR(`  ${fnPtr} = load ptr, ptr ${fnField}, align 8`)
+    emitIR(`  call void ${fnPtr}(ptr ${closurePtr})`)
+    emitIR(`  br label %${passLabel}`)
+
+    // Direct path
+    emitIR(`${directLabel}:`)
+    const fpPtr = nextReg()
+    emitIR(`  ${fpPtr} = inttoptr i64 ${fnReg} to ptr`)
+    emitIR(`  call void ${fpPtr}()`)
+    emitIR(`  br label %${passLabel}`)
+
+    // ── Pass ──
+    emitIR(`${passLabel}:`)
+    emitExcDepthDec()
+    // Increment passed
+    const p0 = nextReg()
+    emitIR(`  ${p0} = load i32, ptr @ss_test_passed, align 4`)
+    const p1 = nextReg()
+    emitIR(`  ${p1} = add i32 ${p0}, 1`)
+    emitIR(`  store i32 ${p1}, ptr @ss_test_passed, align 4`)
+    // Print "  PASS: <name>"
+    const passMsg = nextReg()
+    emitIR(`  ${passMsg} = call ptr @ss_string_concat(ptr @.rt.str.test_pass, ptr ${nameReg})`)
+    emitIR(`  call void @ss_println(ptr ${passMsg})`)
+    emitIR(`  call void @ss_rc_release(ptr ${passMsg})`)
+    emitIR(`  br label %${endLabel}`)
+
+    // ── Catch ──
+    emitIR(`${catchLabel}:`)
+    emitExcDepthDec()
+    // Increment failed
+    const f0 = nextReg()
+    emitIR(`  ${f0} = load i32, ptr @ss_test_failed, align 4`)
+    const f1 = nextReg()
+    emitIR(`  ${f1} = add i32 ${f0}, 1`)
+    emitIR(`  store i32 ${f1}, ptr @ss_test_failed, align 4`)
+    // Print "  FAIL: <name> - <error>"
+    const excMsg = nextReg()
+    emitIR(`  ${excMsg} = load ptr, ptr @ss_exc_msg`)
+    const failPart = nextReg()
+    emitIR(`  ${failPart} = call ptr @ss_string_concat(ptr @.rt.str.test_fail, ptr ${nameReg})`)
+    const failSep = nextReg()
+    emitIR(`  ${failSep} = call ptr @ss_string_concat(ptr ${failPart}, ptr @.rt.str.test_sep)`)
+    emitIR(`  call void @ss_rc_release(ptr ${failPart})`)
+    const failFull = nextReg()
+    emitIR(`  ${failFull} = call ptr @ss_string_concat(ptr ${failSep}, ptr ${excMsg})`)
+    emitIR(`  call void @ss_rc_release(ptr ${failSep})`)
+    emitIR(`  call void @ss_println(ptr ${failFull})`)
+    emitIR(`  call void @ss_rc_release(ptr ${failFull})`)
+    emitIR(`  br label %${endLabel}`)
+
+    // ── End ──
+    emitIR(`${endLabel}:`)
+}
+
 // ── Call argument resolution ────────────────────────────────────
 
 function resolveCallArgs(callee: string, argList: string, expectsDouble: int): string {
@@ -293,6 +419,12 @@ function genCall(id: int): string {
 
     if (callee == "println" || callee == "print") {
         return genPrintCall(callee, argList)
+    }
+
+    // D079: test("name", callback) — inline try/catch wrapper
+    if (callee == "test") {
+        genTestCall(argList)
+        return "0"
     }
 
     const effectiveName = resolvedName != callee ? resolvedName : callee
