@@ -261,6 +261,7 @@ function initChecker() {
     funcNames.set("parseDouble", "double")
     funcNames.set("Map", "Map")
     funcNames.set("Set", "Set")
+    funcNames.set("exec", "ExecResult")
     allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,Map,Set`
     // Built-in namespaces (accessed as Math.sqrt() etc.)
     defineVar("Math", "namespace", 0)
@@ -276,7 +277,7 @@ function initChecker() {
     funcParamMax.set("println", "99")
     funcParamMin.set("print", "0")
     funcParamMax.set("print", "99")
-    const oneArgFns = "readFile,arg,exit,system,parseInt,parseDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize"
+    const oneArgFns = "readFile,arg,exit,system,parseInt,parseDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec"
     const oa = oneArgFns.split(",")
     for (o in oa) {
         funcParamMin.set(o, "1")

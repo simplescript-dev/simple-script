@@ -50,6 +50,29 @@ function genPrintCall(callee: string, argList: string): string {
     return "0"
 }
 
+// ── D080: exec() call codegen ───────────────────────────────────
+
+function genExecCall(argList: string): string {
+    // exec(cmd) → call ss_popen_read, get exit code, construct ExecResult
+    const parts = argList.split(",")
+    const cmdId = parseInt(parts[0])
+    const cmdReg = genExpr(cmdId)
+
+    // Call ss_popen_read(cmd) → stdout string
+    const stdout = nextReg()
+    emitIR(`  ${stdout} = call ptr @ss_popen_read(ptr ${cmdReg})`)
+
+    // Load exit code from global (set by ss_popen_read)
+    const code = nextReg()
+    emitIR(`  ${code} = load i32, ptr @ss_last_exit_code, align 4`)
+
+    // Construct ExecResult via its auto-generated constructor
+    const result = nextReg()
+    emitIR(`  ${result} = call ptr @ExecResult_new(ptr ${stdout}, i32 ${code})`)
+
+    return result
+}
+
 // ── D079: test() call codegen ───────────────────────────────────
 
 function genTestCall(argList: string) {
@@ -425,6 +448,11 @@ function genCall(id: int): string {
     if (callee == "test") {
         genTestCall(argList)
         return "0"
+    }
+
+    // D080: exec(cmd) — popen + ExecResult construction
+    if (callee == "exec") {
+        return genExecCall(argList)
     }
 
     const effectiveName = resolvedName != callee ? resolvedName : callee

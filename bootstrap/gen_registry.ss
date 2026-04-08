@@ -119,6 +119,8 @@ function initFuncRetTypes() {
     funcRetTypes.set("Set", "Set")
     // D079: test framework
     funcRetTypes.set("test", "void")
+    // D080: exec process capture
+    funcRetTypes.set("exec", "ExecResult")
     // Built-in method return types (type-agnostic fallback for string/array methods)
     methodRetTypes = Map()
     methodRetTypes.set("length", "int")

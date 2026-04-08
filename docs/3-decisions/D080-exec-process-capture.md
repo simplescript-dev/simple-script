@@ -1,6 +1,6 @@
 # D080: Process Output Capture (exec)
 
-**Status:** Todo
+**Status:** Done
 **Depends on:** None
 **Priority:** P0
 
@@ -37,36 +37,38 @@ if (r.exitCode != 0) {
 ### 1. Prelude class (prelude.ss)
 
 ```simplescript
-class ExecResult(stdout: string, exitCode: int)
-```
-
-### 2. Runtime functions (gen_rt_io.ss)
-
-- `ss_popen_read(cmd: ptr) → ptr`：
-  - 调用 `popen(cmd, "r")` 打开管道
-  - 循环 `fread()` 读取全部 stdout 到缓冲区
-  - `pclose()` 获取 exit status，`WEXITSTATUS()` 提取 exit code
-  - exit code 存入全局变量 `@ss_last_exit_code`
-  - 返回 stdout 字符串（RC 管理）
-
-- `ss_last_exit_code() → i32`：
-  - 读取全局变量 `@ss_last_exit_code`
-
-### 3. Prelude wrapper (prelude.ss)
-
-```simplescript
-function exec(cmd: string): ExecResult {
-    const stdout = _ss_popen_read(cmd)
-    const code = _ss_last_exit_code()
-    return new ExecResult(stdout, code)
+class ExecResult {
+    stdout: string
+    exitCode: int
 }
 ```
 
-### 4. Registry (gen_registry.ss)
+### 2. Runtime function (gen_rt_io.ss)
 
-- 注册 `exec` 返回类型为 `ExecResult`
-- 注册 `_ss_popen_read` 返回类型为 `string`
-- 注册 `_ss_last_exit_code` 返回类型为 `int`
+- `ss_popen_read(cmd: ptr) → ptr`：
+  - `popen(cmd, "r")` 打开管道
+  - 动态缓冲区 + `fread()` 循环读取全部 stdout
+  - `pclose()` 获取 exit status，`(status >> 8) & 0xFF` 提取 exit code
+  - exit code 存入全局变量 `@ss_last_exit_code`
+  - `ss_rc_strdup` 复制到 RC 管理的字符串，`free` 原始缓冲区
+  - 返回 RC 字符串
+
+### 3. Codegen handler (gen_calls.ss)
+
+`exec()` 在 genCall() 中作为特殊 case 处理（同 `test()`/`println()` 模式），避免 prelude 调用 seed 未知的 builtin 导致 bootstrap 鸡生蛋问题：
+
+```
+genExecCall(argList):
+  1. genExpr(cmdId) → %cmd
+  2. call ptr @ss_popen_read(ptr %cmd) → %stdout
+  3. load i32 @ss_last_exit_code → %code
+  4. call ptr @ExecResult_new(ptr %stdout, i32 %code) → %result
+```
+
+### 4. Registry
+
+- gen_registry.ss: `funcRetTypes.set("exec", "ExecResult")`
+- checker.ss: `funcNames.set("exec", "ExecResult")` + param count 1
 
 ## Rejected Alternatives
 

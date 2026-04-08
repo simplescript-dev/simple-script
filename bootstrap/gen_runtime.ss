@@ -89,6 +89,8 @@ function emitLibcDecls() {
     // Process
     emitIR("declare void @exit(i32)")
     emitIR("declare i32 @system(ptr)")
+    emitIR("declare ptr @popen(ptr, ptr)")
+    emitIR("declare i32 @pclose(ptr)")
     emitIR("declare ptr @getenv(ptr)")
     emitIR("declare i32 @atexit(ptr)")
     // Time
@@ -154,6 +156,9 @@ function emitRuntimeGlobals() {
     emitIR(`@.rt.str.w = private constant [2 x i8] c"w\\00"`)
     emitIR(`@.rt.str.a = private constant [2 x i8] c"a\\00"`)
     emitIR(`@.rt.str.nl = private constant [2 x i8] c"\\0A\\00"`)
+    // D080: exec() process capture
+    emitIR("@ss_last_exit_code = internal global i32 0, align 4")
+    emitIR(`@.rt.str.r = private constant [2 x i8] c"r\\00"`)
     // D079: Test framework globals
     emitIR("@ss_test_total = internal global i32 0, align 4")
     emitIR("@ss_test_passed = internal global i32 0, align 4")

@@ -184,6 +184,73 @@ function emitRuntimeProcess() {
     emitIR("}")
     emitIR("")
 
+    // D080: ss_popen_read — run command via popen, capture stdout, store exit code
+    emitIR("define ptr @ss_popen_read(ptr %cmd) {")
+    irLabel("entry")
+    // popen(cmd, "r")
+    irCall("fp", "ptr", "popen", "ptr %cmd, ptr @.rt.str.r")
+    irICmp("isnull", "eq", "ptr", "%fp", "null")
+    irBrCond("isnull", "fail", "init")
+
+    // Allocate initial buffer (4096 bytes)
+    irLabel("init")
+    irCall("buf", "ptr", "malloc", "i64 4096")
+    irStore("i8", "0", "%buf")
+    emitIR("  br label %read")
+
+    // Read loop: fread chunks into buffer, grow as needed
+    irLabel("read")
+    emitIR("  %pbuf = phi ptr [ %buf, %init ], [ %rbuf, %grow ], [ %pbuf2, %append ]")
+    emitIR("  %poff = phi i64 [ 0, %init ], [ %goff, %grow ], [ %newoff, %append ]")
+    emitIR("  %pcap = phi i64 [ 4096, %init ], [ %newcap, %grow ], [ %pcap2, %append ]")
+    // remaining = cap - off - 1
+    irSub("rem0", "i64", "%pcap", "%poff")
+    irSub("rem", "i64", "%rem0", "1")
+    irGEP("dst", "i8", "%pbuf", "%poff")
+    irCall("n", "i64", "fread", "ptr %dst, i64 1, i64 %rem, ptr %fp")
+    irICmp("eof", "eq", "i64", "%n", "0")
+    irBrCond("eof", "done", "append")
+
+    // Append: advance offset, null-terminate, check if full
+    irLabel("append")
+    emitIR("  %pbuf2 = phi ptr [ %pbuf, %read ]")
+    emitIR("  %pcap2 = phi i64 [ %pcap, %read ]")
+    irAdd("newoff", "i64", "%poff", "%n")
+    irGEP("term", "i8", "%pbuf2", "%newoff")
+    irStore("i8", "0", "%term")
+    // If we filled the buffer (n == rem), grow
+    irICmp("full", "eq", "i64", "%n", "%rem")
+    irBrCond("full", "grow", "read")
+
+    // Grow buffer: double capacity
+    irLabel("grow")
+    emitIR("  %goff = phi i64 [ %newoff, %append ]")
+    emitIR("  %gbuf = phi ptr [ %pbuf2, %append ]")
+    emitIR("  %gcap = phi i64 [ %pcap2, %append ]")
+    irMul("newcap", "i64", "%gcap", "2")
+    irCall("rbuf", "ptr", "realloc", "ptr %gbuf, i64 %newcap")
+    emitIR("  br label %read")
+
+    // Done: pclose, extract exit code, copy to RC string
+    irLabel("done")
+    irCall("status", "i32", "pclose", "ptr %fp")
+    // WEXITSTATUS: (status >> 8) & 0xFF
+    emitIR("  %shifted = lshr i32 %status, 8")
+    emitIR("  %code = and i32 %shifted, 255")
+    irStore("i32", "%code", "@ss_last_exit_code")
+    // Copy to RC-managed string
+    irCall("result", "ptr", "ss_rc_strdup", "ptr %pbuf")
+    irCallVoid("free", "ptr %pbuf")
+    irRet("ptr", "%result")
+
+    // Fail: popen returned null
+    irLabel("fail")
+    irStore("i32", "-1", "@ss_last_exit_code")
+    irCall("empty", "ptr", "ss_rc_strdup", "ptr @.rt.str.empty")
+    irRet("ptr", "%empty")
+    emitIR("}")
+    emitIR("")
+
     emitIR("define ptr @ss_getenv(ptr %name) {")
     irLabel("entry")
     irCall("val", "ptr", "getenv", "ptr %name")

@@ -7,6 +7,12 @@ class Error {
     message: string
 }
 
+// D080: exec() process output capture
+class ExecResult {
+    stdout: string
+    exitCode: int
+}
+
 // ── Higher-order array methods ────────────────────────────────
 
 function _ss_map(arr: List<int>, callback: fn): List<int> {
