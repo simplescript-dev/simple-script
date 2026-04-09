@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-SimpleScript 是一门**自举的编译型语言**。编译器用 SimpleScript 自身编写（~10800 LOC），编译到 LLVM IR 并静态链接 musl libc + mimalloc，产出原生二进制。**零 C 依赖**——无 runtime.c，所有运行时函数由编译器直接生成为 LLVM IR。
+SimpleScript 是一门**自举的编译型语言**。编译器用 SimpleScript 自身编写（~15900 LOC），编译到 LLVM IR 并静态链接 musl libc + mimalloc，产出原生二进制。**零 C 依赖**——无 runtime.c，所有运行时函数由编译器直接生成为 LLVM IR。
 
 **完全自举**：编译器能编译自己，产出字节级相同的二进制（固定点验证通过）。
 
@@ -39,7 +39,7 @@ bin/ss clean                                # 清除构建缓存
 
 依赖：`llc-18`（LLVM）、`musl-gcc`（静态链接）、`vendor/mimalloc.o`（自动编译）。
 
-**测试文件格式**：每个 `.ss` 测试是独立程序，包含 `function main()`。通过条件 = 编译成功 + 运行 exit code 0。无断言框架——测试靠"不崩溃"验证。含 `import/` 子目录的测试组只编译 `main.ss`。
+**测试文件格式**：每个 `.ss` 测试是独立程序，包含 `function main()`。通过条件 = 编译成功 + 运行 exit code 0。内置 `test(name, fn)` + `assertEqual`/`assertTrue` 等断言（D079）。含 `import/` 子目录的测试组只编译 `main.ss`。
 
 ## 编译器架构
 
@@ -55,7 +55,7 @@ bin/ss clean                                # 清除构建缓存
 ### 源码结构
 
 ```
-bootstrap/            # 编译器源码（全部 .ss 文件，~12800 LOC，35 文件）
+bootstrap/            # 编译器源码（全部 .ss 文件，~15900 LOC，35 文件）
   lexer.ss            # 词法分析核心：状态 + tokenize API + token 访问 + 字符串/模板/数字 lexer
   lex_ops.ss          # 多字符运算符 lexer（+= -- => << >>> 等）
   parser.ss           # 语法分析核心：AST 节点系统 + parser state + 声明解析 + helpers
@@ -89,6 +89,9 @@ bootstrap/            # 编译器源码（全部 .ss 文件，~12800 LOC，35 �
   gen_rt_io.ss        # 运行时：I/O + 进程 + 数学函数
   gen_rt_map.ss       # 运行时：HashMap 操作
   gen_rt_system.ss    # 运行时：文件系统 + 网络 + 异常 + SQLite
+  gen_rt_ref.ss       # 运行时：Ref<T> 响应式引用（D082）
+  gen_rt_thread.ss    # 运行时：Thread 虚拟线程池（D082）
+  gen_rt_channel.ss   # 运行时：Channel<T> 阻塞队列（D082）
   prelude.ss          # 纯 SS 运行时方法（trim/replace/map 等）
   main.ss             # CLI 入口 + import 解析
 bin/ss                # 种子编译器二进制（自举用，frozen）
@@ -178,6 +181,9 @@ spec/                 # 语言规范文档
 | `gen_rt_io.ss` | I/O（println/readFile 等）+ 进程 + 数学函数 |
 | `gen_rt_map.ss` | HashMap（set/get/delete/keys） |
 | `gen_rt_system.ss` | 文件系统 + 网络 + 异常（setjmp/longjmp）+ SQLite |
+| `gen_rt_ref.ss` | Ref\<T\> 响应式引用（D082） |
+| `gen_rt_thread.ss` | Thread 虚拟线程 M:N 调度器（D082） |
+| `gen_rt_channel.ss` | Channel\<T\> 阻塞队列（D082） |
 
 运行时字符串常量用 `@.rt.` 前缀，与用户 `@.str.` 区分。
 
@@ -255,6 +261,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - 模板字符串 `` `${expr}` ``（支持嵌套）
 - switch/case, for/for-in/while/do-while, break/continue
 - 位运算: &, |, ^, ~, <<, >>, >>>
+- **并发**: `Thread.start(() => { ... })` / `.join()`（M:N 虚拟线程），`ref(value)` / `.value` / `watch(ref, fn)`（响应式），`new Channel<int>()` / `.send(v)` / `.receive()` / `.close()`（阻塞队列，D082）
 - 默认参数, 短路 &&/||, 三元表达式
 - import { ... } from "./module" 或 "@/lib/module"
 

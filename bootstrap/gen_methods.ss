@@ -406,6 +406,11 @@ function genMethodCall(id: int, preObj: string = ""): string {
         return genThreadJoin(objVal, objId)
     }
 
+    // D082 Phase 4: Channel<T>.send/receive/close
+    if (objClass == "Channel") {
+        return genChannelMethod(method, objVal, objId, argList)
+    }
+
     // User class method: walk parent chain
     if (objClass != "" && objClass != "Map" && objClass != "Set" && classHasMethod(objClass, method) == 1) {
         return emitClassMethodCall(objClass, method, objVal, argList, 0)
@@ -481,6 +486,34 @@ function genThreadJoin(objVal: string, objId: int): string {
     }
     if (elemType == "void" || elemType == "") { return "0" }
     return emitI64ToValue(raw, elemType)
+}
+
+// ── D082 Phase 4: Channel<T>.send/receive/close ─────────────
+
+function genChannelMethod(method: string, objVal: string, objId: int, argList: string): string {
+    if (method == "send") {
+        const parts = argList.split(",")
+        const argId = parseInt(parts[0])
+        const val = genExpr(argId)
+        const val64 = emitValueToI64(val, inferType(argId))
+        emitIR(`  call void @ss_channelSend(ptr ${objVal}, i64 ${val64})`)
+        return "0"
+    }
+    if (method == "receive") {
+        const raw = nextReg()
+        emitIR(`  ${raw} = call i64 @ss_channelReceive(ptr ${objVal})`)
+        const objType = inferType(objId)
+        let elemType = "int"
+        if (objType.startsWith("Channel<") == 1) {
+            elemType = channelElemType(objType)
+        }
+        return emitI64ToValue(raw, elemType)
+    }
+    if (method == "close") {
+        emitIR(`  call void @ss_channelClose(ptr ${objVal})`)
+        return "0"
+    }
+    return "0"
 }
 
 // ── Interface method dispatch ─────────────────────────────────

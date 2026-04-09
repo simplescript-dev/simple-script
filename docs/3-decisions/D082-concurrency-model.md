@@ -1,6 +1,6 @@
 # D082: Concurrency Model (Virtual Threads + Ref)
 
-**Status:** Phase 3 Done (ref/watch + Thread.start/join + capture analysis)
+**Status:** Phase 4 Done (ref/watch + Thread.start/join + capture analysis + Channel\<T\>)
 **Priority:** P1
 
 ## Context
@@ -138,11 +138,38 @@ M:N 虚拟线程调度器：
 - 阻塞操作（I/O、Channel、锁）自动挂起虚拟线程
 - work-stealing 调度，自动负载均衡
 
+### Channel\<T\> — 线程间通信（Phase 4）
+
+```simplescript
+// 创建 typed channel
+const ch = new Channel<int>()
+
+// 发送（非阻塞入队，closed 时抛异常）
+ch.send(42)
+
+// 接收（阻塞直到有值或 channel closed）
+const val = ch.receive()
+
+// 关闭（唤醒所有等待中的 receiver）
+ch.close()
+```
+
+对标 Java BlockingQueue / Go channel。内部实现：
+
+| 组件 | 实现 |
+|------|------|
+| 队列 | 链表 FIFO（ChanNode: i64 value + ptr next） |
+| 同步 | per-channel mutex + condvar |
+| send | lock → enqueue → signal → unlock |
+| receive | lock → while empty & !closed: wait → dequeue → unlock |
+| close | lock → set flag → broadcast → unlock |
+
+支持任意类型 T（int/double/string/class 实例），值通过 i64 编码传递。
+
 ## 不在此决策范围
 
 - `synchronized class`：远期，需要时再设计
 - `computed()`：语法糖，可用 watch + ref 替代
-- `Channel<T>`（BlockingQueue）：作为标准库提供，非核心原语
 - `select` 多路复用：依赖 Channel，远期
 - 结构化并发（scope）：远期
 

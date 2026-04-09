@@ -503,6 +503,14 @@ function genNewExpr(id: int): string {
     if (genericClassNodes.has(className) == 1) {
         return genGenericNewExpr(id, className)
     }
+    // D082 Phase 4: Channel<T> is built-in — constructor delegates to ss_channelNew
+    if (className == "Channel") {
+        pirPendingReuseReg = ""
+        pirPendingReuseClass = ""
+        const r = nextReg()
+        emitIR(`  ${r} = call ptr @ss_channelNew()`)
+        return r
+    }
     // Map and Set are built-in — constructor delegates to ss_mapNew
     if (className == "Map" || className == "Set") {
         pirPendingReuseReg = ""

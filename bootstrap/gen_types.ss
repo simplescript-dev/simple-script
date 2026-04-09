@@ -51,6 +51,16 @@ function threadElemType(threadType: string): string {
     return "int"
 }
 
+// ── Channel type helper (D082 Phase 4) ────────────────────────
+
+// Extract element type from "Channel<int>" → "int", "Channel<string>" → "string"
+function channelElemType(chanType: string): string {
+    if (chanType.startsWith("Channel<") == 1 && chanType.length() > 9) {
+        return chanType.substring(8, chanType.length() - 9)
+    }
+    return "int"
+}
+
 // Infer the return type of an arrow function node
 function inferArrowRetType(arrowId: int): string {
     if (arrowId <= 0) { return "int" }
@@ -111,6 +121,8 @@ function resolveObjClass(nodeId: int): string {
         if (vt.startsWith("Ref<") == 1) { return "Ref" }
         // D082 Phase 2: Thread<T> type
         if (vt.startsWith("Thread<") == 1) { return "Thread" }
+        // D082 Phase 4: Channel<T> type
+        if (vt.startsWith("Channel<") == 1) { return "Channel" }
         if (vt != "" && classFields.has(vt) == 1) { return vt }
         if (vt != "" && ifaceMethodsCG.has(vt) == 1) { return vt }
         const oc = getObjClass(nGetS1(nodeId))
@@ -245,6 +257,12 @@ function inferType(id: int): string {
     }
     if (kind == "NEW_EXPR") {
         const newCn = nGetS1(id)
+        // D082 Phase 4: new Channel<T>() → Channel<T>
+        if (newCn == "Channel") {
+            const chanTypeArg = nGetS2(id)
+            if (chanTypeArg != "") { return `Channel<${chanTypeArg}>` }
+            return "Channel<int>"
+        }
         if (genericClassNodes.has(newCn) == 1) { return inferGenericClassName(newCn, nGetList(id), nGetS2(id)) }
         return newCn
     }
@@ -274,6 +292,13 @@ function inferType(id: int): string {
             const jtType = inferType(mcObj)
             if (jtType.startsWith("Thread<") == 1) {
                 return threadElemType(jtType)
+            }
+        }
+        // D082 Phase 4: ch.receive() → T from Channel<T>
+        if (method == "receive") {
+            const chType = inferType(mcObj)
+            if (chType.startsWith("Channel<") == 1) {
+                return channelElemType(chType)
             }
         }
         if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {

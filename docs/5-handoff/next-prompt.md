@@ -1,4 +1,4 @@
-# Round 117
+# Round 118
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~16200 LOC).
@@ -8,26 +8,25 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D082-concurrency-model.md
-- bootstrap/check_stmts.ss (checkThreadClosureCaptures / checkThreadCapturesRec at end of file)
-- bootstrap/gen_arrows.ss (thisIsThreadClosure deep-clone logic)
-- bootstrap/gen_methods.ss (genThreadStart sets isThreadClosure flag)
+- bootstrap/gen_rt_channel.ss (Channel runtime: ss_channelNew/Send/Receive/Close)
+- bootstrap/gen_methods.ss (genChannelMethod dispatches send/receive/close)
+- bootstrap/gen_types.ss (channelElemType + Channel in resolveObjClass/inferType)
 
 ## Last Round (max 3 sentences)
-Implemented D082 Phase 3: Thread closure capture analysis. Checker rejects `let` variable captures in Thread.start closures with clear error messages. Codegen auto deep-clones captured class instances for thread isolation (Ref<T>/string/value-types shared as-is). 173 tests passing, fixed-point verified, seed updated.
+Implemented D082 Phase 4: Channel<T> for thread communication. Unbounded FIFO blocking queue with mutex+condvar, supports int/double/string/class types. 174 tests passing, fixed-point verified, seed updated.
 
 ## Task
-Phase: D082 concurrency — Phase 3 (capture analysis) complete. **Next: choose one of these directions:**
+Phase: D082 concurrency — Phase 4 (Channel<T>) complete. **Next: choose one of these directions:**
 
-1. **D082 Phase 4 — Channel<T>** for thread communication (BlockingQueue-style):
-   - `const ch = new Channel<int>()`
-   - `ch.send(42)` / `const val = ch.receive()`
-   - Bounded or unbounded queue, mutex+condvar based
-   - Enables producer-consumer patterns between threads
-
-2. **D082 Phase 4 — computed()** reactive primitive:
+1. **D082 Phase 5 — computed()** reactive primitive:
    - `const isHigh = computed(() => count.value > 100)`
    - Auto-derive values from refs, lazy recalculation
    - Sugar over watch + ref
+
+2. **Bounded Channel** enhancement:
+   - `new Channel<int>(capacity)` — bounded queue
+   - `send()` blocks when full (backpressure)
+   - Adds cond_send condvar to struct
 
 3. **Fix open issues** (recommended if any blockers found):
    - Review `docs/4-issues/1-open/` before adding new features
@@ -45,7 +44,8 @@ Phase: D082 concurrency — Phase 3 (capture analysis) complete. **Next: choose 
 - **D082 Phase 1 done**: `ref()` + `watch()` — gen_rt_ref.ss
 - **D082 Phase 2 done**: `Thread.start(fn)` + `.join()` — gen_rt_thread.ss, M:N thread pool
 - **D082 Phase 3 done**: Thread closure capture analysis — checker rejects `let` captures, codegen deep-clones class instances
-- **Bootstrap**: 37 files, ~16200 LOC, 173 tests (all passing).
+- **D082 Phase 4 done**: `Channel<T>` — gen_rt_channel.ss, blocking FIFO queue with mutex+condvar
+- **Bootstrap**: 38 files, ~16200 LOC, 174 tests (all passing).
 - **Bootstrap perf**: Three-stage bootstrap ~27s.
 
 ## Watch Out For
@@ -56,8 +56,10 @@ Phase: D082 concurrency — Phase 3 (capture analysis) complete. **Next: choose 
 - **Thread.start double return**: i64 storage means double return values from thread callbacks don't work (double returns in xmm0, not rax).
 - **Array/Map thread capture**: Not yet auto-cloned (no deep clone for container types). Users should use Ref<T> for shared mutable containers.
 - **Checker captures are approximate**: Shadowed variables inside arrow body may cause false positives (rare, acceptable).
+- **Channel<T> is unbounded**: No backpressure. Fast producer can exhaust memory. Bounded channels deferred.
+- **Channel values via i64**: All types encoded as i64 for send/receive. Works for int/double/string/ptr. Class instances sent as ptr (no auto-clone on send — user responsibility for thread safety).
 - **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen. Do not propose.
-- **No new keywords**: Thread.start is a static method call, not a keyword.
+- **No new keywords**: Thread.start, Channel are built-in classes, not keywords.
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**

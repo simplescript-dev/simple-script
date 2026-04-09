@@ -7,6 +7,7 @@ import { emitRuntimeMap } from "./gen_rt_map"
 import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeSQLite, emitRuntimeInotify } from "./gen_rt_system"
 import { emitRuntimeRef } from "./gen_rt_ref"
 import { emitRuntimeThread } from "./gen_rt_thread"
+import { emitRuntimeChannel } from "./gen_rt_channel"
 
 function emitRuntimeDefs() {
     emitLibcDecls()
@@ -29,6 +30,7 @@ function emitRuntimeDefs() {
     emitRuntimeTestFramework()
     emitRuntimeRef()
     emitRuntimeThread()
+    emitRuntimeChannel()
 }
 
 // ── libc declarations ─────────────────────────────────────────
@@ -146,6 +148,7 @@ function emitLibcDecls() {
     emitIR("declare i32 @pthread_cond_init(ptr, ptr)")
     emitIR("declare i32 @pthread_cond_wait(ptr, ptr)")
     emitIR("declare i32 @pthread_cond_signal(ptr)")
+    emitIR("declare i32 @pthread_cond_broadcast(ptr)")
     emitIR("declare i64 @sysconf(i32)")
     emitIR("")
 }

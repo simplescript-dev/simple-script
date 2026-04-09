@@ -121,6 +121,14 @@ function initFuncRetTypes() {
     funcRetTypes.set("test", "void")
     // D080: exec process capture
     funcRetTypes.set("exec", "ExecResult")
+    // D081: inotify file watcher
+    funcRetTypes.set("_ss_inotify_init", "int")
+    funcRetTypes.set("_ss_inotify_add_watch", "int")
+    funcRetTypes.set("_ss_inotify_poll", "string")
+    funcRetTypes.set("_ss_inotify_close", "void")
+    // D082: ref/watch reactive concurrency
+    funcRetTypes.set("ref", "Ref")
+    funcRetTypes.set("watch", "void")
     // Built-in method return types (type-agnostic fallback for string/array methods)
     methodRetTypes = Map()
     methodRetTypes.set("length", "int")
@@ -154,6 +162,10 @@ function initFuncRetTypes() {
     methodRetTypes.set("filter", "ptr")
     methodRetTypes.set("get", "i64")
     methodRetTypes.set("delete", "void")
+    // D082 Phase 4: Channel methods
+    methodRetTypes.set("send", "void")
+    methodRetTypes.set("receive", "i64")
+    methodRetTypes.set("close", "void")
     methodRetTypes.set("find", "int")
     methodRetTypes.set("findIndex", "int")
     methodRetTypes.set("some", "int")
