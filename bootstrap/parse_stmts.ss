@@ -447,7 +447,7 @@ function parseAssignOrExpr(): int {
     const startCol = curColNum()
     const name = curValue()
     // Look ahead
-    const nextTok = tkKind(tkGet(tokens, tPos + 1))
+    const nextTok = kindAt(tPos + 1)
     // Index assignment: arr[i] = val
     if (nextTok == "LBRACKET") {
         pAdvance()

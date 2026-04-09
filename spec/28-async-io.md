@@ -154,3 +154,30 @@ for (line in process.stdout.lines()) {
     }
 }
 ```
+
+## 文件监听 (已实现 — D081)
+
+基于 Linux inotify，零 CPU 开销的文件变更监听。
+
+```simplescript
+import { FileWatcher } from "@/lib/watcher"
+
+const watcher = FileWatcher.create()
+watcher.watch("src/")       // 递归监听目录树
+watcher.watch("data/")      // 可监听多个目录
+
+while (true) {
+    const changed = watcher.poll(1000)  // 阻塞最多 1 秒
+    if (changed != "") {
+        println("Changed: " + changed)
+        recompile()
+    }
+}
+
+watcher.close()
+```
+
+- `FileWatcher.create()` — 创建 inotify 实例
+- `watch(path)` — 递归添加目录监听（IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_TO）
+- `poll(timeoutMs)` — 等待变更事件，返回文件名字符串，无变更返回 `""`
+- `close()` — 关闭 inotify fd

@@ -2,7 +2,7 @@
 
 A self-bootstrapping compiled language with Java/TypeScript syntax that produces native static binaries.
 
-**Self-hosted compiler (15,500 LOC SimpleScript). Zero C runtime. Perceus reference counting. 19x faster than Python.**
+**Self-hosted compiler (15,900 LOC SimpleScript). Zero C runtime. Perceus reference counting. 19x faster than Python.**
 
 Website: [simplescript.dev](https://simplescript.dev)
 
@@ -145,7 +145,7 @@ import { add } from "./math"
 
 ## Standard Library
 
-22 modules in `lib/`, importable via `@/lib/<module>`:
+23 modules in `lib/`, importable via `@/lib/<module>`:
 
 | Module | Description |
 |--------|-------------|
@@ -171,11 +171,12 @@ import { add } from "./math"
 | assert | Assertions |
 | base64 | Base64 encode/decode |
 | sha256 | SHA256 hashing |
+| watcher | File change monitoring (inotify) |
 
 ## Testing
 
 ```bash
-ss test tests/                  # run all 167 tests
+ss test tests/                  # run all 168 tests
 ss test tests/phase5/           # run specific phase
 ```
 
@@ -224,7 +225,7 @@ Static binary, no runtime dependencies. Starts instantly.
 ```
 
 - **Self-bootstrapping**: the compiler compiles itself. 3-stage fixed-point verification produces byte-identical binaries.
-- **Self-hosted**: 15,500 lines of SimpleScript across 35 source files in `bootstrap/`.
+- **Self-hosted**: 15,900 lines of SimpleScript across 35 source files in `bootstrap/`.
 - **Zero C runtime**: all runtime functions generated as LLVM IR by the compiler itself.
 - **Perceus RC**: automatic reference counting for class instances via liveness analysis — no GC, no manual memory management.
 - **Static linking**: musl libc + mimalloc allocator, single binary with no shared library dependencies.

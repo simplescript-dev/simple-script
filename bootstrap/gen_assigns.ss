@@ -1,6 +1,86 @@
 // gen_assigns.ss — Assignment code generation (member assign + variable assign)
 // Used by gen_decls.ss via textual import. No own imports needed.
 
+// ── Shared helpers ──────────────────────────────────────────
+
+// Convert a value to i64 for storage (Ref<T>, array elements)
+function emitValueToI64(val: string, ssType: string): string {
+    const llType = ssTypeToLLVM(ssType)
+    if (llType == "ptr") {
+        const r = nextReg()
+        emitIR(`  ${r} = ptrtoint ptr ${val} to i64`)
+        return r
+    }
+    if (ssType == "double") {
+        const r = nextReg()
+        emitIR(`  ${r} = bitcast double ${val} to i64`)
+        return r
+    }
+    if (llType == "i32") {
+        const r = nextReg()
+        emitIR(`  ${r} = sext i32 ${val} to i64`)
+        return r
+    }
+    return val
+}
+
+// Convert i64 back to typed value (reverse of emitValueToI64)
+function emitI64ToValue(val: string, ssType: string): string {
+    if (ssType == "" || ssType == "auto") { return val }
+    const llType = ssTypeToLLVM(ssType)
+    if (llType == "ptr") {
+        const r = nextReg()
+        emitIR(`  ${r} = inttoptr i64 ${val} to ptr`)
+        return r
+    }
+    if (ssType == "double") {
+        const r = nextReg()
+        emitIR(`  ${r} = bitcast i64 ${val} to double`)
+        return r
+    }
+    if (llType == "i32") {
+        const r = nextReg()
+        emitIR(`  ${r} = trunc i64 ${val} to i32`)
+        return r
+    }
+    return val
+}
+
+// Emit compound arithmetic (+=, -=, *=, /=, %=), returns result register
+function emitCompoundArith(op: string, r1: string, r2: string, elemType: string, llType: string): string {
+    const r3 = nextReg()
+    if (op == "PLUS_ASSIGN") {
+        if (elemType == "string") {
+            emitIR(`  ${r3} = call ptr @ss_string_concat(ptr ${r1}, ptr ${r2})`)
+        } else if (elemType == "double") {
+            emitIR(`  ${r3} = fadd double ${r1}, ${r2}`)
+        } else {
+            emitIR(`  ${r3} = add ${llType} ${r1}, ${r2}`)
+        }
+    } else if (op == "MINUS_ASSIGN") {
+        if (elemType == "double") {
+            emitIR(`  ${r3} = fsub double ${r1}, ${r2}`)
+        } else {
+            emitIR(`  ${r3} = sub ${llType} ${r1}, ${r2}`)
+        }
+    } else if (op == "STAR_ASSIGN") {
+        if (elemType == "double") {
+            emitIR(`  ${r3} = fmul double ${r1}, ${r2}`)
+        } else {
+            emitIR(`  ${r3} = mul ${llType} ${r1}, ${r2}`)
+        }
+    } else if (op == "SLASH_ASSIGN") {
+        if (elemType == "double") {
+            emitIR(`  ${r3} = fdiv double ${r1}, ${r2}`)
+        } else {
+            emitIR(`  ${r3} = sdiv ${llType} ${r1}, ${r2}`)
+        }
+    } else {
+        emitIR(`  ${r3} = srem ${llType} ${r1}, ${r2}`)
+    }
+    return r3
+}
+
 // ── Assignments ─────────────────────────────────────────────
 
 function genMemberAssign(id: int) {
@@ -8,6 +88,15 @@ function genMemberAssign(id: int) {
     const fieldName = nGetS1(id)
     const op = nGetS2(id)
     const valExpr = nGetI2(id)
+
+    // D082: Ref<T>.value assignment
+    if (fieldName == "value" && nGetKind(objExpr) == "IDENT") {
+        const rvt = getVarType(nGetS1(objExpr))
+        if (rvt.startsWith("Ref<") == 1) {
+            genRefValueAssign(objExpr, op, valExpr, refElemType(rvt))
+            return
+        }
+    }
 
     // D078: Static field assignment: ClassName.field = value
     const sfKey = nGetKind(objExpr) == "IDENT" ? `${nGetS1(objExpr)}.${fieldName}` : ""
@@ -88,41 +177,33 @@ function genMemberAssign(id: int) {
             emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
             r2 = trR
         }
-        const r3 = nextReg()
-        if (op == "PLUS_ASSIGN") {
-            if (fType == "string") {
-                emitIR(`  ${r3} = call ptr @ss_string_concat(ptr ${r1}, ptr ${r2})`)
-            } else if (fType == "double") {
-                emitIR(`  ${r3} = fadd double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = add ${llType} ${r1}, ${r2}`)
-            }
-        } else if (op == "MINUS_ASSIGN") {
-            if (fType == "double") {
-                emitIR(`  ${r3} = fsub double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = sub ${llType} ${r1}, ${r2}`)
-            }
-        } else if (op == "STAR_ASSIGN") {
-            if (fType == "double") {
-                emitIR(`  ${r3} = fmul double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = mul ${llType} ${r1}, ${r2}`)
-            }
-        } else if (op == "SLASH_ASSIGN") {
-            if (fType == "double") {
-                emitIR(`  ${r3} = fdiv double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = sdiv ${llType} ${r1}, ${r2}`)
-            }
-        } else {
-            emitIR(`  ${r3} = srem ${llType} ${r1}, ${r2}`)
-        }
+        const r3 = emitCompoundArith(op, r1, r2, fType, llType)
         emitIR(`  store ${llType} ${r3}, ptr ${gepReg}, align 8`)
         // RC: for string +=, release old value
         if (op == "PLUS_ASSIGN" && fType == "string") {
             emitIR(`  call void @ss_rc_release(ptr ${r1})`)
         }
+    }
+}
+
+// D082: Ref<T>.value assignment — read-modify-write through ss_refGet/ss_refSet
+function genRefValueAssign(objExpr: int, op: string, valExpr: int, elemType: string) {
+    const refReg = genExpr(objExpr)
+    const llType = ssTypeToLLVM(elemType)
+
+    if (op == "ASSIGN") {
+        const val = genExpr(valExpr)
+        const val64 = emitValueToI64(val, elemType)
+        emitIR(`  call void @ss_refSet(ptr ${refReg}, i64 ${val64})`)
+    } else {
+        // Compound assignment: +=, -=, *=, /=, %=
+        const raw = nextReg()
+        emitIR(`  ${raw} = call i64 @ss_refGet(ptr ${refReg})`)
+        const r1 = emitI64ToValue(raw, elemType)
+        let r2 = genExpr(valExpr)
+        const r3 = emitCompoundArith(op, r1, r2, elemType, llType)
+        const res64 = emitValueToI64(r3, elemType)
+        emitIR(`  call void @ss_refSet(ptr ${refReg}, i64 ${res64})`)
     }
 }
 
@@ -156,7 +237,8 @@ function genAssign(id: int) {
             if (nGetS1(nGetI1(valId)) == name) { skipRelease = 1 }
         }
         const assignLLName = llVarName(name)
-        if (llType == "ptr" && currentFunc != "" && isTrackedPtrVar(assignLLName) == 1 && skipRelease == 0) {
+        const isGlobalPtr = assignLLName.startsWith("@") == 1
+        if (llType == "ptr" && currentFunc != "" && (isTrackedPtrVar(assignLLName) == 1 || isGlobalPtr == 1) && skipRelease == 0) {
             const oldVal = nextReg()
             emitIR(`  ${oldVal} = load ptr, ptr ${varRef(name)}, align 8`)
             if (isOwnedExpr(valId) == 0) {
@@ -208,22 +290,7 @@ function genAssign(id: int) {
             const trR = nextReg(); emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
             r2 = trR
         }
-        const r3 = nextReg()
-        if (op == "PLUS_ASSIGN") {
-            if (vType == "string") {
-                emitIR(`  ${r3} = call ptr @ss_string_concat(ptr ${r1}, ptr ${r2})`)
-            } else {
-                emitIR(`  ${r3} = add i32 ${r1}, ${r2}`)
-            }
-        } else if (op == "MINUS_ASSIGN") {
-            emitIR(`  ${r3} = sub i32 ${r1}, ${r2}`)
-        } else if (op == "STAR_ASSIGN") {
-            emitIR(`  ${r3} = mul i32 ${r1}, ${r2}`)
-        } else if (op == "SLASH_ASSIGN") {
-            emitIR(`  ${r3} = sdiv i32 ${r1}, ${r2}`)
-        } else {
-            emitIR(`  ${r3} = srem i32 ${r1}, ${r2}`)
-        }
+        const r3 = emitCompoundArith(op, r1, r2, vType, llType)
         emitIR(`  store ${llType} ${r3}, ptr ${lnRef}, align 8`)
         // RC: for string +=, release old value (concat result is new owned)
         if (op == "PLUS_ASSIGN" && vType == "string" && currentFunc != "" && isTrackedPtrVar(llVarName(name)) == 1) {
@@ -289,36 +356,7 @@ function genStaticFieldAssign(sfKey: string, op: string, valExpr: int) {
             emitIR(`  ${trR} = trunc i64 ${r2} to i32`)
             r2 = trR
         }
-        const r3 = nextReg()
-        if (op == "PLUS_ASSIGN") {
-            if (fType == "string") {
-                emitIR(`  ${r3} = call ptr @ss_string_concat(ptr ${r1}, ptr ${r2})`)
-            } else if (fType == "double") {
-                emitIR(`  ${r3} = fadd double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = add ${llType} ${r1}, ${r2}`)
-            }
-        } else if (op == "MINUS_ASSIGN") {
-            if (fType == "double") {
-                emitIR(`  ${r3} = fsub double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = sub ${llType} ${r1}, ${r2}`)
-            }
-        } else if (op == "STAR_ASSIGN") {
-            if (fType == "double") {
-                emitIR(`  ${r3} = fmul double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = mul ${llType} ${r1}, ${r2}`)
-            }
-        } else if (op == "SLASH_ASSIGN") {
-            if (fType == "double") {
-                emitIR(`  ${r3} = fdiv double ${r1}, ${r2}`)
-            } else {
-                emitIR(`  ${r3} = sdiv ${llType} ${r1}, ${r2}`)
-            }
-        } else {
-            emitIR(`  ${r3} = srem ${llType} ${r1}, ${r2}`)
-        }
+        const r3 = emitCompoundArith(op, r1, r2, fType, llType)
         emitIR(`  store ${llType} ${r3}, ptr ${globalName}, align 8`)
         if (op == "PLUS_ASSIGN" && fType == "string") {
             emitIR(`  call void @ss_rc_release(ptr ${r1})`)

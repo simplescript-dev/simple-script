@@ -255,7 +255,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **Error class**: 内置 `class Error { message: string }`，用户可 `extends Error` 自定义错误类型
 - **throw class instances**: `throw(new IOError("msg", "/path"))` 抛 Error 对象，`throw("msg")` 向后兼容
 - **?? 空值合并**: `value ?? "default"`
-- **Enum 带值**: `enum Color { Red = 1, Green = 2, Blue = 3 }`，支持字符串值 `enum Direction { Up = "up", Down = "down" }`（D076，不可混合 int 和 string）
+- **Enum 带值**: `enum Color { Red = 1, Green = 2, Blue = 3 }`，支持字符串值 `enum Direction { Up = "up", Down = "down" }`（D076，不可混合 int 和 string）。`values()`/`names()`/`valueOf(name)` 静态方法（D077, D083）
 - **泛型类型约束**: `<T extends Interface>`、多约束 `<T extends A & B>`（编译期验证，D031）
 - 泛型类型标注: `Array<string>`, `Map<string, int>`, `List<int>`, `Set<string>`
 - 模板字符串 `` `${expr}` ``（支持嵌套）

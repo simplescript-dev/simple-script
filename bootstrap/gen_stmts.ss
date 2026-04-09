@@ -240,8 +240,19 @@ function genIndexAssign(id: int) {
     const vt = inferType(nGetI2(id))
     let v64 = valVal
     if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR(`  ${s} = sext i32 ${valVal} to i64`); v64 = s }
-    if (vt == "string" || vt == "ptr") { const c = nextReg(); emitIR(`  ${c} = ptrtoint ptr ${valVal} to i64`); v64 = c }
-    emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
+    if (vt == "string" || vt == "ptr") {
+        // RC: retain new, load+release old (null-safe)
+        const oldVal = nextReg()
+        emitIR(`  ${oldVal} = call i64 @ss_arrayGet(ptr ${arrPtr}, i32 ${idxVal})`)
+        const oldPtr = nextReg()
+        emitIR(`  ${oldPtr} = inttoptr i64 ${oldVal} to ptr`)
+        emitIR(`  call void @ss_rc_retain(ptr ${valVal})`)
+        const c = nextReg(); emitIR(`  ${c} = ptrtoint ptr ${valVal} to i64`); v64 = c
+        emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
+        emitIR(`  call void @ss_rc_release(ptr ${oldPtr})`)
+    } else {
+        emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
+    }
 }
 
 function genThrow(id: int) {
@@ -300,6 +311,7 @@ function genBlock(blockId: int) {
         const stmtId = parseInt(p)
         if (stmtId > 0) {
             genStmt(stmtId)
+            if (terminated == 1) { return }
             pirEmitScheduled(stmtId)
         }
     }
@@ -443,20 +455,11 @@ function genForIn(id: int) {
     terminated = 0
     const elemVal = nextReg(); emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${arr}, i32 ${curIdx})`)
     // Convert i64 element to item type
-    if (itemType == "string") {
-        const elemPtr = nextReg(); emitIR(`  ${elemPtr} = inttoptr i64 ${elemVal} to ptr`)
-        emitIR(`  store ptr ${elemPtr}, ptr %${itemLLName}, align 8`)
-    } else if (itemType == "int") {
-        const elemI32 = nextReg(); emitIR(`  ${elemI32} = trunc i64 ${elemVal} to i32`)
-        emitIR(`  store i32 ${elemI32}, ptr %${itemLLName}, align 8`)
-    } else if (itemType == "double") {
-        const elemDb = nextReg(); emitIR(`  ${elemDb} = bitcast i64 ${elemVal} to double`)
-        emitIR(`  store double ${elemDb}, ptr %${itemLLName}, align 8`)
-    } else if (itemLLType == "ptr") {
-        const elemPtr = nextReg(); emitIR(`  ${elemPtr} = inttoptr i64 ${elemVal} to ptr`)
-        emitIR(`  store ptr ${elemPtr}, ptr %${itemLLName}, align 8`)
-    } else {
+    if (itemType == "" || itemType == "auto" || itemType == "i64") {
         emitIR(`  store i64 ${elemVal}, ptr %${itemLLName}, align 8`)
+    } else {
+        const converted = emitI64ToValue(elemVal, itemType)
+        emitIR(`  store ${itemLLType} ${converted}, ptr %${itemLLName}, align 8`)
     }
 
     genNestedBlock(bodyId)

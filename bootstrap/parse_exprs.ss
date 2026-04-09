@@ -190,7 +190,7 @@ function parsePrimary(): int {
     let expr = parseAtom()
     // Postfix: .member, .method(), [index], ?.member
     // Support multiline chaining: NEWLINE followed by DOT continues the chain
-    while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN" || (curKind() == "NEWLINE" && tkKind(tkGet(tokens, tPos + 1)) == "DOT")) {
+    while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN" || (curKind() == "NEWLINE" && kindAt(tPos + 1) == "DOT")) {
         if (curKind() == "NEWLINE") { pAdvance() }
         if (curKind() == "LBRACKET") {
             pAdvance()
@@ -231,10 +231,10 @@ function parsePrimary(): int {
 // Scan forward from ( to find matching ), check if => follows
 function isArrowFunc(): int {
     // Quick check: ( must be followed by ) or IDENT
-    const nextK = tkKind(tkGet(tokens, tPos + 1))
+    const nextK = kindAt(tPos + 1)
     if (nextK != "RPAREN" && nextK != "IDENT") { return 0 }
     if (nextK == "IDENT") {
-        const afterIdent = tkKind(tkGet(tokens, tPos + 2))
+        const afterIdent = kindAt(tPos + 2)
         // Must be param: name COLON type or name RPAREN or name COMMA
         if (afterIdent != "COLON" && afterIdent != "RPAREN" && afterIdent != "COMMA") { return 0 }
     }
@@ -242,14 +242,14 @@ function isArrowFunc(): int {
     let lookahead = tPos + 1
     let depth = 1
     while (depth > 0) {
-        const lk = tkKind(tkGet(tokens, lookahead))
+        const lk = kindAt(lookahead)
         if (lk == "LPAREN") { depth = depth + 1 }
         if (lk == "RPAREN") { depth = depth - 1 }
         if (lk == "EOF") { return 0 }
         lookahead = lookahead + 1
     }
     // Token right after ) must be => or : (return type annotation)
-    const afterParen = tkKind(tkGet(tokens, lookahead))
+    const afterParen = kindAt(lookahead)
     if (afterParen == "ARROW") { return 1 }
     if (afterParen != "COLON") { return 0 }
     // Skip return type to find =>
@@ -257,7 +257,7 @@ function isArrowFunc(): int {
     // Max 5 tokens for type (e.g. Array < string , int >)
     let maxScan = 0
     while (maxScan < 5) {
-        const tk = tkKind(tkGet(tokens, checkPos))
+        const tk = kindAt(checkPos)
         if (tk == "ARROW") { return 1 }
         if (tk == "EOF" || tk == "LBRACE" || tk == "NEWLINE" || tk == "SEMICOLON") { return 0 }
         checkPos = checkPos + 1
@@ -316,7 +316,7 @@ function isGenericCallSite(): int {
     let maxScan = 0
     while (depth > 0) {
         if (maxScan > 30) { return 0 }
-        const tk = tkKind(tkGet(tokens, look))
+        const tk = kindAt(look)
         if (tk == "GT") { depth = depth - 1 }
         else if (tk == "LT") { depth = depth + 1 }
         else if (tk == "EOF") { return 0 }
@@ -326,7 +326,7 @@ function isGenericCallSite(): int {
         look = look + 1
         maxScan = maxScan + 1
     }
-    if (tkKind(tkGet(tokens, look)) == "LPAREN") { return 1 }
+    if (kindAt(look) == "LPAREN") { return 1 }
     return 0
 }
 
@@ -515,7 +515,7 @@ function parseArgs(): string {
             nSetI1(spreadNode, spreadExpr)
             args = listAppend(args, spreadNode)
         // Named arg: IDENT followed by COLON → NAMED_ARG node
-        } else if (curKind() == "IDENT" && tkKind(tkGet(tokens, tPos + 1)) == "COLON") {
+        } else if (curKind() == "IDENT" && kindAt(tPos + 1) == "COLON") {
             const naName = curValue()
             pAdvance()
             pAdvance()

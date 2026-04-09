@@ -2,7 +2,7 @@
 // AST node system, parser state, public API, declarations, helpers.
 // Statement parsing in parse_stmts.ss, expression parsing in parse_exprs.ss.
 
-import { tkGet, tkKind, tkValue, tkCol } from "./lexer"
+import { tkCol } from "./lexer"
 import { parseStmt, parseBlock, parseVarDecl, parseVarDeclNoNL, parseUpdateStmt } from "./parse_stmts"
 import { parseExpr, parseArgs } from "./parse_exprs"
 
@@ -13,13 +13,13 @@ let nKind = ""
 let nStr1 = ""
 let nStr2 = ""
 let nStr3 = ""
-let nInt1 = ""
-let nInt2 = ""
-let nInt3 = ""
-let nInt4 = ""
+let nInt1: Array<int> = []
+let nInt2: Array<int> = []
+let nInt3: Array<int> = []
+let nInt4: Array<int> = []
 let nList = ""
-let nLine = ""
-let nCol = ""
+let nLine: Array<int> = []
+let nCol: Array<int> = []
 let mapsReady = 0
 let parsingAbstractMethod = 0  // D071: skip body parsing for abstract methods
 
@@ -29,13 +29,14 @@ function initParser() {
     nStr1 = Map()
     nStr2 = Map()
     nStr3 = Map()
-    nInt1 = Map()
-    nInt2 = Map()
-    nInt3 = Map()
-    nInt4 = Map()
+    // index 0 is unused (node IDs start at 1)
+    nInt1.push(0)
+    nInt2.push(0)
+    nInt3.push(0)
+    nInt4.push(0)
     nList = Map()
-    nLine = Map()
-    nCol = Map()
+    nLine.push(0)
+    nCol.push(0)
     classTypeParamsMap = Map()
     funcConstraintMap = Map()
     classConstraintMap = Map()
@@ -48,33 +49,37 @@ function newNode(kind: string): int {
     const id = nextId
     nextId = nextId + 1
     nKind.set(id + "", kind)
-    nLine.set(id + "", curLineNum())
-    nCol.set(id + "", curColNum())
+    nInt1.push(0)
+    nInt2.push(0)
+    nInt3.push(0)
+    nInt4.push(0)
+    nLine.push(curLineNum())
+    nCol.push(curColNum())
     return id
 }
 
 function nSetS1(id: int, val: string) { nStr1.set(id + "", val) }
 function nSetS2(id: int, val: string) { nStr2.set(id + "", val) }
 function nSetS3(id: int, val: string) { nStr3.set(id + "", val) }
-function nSetI1(id: int, val: int) { nInt1.set(id + "", val) }
-function nSetI2(id: int, val: int) { nInt2.set(id + "", val) }
-function nSetI3(id: int, val: int) { nInt3.set(id + "", val) }
-function nSetI4(id: int, val: int) { nInt4.set(id + "", val) }
+function nSetI1(id: int, val: int) { nInt1[id] = val }
+function nSetI2(id: int, val: int) { nInt2[id] = val }
+function nSetI3(id: int, val: int) { nInt3[id] = val }
+function nSetI4(id: int, val: int) { nInt4[id] = val }
 function nSetList(id: int, val: string) { nList.set(id + "", val) }
 
 function nGetKind(id: int): string { return nKind.getString(id + "") }
 function nGetS1(id: int): string { return nStr1.getString(id + "") }
 function nGetS2(id: int): string { return nStr2.getString(id + "") }
 function nGetS3(id: int): string { return nStr3.getString(id + "") }
-function nGetI1(id: int): int { return nInt1.get(id + "") }
-function nGetI2(id: int): int { return nInt2.get(id + "") }
-function nGetI3(id: int): int { return nInt3.get(id + "") }
-function nGetI4(id: int): int { return nInt4.get(id + "") }
+function nGetI1(id: int): int { return nInt1[id] }
+function nGetI2(id: int): int { return nInt2[id] }
+function nGetI3(id: int): int { return nInt3[id] }
+function nGetI4(id: int): int { return nInt4[id] }
 function nGetList(id: int): string { return nList.getString(id + "") }
-function nGetLine(id: int): int { return nLine.get(id + "") }
-function nGetCol(id: int): int { return nCol.get(id + "") }
-function nSetLine(id: int, val: int) { nLine.set(id + "", val) }
-function nSetCol(id: int, val: int) { nCol.set(id + "", val) }
+function nGetLine(id: int): int { return nLine[id] }
+function nGetCol(id: int): int { return nCol[id] }
+function nSetLine(id: int, val: int) { nLine[id] = val }
+function nSetCol(id: int, val: int) { nCol[id] = val }
 
 // ── Semantic AST accessors ────────────────────────────────────
 // Use these instead of raw nGetS1/nGetI1 for self-documenting code.
@@ -147,11 +152,16 @@ let tokens = ""
 let tPos = 0
 
 function curKind(): string {
-    return tkKind(tkGet(tokens, tPos))
+    return tkKinds[tPos]
 }
 
 function curValue(): string {
-    return tkValue(tkGet(tokens, tPos))
+    return tkValues[tPos]
+}
+
+function kindAt(index: int): string {
+    if (index >= tokenCount) { return "EOF" }
+    return tkKinds[index]
 }
 
 function pAdvance() {
@@ -519,35 +529,35 @@ function isBodyFieldStart(): int {
     if (curKind() == "CONST") { return 1 }
     // D078: static [const] field: Type — but NOT static function (that's a method)
     if (curKind() == "STATIC") {
-        const nextTok = tkKind(tkGet(tokens, tPos + 1))
+        const nextTok = kindAt(tPos + 1)
         if (nextTok == "CONST") { return 1 }
         if (nextTok == "IDENT") {
-            const afterIdent = tkKind(tkGet(tokens, tPos + 2))
+            const afterIdent = kindAt(tPos + 2)
             if (afterIdent == "COLON" || afterIdent == "QUESTION") { return 1 }
         }
         return 0
     }
     if (curKind() == "PRIVATE" || curKind() == "PROTECTED") {
-        const nextTok = tkKind(tkGet(tokens, tPos + 1))
+        const nextTok = kindAt(tPos + 1)
         if (nextTok == "CONST") { return 1 }
         // D078: private/protected static field
         if (nextTok == "STATIC") {
-            const afterStatic = tkKind(tkGet(tokens, tPos + 2))
+            const afterStatic = kindAt(tPos + 2)
             if (afterStatic == "CONST") { return 1 }
             if (afterStatic == "IDENT") {
-                const afterIdent = tkKind(tkGet(tokens, tPos + 3))
+                const afterIdent = kindAt(tPos + 3)
                 if (afterIdent == "COLON" || afterIdent == "QUESTION") { return 1 }
             }
             return 0
         }
         if (nextTok == "IDENT") {
-            const nextNextTok = tkKind(tkGet(tokens, tPos + 2))
+            const nextNextTok = kindAt(tPos + 2)
             if (nextNextTok == "COLON" || nextNextTok == "QUESTION") { return 1 }
         }
         return 0
     }
     if (curKind() == "IDENT") {
-        const nextTok = tkKind(tkGet(tokens, tPos + 1))
+        const nextTok = kindAt(tPos + 1)
         if (nextTok == "COLON" || nextTok == "QUESTION") { return 1 }
     }
     return 0

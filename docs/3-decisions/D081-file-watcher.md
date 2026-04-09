@@ -1,6 +1,6 @@
 # D081: File Watcher (inotify)
 
-**Status:** Todo
+**Status:** Done
 **Depends on:** D080 (exec — 验证 runtime 函数 + prelude class 模式)
 **Priority:** P1
 

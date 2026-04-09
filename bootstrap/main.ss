@@ -1,7 +1,7 @@
 // SimpleScript Bootstrap Compiler — Main Entry Point
 // Usage: ss run bootstrap/main.ss -- <input.ss> -o <output>
 
-import { tokenize, initTkMap } from "./lexer"
+import { tokenize } from "./lexer"
 import { parse, initParser } from "./parser"
 import { check } from "./checker"
 import { generate, generateToFile, initCodegen, initVarAliases } from "./codegen"
@@ -172,7 +172,6 @@ function lastIndexOf(s: string, sub: string): int {
 // ── Main ──────────────────────────────────────────────────────
 
 function main() {
-    initTkMap()
     initParser()
     initCodegen()
     initClassState()
@@ -281,30 +280,10 @@ function cmdRun() {
 
 // ── ss test ───────────────────────────────────────────────────
 
-function cmdTest() {
-    let testDir = "tests"
-    if (args() > 2) { testDir = arg(2) }
+let testFileList = ""
+let testFileCount = 0
 
-    const files = listDir(testDir)
-    if (files == "") { println("no test files found in " + testDir); exit(1) }
-
-    let passed = 0
-    let failed = 0
-    let total = 0
-    const startTime = timeMs()
-
-    // Recursively find .ss files
-    runTestDir(testDir, passed, failed, total)
-
-    println("")
-    const elapsed = timeMs() - startTime
-    println("done in " + elapsed + "ms")
-}
-
-let testPassed = 0
-let testFailed = 0
-
-function runTestDir(dir: string, p: int, f: int, t: int) {
+function collectTestFiles(dir: string) {
     const entries = listDir(dir)
     if (entries == "") { return }
     const parts = entries.split("\n")
@@ -312,29 +291,73 @@ function runTestDir(dir: string, p: int, f: int, t: int) {
         if (entry == "") { continue }
         const path = dir + "/" + entry
         if (entry.endsWith(".ss") == 1) {
-            // Skip interactive tests and library-only files
             if (entry == "guess_game.ss" || entry == "ygrep.ss") { continue }
             if (entry != "main.ss" && dir.endsWith("/import") == 1) { continue }
-            const outBin = "/tmp/ss_test_bin"
-            const selfBin = arg(0)
-            const rc1 = system(`${selfBin} build ${path} -o ${outBin} >/dev/null 2>&1`)
-            if (rc1 != 0) {
-                println("FAIL (compile): " + path)
-                testFailed = testFailed + 1
-                continue
-            }
-            const rc2 = system(`timeout 5 ${outBin} >/dev/null 2>&1`)
-            if (rc2 == 0) {
-                testPassed = testPassed + 1
-            } else {
-                println("FAIL (run): " + path)
-                testFailed = testFailed + 1
-            }
+            if (testFileList == "") { testFileList = path }
+            else { testFileList = testFileList + "\n" + path }
+            testFileCount = testFileCount + 1
         } else if (entry.contains(".") == 0) {
-            // Directory — recurse
-            runTestDir(path, p, f, t)
+            collectTestFiles(path)
         }
     }
+}
+
+function cmdTest() {
+    let testDir = "tests"
+    if (args() > 2) { testDir = arg(2) }
+
+    collectTestFiles(testDir)
+    if (testFileCount == 0) { println("no test files found in " + testDir); exit(1) }
+
+    // Build runtime cache for faster compilation
+    if (fileExists(runtimeCacheObj) == 0) { buildRuntimeCache() }
+    useRuntimeCache = 1
+
+    const selfBin = arg(0)
+    const startTime = timeMs()
+
+    // Generate parallel test script — limit concurrency to nproc
+    let script = "#!/bin/bash\nMAX_JOBS=$(nproc)\nRUNNING=0\n"
+    const files = testFileList.split("\n")
+    let idx = 0
+    for (f in files) {
+        if (f == "") { continue }
+        const outBin = `/tmp/ss_test_${idx}`
+        const resFile = `/tmp/ss_res_${idx}`
+        script = script + `(${selfBin} build ${f} -o ${outBin} >/dev/null 2>&1 && timeout 5 ${outBin} >/dev/null 2>&1; echo $? > ${resFile}) &\n`
+        script = script + "RUNNING=$((RUNNING+1)); if [ $RUNNING -ge $MAX_JOBS ]; then wait -n; RUNNING=$((RUNNING-1)); fi\n"
+        idx = idx + 1
+    }
+    script = script + "wait\n"
+
+    writeFile("/tmp/ss_test_par.sh", script)
+    system("bash /tmp/ss_test_par.sh")
+
+    // Collect results
+    let passed = 0
+    let failed = 0
+    let i = 0
+    for (tf in files) {
+        if (tf == "") { continue }
+        const resFile = `/tmp/ss_res_${i}`
+        const res = readFile(resFile).trim()
+        if (res == "0") {
+            passed = passed + 1
+        } else {
+            println("FAIL: " + tf)
+            failed = failed + 1
+        }
+        i = i + 1
+    }
+
+    // Cleanup
+    system(`rm -f /tmp/ss_test_par.sh /tmp/ss_test_* /tmp/ss_res_*`)
+
+    println("")
+    const elapsed = timeMs() - startTime
+    println(`${passed} passed, ${failed} failed, ${passed + failed} total`)
+    println(`done in ${elapsed}ms`)
+    if (failed > 0) { exit(1) }
 }
 
 // ── ss check ──────────────────────────────────────────────────
@@ -442,7 +465,7 @@ function cmdInstall() {
 // ── ss clean ──────────────────────────────────────────────────
 
 function cmdClean() {
-    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output /tmp/ss_test_bin")
+    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh /tmp/ss_rt_cache.*")
     println("cleaned /tmp/ss_* build artifacts")
 }
 
@@ -457,7 +480,7 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     let preludeLines = 0
     let pi = 0
     while (pi < prelude.length()) {
-        if (prelude.charAt(pi) == "\n") { preludeLines = preludeLines + 1 }
+        if (charCodeAt(prelude, pi) == 10) { preludeLines = preludeLines + 1 }
         pi = pi + 1
     }
 
@@ -465,12 +488,12 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     setLineOffset(preludeLines + 1)
     const root = parse(tokens)
     check(root)
-    const llFile = "/tmp/ss_bootstrap.ll"
+    const llFile = outputFile + ".ll"
     generateToFile(root, llFile)
 
     if (emitIr == 1) { println(readFile(llFile)); exit(0) }
 
-    const objFile = "/tmp/ss_bootstrap.o"
+    const objFile = outputFile + ".o"
     if (system(`llc-18 -filetype=obj ${llFile} -o ${objFile}`) != 0) {
         println("error: llc failed")
         exit(1)
@@ -478,18 +501,19 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
 
     let linkFlags = "-static"
     if (release == 1) { linkFlags = "-static -O2 -s" }
-    // Link with mimalloc if vendor/mimalloc.o exists
     let mimallocObj = ""
     if (fileExists("vendor/mimalloc.o") == 1) { mimallocObj = "vendor/mimalloc.o" }
     if (fileExists("../vendor/mimalloc.o") == 1) { mimallocObj = "../vendor/mimalloc.o" }
-    // Link with SQLite if vendor/sqlite3.o exists
     let sqliteObj = ""
     if (fileExists("vendor/sqlite3.o") == 1) { sqliteObj = "vendor/sqlite3.o" }
     if (fileExists("../vendor/sqlite3.o") == 1) { sqliteObj = "../vendor/sqlite3.o" }
-    if (system(`musl-gcc ${linkFlags} ${objFile} ${mimallocObj} ${sqliteObj} -o ${outputFile} -lm`) != 0) {
+    let rtObj = ""
+    if (useRuntimeCache == 1) { rtObj = runtimeCacheObj }
+    if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} ${sqliteObj} -o ${outputFile} -lm`) != 0) {
         println("error: linking failed")
         exit(1)
     }
+    system(`rm -f ${llFile} ${llFile}.str ${objFile}`)
 
     println("compiled: " + outputFile)
 }

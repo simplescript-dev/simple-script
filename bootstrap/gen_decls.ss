@@ -58,6 +58,7 @@ function isOwnedExpr(nodeId: int): int {
     if (kind == "TEMPLATE_LIT") { return 1 }
     if (kind == "ARRAY_LIT") { return 1 }
     if (kind == "BINARY") {
+        if (nGetS1(nodeId) == "NullCoalesce") { return 0 }
         const lType = inferType(nGetI1(nodeId))
         if (lType == "string") { return 1 }
         return 0
@@ -208,8 +209,13 @@ function genGlobalVar(id: int) {
         if (globalInitIds == "") { globalInitIds = `${id}` }
         else { globalInitIds = `${globalInitIds},${id}` }
         // Infer actual type for class tracking
-        const realType = inferType(initId)
-        if (realType != "" && realType != "ptr" && realType != "int") { gType = realType }
+        const annotation = nGetS3(id)
+        if (annotation != "") {
+            gType = annotation
+        } else {
+            const realType = inferType(initId)
+            if (realType != "" && realType != "ptr" && realType != "int") { gType = realType }
+        }
     }
     setVarType(name, gType)
     globalAliases.set(name, `@${name}`)

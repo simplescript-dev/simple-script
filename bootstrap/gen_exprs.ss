@@ -64,27 +64,7 @@ function genIndexAccess(id: int): string {
         }
     }
     if (idxElem == "") { idxElem = inferArrayElemType(nGetI1(id)) }
-    if (idxElem == "string") {
-        const castR = nextReg()
-        emitIR(`  ${castR} = inttoptr i64 ${rawR} to ptr`)
-        return castR
-    }
-    if (idxElem == "int") {
-        const castR = nextReg()
-        emitIR(`  ${castR} = trunc i64 ${rawR} to i32`)
-        return castR
-    }
-    if (idxElem == "double") {
-        const castR = nextReg()
-        emitIR(`  ${castR} = bitcast i64 ${rawR} to double`)
-        return castR
-    }
-    if (ssTypeToLLVM(idxElem) == "ptr") {
-        const castR = nextReg()
-        emitIR(`  ${castR} = inttoptr i64 ${rawR} to ptr`)
-        return castR
-    }
-    return rawR
+    return emitI64ToValue(rawR, idxElem)
 }
 
 function genPostfixExpr(id: int): string {

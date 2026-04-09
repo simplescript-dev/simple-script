@@ -323,12 +323,11 @@ function emitRuntimeMap() {
     // Get key string, strdup it for the array
     irLoad("ek", "ptr", "%e")
     irCall("kdup", "ptr", "ss_rc_strdup", "ptr %ek")
-    // Store into array: arr[ai+1] = kdup (offset by 1 for length slot)
+    // Store into array via ss_arraySet API
     irLoad("ci", "i64", "%ai")
-    irAdd("slot", "i64", "%ci", "1")
-    irGEP("sp", "i64", "%arr", "%slot")
+    irTrunc("ci32", "i64", "%ci", "i32")
     irPtrToInt("kv", "%kdup", "i64")
-    irStore("i64", "%kv", "%sp")
+    irCallVoid("ss_arraySet", "ptr %arr, i32 %ci32, i64 %kv")
     // Advance array index
     irAdd("ni", "i64", "%ci", "1")
     irStore("i64", "%ni", "%ai")

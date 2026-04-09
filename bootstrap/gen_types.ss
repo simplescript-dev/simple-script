@@ -303,6 +303,10 @@ function inferType(id: int): string {
         }
         if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {
             if (method == "values" || method == "names") { return "ptr" }
+            if (method == "valueOf") {
+                if (enumTypes.has(nGetS1(mcObj)) == 1) { return "string" }
+                return "int"
+            }
         }
         // Resolve object type FIRST via unified inferType (recursive)
         const objType = resolveObjClass(mcObj)

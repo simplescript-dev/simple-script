@@ -253,6 +253,10 @@ println(Direction.Up)             // "up"
 let names = Color.names()         // ["Red", "Green", "Blue"]
 let vals = Color.values()         // [0, 1, 2]
 let dirs = Direction.values()     // ["up", "down"]
+
+// Reverse lookup (throws on invalid name)
+let c = Color.valueOf("Red")     // 0
+let d = Direction.valueOf("Up")  // "up"
 ```
 
 ### Null Safety
@@ -494,6 +498,7 @@ parseDouble("3.14")               // string → double
 |----------|--------|-------------|
 | `exit(code)` | void | Exit program |
 | `system(cmd)` | int | Execute shell command |
+| `exec(cmd)` | ExecResult | Execute and capture output (`stdout`, `exitCode`) |
 | `args()` | int | Argument count |
 | `arg(index)` | string | Get argument at index |
 | `getenv(name)` | string | Environment variable |
@@ -725,6 +730,23 @@ FS.mkdirp("a/b/c")               // recursive
 FS.readDir(".")                   // Array<string>
 FS.remove("file.txt")
 FS.rename("old.txt", "new.txt")
+```
+
+### watcher — File Monitoring
+
+```typescript
+import { FileWatcher } from "@/lib/watcher"
+
+const watcher = FileWatcher.create()
+watcher.watch("src/")                // recursive watch
+watcher.watch("data/")               // watch multiple dirs
+
+const changed = watcher.poll(1000)   // block up to 1s, returns filename
+if (changed != "") {
+    println("Changed: " + changed)
+}
+
+watcher.close()
 ```
 
 ### path — Path Manipulation

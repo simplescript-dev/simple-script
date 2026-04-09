@@ -12,26 +12,15 @@ let curLine = 1
 let curCol = 1
 let tokenBuf = ""
 let tokenCount = 0
-let tkKinds = ""
-let tkValues = ""
-let tkLines = ""
-let tkCols = ""
+let tkKinds: Array<string> = []
+let tkValues: Array<string> = []
+let tkLines: Array<int> = []
+let tkCols: Array<int> = []
 let tokenStartCol = 1
-let tkMapReady = 0
-
-function initTkMap() {
-    if (tkMapReady == 1) { return }
-    tkKinds = Map()
-    tkValues = Map()
-    tkLines = Map()
-    tkCols = Map()
-    tkMapReady = 1
-}
 
 // ── Public API ────────────────────────────────────────────────
 
 function tokenize(source: string): string {
-    initTkMap()
     src = source
     pos = 0
     srcLen = src.length()
@@ -44,50 +33,50 @@ function tokenize(source: string): string {
         skipWS()
         if (pos >= srcLen) { break }
         tokenStartCol = curCol
-        const ch = src.charAt(pos)
-        if (ch == "\n") {
+        const ch = peek()
+        if (ch == 10) {
             emit("NEWLINE", "\\n")
             advance()
             curLine = curLine + 1
             curCol = 1
             continue
         }
-        if (ch == "\"") { lexString(); continue }
-        if (ch == "'") { lexSQString(); continue }
-        if (ch == "`") { lexTemplate(); continue }
+        if (ch == 34) { lexString(); continue }
+        if (ch == 39) { lexSQString(); continue }
+        if (ch == 96) { lexTemplate(); continue }
         if (isDigit(ch)) { lexNumber(); continue }
-        if (isAlpha(ch) || ch == "_") { lexIdent(); continue }
-        if (ch == "+") { lexPlus(); continue }
-        if (ch == "-") { lexMinus(); continue }
-        if (ch == "*") { lexStar(); continue }
-        if (ch == "/") { lexSlash(); continue }
-        if (ch == "%") { lexPercent(); continue }
-        if (ch == "=") { lexEq(); continue }
-        if (ch == "!") { lexBang(); continue }
-        if (ch == "?") { lexQuestion(); continue }
-        if (ch == "<") { lexLt(); continue }
-        if (ch == ">") { lexGt(); continue }
-        if (ch == "&") { lexAnd(); continue }
-        if (ch == "|") { lexOr(); continue }
-        if (ch == "^") { lexCaret(); continue }
-        if (ch == "~") { lexTilde(); continue }
-        if (ch == "@") { lexAnnotation(); continue }
-        if (ch == "(") { emit("LPAREN", "("); advance(); continue }
-        if (ch == ")") { emit("RPAREN", ")"); advance(); continue }
-        if (ch == "{") { emit("LBRACE", "{"); advance(); continue }
-        if (ch == "}") { emit("RBRACE", "}"); advance(); continue }
-        if (ch == "[") { emit("LBRACKET", "["); advance(); continue }
-        if (ch == "]") { emit("RBRACKET", "]"); advance(); continue }
-        if (ch == ",") { emit("COMMA", ","); advance(); continue }
-        if (ch == ":") { emit("COLON", ":"); advance(); continue }
-        if (ch == ";") { emit("SEMICOLON", ";"); advance(); continue }
-        if (ch == ".") {
+        if (isAlpha(ch)) { lexIdent(); continue }
+        if (ch == 43) { lexPlus(); continue }
+        if (ch == 45) { lexMinus(); continue }
+        if (ch == 42) { lexStar(); continue }
+        if (ch == 47) { lexSlash(); continue }
+        if (ch == 37) { lexPercent(); continue }
+        if (ch == 61) { lexEq(); continue }
+        if (ch == 33) { lexBang(); continue }
+        if (ch == 63) { lexQuestion(); continue }
+        if (ch == 60) { lexLt(); continue }
+        if (ch == 62) { lexGt(); continue }
+        if (ch == 38) { lexAnd(); continue }
+        if (ch == 124) { lexOr(); continue }
+        if (ch == 94) { lexCaret(); continue }
+        if (ch == 126) { lexTilde(); continue }
+        if (ch == 64) { lexAnnotation(); continue }
+        if (ch == 40) { emit("LPAREN", "("); advance(); continue }
+        if (ch == 41) { emit("RPAREN", ")"); advance(); continue }
+        if (ch == 123) { emit("LBRACE", "{"); advance(); continue }
+        if (ch == 125) { emit("RBRACE", "}"); advance(); continue }
+        if (ch == 91) { emit("LBRACKET", "["); advance(); continue }
+        if (ch == 93) { emit("RBRACKET", "]"); advance(); continue }
+        if (ch == 44) { emit("COMMA", ","); advance(); continue }
+        if (ch == 58) { emit("COLON", ":"); advance(); continue }
+        if (ch == 59) { emit("SEMICOLON", ";"); advance(); continue }
+        if (ch == 46) {
             advance()
-            if (pos + 1 < srcLen && peek() == "." && peekNext() == ".") { advance(); advance(); emit("SPREAD", "..."); continue }
+            if (pos + 1 < srcLen && peek() == 46 && peekNext() == 46) { advance(); advance(); emit("SPREAD", "..."); continue }
             emit("DOT", ".")
             continue
         }
-        println("lexer error: unexpected '" + ch + "' at line " + curLine)
+        println("lexer error: unexpected '" + fromCharCode(ch) + "' at line " + curLine)
         exit(1)
     }
     emit("EOF", "")
@@ -96,28 +85,6 @@ function tokenize(source: string): string {
 
 // ── Token access helpers ──────────────────────────────────────
 
-// Token access — O(1) via Map
-function tkGet(tokens: string, index: int): string {
-    // Legacy compatibility — returns "KIND\tVALUE" but now from Map
-    const idx = index + ""
-    if (tkKinds.has(idx) == 1) {
-        return tkKinds.getString(idx) + "\t" + tkValues.getString(idx)
-    }
-    return "EOF\t"
-}
-
-function tkKind(tokenLine: string): string {
-    const tabPos = tokenLine.indexOf("\t")
-    if (tabPos < 0) { return tokenLine }
-    return tokenLine.substring(0, tabPos)
-}
-
-function tkValue(tokenLine: string): string {
-    const tabPos = tokenLine.indexOf("\t")
-    if (tabPos < 0) { return "" }
-    return tokenLine.substring(tabPos + 1, tokenLine.length() - tabPos - 1)
-}
-
 function tkCount(): int {
     return tokenCount
 }
@@ -125,20 +92,19 @@ function tkCount(): int {
 // ── Internal ──────────────────────────────────────────────────
 
 function emit(kind: string, value: string) {
-    const idx = tokenCount + ""
-    tkKinds.set(idx, kind)
-    tkValues.set(idx, value)
-    tkLines.set(idx, `${curLine}`)
-    tkCols.set(idx, `${tokenStartCol}`)
+    tkKinds.push(kind)
+    tkValues.push(value)
+    tkLines.push(curLine)
+    tkCols.push(tokenStartCol)
     tokenCount = tokenCount + 1
 }
 
 function tkLine(index: int): int {
-    return parseInt(tkLines.getString(`${index}`))
+    return tkLines[index]
 }
 
 function tkCol(index: int): int {
-    return parseInt(tkCols.getString(`${index}`))
+    return tkCols[index]
 }
 
 function getSourceLine(lineNum: int): string {
@@ -146,7 +112,7 @@ function getSourceLine(lineNum: int): string {
     let start = 0
     let i = 0
     while (i < srcLen) {
-        if (src.charAt(i) == "\n") {
+        if (charCodeAt(src, i) == 10) {
             if (current == lineNum) {
                 return src.substring(start, i - start)
             }
@@ -161,73 +127,78 @@ function getSourceLine(lineNum: int): string {
     return ""
 }
 
-function advance(): string {
-    const ch = src.charAt(pos)
+function advance() {
     pos = pos + 1
     curCol = curCol + 1
-    return ch
 }
 
-function peek(): string {
-    if (pos >= srcLen) { return "" }
-    return src.charAt(pos)
+function peek(): int {
+    if (pos >= srcLen) { return 0 }
+    return charCodeAt(src, pos)
 }
 
-function peekNext(): string {
-    if (pos + 1 >= srcLen) { return "" }
-    return src.charAt(pos + 1)
+function peekNext(): int {
+    if (pos + 1 >= srcLen) { return 0 }
+    return charCodeAt(src, pos + 1)
 }
 
-function isDigit(ch: string): bool {
-    return "0123456789".contains(ch) && ch != ""
+function isDigit(ch: int): bool {
+    return ch >= 48 && ch <= 57
 }
 
-function isAlpha(ch: string): bool {
-    return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_".contains(ch) && ch != ""
+function isAlpha(ch: int): bool {
+    return (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95
 }
 
-function isAlphaNum(ch: string): bool {
-    return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789".contains(ch) && ch != ""
+function isAlphaNum(ch: int): bool {
+    return isDigit(ch) || isAlpha(ch)
 }
 
-function escapeChar(ch: string): string {
-    if (ch == "n") { return "\n" }
-    if (ch == "t") { return "\t" }
-    if (ch == "r") { return "\r" }
-    if (ch == "\\") { return "\\" }
-    if (ch == "\"") { return "\"" }
-    if (ch == "'") { return "'" }
-    if (ch == "`") { return "`" }
-    if (ch == "$") { return "$" }
-    if (ch == "0") { return "" }
-    return "\\" + ch
+function hexVal(ch: int): int {
+    if (ch >= 48 && ch <= 57) { return ch - 48 }
+    if (ch >= 97 && ch <= 102) { return ch - 87 }
+    if (ch >= 65 && ch <= 70) { return ch - 55 }
+    return -1
+}
+
+function escapeChar(ch: int): string {
+    if (ch == 110) { return "\n" }
+    if (ch == 116) { return "\t" }
+    if (ch == 114) { return "\r" }
+    if (ch == 92) { return "\\" }
+    if (ch == 34) { return "\"" }
+    if (ch == 39) { return "'" }
+    if (ch == 96) { return "`" }
+    if (ch == 36) { return "$" }
+    if (ch == 48) { return "" }
+    return "\\" + fromCharCode(ch)
 }
 
 // ── Skip whitespace + comments ────────────────────────────────
 
 function skipWS() {
     while (pos < srcLen) {
-        const ch = src.charAt(pos)
-        if (ch == " " || ch == "\t" || ch == "\r") {
+        const ch = peek()
+        if (ch == 32 || ch == 9 || ch == 13) {
             advance()
             continue
         }
-        if (ch == "/" && peekNext() == "/") {
-            while (pos < srcLen && src.charAt(pos) != "\n") {
+        if (ch == 47 && peekNext() == 47) {
+            while (pos < srcLen && peek() != 10) {
                 advance()
             }
             continue
         }
-        if (ch == "/" && peekNext() == "*") {
+        if (ch == 47 && peekNext() == 42) {
             advance()
             advance()
             while (pos < srcLen) {
-                if (src.charAt(pos) == "*" && peekNext() == "/") {
+                if (peek() == 42 && peekNext() == 47) {
                     advance()
                     advance()
                     break
                 }
-                if (src.charAt(pos) == "\n") {
+                if (peek() == 10) {
                     curLine = curLine + 1
                     curCol = 0
                 }
@@ -241,21 +212,21 @@ function skipWS() {
 
 // ── String literals ───────────────────────────────────────────
 
-function lexStringWith(quote: string) {
+function lexStringWith(quote: int) {
     advance()
     let value = ""
     while (pos < srcLen) {
         if (peek() == quote) { break }
-        if (peek() == "\\") {
+        if (peek() == 92) {
             advance()
             if (pos >= srcLen) { println("lexer error: unterminated string"); exit(1) }
             value = value + escapeChar(peek())
             advance()
-        } else if (peek() == "\n") {
+        } else if (peek() == 10) {
             println("lexer error: unterminated string at line " + curLine)
             exit(1)
         } else {
-            value = value + peek()
+            value = value + fromCharCode(peek())
             advance()
         }
     }
@@ -264,8 +235,8 @@ function lexStringWith(quote: string) {
     emit("STRING", value)
 }
 
-function lexString() { lexStringWith("\"") }
-function lexSQString() { lexStringWith("'") }
+function lexString() { lexStringWith(34) }
+function lexSQString() { lexStringWith(39) }
 
 // ── Template literal ──────────────────────────────────────────
 
@@ -273,9 +244,9 @@ function lexTemplate() {
     advance()
     let literal = ""
     while (pos < srcLen) {
-        if (peek() == "`") { break }
+        if (peek() == 96) { break }
         // template char processing
-        if (peek() == "$" && peekNext() == "{") {
+        if (peek() == 36 && peekNext() == 123) {
             if (literal.length() > 0) {
                 tokenStartCol = curCol
                 emit("TMPL_LIT", literal)
@@ -292,40 +263,40 @@ function lexTemplate() {
                 if (pos >= srcLen) { break }
                 tokenStartCol = curCol
                 const ch = peek()
-                if (ch == "{") { depth = depth + 1; emit("LBRACE", "{"); advance() } else if (ch == "}") {
+                if (ch == 123) { depth = depth + 1; emit("LBRACE", "{"); advance() } else if (ch == 125) {
                     depth = depth - 1
                     if (depth > 0) { emit("RBRACE", "}"); advance() } else { advance() }
-                } else if (ch == "`") {
+                } else if (ch == 96) {
                     lexTemplate()
-                } else if (ch == "\"") {
+                } else if (ch == 34) {
                     lexString()
                 } else if (isDigit(ch)) {
                     lexNumber()
-                } else if (isAlpha(ch) || ch == "_") {
+                } else if (isAlpha(ch)) {
                     lexIdent()
-                } else if (ch == "+") { lexPlus()
-                } else if (ch == "-") { lexMinus()
-                } else if (ch == "*") { lexStar()
-                } else if (ch == "/") { emit("SLASH", "/"); advance()
-                } else if (ch == "(") { emit("LPAREN", "("); advance()
-                } else if (ch == ")") { emit("RPAREN", ")"); advance()
-                } else if (ch == "[") { emit("LBRACKET", "["); advance()
-                } else if (ch == "]") { emit("RBRACKET", "]"); advance()
-                } else if (ch == ",") { emit("COMMA", ","); advance()
-                } else if (ch == ".") { emit("DOT", "."); advance()
-                } else if (ch == ":") { emit("COLON", ":"); advance()
-                } else if (ch == "?") { lexQuestion()
-                } else if (ch == "=") { lexEq()
-                } else if (ch == "!") { lexBang()
-                } else if (ch == "<") { lexLt()
-                } else if (ch == ">") { lexGt()
-                } else if (ch == "&") { lexAnd()
-                } else if (ch == "|") { lexOr()
-                } else if (ch == "^") { lexCaret()
-                } else if (ch == "~") { lexTilde()
-                } else if (ch == "%") { emit("PERCENT", "%"); advance()
+                } else if (ch == 43) { lexPlus()
+                } else if (ch == 45) { lexMinus()
+                } else if (ch == 42) { lexStar()
+                } else if (ch == 47) { emit("SLASH", "/"); advance()
+                } else if (ch == 40) { emit("LPAREN", "("); advance()
+                } else if (ch == 41) { emit("RPAREN", ")"); advance()
+                } else if (ch == 91) { emit("LBRACKET", "["); advance()
+                } else if (ch == 93) { emit("RBRACKET", "]"); advance()
+                } else if (ch == 44) { emit("COMMA", ","); advance()
+                } else if (ch == 46) { emit("DOT", "."); advance()
+                } else if (ch == 58) { emit("COLON", ":"); advance()
+                } else if (ch == 63) { lexQuestion()
+                } else if (ch == 61) { lexEq()
+                } else if (ch == 33) { lexBang()
+                } else if (ch == 60) { lexLt()
+                } else if (ch == 62) { lexGt()
+                } else if (ch == 38) { lexAnd()
+                } else if (ch == 124) { lexOr()
+                } else if (ch == 94) { lexCaret()
+                } else if (ch == 126) { lexTilde()
+                } else if (ch == 37) { emit("PERCENT", "%"); advance()
                 } else {
-                    println(`lexer error: unexpected '${ch}' in template`)
+                    println(`lexer error: unexpected '${fromCharCode(ch)}' in template`)
                     exit(1)
                 }
             }
@@ -333,7 +304,7 @@ function lexTemplate() {
             emit("TMPL_EXPR_END", "}")
             continue
         }
-        if (peek() == "\\") {
+        if (peek() == 92) {
             advance()
             if (pos < srcLen) {
                 literal = literal + escapeChar(peek())
@@ -341,11 +312,11 @@ function lexTemplate() {
             }
             continue
         }
-        if (peek() == "\n") {
+        if (peek() == 10) {
             curLine = curLine + 1
             curCol = 0
         }
-        literal = literal + peek()
+        literal = literal + fromCharCode(peek())
         advance()
     }
     if (pos >= srcLen) { println("lexer error: unterminated template"); exit(1) }
@@ -363,35 +334,35 @@ function lexTemplate() {
 function lexNumber() {
     let start = pos
     // Check for 0x, 0b, 0o prefix
-    if (peek() == "0" && pos + 1 < srcLen) {
-        const next = src.charAt(pos + 1)
-        if (next == "x" || next == "X") {
+    if (peek() == 48 && pos + 1 < srcLen) {
+        const next = peekNext()
+        if (next == 120 || next == 88) {
             advance(); advance()
             let val = 0
-            while (pos < srcLen && "0123456789abcdefABCDEF".contains(peek()) == 1 && peek() != "") {
-                const d = "0123456789abcdef".indexOf(peek())
-                const dv = d >= 0 ? d : "0123456789ABCDEF".indexOf(peek())
+            while (pos < srcLen) {
+                const dv = hexVal(peek())
+                if (dv < 0) { break }
                 val = val * 16 + dv
                 advance()
             }
             emit("INT", `${val}`)
             return
         }
-        if (next == "b" || next == "B") {
+        if (next == 98 || next == 66) {
             advance(); advance()
             let val = 0
-            while (pos < srcLen && (peek() == "0" || peek() == "1")) {
-                val = val * 2 + parseInt(peek())
+            while (pos < srcLen && (peek() == 48 || peek() == 49)) {
+                val = val * 2 + (peek() - 48)
                 advance()
             }
             emit("INT", `${val}`)
             return
         }
-        if (next == "o" || next == "O") {
+        if (next == 111 || next == 79) {
             advance(); advance()
             let val = 0
-            while (pos < srcLen && "01234567".contains(peek()) == 1 && peek() != "") {
-                val = val * 8 + parseInt(peek())
+            while (pos < srcLen && peek() >= 48 && peek() <= 55) {
+                val = val * 8 + (peek() - 48)
                 advance()
             }
             emit("INT", `${val}`)
@@ -400,14 +371,14 @@ function lexNumber() {
     }
     // Regular decimal number
     let isDouble = 0
-    while (pos < srcLen && (isDigit(peek()) || peek() == "_")) {
+    while (pos < srcLen && (isDigit(peek()) || peek() == 95)) {
         advance()
     }
-    if (pos < srcLen && peek() == ".") {
-        if (pos + 1 < srcLen && isDigit(src.charAt(pos + 1))) {
+    if (pos < srcLen && peek() == 46) {
+        if (pos + 1 < srcLen && isDigit(peekNext())) {
             isDouble = 1
             advance()
-            while (pos < srcLen && (isDigit(peek()) || peek() == "_")) {
+            while (pos < srcLen && (isDigit(peek()) || peek() == 95)) {
                 advance()
             }
         }

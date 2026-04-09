@@ -57,6 +57,73 @@ function genEnumNames(eName: string): string {
     return arrReg
 }
 
+function genEnumValueOf(eName: string, argList: string): string {
+    const enumId = parseInt(enumDeclNodes.getString(eName))
+    const vl = nGetList(enumId)
+    const parts = vl.split(",")
+    const isString = enumTypes.has(eName) == 1
+    const retLLType = isString == 1 ? "ptr" : "i32"
+
+    let argReg = "null"
+    if (argList != "") {
+        const argId = parseInt(argList.split(",")[0])
+        if (argId > 0) { argReg = genExpr(argId) }
+    }
+
+    const resultAlloca = nextReg()
+    emitIR(`  ${resultAlloca} = alloca ${retLLType}, align 8`)
+
+    const doneLabel = nextLabel("valueof.done")
+    const throwLabel = nextLabel("valueof.throw")
+
+    // Single-pass: generate strcmp chain, each false branch leads to the next comparison
+    let currentLbl = nextLabel("valueof.entry")
+    emitIR(`  br label %${currentLbl}`)
+
+    for (p in parts) {
+        const vid = parseInt(p)
+        if (vid <= 0 || nGetKind(vid) != "ENUM_VARIANT") { continue }
+        const vName = nGetS1(vid)
+        const vVal = enumValues.getString(`${eName}.${vName}`)
+        const matchLbl = nextLabel("valueof.match")
+        const nextLbl = nextLabel("valueof.next")
+
+        irLabel(currentLbl)
+        const nameConst = addStringConst(vName)
+        const cmpR = nextReg()
+        emitIR(`  ${cmpR} = call i32 @strcmp(ptr ${argReg}, ptr ${nameConst})`)
+        const eqR = nextReg()
+        emitIR(`  ${eqR} = icmp eq i32 ${cmpR}, 0`)
+        emitIR(`  br i1 ${eqR}, label %${matchLbl}, label %${nextLbl}`)
+
+        irLabel(matchLbl)
+        if (isString == 1) {
+            const sConst = addStringConst(vVal)
+            emitIR(`  store ptr ${sConst}, ptr ${resultAlloca}, align 8`)
+        } else {
+            emitIR(`  store i32 ${vVal}, ptr ${resultAlloca}, align 8`)
+        }
+        emitIR(`  br label %${doneLabel}`)
+
+        currentLbl = nextLbl
+    }
+
+    // After last variant: no match → throw
+    irLabel(currentLbl)
+    emitIR(`  br label %${throwLabel}`)
+    irLabel(throwLabel)
+    const errStr1 = addStringConst(`invalid enum name for ${eName}: `)
+    const errCat = nextReg()
+    emitIR(`  ${errCat} = call ptr @ss_string_concat(ptr ${errStr1}, ptr ${argReg})`)
+    emitIR(`  call void @ss_throw(ptr ${errCat})`)
+    emitIR("  unreachable")
+
+    irLabel(doneLabel)
+    const result = nextReg()
+    emitIR(`  ${result} = load ${retLLType}, ptr ${resultAlloca}, align 8`)
+    return result
+}
+
 // ── Optional method call ────────────────────────────────────────
 
 // obj?.method() — if obj is "", return default; otherwise call normally
@@ -350,6 +417,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
     if (preObj == "" && enumReady == 1 && nGetKind(objId) == "IDENT" && enumDeclNodes.has(nGetS1(objId)) == 1) {
         if (method == "values") { return genEnumValues(nGetS1(objId)) }
         if (method == "names") { return genEnumNames(nGetS1(objId)) }
+        if (method == "valueOf") { return genEnumValueOf(nGetS1(objId), argList) }
     }
 
     // D082 Phase 2: Thread.start(fn) → spawn virtual thread

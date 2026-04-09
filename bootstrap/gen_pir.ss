@@ -13,7 +13,7 @@ let pirKind = ""
 let pirStr1 = ""
 let pirStr2 = ""
 let pirStr3 = ""
-let pirInt1 = ""
+let pirInt1: Array<int> = []
 let pirList = ""
 let pirReady = 0
 
@@ -23,7 +23,7 @@ function initPir() {
     pirStr1 = Map()
     pirStr2 = Map()
     pirStr3 = Map()
-    pirInt1 = Map()
+    pirInt1 = []
     pirList = Map()
     pirReady = 1
     pirVarTypes = Map()
@@ -49,6 +49,7 @@ function newPir(kind: string): int {
     const id = pirNextId
     pirNextId = pirNextId + 1
     pirKind.set(id + "", kind)
+    pirInt1.push(0)
     return id
 }
 
@@ -66,15 +67,12 @@ function pirGetS3(id: int): string {
     if (pirStr3.has(id + "") == 0) { return "" }
     return pirStr3.getString(id + "")
 }
-function pirGetI1(id: int): int {
-    if (pirInt1.has(id + "") == 0) { return 0 }
-    return parseInt(pirInt1.getString(id + ""))
-}
+function pirGetI1(id: int): int { return pirInt1[id] }
 
 function pirSetS1(id: int, v: string) { pirStr1.set(id + "", v) }
 function pirSetS2(id: int, v: string) { pirStr2.set(id + "", v) }
 function pirSetS3(id: int, v: string) { pirStr3.set(id + "", v) }
-function pirSetI1(id: int, v: int) { pirInt1.set(id + "", `${v}`) }
+function pirSetI1(id: int, v: int) { pirInt1[id] = v }
 
 function pirAppend(buf: string, id: int): string {
     if (buf == "") { return `${id}` }

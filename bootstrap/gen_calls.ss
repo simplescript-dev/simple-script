@@ -50,6 +50,29 @@ function genPrintCall(callee: string, argList: string): string {
     return "0"
 }
 
+// ── D082: ref() and watch() call codegen ────────────────────────
+
+function genRefCall(argList: string): string {
+    // ref(value) → ss_refNew(value as i64)
+    const parts = argList.split(",")
+    const argId = parseInt(parts[0])
+    const val = genExpr(argId)
+    const val64 = emitValueToI64(val, inferType(argId))
+    const result = nextReg()
+    emitIR(`  ${result} = call ptr @ss_refNew(i64 ${val64})`)
+    return result
+}
+
+function genWatchCall(argList: string) {
+    // watch(ref, callback) → ss_refWatch(ref, callback as i64)
+    const parts = argList.split(",")
+    const refId = parseInt(parts[0])
+    const cbId = parseInt(parts[1])
+    const refVal = genExpr(refId)
+    const cbVal = genExpr(cbId)
+    emitIR(`  call void @ss_refWatch(ptr ${refVal}, i64 ${cbVal})`)
+}
+
 // ── D080: exec() call codegen ───────────────────────────────────
 
 function genExecCall(argList: string): string {
@@ -270,19 +293,8 @@ function resolveCallArgs(callee: string, argList: string, expectsDouble: int): s
         while (idx < spreadCount) {
             const elemVal = nextReg()
             emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${spreadArr}, i32 ${idx})`)
-            let converted = elemVal
+            let converted = emitI64ToValue(elemVal, elemType)
             let convType = elemType
-            if (elemType == "string" || ssTypeToLLVM(elemType) == "ptr") {
-                converted = nextReg()
-                emitIR(`  ${converted} = inttoptr i64 ${elemVal} to ptr`)
-            } else if (elemType == "int") {
-                converted = nextReg()
-                emitIR(`  ${converted} = trunc i64 ${elemVal} to i32`)
-            } else if (elemType == "double") {
-                converted = nextReg()
-                emitIR(`  ${converted} = bitcast i64 ${elemVal} to double`)
-                convType = "double"
-            }
             if (expectsDouble && (convType == "int" || convType == "auto")) {
                 const dblR = nextReg()
                 emitIR(`  ${dblR} = sitofp i32 ${converted} to double`)
@@ -455,6 +467,17 @@ function genCall(id: int): string {
         return genExecCall(argList)
     }
 
+    // D082: ref(value) — create reactive reference
+    if (callee == "ref") {
+        return genRefCall(argList)
+    }
+
+    // D082: watch(ref, callback) — register watcher
+    if (callee == "watch") {
+        genWatchCall(argList)
+        return "0"
+    }
+
     const effectiveName = resolvedName != callee ? resolvedName : callee
     const rtName = runtimeName(effectiveName)
     const args = resolveCallArgs(callee, argList, callReturnType(effectiveName) == "double" ? 1 : 0)
@@ -603,17 +626,7 @@ function genArrayLit(id: int): string {
                     } else {
                         // Normal element: push
                         const val = genExpr(elemId)
-                        const vType = inferType(elemId)
-                        let val64 = val
-                        if (vType == "string") {
-                            const cR = nextReg()
-                            emitIR(`  ${cR} = ptrtoint ptr ${val} to i64`)
-                            val64 = cR
-                        } else {
-                            const sR = nextReg()
-                            emitIR(`  ${sR} = sext i32 ${val} to i64`)
-                            val64 = sR
-                        }
+                        const val64 = emitValueToI64(val, inferType(elemId))
                         const curArr = nextReg()
                         emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
                         const pushed = nextReg()
@@ -646,19 +659,8 @@ function genArrayLit(id: int): string {
             const elemId = parseInt(p)
             if (elemId > 0) {
                 const val = genExpr(elemId)
-                const vType = inferType(elemId)
-                const llElemType = ssTypeToLLVM(vType)
-                if (llElemType == "ptr") {
-                    const castReg = nextReg()
-                    emitIR(`  ${castReg} = ptrtoint ptr ${val} to i64`)
-                    emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${castReg})`)
-                } else if (llElemType == "i64") {
-                    emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${val})`)
-                } else {
-                    const extReg = nextReg()
-                    emitIR(`  ${extReg} = sext i32 ${val} to i64`)
-                    emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${extReg})`)
-                }
+                const val64 = emitValueToI64(val, inferType(elemId))
+                emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${val64})`)
                 idx = idx + 1
             }
         }
