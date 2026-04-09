@@ -352,6 +352,11 @@ function genMethodCall(id: int, preObj: string = ""): string {
         if (method == "names") { return genEnumNames(nGetS1(objId)) }
     }
 
+    // D082 Phase 2: Thread.start(fn) → spawn virtual thread
+    if (preObj == "" && nGetKind(objId) == "IDENT" && nGetS1(objId) == "Thread" && method == "start") {
+        return genThreadStart(argList)
+    }
+
     // Static method: ClassName.method()
     if (preObj == "" && nGetKind(objId) == "IDENT" && getVarType(nGetS1(objId)) == "" && classFields.has(nGetS1(objId)) == 1) {
         return genStaticMethodCall(method, objId, argList)
@@ -396,6 +401,11 @@ function genMethodCall(id: int, preObj: string = ""): string {
         return genInterfaceMethodCall(objClass, method, objVal, argList)
     }
 
+    // D082 Phase 2: Thread<T>.join() → wait and return result
+    if (objClass == "Thread" && method == "join") {
+        return genThreadJoin(objVal, objId)
+    }
+
     // User class method: walk parent chain
     if (objClass != "" && objClass != "Map" && objClass != "Set" && classHasMethod(objClass, method) == 1) {
         return emitClassMethodCall(objClass, method, objVal, argList, 0)
@@ -426,7 +436,14 @@ function genMethodCall(id: int, preObj: string = ""): string {
     result = genHigherOrderMethod(method, objVal, argList)
     if (result != "") { return result }
     result = genArrayMethod(method, objVal, argList)
-    if (result != "") { return result }
+    if (result != "") {
+        // push returns the (possibly reallocated) array ptr — store it back
+        if (method == "push" && preObj == "" && nGetKind(objId) == "IDENT") {
+            const varName = nGetS1(objId)
+            emitIR(`  store ptr ${result}, ptr ${varRef(varName)}, align 8`)
+        }
+        return result
+    }
     result = genMapMethod(method, objVal, argList)
     if (result != "") { return result }
 
@@ -437,6 +454,30 @@ function genMethodCall(id: int, preObj: string = ""): string {
 
     emitIR(`  ; TODO: method call .${method}`)
     return "0"
+}
+
+// ── D082 Phase 2: Thread.start / .join ───────────────────────
+
+function genThreadStart(argList: string): string {
+    const parts = argList.split(",")
+    const fnId = parseInt(parts[0])
+    const fnVal = genExpr(fnId)
+    const result = nextReg()
+    emitIR(`  ${result} = call ptr @ss_threadStart(i64 ${fnVal})`)
+    return result
+}
+
+function genThreadJoin(objVal: string, objId: int): string {
+    const raw = nextReg()
+    emitIR(`  ${raw} = call i64 @ss_threadJoin(ptr ${objVal})`)
+    // Convert i64 result to the Thread<T> element type
+    const objType = inferType(objId)
+    let elemType = "int"
+    if (objType.startsWith("Thread<") == 1) {
+        elemType = threadElemType(objType)
+    }
+    if (elemType == "void" || elemType == "") { return "0" }
+    return emitI64ToValue(raw, elemType)
 }
 
 // ── Interface method dispatch ─────────────────────────────────

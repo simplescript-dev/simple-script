@@ -31,6 +31,52 @@ function tupleElemTypeAtIndex(tupleType: string, idx: int): string {
     return ""
 }
 
+// ── Ref type helper (D082) ────────────────────────────────────
+
+// Extract element type from "Ref<int>" → "int", "Ref<string>" → "string"
+function refElemType(refType: string): string {
+    if (refType.startsWith("Ref<") == 1 && refType.length() > 5) {
+        return refType.substring(4, refType.length() - 5)
+    }
+    return "int"
+}
+
+// ── Thread type helper (D082 Phase 2) ────────────────────────
+
+// Extract element type from "Thread<int>" → "int", "Thread<string>" → "string"
+function threadElemType(threadType: string): string {
+    if (threadType.startsWith("Thread<") == 1 && threadType.length() > 8) {
+        return threadType.substring(7, threadType.length() - 8)
+    }
+    return "int"
+}
+
+// Infer the return type of an arrow function node
+function inferArrowRetType(arrowId: int): string {
+    if (arrowId <= 0) { return "int" }
+    // 1. Explicit return type annotation
+    const annot = nGetS2(arrowId)
+    if (annot != "") { return annot }
+    // 2. Walk body BLOCK for first RETURN statement
+    const bodyId = nGetI1(arrowId)
+    if (bodyId <= 0) { return "int" }
+    const bodyKind = nGetKind(bodyId)
+    // Single expression body (not a BLOCK)
+    if (bodyKind != "BLOCK") { return inferType(bodyId) }
+    const bodyList = nGetList(bodyId)
+    if (bodyList == "") { return "void" }
+    const parts = bodyList.split(",")
+    for (p in parts) {
+        const stmtId = parseInt(p)
+        if (stmtId > 0 && nGetKind(stmtId) == "RETURN") {
+            const retVal = nGetI1(stmtId)
+            if (retVal > 0) { return inferType(retVal) }
+            return "void"
+        }
+    }
+    return "void"
+}
+
 // ── Type inference ────────────────────────────────────────────
 
 // Infer element type of an array expression (returns element type string, or "" if unknown)
@@ -61,6 +107,10 @@ function resolveObjClass(nodeId: int): string {
     // Variable → check varType for class name
     if (kind == "IDENT") {
         const vt = getVarType(nGetS1(nodeId))
+        // D082: Ref<T> type
+        if (vt.startsWith("Ref<") == 1) { return "Ref" }
+        // D082 Phase 2: Thread<T> type
+        if (vt.startsWith("Thread<") == 1) { return "Thread" }
         if (vt != "" && classFields.has(vt) == 1) { return vt }
         if (vt != "" && ifaceMethodsCG.has(vt) == 1) { return vt }
         const oc = getObjClass(nGetS1(nodeId))
@@ -84,6 +134,7 @@ function resolveObjClass(nodeId: int): string {
     // Function call → check return type
     if (kind == "CALL") {
         const callee = nGetS1(nodeId)
+        if (callee == "ref") { return "Ref" }
         if (funcRetTypes.has(callee) == 1) {
             const rt = funcRetTypes.getString(callee)
             if (classFields.has(rt) == 1) { return rt }
@@ -171,6 +222,15 @@ function inferType(id: int): string {
     if (kind == "CALL") {
         const callee = nGetS1(id)
         if (callee == "Map") { return "Map" }
+        // D082: ref(val) → Ref<T> where T is inferred from argument
+        if (callee == "ref") {
+            const refArgList = nGetList(id)
+            if (refArgList != "") {
+                const refArgType = inferType(parseInt(refArgList.split(",")[0]))
+                return `Ref<${refArgType}>`
+            }
+            return "Ref<int>"
+        }
         if (getVarType(callee) == "fn" || getVarType(callee) == "i64") { return "i64" }
         // Generic function: infer return type from arguments
         if (genericFuncNodes.has(callee) == 1) {
@@ -191,6 +251,31 @@ function inferType(id: int): string {
     if (kind == "METHOD_CALL") {
         const method = nGetS1(id)
         const mcObj = nGetI1(id)
+        // D082 Phase 2: Thread.start(fn) → Thread<T>
+        if (method == "start" && nGetKind(mcObj) == "IDENT" && nGetS1(mcObj) == "Thread") {
+            const tsArgList = nGetList(id)
+            if (tsArgList != "") {
+                const tsArgId = parseInt(tsArgList.split(",")[0])
+                if (tsArgId > 0 && nGetKind(tsArgId) == "ARROW_FUNC") {
+                    return `Thread<${inferArrowRetType(tsArgId)}>`
+                }
+                // Named function reference
+                if (tsArgId > 0 && nGetKind(tsArgId) == "IDENT") {
+                    const fnName = nGetS1(tsArgId)
+                    if (funcRetTypes.has(fnName) == 1) {
+                        return `Thread<${funcRetTypes.getString(fnName)}>`
+                    }
+                }
+            }
+            return "Thread<int>"
+        }
+        // D082 Phase 2: thread.join() → T from Thread<T>
+        if (method == "join") {
+            const jtType = inferType(mcObj)
+            if (jtType.startsWith("Thread<") == 1) {
+                return threadElemType(jtType)
+            }
+        }
         if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {
             if (method == "values" || method == "names") { return "ptr" }
         }
@@ -227,6 +312,13 @@ function inferType(id: int): string {
     }
     if (kind == "MEMBER_ACCESS") {
         const mObj = nGetI1(id)
+        // D082: Ref<T>.value → element type T
+        if (nGetS1(id) == "value" && nGetKind(mObj) == "IDENT") {
+            const rvt = getVarType(nGetS1(mObj))
+            if (rvt.startsWith("Ref<") == 1) {
+                return refElemType(rvt)
+            }
+        }
         if (nGetKind(mObj) == "IDENT" && enumReady == 1) {
             const eName = nGetS1(mObj)
             const eKey = `${eName}.${nGetS1(id)}`

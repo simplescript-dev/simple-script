@@ -140,6 +140,8 @@ function genArrowFunc(id: int): string {
     const savedTerm = terminated
     const savedAliases = varAliases
     const savedIrOut = irOutFile
+    const savedIrBuf = irBuf
+    const savedStrOut = strOutFile
     const savedPtrVars = localPtrVars
     const savedFnVars = localFnVars
     const savedBlockDepth = rcBlockDepth
@@ -232,9 +234,9 @@ function genArrowFunc(id: int): string {
     arrowDefs = `${arrowDefs}${irBuf}`
 
     // Restore state (including RC tracking state)
-    irBuf = ""
+    irBuf = savedIrBuf
     irOutFile = savedIrOut
-    strOutFile = ""
+    strOutFile = savedStrOut
     currentFunc = savedFunc
     regCount = savedReg
     terminated = savedTerm

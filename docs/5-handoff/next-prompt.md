@@ -1,35 +1,39 @@
-# Round 111
+# Round 116
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~15530 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~16000 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
-- docs/1-axioms.md
-- docs/2-principles.md
-- docs/spec-status.md
-- spec/71-perceus-rc.md
-- docs/5-handoff/phase1-plan.md
-- docs/3-decisions/D081-file-watcher.md
+- docs/3-decisions/D082-concurrency-model.md
+- bootstrap/gen_rt_thread.ss
+- bootstrap/gen_arrows.ss (irBuf/strOutFile save/restore fix)
 
 ## Last Round (max 3 sentences)
-D080 exec() process output capture — `exec("cmd")` returns `ExecResult { stdout, exitCode }` via popen. Handled as genCall special case (like test/println) to avoid bootstrap chicken-and-egg with prelude calling seed-unknown builtins. Runtime `ss_popen_read` in gen_rt_io.ss, ExecResult class in prelude.ss, 108 tests all passing + bootstrap fixed-point verified.
+Implemented D082 Phase 2: `Thread.start(fn)` + `.join()` with M:N thread pool scheduler. Runtime generates 6 functions (schedInit/Enqueue/Dequeue/workerLoop/threadStart/threadJoin) with N worker pthreads, tag-bit closure dispatch, per-VThread mutex/condvar for join synchronization. Fixed a pre-existing nested arrow bug (irBuf/strOutFile not saved/restored in genArrowFunc). 172 tests passing, fixed-point verified, seed updated.
 
 ## Task
-Phase: Phase 1-3 complete, closures done, interfaces done, generic functions done, generic classes done, explicit type args done, switch pattern matching done, destructuring done, destructuring enhancements done, generic class inheritance done, gen_class.ss split done, gen_calls.ss split done, type constraints done, multi-constraints done, power operator done, array methods done, phase 4 features batch done, tuple types done, stdlib path+fs done, json enhancements done, math enhancements done, string utils done, datetime done, json unicode escape done, csv module done, url module done, uuid module done, assert module done, color module done, template module done, crypto module done, regex module done, sort module done, log module done, ini module done, Map.keys() fix done, checker type inference done (D053), METHOD_CALL type checking done (D054), this.field assign fix done (D055), global negative literal fix done (D056), generic array element type inference done (D057), optional method call double-eval fix done (D058), builtin method type inference done (D059), return type checking done (D060), class body fields complete (D061 all phases), generic type param compat (D063), NEW_EXPR type checking done (D064), INDEX_ACCESS type inference + INDEX_ASSIGN type checking + builtin function return types done (D065), inferType migration analysis done — I003 closed (D066), argparse stdlib module done, null safety complete (D067 all 3 phases), **access modifiers complete — private + protected keywords (D068 Phase 1+2)**, **super keyword complete (D069)**, **static methods complete (D070)**, **abstract classes/methods complete (D071)**, **Java-style error handling complete (D073 — finally + Error class + throw objects + typed catch)**, **instanceof operator complete (D074)**, **as type casting complete (D075)**, **enum string values complete (D076)**, **enum iteration methods complete (D077)**, **static fields complete (D078)**, **testing framework complete (D079)**, **exec process capture complete (D080)**
-Scope:
-**Implement D081: File Watcher (inotify).** This is P1 for van-cli dev server hot reload.
+Phase: D082 concurrency — Phase 2 (Thread.start/join) complete. **Next: D082 Phase 3 — Thread closure capture analysis.**
 
-Implementation steps:
-1. Read D081 decision doc for full design
-2. Add inotify libc declarations in gen_runtime.ss (inotify_init, inotify_add_watch, read, poll, close)
-3. Add runtime functions in gen_rt_system.ss (ss_inotify_init, ss_inotify_add_watch, ss_inotify_poll, ss_inotify_close)
-4. Register builtins in gen_registry.ss and checker.ss
-5. Create lib/watcher.ss with FileWatcher class
-6. Write test: tests/phase5/watcher_basic.ss
-7. Verify: `bin/ss test tests/` + `./build.sh bootstrap`
+Capture rules from D082:
+- Value types (int/double/bool): copy — already works (passed by value)
+- string: shared — already works (immutable, ptr copy)
+- `Ref<T>`: shared — already works (ptr copy, thread-safe internals)
+- Other objects: auto deep clone — **NOT YET IMPLEMENTED**
+- let variables: compile error — **NOT YET IMPLEMENTED**
+
+Implementation scope for Phase 3:
+1. **Checker**: When arrow function is argument to Thread.start, validate captured variables:
+   - Reject `let` variables (compile error: "let variables cannot be captured by thread closures")
+   - Warn/error on mutable objects (non-Ref, non-string, non-value-type)
+2. **Codegen**: In genArrowFunc, when generating a thread closure:
+   - Auto deep-clone captured class instances (call `ss_deep_clone_ClassName`)
+   - Share Ref<T> captures (just copy ptr, no clone)
+3. **Type tracking**: Need a way to mark an arrow as "thread closure" so codegen can apply different capture semantics
+
+Alternative: skip Phase 3 capture analysis, move to **Channel<T>** for thread communication, or **computed()** reactive primitive.
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -38,34 +42,22 @@ Implementation steps:
 4. **I006 — Runtime raw IR** [LOW]: Mostly converted, 401 raw emitIR remaining.
 5. **I008 — Parser no precedence table** [LOW]: Works, recursive descent is standard.
 
-### Upcoming (after D081)
-- **Module-level export**: Access modifiers Phase 3 — `export` keyword for module visibility
-- **Standard library expansion**: deferred, language core first
-
 ### Project Status
-- **D080 complete**: exec() process capture. `exec("cmd")` → ExecResult { stdout, exitCode }. genCall special case + ss_popen_read runtime.
-- **D081 designed**: File watcher. inotify runtime + FileWatcher stdlib class.
-- **D079 complete**: Testing framework. `test("name", () => { ... })` Jest-style.
-- **D078 complete**: Static fields. `[private|protected] static [const] fieldName: Type [= value]`.
-- **File sizes**: checker.ss ~1221 (largest), check_stmts.ss ~937, gen_class.ss ~714, parser.ss ~688, gen_calls.ss ~660.
-- **Stdlib**: 22 modules, ~5270 LOC in lib/.
-- **Bootstrap**: 35 files, ~15530 LOC, 108 phase5 tests (all passing).
+- **D082 Phase 1 done**: `ref()` + `watch()` — gen_rt_ref.ss
+- **D082 Phase 2 done**: `Thread.start(fn)` + `.join()` — gen_rt_thread.ss, thread pool M:N scheduler
+- **Nested arrow bug fixed**: genArrowFunc now saves/restores irBuf + strOutFile (was losing outer arrow IR on nested arrow compilation)
+- **Bootstrap**: 37 files, ~16200 LOC, 172 tests (all passing).
+- **Bootstrap perf**: Three-stage bootstrap ~27s.
 
 ## Watch Out For
-- **Bootstrap works**: `./build.sh bootstrap` passes end-to-end. After any source change, run `bin/ss test tests/` then `./build.sh bootstrap` to verify.
-- **Seed is current**: `bin/ss` now supports exec() (D080). Compiler source CAN use exec().
-- **All open issues BLOCKED or LOW**: I001/I002/I005 need struct/enum support. I006/I008 are LOW priority.
-- **Rejected features**: Range syntax (`0..10`), pattern matching type patterns + guard — TS/JS no equivalent. Result<T,E> + ? operator — Rust syntax. FFI via dlopen — musl static incompatible. Do not propose these features.
-- **exec() implementation (D080)**: genCall special case in gen_calls.ss. `genExecCall(argList)` calls `@ss_popen_read(cmd)` → stdout, loads `@ss_last_exit_code` → code, calls `@ExecResult_new(stdout, code)`. ExecResult class defined in prelude.ss. Runtime `ss_popen_read` in gen_rt_io.ss: popen + fread loop + pclose + WEXITSTATUS. Dynamic buffer (4096 initial, doubles on fill). Exit code stored in `@ss_last_exit_code` global.
-- **Bootstrap pattern for new builtins**: Don't add builtin calls to prelude.ss — seed won't know them. Use genCall special case instead (like exec, test, println).
-- **phase5 tests**: 108 tests (all passing).
-- **35 bootstrap files**, ~15530 LOC.
-
-## Decision Criteria
-- Standard library now has 22 modules, ~5270 LOC.
-- **exec() complete (D080)**: van-cli can now call van-core via subprocess.
-- **Next: implement D081 (file watcher).** inotify-based for van dev hot reload.
-- 35 bootstrap files total, ~15530 LOC, 108 phase5 tests (all passing).
+- **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
+- **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
+- **Bootstrap pattern for new builtins**: Don't add builtin calls to prelude.ss — seed won't know them. Use genCall special case instead (like ref, watch, exec, test, println, Thread.start).
+- **Nested arrows now work**: irBuf/strOutFile save/restore fixed in gen_arrows.ss. Test with nested scenarios.
+- **Thread.start double return**: i64 storage means double return values from thread callbacks don't work (double returns in xmm0, not rax). Document or fix if needed.
+- **No capture analysis yet**: Thread closures capture by value copy (same as regular closures). Objects are shared (ptr copy), not cloned. let variables are not rejected.
+- **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen. Do not propose.
+- **No new keywords**: Thread.start is a static method call, not a keyword.
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
@@ -73,6 +65,6 @@ Implementation steps:
 2. Verify against axioms and principles
 3. Self-review for contradictions
 4. Commit and push to remote
-5. Generate next docs/5-handoff/next-prompt.md — **must follow Handoff Template exactly**
+5. Generate next docs/5-handoff/next-prompt.md
 6. List files created/modified
-7. **Stop.** Do NOT start the next task. External automation will clear + `/next`.
+7. **Stop.**

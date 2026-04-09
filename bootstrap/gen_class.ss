@@ -63,6 +63,8 @@ function initClassState() {
     classMethods.set("Set", "add,has,remove,size,values")
     // Register Math as built-in class with static methods (Java/JS style)
     classFields.set("Math", "")
+    // Register Thread as built-in class (D082 Phase 2)
+    classFields.set("Thread", "")
     abstractMethodsCG = Map()
     staticFieldGlobals = Map()
     staticFieldTypes = Map()
@@ -672,7 +674,24 @@ function genMemberAccess(id: int): string {
         emitIR(`  ${thisReg} = load ptr, ptr %this, align 8`)
         return emitFieldLoad(currentClassName, thisReg, member)
     }
+    // D082: Ref<T>.value read
+    if (member == "value" && objKind == "IDENT") {
+        const rvt = getVarType(nGetS1(objId))
+        if (rvt.startsWith("Ref<") == 1) {
+            const refObj = genExpr(objId)
+            return emitRefValueRead(refObj, refElemType(rvt))
+        }
+    }
     const objVal = genExpr(objId)
+    // D082: Ref<T>.value read (non-IDENT object, e.g., method call result)
+    if (member == "value") {
+        const roc = resolveObjClass(objId)
+        if (roc == "Ref") {
+            const rvt = inferType(objId)
+            const rElem = rvt.startsWith("Ref<") == 1 ? refElemType(rvt) : "int"
+            return emitRefValueRead(objVal, rElem)
+        }
+    }
     if (objKind == "IDENT") {
         const cn = getObjClass(nGetS1(objId))
         if (cn != "") { return emitFieldLoad(cn, objVal, member) }
@@ -681,6 +700,13 @@ function genMemberAccess(id: int): string {
     const resolvedClass = resolveObjClass(objId)
     if (resolvedClass != "") { return emitFieldLoad(resolvedClass, objVal, member) }
     return objVal
+}
+
+// D082: Read Ref<T>.value — call ss_refGet and convert i64 → element type
+function emitRefValueRead(refReg: string, elemType: string): string {
+    const raw = nextReg()
+    emitIR(`  ${raw} = call i64 @ss_refGet(ptr ${refReg})`)
+    return emitI64ToValue(raw, elemType)
 }
 
 function setObjClass(varName: string, className: string) {

@@ -136,6 +136,11 @@ function initChecker() {
     registerMethodParams("Math", "cbrt", 1, 1)
     registerMethodParams("Math", "fmod", 2, 2)
     registerMethodParams("Math", "randomInt", 1, 1)
+    // Built-in class: Thread (D082 Phase 2)
+    classConsMin.set("Thread", "0")
+    classConsMax.set("Thread", "0")
+    registerMethodParams("Thread", "start", 1, 1)
+    registerMethodParams("Thread", "join", 0, 0)
     // Map method return types
     methodRetTypes.set("Map.set", "void")
     methodRetTypes.set("Map.getString", "string")
@@ -249,24 +254,28 @@ function initChecker() {
     methodRetTypes.set("Array.filter", "Array")
     methodRetTypes.set("Array.forEach", "void")
     // Built-in functions with return types (synced with gen_registry.ss)
-    const strFns = "readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode"
+    const strFns = "readLine,readFile,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,_ss_inotify_poll"
     const sf = strFns.split(",")
     for (s in sf) { funcNames.set(s, "string") }
-    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize"
+    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
     const intf = intFns.split(",")
     for (i in intf) { funcNames.set(i, "int") }
-    const voidFns = "println,print,writeFile,appendFile,exit,tcpClose,test"
+    const voidFns = "println,print,writeFile,appendFile,exit,tcpClose,test,_ss_inotify_close"
     const vf = voidFns.split(",")
     for (v in vf) { funcNames.set(v, "void") }
     funcNames.set("parseDouble", "double")
     funcNames.set("Map", "Map")
     funcNames.set("Set", "Set")
     funcNames.set("exec", "ExecResult")
-    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,Map,Set`
-    // Built-in namespaces (accessed as Math.sqrt() etc.)
+    // D082: ref/watch
+    funcNames.set("ref", "Ref")
+    funcNames.set("watch", "void")
+    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,Map,Set,ref,watch`
+    // Built-in namespaces (accessed as Math.sqrt(), Thread.start() etc.)
     defineVar("Math", "namespace", 0)
+    defineVar("Thread", "namespace", 0)
     // Built-in param counts
-    const zeroArgFns = "readLine,args,Map,timeMs,timeUnix"
+    const zeroArgFns = "readLine,args,Map,timeMs,timeUnix,_ss_inotify_init"
     const za = zeroArgFns.split(",")
     for (z in za) {
         funcParamMin.set(z, "0")
@@ -277,18 +286,21 @@ function initChecker() {
     funcParamMax.set("println", "99")
     funcParamMin.set("print", "0")
     funcParamMax.set("print", "99")
-    const oneArgFns = "readFile,arg,exit,system,parseInt,parseDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpRead,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec"
+    const oneArgFns = "readFile,arg,exit,system,parseInt,parseDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec,_ss_inotify_close,ref"
     const oa = oneArgFns.split(",")
     for (o in oa) {
         funcParamMin.set(o, "1")
         funcParamMax.set(o, "1")
     }
-    const twoArgFns = "writeFile,appendFile,tcpWrite,renameFile,charCodeAt,test"
+    const twoArgFns = "writeFile,appendFile,tcpWrite,tcpRead,renameFile,charCodeAt,test,_ss_inotify_poll,watch"
     const ta = twoArgFns.split(",")
     for (t in ta) {
         funcParamMin.set(t, "2")
         funcParamMax.set(t, "2")
     }
+    // 3-param builtin (no batch list for 3-arg functions)
+    funcParamMin.set("_ss_inotify_add_watch", "3")
+    funcParamMax.set("_ss_inotify_add_watch", "3")
     funcReady = 1
 }
 
