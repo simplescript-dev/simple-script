@@ -91,7 +91,7 @@ bootstrap/            # 编译器源码（全部 .ss 文件，~15900 LOC，35 �
   gen_rt_system.ss    # 运行时：文件系统 + 网络 + 异常 + SQLite
   gen_rt_ref.ss       # 运行时：Ref<T> 响应式引用（D082）
   gen_rt_thread.ss    # 运行时：Thread 虚拟线程池（D082）
-  gen_rt_channel.ss   # 运行时：Channel<T> 阻塞队列（D082）
+  gen_rt_channel.ss   # 运行时：Channel<T> 阻塞队列，支持 bounded/unbounded（D082）
   prelude.ss          # 纯 SS 运行时方法（trim/replace/map 等）
   main.ss             # CLI 入口 + import 解析
 bin/ss                # 种子编译器二进制（自举用，frozen）
@@ -183,7 +183,7 @@ spec/                 # 语言规范文档
 | `gen_rt_system.ss` | 文件系统 + 网络 + 异常（setjmp/longjmp）+ SQLite |
 | `gen_rt_ref.ss` | Ref\<T\> 响应式引用（D082） |
 | `gen_rt_thread.ss` | Thread 虚拟线程 M:N 调度器（D082） |
-| `gen_rt_channel.ss` | Channel\<T\> 阻塞队列（D082） |
+| `gen_rt_channel.ss` | Channel\<T\> 阻塞队列，bounded/unbounded（D082） |
 
 运行时字符串常量用 `@.rt.` 前缀，与用户 `@.str.` 区分。
 
@@ -261,7 +261,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - 模板字符串 `` `${expr}` ``（支持嵌套）
 - switch/case, for/for-in/while/do-while, break/continue
 - 位运算: &, |, ^, ~, <<, >>, >>>
-- **并发**: `Thread.start(() => { ... })` / `.join()`（M:N 虚拟线程），`ref(value)` / `.value` / `watch(ref, fn)`（响应式），`new Channel<int>()` / `.send(v)` / `.receive()` / `.close()`（阻塞队列，D082）
+- **并发**: `Thread.start(() => { ... })` / `.join()`（M:N 虚拟线程），`ref(value)` / `.value` / `watch(ref, fn)`（响应式），`new Channel<int>()` / `new Channel<int>(10)`（bounded）/ `.send(v)` / `.receive()` / `.close()`（阻塞队列，D082）
 - 默认参数, 短路 &&/||, 三元表达式
 - import { ... } from "./module" 或 "@/lib/module"
 

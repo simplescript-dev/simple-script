@@ -143,7 +143,7 @@ function initChecker() {
     registerMethodParams("Thread", "join", 0, 0)
     // Built-in class: Channel (D082 Phase 4)
     classConsMin.set("Channel", "0")
-    classConsMax.set("Channel", "0")
+    classConsMax.set("Channel", "1")
     registerMethodParams("Channel", "send", 1, 1)
     registerMethodParams("Channel", "receive", 0, 0)
     registerMethodParams("Channel", "close", 0, 0)

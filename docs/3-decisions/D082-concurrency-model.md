@@ -1,6 +1,6 @@
 # D082: Concurrency Model (Virtual Threads + Ref)
 
-**Status:** Phase 4 Done (ref/watch + Thread.start/join + capture analysis + Channel\<T\>)
+**Status:** Phase 4+ Done (ref/watch + Thread.start/join + capture analysis + Channel\<T\> + bounded channels)
 **Priority:** P1
 
 ## Context
@@ -141,30 +141,35 @@ M:N 虚拟线程调度器：
 ### Channel\<T\> — 线程间通信（Phase 4）
 
 ```simplescript
-// 创建 typed channel
+// 创建 unbounded channel（无界，默认）
 const ch = new Channel<int>()
 
-// 发送（非阻塞入队，closed 时抛异常）
+// 创建 bounded channel（有界，send 满时阻塞）
+const bounded = new Channel<int>(10)
+
+// 发送（无界：非阻塞入队；有界：满时阻塞直到有空间。closed 时抛异常）
 ch.send(42)
 
 // 接收（阻塞直到有值或 channel closed）
 const val = ch.receive()
 
-// 关闭（唤醒所有等待中的 receiver）
+// 关闭（唤醒所有等待中的 receiver 和 sender）
 ch.close()
 ```
 
-对标 Java BlockingQueue / Go channel。内部实现：
+对标 Java BlockingQueue / Go buffered channel。内部实现：
 
 | 组件 | 实现 |
 |------|------|
 | 队列 | 链表 FIFO（ChanNode: i64 value + ptr next） |
-| 同步 | per-channel mutex + condvar |
-| send | lock → enqueue → signal → unlock |
-| receive | lock → while empty & !closed: wait → dequeue → unlock |
-| close | lock → set flag → broadcast → unlock |
+| 同步 | per-channel mutex + cond_recv + cond_send |
+| send (unbounded) | lock → enqueue → signal cond_recv → unlock |
+| send (bounded) | lock → while count≥cap: wait cond_send → enqueue → signal cond_recv → unlock |
+| receive | lock → while empty & !closed: wait cond_recv → dequeue → signal cond_send → unlock |
+| close | lock → set flag → broadcast cond_recv + cond_send → unlock |
 
 支持任意类型 T（int/double/string/class 实例），值通过 i64 编码传递。
+Bounded channel capacity=0 表示无界（默认），capacity>0 表示有界。
 
 ## 不在此决策范围
 

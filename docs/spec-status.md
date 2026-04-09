@@ -30,7 +30,7 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 
 | Spec | Topic | Status | Notes |
 |------|-------|--------|-------|
-| 04 | Virtual Threads | ❌ | 无并发支持 |
+| 04 | Virtual Threads | 🔶 | D082: Thread.start/join (M:N), ref/watch, Channel\<T\> (bounded+unbounded), closure capture analysis。缺: select 多路复用, structured concurrency |
 | 28 | Async I/O | ❌ | 所有 I/O 同步阻塞 |
 | 68 | Async Tasks | ❌ | 无后台任务 |
 
@@ -63,15 +63,15 @@ Status: ✅ Done | 🔶 Partial | ❌ Not started | 📄 Doc only | 🚫 Rejecte
 
 | Spec | Topic | Status | Notes |
 |------|-------|--------|-------|
-| 06 | Stdlib Overview | 🔶 | 21 模块 ~5217 LOC。缺: 大量 spec 规划的模块 |
+| 06 | Stdlib Overview | 🔶 | 23 模块 ~5300 LOC。缺: 大量 spec 规划的模块 |
 | 26 | Collections Advanced | 🔶 | Array/Map/Set done。缺: Queue/Deque/Stack, immutable variants |
 | 54 | Date & Time | 🔶 | datetime.ss 基础版。缺: java.time 级别 API |
 | 53 | Environment | 🔶 | getenv/system/args done |
 | 24 | Interop & Ecosystem | ❌ | 无生态互操作 |
 
-### Stdlib 当前模块 (21 modules)
+### Stdlib 当前模块 (23 modules)
 
-json, csv, url, uuid, assert, color, template, crypto, regex, sort, log, ini, path, fs, datetime, math, string_utils, base64, sha256, http, argparse
+json, csv, url, uuid, assert, color, template, crypto, regex, sort, log, ini, path, fs, datetime, math, string_utils, base64, sha256, http, argparse, test, watcher
 
 ### Stdlib spec 规划但未实现
 
@@ -96,7 +96,7 @@ random, toml, xml, gzip/zlib, aes, rsa, tls, dns, websocket, db, concurrent util
 
 | Spec | Topic | Status | Notes |
 |------|-------|--------|-------|
-| 17 | Testing Framework | ❌ | 测试是独立程序，无 test/expect API |
+| 17 | Testing Framework | ✅ | `test()` + assertEqual/assertTrue/assertFalse/assertNull/assertNotNull (D079) |
 | 14 | CLI Framework | ❌ | 无 @Command 注解框架 |
 | 25 | Language Comparison | 📄 | 参考文档 |
 | 15 | Example Project | 📄 | 参考文档 |
@@ -152,20 +152,20 @@ random, toml, xml, gzip/zlib, aes, rsa, tls, dns, websocket, db, concurrent util
 
 | Status | Count |
 |--------|-------|
-| ✅ Done | 11 |
+| ✅ Done | 12 |
 | 🔶 Partial | 16 |
-| ❌ Not started | 39 |
+| ❌ Not started | 38 |
 | 📄 Doc only | 4 |
 | 🚫 Rejected | 1 |
 
 ## Critical Path (写完整项目的最短路径)
 
 核心语言层 (不依赖框架即可写项目):
-1. **null safety (T?)** — spec/43
-2. **Result<T,E> + ?** — spec/02
-3. **access modifiers** — spec/42
+1. ~~**null safety (T?)**~~ — ✅ done (D067)
+2. ~~**Result<T,E> + ?**~~ — 🚫 rejected (D072)
+3. ~~**access modifiers**~~ — ✅ done (D068)
 4. **package manager** — spec/07
-5. **testing framework** — spec/17
+5. ~~**testing framework**~~ — ✅ done (D079)
 
 框架层 (写 web 服务):
 6. **annotations** — spec/08

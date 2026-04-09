@@ -504,11 +504,21 @@ function genNewExpr(id: int): string {
         return genGenericNewExpr(id, className)
     }
     // D082 Phase 4: Channel<T> is built-in — constructor delegates to ss_channelNew
+    // Optional capacity arg: new Channel<int>() = unbounded, new Channel<int>(10) = bounded
     if (className == "Channel") {
         pirPendingReuseReg = ""
         pirPendingReuseClass = ""
+        let capVal = "0"
+        const chanArgList = nGetList(id)
+        if (chanArgList != "") {
+            const chanParts = chanArgList.split(",")
+            const capArgId = parseInt(chanParts[0])
+            if (capArgId > 0) {
+                capVal = genExpr(capArgId)
+            }
+        }
         const r = nextReg()
-        emitIR(`  ${r} = call ptr @ss_channelNew()`)
+        emitIR(`  ${r} = call ptr @ss_channelNew(i32 ${capVal})`)
         return r
     }
     // Map and Set are built-in — constructor delegates to ss_mapNew
