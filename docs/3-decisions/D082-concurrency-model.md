@@ -1,6 +1,6 @@
 # D082: Concurrency Model (Virtual Threads + Ref)
 
-**Status:** Phase 2 Done (ref/watch + Thread.start/join)
+**Status:** Phase 3 Done (ref/watch + Thread.start/join + capture analysis)
 **Priority:** P1
 
 ## Context

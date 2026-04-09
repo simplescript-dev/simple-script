@@ -116,6 +116,10 @@ function genArrowFunc(id: int): string {
     const captures = findFreeVars(bodyId, paramList)
     const hasCaptures = captures != "" ? 1 : 0
 
+    // D082 Phase 3: capture thread closure flag, reset for inner arrows
+    const thisIsThreadClosure = isThreadClosure
+    isThreadClosure = 0
+
     // Build param string (with ptr %self.arg for capturing arrows)
     let paramStr = ""
     if (hasCaptures == 1) {
@@ -279,12 +283,19 @@ function genArrowFunc(id: int): string {
             emitIR(`  ${capField} = getelementptr ptr, ptr ${closureReg}, i32 ${CLOSURE_HDR_SLOTS + capIdx3}`)
             const capVal = nextReg()
             emitIR(`  ${capVal} = load ${llCapType3}, ptr ${varRef(capName3)}, align 8`)
-            emitIR(`  store ${llCapType3} ${capVal}, ptr ${capField}, align 8`)
-            if (llCapType3 == "ptr") {
-                if (classFields.has(capType3) == 1) {
-                    emitIR(`  call void @ss_retain(ptr ${capVal})`)
-                } else {
-                    emitIR(`  call void @ss_rc_retain(ptr ${capVal})`)
+            // D082 Phase 3: thread closures deep-clone class instances for isolation
+            if (thisIsThreadClosure == 1 && llCapType3 == "ptr" && classFields.has(capType3) == 1) {
+                const clonedVal = nextReg()
+                emitIR(`  ${clonedVal} = call ptr @ss_deep_clone_${capType3}(ptr ${capVal})`)
+                emitIR(`  store ptr ${clonedVal}, ptr ${capField}, align 8`)
+            } else {
+                emitIR(`  store ${llCapType3} ${capVal}, ptr ${capField}, align 8`)
+                if (llCapType3 == "ptr") {
+                    if (classFields.has(capType3) == 1) {
+                        emitIR(`  call void @ss_retain(ptr ${capVal})`)
+                    } else {
+                        emitIR(`  call void @ss_rc_retain(ptr ${capVal})`)
+                    }
                 }
             }
             capIdx3 = capIdx3 + 1

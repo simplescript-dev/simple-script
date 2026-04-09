@@ -1,39 +1,38 @@
-# Round 116
+# Round 117
 
 ## Role
-Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~16000 LOC).
+Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~16200 LOC).
 
 ## Language
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D082-concurrency-model.md
-- bootstrap/gen_rt_thread.ss
-- bootstrap/gen_arrows.ss (irBuf/strOutFile save/restore fix)
+- bootstrap/check_stmts.ss (checkThreadClosureCaptures / checkThreadCapturesRec at end of file)
+- bootstrap/gen_arrows.ss (thisIsThreadClosure deep-clone logic)
+- bootstrap/gen_methods.ss (genThreadStart sets isThreadClosure flag)
 
 ## Last Round (max 3 sentences)
-Implemented D082 Phase 2: `Thread.start(fn)` + `.join()` with M:N thread pool scheduler. Runtime generates 6 functions (schedInit/Enqueue/Dequeue/workerLoop/threadStart/threadJoin) with N worker pthreads, tag-bit closure dispatch, per-VThread mutex/condvar for join synchronization. Fixed a pre-existing nested arrow bug (irBuf/strOutFile not saved/restored in genArrowFunc). 172 tests passing, fixed-point verified, seed updated.
+Implemented D082 Phase 3: Thread closure capture analysis. Checker rejects `let` variable captures in Thread.start closures with clear error messages. Codegen auto deep-clones captured class instances for thread isolation (Ref<T>/string/value-types shared as-is). 173 tests passing, fixed-point verified, seed updated.
 
 ## Task
-Phase: D082 concurrency — Phase 2 (Thread.start/join) complete. **Next: D082 Phase 3 — Thread closure capture analysis.**
+Phase: D082 concurrency — Phase 3 (capture analysis) complete. **Next: choose one of these directions:**
 
-Capture rules from D082:
-- Value types (int/double/bool): copy — already works (passed by value)
-- string: shared — already works (immutable, ptr copy)
-- `Ref<T>`: shared — already works (ptr copy, thread-safe internals)
-- Other objects: auto deep clone — **NOT YET IMPLEMENTED**
-- let variables: compile error — **NOT YET IMPLEMENTED**
+1. **D082 Phase 4 — Channel<T>** for thread communication (BlockingQueue-style):
+   - `const ch = new Channel<int>()`
+   - `ch.send(42)` / `const val = ch.receive()`
+   - Bounded or unbounded queue, mutex+condvar based
+   - Enables producer-consumer patterns between threads
 
-Implementation scope for Phase 3:
-1. **Checker**: When arrow function is argument to Thread.start, validate captured variables:
-   - Reject `let` variables (compile error: "let variables cannot be captured by thread closures")
-   - Warn/error on mutable objects (non-Ref, non-string, non-value-type)
-2. **Codegen**: In genArrowFunc, when generating a thread closure:
-   - Auto deep-clone captured class instances (call `ss_deep_clone_ClassName`)
-   - Share Ref<T> captures (just copy ptr, no clone)
-3. **Type tracking**: Need a way to mark an arrow as "thread closure" so codegen can apply different capture semantics
+2. **D082 Phase 4 — computed()** reactive primitive:
+   - `const isHigh = computed(() => count.value > 100)`
+   - Auto-derive values from refs, lazy recalculation
+   - Sugar over watch + ref
 
-Alternative: skip Phase 3 capture analysis, move to **Channel<T>** for thread communication, or **computed()** reactive primitive.
+3. **Fix open issues** (recommended if any blockers found):
+   - Review `docs/4-issues/1-open/` before adding new features
+
+4. **New feature** outside D082 — evaluate other spec items in `spec/`.
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -44,18 +43,19 @@ Alternative: skip Phase 3 capture analysis, move to **Channel<T>** for thread co
 
 ### Project Status
 - **D082 Phase 1 done**: `ref()` + `watch()` — gen_rt_ref.ss
-- **D082 Phase 2 done**: `Thread.start(fn)` + `.join()` — gen_rt_thread.ss, thread pool M:N scheduler
-- **Nested arrow bug fixed**: genArrowFunc now saves/restores irBuf + strOutFile (was losing outer arrow IR on nested arrow compilation)
-- **Bootstrap**: 37 files, ~16200 LOC, 172 tests (all passing).
+- **D082 Phase 2 done**: `Thread.start(fn)` + `.join()` — gen_rt_thread.ss, M:N thread pool
+- **D082 Phase 3 done**: Thread closure capture analysis — checker rejects `let` captures, codegen deep-clones class instances
+- **Bootstrap**: 37 files, ~16200 LOC, 173 tests (all passing).
 - **Bootstrap perf**: Three-stage bootstrap ~27s.
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **Bootstrap pattern for new builtins**: Don't add builtin calls to prelude.ss — seed won't know them. Use genCall special case instead (like ref, watch, exec, test, println, Thread.start).
-- **Nested arrows now work**: irBuf/strOutFile save/restore fixed in gen_arrows.ss. Test with nested scenarios.
-- **Thread.start double return**: i64 storage means double return values from thread callbacks don't work (double returns in xmm0, not rax). Document or fix if needed.
-- **No capture analysis yet**: Thread closures capture by value copy (same as regular closures). Objects are shared (ptr copy), not cloned. let variables are not rejected.
+- **Bootstrap pattern for new builtins**: Don't add builtin calls to prelude.ss — seed won't know them. Use genCall special case instead.
+- **Nested arrows**: irBuf/strOutFile save/restore fixed in gen_arrows.ss. isThreadClosure also correctly saved/reset for nested arrows.
+- **Thread.start double return**: i64 storage means double return values from thread callbacks don't work (double returns in xmm0, not rax).
+- **Array/Map thread capture**: Not yet auto-cloned (no deep clone for container types). Users should use Ref<T> for shared mutable containers.
+- **Checker captures are approximate**: Shadowed variables inside arrow body may cause false positives (rare, acceptable).
 - **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen. Do not propose.
 - **No new keywords**: Thread.start is a static method call, not a keyword.
 

@@ -461,7 +461,10 @@ function genMethodCall(id: int, preObj: string = ""): string {
 function genThreadStart(argList: string): string {
     const parts = argList.split(",")
     const fnId = parseInt(parts[0])
+    // D082 Phase 3: mark arrow as thread closure for capture analysis
+    isThreadClosure = 1
     const fnVal = genExpr(fnId)
+    isThreadClosure = 0
     const result = nextReg()
     emitIR(`  ${result} = call ptr @ss_threadStart(i64 ${fnVal})`)
     return result

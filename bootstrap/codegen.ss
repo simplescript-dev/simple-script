@@ -63,6 +63,7 @@ let enumTypes = ""
 let enumDeclNodes = ""
 let enumReady = 0
 let annotatedRoutes = ""
+let isThreadClosure = 0    // D082 Phase 3: set to 1 when generating Thread.start arrow
 
 // Generic function state (monomorphization)
 let genericFuncNodes = ""
@@ -191,6 +192,13 @@ function irPtrToInt(dst: string, val: string, toTy: string) {
 
 function irIntToPtr(dst: string, fromTy: string, val: string) {
     emitIR(`  %${dst} = inttoptr ${fromTy} ${val} to ptr`)
+}
+
+// Load array data buffer pointer from header slot 2
+function irLoadArrayData(dst: string, arr: string) {
+    irGEP(`${dst}p`, "i64", arr, "2")
+    irLoad(`${dst}_i`, "i64", `%${dst}p`)
+    irIntToPtr(dst, "i64", `%${dst}_i`)
 }
 
 function addStringConst(value: string): string {
@@ -458,12 +466,50 @@ function generate(rootId: int): string {
     return `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${strConsts}\n${irBuf}`
 }
 
+let runtimeCacheObj = "/tmp/ss_rt_cache.o"
+let runtimeCacheDecls = "/tmp/ss_rt_cache.decls"
+let useRuntimeCache = 0
+
+function buildRuntimeCache() {
+    const rtLL = "/tmp/ss_rt_cache.ll"
+    resetCodegen()
+    irOutFile = rtLL
+    writeFile(rtLL, "")
+    writeFile(`${rtLL}.str`, "")
+    emitRuntimeDefs()
+    irOutFile = ""
+    const rtBody = readFile(rtLL)
+    writeFile(rtLL, `; ModuleID = 'ss_runtime'\nsource_filename = "ss_runtime"\n\n${rtBody}`)
+    if (system(`llc-18 -filetype=obj ${rtLL} -o ${runtimeCacheObj}`) != 0) {
+        system(`rm -f ${runtimeCacheObj} ${runtimeCacheDecls} ${rtLL}`)
+        return
+    }
+    // Generate declarations from runtime IR
+    // 1. Function declares
+    system(`grep '^define ' ${rtLL} | grep -v '^define internal ' | sed 's/define /declare /;s/ {$//' > ${runtimeCacheDecls}`)
+    // 2. Libc declares
+    system(`grep '^declare ' ${rtLL} >> ${runtimeCacheDecls}`)
+    // 3. Runtime string constants as external
+    system(`grep '^@\.rt\.' ${rtLL} | sed 's/ = constant \(\[[^]]*\]\).*/= external constant \1/' >> ${runtimeCacheDecls}`)
+    // 4. @stdin/@stdout and type definitions
+    system(`grep '^@stdin\|^@stdout' ${rtLL} >> ${runtimeCacheDecls}`)
+    system(`grep '^%TypeInfo\|^%ObjHeader' ${rtLL} >> ${runtimeCacheDecls}`)
+    // 5. Runtime globals as external (auto-extracted from .ll)
+    system(`grep '^@ss_' ${rtLL} | sed 's/ = global / = external global /;s/ zeroinitializer.*//;s/ null.*//;s/ 0, align [0-9]*//;s/ 0$//' >> ${runtimeCacheDecls}`)
+    system(`rm -f ${rtLL} ${rtLL}.str`)
+}
+
 function generateToFile(rootId: int, outFile: string) {
     resetCodegen()
     irOutFile = outFile
     writeFile(outFile, "")
     writeFile(`${outFile}.str`, "")
-    emitRuntimeDefs()
+    if (useRuntimeCache == 1 && fileExists(runtimeCacheDecls) == 1 && fileExists(runtimeCacheObj) == 1) {
+        appendFile(outFile, readFile(runtimeCacheDecls))
+    } else {
+        emitRuntimeDefs()
+        useRuntimeCache = 0
+    }
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
     generateDeferredSpecializations()

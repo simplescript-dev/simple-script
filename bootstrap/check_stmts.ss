@@ -709,6 +709,16 @@ function checkExpr(id: int) {
                 }
             }
         }
+        // D082 Phase 3: Thread.start closure capture validation
+        if (recvClass == "Thread" && methodName == "start") {
+            const tsArgList = nGetList(id)
+            if (tsArgList != "") {
+                const tsFirstArgId = parseInt(tsArgList.split(",")[0])
+                if (tsFirstArgId > 0 && nGetKind(tsFirstArgId) == "ARROW_FUNC") {
+                    checkThreadClosureCaptures(tsFirstArgId)
+                }
+            }
+        }
         checkArgList(nGetList(id))
         return
     }
@@ -932,6 +942,75 @@ function checkNamedConstructorArgs(className: string, argList: string, line: int
         if (f == "" ) { continue }
         if (seen.has(f) == 0) {
             checkerError(`missing field '${f}' in named constructor for '${className}'`, line, col)
+        }
+    }
+}
+
+// ── D082 Phase 3: Thread closure capture validation ─────────
+
+function checkThreadClosureCaptures(arrowId: int) {
+    // Collect arrow parameter names
+    const params = Map()
+    const paramList = nGetList(arrowId)
+    if (paramList != "") {
+        const parts = paramList.split(",")
+        for (p in parts) {
+            const pId = parseInt(p)
+            if (pId > 0 && nGetKind(pId) == "PARAM") {
+                params.set(nGetS1(pId), "1")
+            }
+        }
+    }
+    const seen = Map()
+    checkThreadCapturesRec(nGetI1(arrowId), params, seen)
+}
+
+function checkThreadCapturesRec(nodeId: int, params: Map, seen: Map) {
+    if (nodeId <= 0) { return }
+    const kind = nGetKind(nodeId)
+    if (kind == "") { return }
+    // Stop at nested arrow functions (they have their own scope)
+    if (kind == "ARROW_FUNC") { return }
+
+    if (kind == "IDENT") {
+        const name = nGetS1(nodeId)
+        if (name != "" && name != "this" && params.has(name) == 0 && seen.has(name) == 0) {
+            if (lookupVar(name) != "" && isVarConst(name) == 0) {
+                seen.set(name, "1")
+                checkerError(`let variable '${name}' cannot be captured by thread closures; use const or ref()`, nGetLine(nodeId), nGetCol(nodeId))
+            }
+        }
+        return
+    }
+
+    if (kind == "CALL") {
+        // S1 may be a fn-typed variable reference
+        const callee = nGetS1(nodeId)
+        if (callee != "" && params.has(callee) == 0 && seen.has(callee) == 0) {
+            if (lookupVar(callee) != "" && isVarConst(callee) == 0) {
+                seen.set(callee, "1")
+                checkerError(`let variable '${callee}' cannot be captured by thread closures; use const or ref()`, nGetLine(nodeId), nGetCol(nodeId))
+            }
+        }
+        const cArgList = nGetList(nodeId)
+        if (cArgList != "") {
+            const cParts = cArgList.split(",")
+            for (cp in cParts) {
+                checkThreadCapturesRec(parseInt(cp), params, seen)
+            }
+        }
+        return
+    }
+
+    // Recurse into all children
+    checkThreadCapturesRec(nGetI1(nodeId), params, seen)
+    checkThreadCapturesRec(nGetI2(nodeId), params, seen)
+    checkThreadCapturesRec(nGetI3(nodeId), params, seen)
+    const lst = nGetList(nodeId)
+    if (lst != "") {
+        const lParts = lst.split(",")
+        for (lp in lParts) {
+            checkThreadCapturesRec(parseInt(lp), params, seen)
         }
     }
 }
