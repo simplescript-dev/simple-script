@@ -965,33 +965,28 @@ function checkThreadClosureCaptures(arrowId: int) {
     checkThreadCapturesRec(nGetI1(arrowId), params, seen)
 }
 
+function checkLetCapture(name: string, nodeId: int, params: Map, seen: Map) {
+    if (name == "" || name == "this") { return }
+    if (params.has(name) == 1 || seen.has(name) == 1) { return }
+    if (lookupVar(name) != "" && isVarConst(name) == 0) {
+        seen.set(name, "1")
+        checkerError(`let variable '${name}' cannot be captured by thread closures; use const or ref()`, nGetLine(nodeId), nGetCol(nodeId))
+    }
+}
+
 function checkThreadCapturesRec(nodeId: int, params: Map, seen: Map) {
     if (nodeId <= 0) { return }
     const kind = nGetKind(nodeId)
     if (kind == "") { return }
-    // Stop at nested arrow functions (they have their own scope)
     if (kind == "ARROW_FUNC") { return }
 
     if (kind == "IDENT") {
-        const name = nGetS1(nodeId)
-        if (name != "" && name != "this" && params.has(name) == 0 && seen.has(name) == 0) {
-            if (lookupVar(name) != "" && isVarConst(name) == 0) {
-                seen.set(name, "1")
-                checkerError(`let variable '${name}' cannot be captured by thread closures; use const or ref()`, nGetLine(nodeId), nGetCol(nodeId))
-            }
-        }
+        checkLetCapture(nGetS1(nodeId), nodeId, params, seen)
         return
     }
 
     if (kind == "CALL") {
-        // S1 may be a fn-typed variable reference
-        const callee = nGetS1(nodeId)
-        if (callee != "" && params.has(callee) == 0 && seen.has(callee) == 0) {
-            if (lookupVar(callee) != "" && isVarConst(callee) == 0) {
-                seen.set(callee, "1")
-                checkerError(`let variable '${callee}' cannot be captured by thread closures; use const or ref()`, nGetLine(nodeId), nGetCol(nodeId))
-            }
-        }
+        checkLetCapture(nGetS1(nodeId), nodeId, params, seen)
         const cArgList = nGetList(nodeId)
         if (cArgList != "") {
             const cParts = cArgList.split(",")
@@ -1002,7 +997,6 @@ function checkThreadCapturesRec(nodeId: int, params: Map, seen: Map) {
         return
     }
 
-    // Recurse into all children
     checkThreadCapturesRec(nGetI1(nodeId), params, seen)
     checkThreadCapturesRec(nGetI2(nodeId), params, seen)
     checkThreadCapturesRec(nGetI3(nodeId), params, seen)
