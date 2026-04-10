@@ -1,4 +1,4 @@
-// interp.ss — SimpleScript AST Interpreter (D087 Phase 1a-1b)
+// interp.ss — SimpleScript AST Interpreter (D087 Phase 1a-1c)
 //
 // Evaluates AST nodes directly. Core of the comptime system:
 // compiler calls interpEval/interpExec on AST nodes to execute
@@ -8,6 +8,8 @@
 // expression evaluation, minimal statement support (const/let).
 // Phase 1b: control flow (if/while/for/for-in/do-while),
 // break/continue/return, assignment, postfix inc/dec, arrays.
+// Phase 1c: function declaration, function call (positional +
+// named args + defaults), recursion, builtin println.
 
 import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
 
@@ -250,6 +252,7 @@ function interpEval(nodeId: int): int {
         interpUpdateVar(name, interpNewInt(interpAsInt(old) - 1))
         return old
     }
+    if (kind == "CALL") { return interpCall(nodeId) }
     println(`[interp] unsupported expr: ${kind}`)
     return interpNewNull()
 }
@@ -404,6 +407,108 @@ function interpTemplate(nodeId: int): int {
     return interpNewString(result)
 }
 
+// ── Function Calls ────────────────────────────────────────────
+
+function interpCall(nodeId: int): int {
+    const name = nGetS1(nodeId)
+    const argList = nGetList(nodeId)
+
+    // Built-in: println (allowed for comptime debugging)
+    if (name == "println") {
+        if (argList != "") {
+            const argIds = argList.split(",")
+            println(interpToStr(interpEval(parseInt(argIds[0]))))
+        } else {
+            println("")
+        }
+        return interpNewNull()
+    }
+
+    // Look up function value
+    const fnVal = interpGetVar(name)
+    if (interpType(fnVal) != "fn") {
+        println(`[interp] not a function: ${name}`)
+        return interpNewNull()
+    }
+
+    const funcNodeId = parseInt(interpAsStr(fnVal))
+    const paramList = nGetList(funcNodeId)
+    const bodyId = nGetI1(funcNodeId)
+
+    // Evaluate all arguments before pushing scope
+    let argVals: Array<string> = []
+    let namedArgs = new Map()
+    let hasNamed = 0
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                hasNamed = 1
+                const argVal = interpEval(nGetI1(argNodeId))
+                namedArgs.set(nGetS1(argNodeId), `${argVal}`)
+            } else {
+                const argVal = interpEval(argNodeId)
+                argVals = argVals.push(`${argVal}`)
+            }
+            i = i + 1
+        }
+    }
+
+    // Save and reset control flow flags (isolate function body)
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+
+    // Push scope and bind parameters
+    interpPushScope()
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let posIdx = 0
+        let pi = 0
+        while (pi < params.length()) {
+            const paramId = parseInt(params[pi])
+            const pName = nGetS1(paramId)
+            if (hasNamed == 1 && namedArgs.has(pName) == 1) {
+                interpSetVar(pName, parseInt(namedArgs.getString(pName)))
+            } else if (posIdx < argVals.length()) {
+                interpSetVar(pName, parseInt(argVals[posIdx]))
+                posIdx = posIdx + 1
+            } else {
+                // Default parameter value
+                const defaultId = nGetI1(paramId)
+                if (defaultId > 0) {
+                    interpSetVar(pName, interpEval(defaultId))
+                } else {
+                    interpSetVar(pName, interpNewNull())
+                }
+            }
+            pi = pi + 1
+        }
+    }
+
+    // Execute function body
+    if (bodyId > 0) { interpExec(bodyId) }
+
+    // Capture return value and reset return flag
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+
+    interpPopScope()
+
+    // Restore caller's control flow flags
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+
+    return result
+}
+
 // ── Statement Execution ───────────────────────────────────────
 
 function interpExec(nodeId: int) {
@@ -432,6 +537,12 @@ function interpExec(nodeId: int) {
         let val = interpNewNull()
         if (initId > 0) { val = interpEval(initId) }
         interpSetVar(name, val)
+        return
+    }
+
+    if (kind == "FUNC_DECL") {
+        const name = nGetS1(nodeId)
+        interpSetVar(name, interpNewVal("fn", `${nodeId}`))
         return
     }
 
@@ -517,12 +628,12 @@ function interpExec(nodeId: int) {
     }
 
     if (kind == "RETURN") {
-        interpReturnFlag = 1
         if (nGetI1(nodeId) > 0) {
             interpReturnVal = interpEval(nGetI1(nodeId))
         } else {
             interpReturnVal = interpNewNull()
         }
+        interpReturnFlag = 1
         return
     }
 
