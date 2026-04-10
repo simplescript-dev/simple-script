@@ -28,6 +28,10 @@ function tokenize(source: string): string {
     curCol = 1
     tokenBuf = ""
     tokenCount = 0
+    tkKinds = []
+    tkValues = []
+    tkLines = []
+    tkCols = []
 
     while (pos < srcLen) {
         skipWS()

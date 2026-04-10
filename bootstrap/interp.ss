@@ -1,4 +1,4 @@
-// interp.ss — SimpleScript AST Interpreter (D087 Phase 1a)
+// interp.ss — SimpleScript AST Interpreter (D087 Phase 1a-1b)
 //
 // Evaluates AST nodes directly. Core of the comptime system:
 // compiler calls interpEval/interpExec on AST nodes to execute
@@ -6,8 +6,10 @@
 //
 // Phase 1a: values (int/string/double/bool/null), scope stack,
 // expression evaluation, minimal statement support (const/let).
+// Phase 1b: control flow (if/while/for/for-in/do-while),
+// break/continue/return, assignment, postfix inc/dec, arrays.
 
-import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetList } from "./parser"
+import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
 
 // ── Value Storage ──────────────────────────────────────────────
 // Each value has a unique int ID. Type and data stored in Maps.
@@ -110,17 +112,81 @@ function interpSetVar(name: string, valId: int) {
     interpVars.set(`${sid}:${name}`, `${valId}`)
 }
 
-function interpGetVar(name: string): int {
+function interpFindScopeKey(name: string): string {
     let i = interpScopes.length() - 1
     while (i >= 0) {
         const key = `${interpScopes[i]}:${name}`
-        if (interpVars.has(key) == 1) {
-            return parseInt(interpVars.getString(key))
-        }
+        if (interpVars.has(key) == 1) { return key }
         i = i - 1
     }
+    return ""
+}
+
+function interpGetVar(name: string): int {
+    const key = interpFindScopeKey(name)
+    if (key != "") { return parseInt(interpVars.getString(key)) }
     println(`[interp] undefined variable: ${name}`)
     return interpNewNull()
+}
+
+// ── Control Flow Flags ────────────────────────────────────────
+
+let interpBreakFlag = 0
+let interpContinueFlag = 0
+let interpReturnFlag = 0
+let interpReturnVal = 0
+
+function interpShouldStop(): int {
+    return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1) ? 1 : 0
+}
+
+function interpGetReturnFlag(): int { return interpReturnFlag }
+function interpGetReturnVal(): int { return interpReturnVal }
+
+function interpCheckLoopExit(): int {
+    if (interpReturnFlag == 1) { return 1 }
+    if (interpBreakFlag == 1) { interpBreakFlag = 0; return 1 }
+    interpContinueFlag = 0
+    return 0
+}
+
+// ── Variable Update (reassignment) ───────────────────────────
+
+function interpUpdateVar(name: string, valId: int) {
+    const key = interpFindScopeKey(name)
+    if (key != "") {
+        interpVars.set(key, `${valId}`)
+    } else {
+        interpSetVar(name, valId)
+    }
+}
+
+// ── Array Values ──────────────────────────────────────────────
+
+function interpNewArray(items: string): int {
+    return interpNewVal("array", items)
+}
+
+// ── Compound Assignment ───────────────────────────────────────
+
+function interpCompoundOp(op: string, lv: int, rv: int): int {
+    const lt = interpType(lv)
+    const rt = interpType(rv)
+    let binOp = ""
+    if (op == "PLUS_ASSIGN") { binOp = "Add" }
+    if (op == "MINUS_ASSIGN") { binOp = "Sub" }
+    if (op == "STAR_ASSIGN") { binOp = "Mul" }
+    if (op == "SLASH_ASSIGN") { binOp = "Div" }
+    if (op == "PERCENT_ASSIGN") { binOp = "Mod" }
+    if (binOp == "Add" && (lt == "string" || rt == "string")) {
+        return interpNewString(`${interpToStr(lv)}${interpToStr(rv)}`)
+    }
+    if (lt == "double" || rt == "double") {
+        const ld = lt == "double" ? interpAsDouble(lv) : parseDouble(`${interpAsInt(lv)}`)
+        const rd = rt == "double" ? interpAsDouble(rv) : parseDouble(`${interpAsInt(rv)}`)
+        return interpDoubleOp(binOp, ld, rd)
+    }
+    return interpIntOp(binOp, interpAsInt(lv), interpAsInt(rv))
 }
 
 // ── Expression Evaluation ──────────────────────────────────────
@@ -144,6 +210,46 @@ function interpEval(nodeId: int): int {
         return interpEval(nGetI3(nodeId))
     }
     if (kind == "TEMPLATE_LIT") { return interpTemplate(nodeId) }
+    if (kind == "ARRAY_LIT") {
+        const list = nGetList(nodeId)
+        if (list == "") { return interpNewArray("") }
+        const items = list.split(",")
+        let valIds = ""
+        let ai = 0
+        while (ai < items.length()) {
+            const elemVal = interpEval(parseInt(items[ai]))
+            if (ai > 0) { valIds = `${valIds},` }
+            valIds = `${valIds}${elemVal}`
+            ai = ai + 1
+        }
+        return interpNewArray(valIds)
+    }
+    if (kind == "INDEX_ACCESS") {
+        const obj = interpEval(nGetI1(nodeId))
+        const idx = interpEval(nGetI2(nodeId))
+        if (interpType(obj) == "array") {
+            const items = interpAsStr(obj)
+            if (items == "") { return interpNewNull() }
+            const parts = items.split(",")
+            const ii = interpAsInt(idx)
+            if (ii >= 0 && ii < parts.length()) {
+                return parseInt(parts[ii])
+            }
+        }
+        return interpNewNull()
+    }
+    if (kind == "POSTFIX_INC") {
+        const name = nGetS1(nodeId)
+        const old = interpGetVar(name)
+        interpUpdateVar(name, interpNewInt(interpAsInt(old) + 1))
+        return old
+    }
+    if (kind == "POSTFIX_DEC") {
+        const name = nGetS1(nodeId)
+        const old = interpGetVar(name)
+        interpUpdateVar(name, interpNewInt(interpAsInt(old) - 1))
+        return old
+    }
     println(`[interp] unsupported expr: ${kind}`)
     return interpNewNull()
 }
@@ -298,7 +404,7 @@ function interpTemplate(nodeId: int): int {
     return interpNewString(result)
 }
 
-// ── Statement Execution (minimal for Phase 1a) ────────────────
+// ── Statement Execution ───────────────────────────────────────
 
 function interpExec(nodeId: int) {
     if (nodeId <= 0) { return }
@@ -312,6 +418,7 @@ function interpExec(nodeId: int) {
             let i = 0
             while (i < stmts.length()) {
                 interpExec(parseInt(stmts[i]))
+                if (interpShouldStop() == 1) { break }
                 i = i + 1
             }
         }
@@ -333,6 +440,139 @@ function interpExec(nodeId: int) {
         return
     }
 
+    if (kind == "IF") {
+        const cond = interpEval(nGetI1(nodeId))
+        if (interpTruthy(cond) == 1) {
+            interpExec(nGetI2(nodeId))
+        } else if (nGetI3(nodeId) > 0) {
+            interpExec(nGetI3(nodeId))
+        }
+        return
+    }
+
+    if (kind == "WHILE") {
+        while (true) {
+            const cond = interpEval(nGetI1(nodeId))
+            if (interpTruthy(cond) == 0) { break }
+            interpExec(nGetI2(nodeId))
+            if (interpCheckLoopExit() == 1) { break }
+        }
+        return
+    }
+
+    if (kind == "DO_WHILE") {
+        while (true) {
+            interpExec(nGetI1(nodeId))
+            if (interpCheckLoopExit() == 1) { break }
+            const cond = interpEval(nGetI2(nodeId))
+            if (interpTruthy(cond) == 0) { break }
+        }
+        return
+    }
+
+    if (kind == "FOR") {
+        interpPushScope()
+        if (nGetI1(nodeId) > 0) { interpExec(nGetI1(nodeId)) }
+        while (true) {
+            if (nGetI2(nodeId) > 0) {
+                const cond = interpEval(nGetI2(nodeId))
+                if (interpTruthy(cond) == 0) { break }
+            }
+            interpExec(nGetI4(nodeId))
+            if (interpCheckLoopExit() == 1) { break }
+            if (nGetI3(nodeId) > 0) { interpExec(nGetI3(nodeId)) }
+        }
+        interpPopScope()
+        return
+    }
+
+    if (kind == "FOR_IN" || kind == "FOR_OF") {
+        const iterVal = interpEval(nGetI1(nodeId))
+        if (interpType(iterVal) == "array") {
+            const items = interpAsStr(iterVal)
+            if (items != "") {
+                const parts = items.split(",")
+                interpPushScope()
+                let fi = 0
+                while (fi < parts.length()) {
+                    interpSetVar(nGetS1(nodeId), parseInt(parts[fi]))
+                    interpExec(nGetI2(nodeId))
+                    if (interpCheckLoopExit() == 1) { break }
+                    fi = fi + 1
+                }
+                interpPopScope()
+            }
+        }
+        return
+    }
+
+    if (kind == "BREAK") {
+        interpBreakFlag = 1
+        return
+    }
+
+    if (kind == "CONTINUE") {
+        interpContinueFlag = 1
+        return
+    }
+
+    if (kind == "RETURN") {
+        interpReturnFlag = 1
+        if (nGetI1(nodeId) > 0) {
+            interpReturnVal = interpEval(nGetI1(nodeId))
+        } else {
+            interpReturnVal = interpNewNull()
+        }
+        return
+    }
+
+    if (kind == "ASSIGN") {
+        const name = nGetS1(nodeId)
+        const op = nGetS2(nodeId)
+        const rhs = interpEval(nGetI1(nodeId))
+        if (op == "ASSIGN") {
+            interpUpdateVar(name, rhs)
+        } else {
+            const old = interpGetVar(name)
+            interpUpdateVar(name, interpCompoundOp(op, old, rhs))
+        }
+        return
+    }
+
+    if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
+        interpEval(nodeId)
+        return
+    }
+
+    if (kind == "INDEX_ASSIGN") {
+        const arrName = nGetS1(nodeId)
+        const idxVal = interpEval(nGetI1(nodeId))
+        const rhs = interpEval(nGetI2(nodeId))
+        const arrId = interpGetVar(arrName)
+        if (interpType(arrId) == "array") {
+            const items = interpAsStr(arrId)
+            if (items != "") {
+                const parts = items.split(",")
+                const idx = interpAsInt(idxVal)
+                if (idx >= 0 && idx < parts.length()) {
+                    let newItems = ""
+                    let ni = 0
+                    while (ni < parts.length()) {
+                        if (ni > 0) { newItems = `${newItems},` }
+                        if (ni == idx) {
+                            newItems = `${newItems}${rhs}`
+                        } else {
+                            newItems = `${newItems}${parts[ni]}`
+                        }
+                        ni = ni + 1
+                    }
+                    interpUpdateVar(arrName, interpNewArray(newItems))
+                }
+            }
+        }
+        return
+    }
+
     println(`[interp] unsupported stmt: ${kind}`)
 }
 
@@ -345,4 +585,8 @@ function interpReset() {
     interpScopes = []
     interpScopeNext = 0
     interpVars = new Map()
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    interpReturnFlag = 0
+    interpReturnVal = 0
 }
