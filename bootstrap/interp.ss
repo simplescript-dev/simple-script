@@ -68,8 +68,8 @@ function interpAsBool(id: int): int {
 function interpToStr(id: int): string {
     const t = interpType(id)
     if (t == "string") { return interpAsStr(id) }
-    if (t == "int") { return interpVD.getString(`${id}`) }
-    if (t == "double") { return interpVD.getString(`${id}`) }
+    if (t == "int") { return interpAsStr(id) }
+    if (t == "double") { return interpAsStr(id) }
     if (t == "bool") { return interpAsBool(id) == 1 ? "true" : "false" }
     return "null"
 }
@@ -153,7 +153,7 @@ function interpEval(nodeId: int): int {
 function interpBinary(nodeId: int): int {
     const op = nGetS1(nodeId)
 
-    // Short-circuit logical
+    // Short-circuit: And, Or, NullCoalesce
     if (op == "And") {
         const lv = interpEval(nGetI1(nodeId))
         if (interpTruthy(lv) == 0) { return interpNewBool(0) }
@@ -164,17 +164,16 @@ function interpBinary(nodeId: int): int {
         if (interpTruthy(lv) == 1) { return interpNewBool(1) }
         return interpNewBool(interpTruthy(interpEval(nGetI2(nodeId))))
     }
+    if (op == "NullCoalesce") {
+        const lv = interpEval(nGetI1(nodeId))
+        if (interpType(lv) != "null") { return lv }
+        return interpEval(nGetI2(nodeId))
+    }
 
     const lv = interpEval(nGetI1(nodeId))
     const rv = interpEval(nGetI2(nodeId))
     const lt = interpType(lv)
     const rt = interpType(rv)
-
-    // Null coalescing
-    if (op == "NullCoalesce") {
-        if (lt == "null") { return rv }
-        return lv
-    }
 
     // Null equality
     if (lt == "null" || rt == "null") {
@@ -244,7 +243,10 @@ function interpDoubleOp(op: string, a: double, b: double): int {
     if (op == "Add") { return interpNewDouble(a + b) }
     if (op == "Sub") { return interpNewDouble(a - b) }
     if (op == "Mul") { return interpNewDouble(a * b) }
-    if (op == "Div") { return interpNewDouble(a / b) }
+    if (op == "Div") {
+        if (b == 0.0) { println("[interp] division by zero"); return interpNewDouble(0.0) }
+        return interpNewDouble(a / b)
+    }
     if (op == "Eq") { return interpNewBool(a == b ? 1 : 0) }
     if (op == "Ne") { return interpNewBool(a != b ? 1 : 0) }
     if (op == "Lt") { return interpNewBool(a < b ? 1 : 0) }

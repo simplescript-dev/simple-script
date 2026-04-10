@@ -1,4 +1,4 @@
-import { assertEqual, assertTrue } from "@/lib/test"
+import { assertEqual } from "@/lib/test"
 import { tokenize } from "@/bootstrap/lexer"
 import { parse, nGetList } from "@/bootstrap/parser"
 import { interpExec, interpReset, interpPushScope, interpType, interpAsInt, interpAsStr, interpAsDouble, interpAsBool, interpGetVar } from "@/bootstrap/interp"
