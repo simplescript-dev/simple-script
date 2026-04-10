@@ -1,4 +1,4 @@
-// interp.ss — SimpleScript AST Interpreter (D087 Phase 1a-1c)
+// interp.ss — SimpleScript AST Interpreter (D087 Phase 1a-1e)
 //
 // Evaluates AST nodes directly. Core of the comptime system:
 // compiler calls interpEval/interpExec on AST nodes to execute
@@ -10,8 +10,12 @@
 // break/continue/return, assignment, postfix inc/dec, arrays.
 // Phase 1c: function declaration, function call (positional +
 // named args + defaults), recursion, builtin println.
+// Phase 1d: class (new, fields, methods, this, inheritance).
+// Phase 1e: built-in type methods (string/Array/Map), arrow
+// functions, parseInt/parseDouble/toString.
 
 import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
+import { interpBuiltinMethod, interpNewMap, interpResetBuiltins } from "./interp_builtins"
 
 // ── Value Storage ──────────────────────────────────────────────
 // Each value has a unique int ID. Type and data stored in Maps.
@@ -170,6 +174,16 @@ function interpNewArray(items: string): int {
     return interpNewVal("array", items)
 }
 
+function interpArrayPush(arrValId: int, itemValId: int): int {
+    const items = interpAsStr(arrValId)
+    if (items == "") {
+        interpVD.set(`${arrValId}`, `${itemValId}`)
+    } else {
+        interpVD.set(`${arrValId}`, `${items},${itemValId}`)
+    }
+    return arrValId
+}
+
 // ── Class & Object Support ───────────────────────────────────
 
 let interpClasses = new Map()
@@ -244,8 +258,8 @@ function interpCompoundOp(op: string, lv: int, rv: int): int {
         return interpNewString(`${interpToStr(lv)}${interpToStr(rv)}`)
     }
     if (lt == "double" || rt == "double") {
-        const ld = lt == "double" ? interpAsDouble(lv) : parseDouble(`${interpAsInt(lv)}`)
-        const rd = rt == "double" ? interpAsDouble(rv) : parseDouble(`${interpAsInt(rv)}`)
+        const ld = lt == "double" ? parseDouble(interpAsStr(lv)) : parseDouble(`${interpAsInt(lv)}`)
+        const rd = rt == "double" ? parseDouble(interpAsStr(rv)) : parseDouble(`${interpAsInt(rv)}`)
         return interpDoubleOp(binOp, ld, rd)
     }
     return interpIntOp(binOp, interpAsInt(lv), interpAsInt(rv))
@@ -321,6 +335,7 @@ function interpEval(nodeId: int): int {
     if (kind == "NEW_EXPR") { return interpNewExpr(nodeId) }
     if (kind == "MEMBER_ACCESS") { return interpMemberAccess(nodeId) }
     if (kind == "METHOD_CALL") { return interpMethodCall(nodeId) }
+    if (kind == "ARROW_FUNC") { return interpNewVal("fn", `${nodeId}`) }
     println(`[interp] unsupported expr: ${kind}`)
     return interpNewNull()
 }
@@ -378,8 +393,8 @@ function interpBinary(nodeId: int): int {
 
     // Double promotion
     if (lt == "double" || rt == "double") {
-        const ld = lt == "double" ? interpAsDouble(lv) : parseDouble(`${interpAsInt(lv)}`)
-        const rd = rt == "double" ? interpAsDouble(rv) : parseDouble(`${interpAsInt(rv)}`)
+        const ld = lt == "double" ? parseDouble(interpAsStr(lv)) : parseDouble(`${interpAsInt(lv)}`)
+        const rd = rt == "double" ? parseDouble(interpAsStr(rv)) : parseDouble(`${interpAsInt(rv)}`)
         return interpDoubleOp(op, ld, rd)
     }
 
@@ -442,7 +457,7 @@ function interpUnary(nodeId: int): int {
     const t = interpType(val)
     if (op == "Neg") {
         if (t == "int") { return interpNewInt(0 - interpAsInt(val)) }
-        if (t == "double") { return interpNewDouble(0.0 - interpAsDouble(val)) }
+        if (t == "double") { return interpNewDouble(0.0 - parseDouble(interpAsStr(val))) }
     }
     if (op == "Not") {
         return interpNewBool(interpTruthy(val) == 1 ? 0 : 1)
@@ -490,6 +505,28 @@ function interpCall(nodeId: int): int {
             println("")
         }
         return interpNewNull()
+    }
+    // Built-in: parseInt, parseDouble, toString
+    if (name == "parseInt") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            return interpNewInt(parseInt(interpAsStr(val)))
+        }
+        return interpNewInt(0)
+    }
+    if (name == "parseDouble") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            return interpNewDouble(parseDouble(interpAsStr(val)))
+        }
+        return interpNewDouble(0.0)
+    }
+    if (name == "toString") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            return interpNewString(interpToStr(val))
+        }
+        return interpNewString("")
     }
 
     // Look up function value
@@ -581,6 +618,7 @@ function interpCall(nodeId: int): int {
 
 function interpNewExpr(nodeId: int): int {
     const className = nGetS1(nodeId)
+    if (className == "Map") { return interpNewMap() }
     if (interpClasses.has(className) != 1) {
         println(`[interp] unknown class: ${className}`)
         return interpNewNull()
@@ -643,8 +681,25 @@ function interpMemberAccess(nodeId: int): int {
 function interpMethodCall(nodeId: int): int {
     const methodName = nGetS1(nodeId)
     const objVal = interpEval(nGetI1(nodeId))
-    if (interpType(objVal) != "object") {
-        println(`[interp] cannot call method '${methodName}' on ${interpType(objVal)}`)
+    const objType = interpType(objVal)
+
+    // Built-in type methods (string, array, map)
+    if (objType == "string" || objType == "array" || objType == "map") {
+        const bArgList = nGetList(nodeId)
+        let bArgs: Array<string> = []
+        if (bArgList != "") {
+            const bArgIds = bArgList.split(",")
+            let bi = 0
+            while (bi < bArgIds.length()) {
+                bArgs = bArgs.push(`${interpEval(parseInt(bArgIds[bi]))}`)
+                bi = bi + 1
+            }
+        }
+        return interpBuiltinMethod(objType, objVal, methodName, bArgs)
+    }
+
+    if (objType != "object") {
+        println(`[interp] cannot call method '${methodName}' on ${objType}`)
         return interpNewNull()
     }
     const className = interpAsStr(objVal)
@@ -712,6 +767,47 @@ function interpMethodCall(nodeId: int): int {
     }
     interpPopScope()
     interpThisVal = savedThis
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+    return result
+}
+
+// ── Call Function Value (for higher-order methods) ────────────
+
+function interpCallValue(fnValId: int, args: Array<string>): int {
+    if (interpType(fnValId) != "fn") {
+        println("[interp] interpCallValue: not a function")
+        return interpNewNull()
+    }
+    const funcNodeId = parseInt(interpAsStr(fnValId))
+    const paramList = nGetList(funcNodeId)
+    const bodyId = nGetI1(funcNodeId)
+
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+
+    interpPushScope()
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let pi = 0
+        while (pi < params.length() && pi < args.length()) {
+            interpSetVar(nGetS1(parseInt(params[pi])), parseInt(args[pi]))
+            pi = pi + 1
+        }
+    }
+
+    if (bodyId > 0) { interpExec(bodyId) }
+
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+
+    interpPopScope()
     interpBreakFlag = savedBreak
     interpContinueFlag = savedContinue
     return result
@@ -938,4 +1034,5 @@ function interpReset() {
     interpClassParents = new Map()
     interpObjFields = new Map()
     interpThisVal = 0
+    interpResetBuiltins()
 }
