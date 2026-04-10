@@ -75,6 +75,7 @@ function interpToStr(id: int): string {
     if (t == "int") { return interpAsStr(id) }
     if (t == "double") { return interpAsStr(id) }
     if (t == "bool") { return interpAsBool(id) == 1 ? "true" : "false" }
+    if (t == "object") { return `${interpAsStr(id)}{...}` }
     return "null"
 }
 
@@ -169,6 +170,65 @@ function interpNewArray(items: string): int {
     return interpNewVal("array", items)
 }
 
+// ── Class & Object Support ───────────────────────────────────
+
+let interpClasses = new Map()
+let interpClassParents = new Map()
+let interpObjFields = new Map()
+let interpThisVal = 0
+
+function interpGetField(objId: int, fieldName: string): int {
+    const key = `${objId}:${fieldName}`
+    if (interpObjFields.has(key) == 1) {
+        return parseInt(interpObjFields.getString(key))
+    }
+    return interpNewNull()
+}
+
+function interpSetField(objId: int, fieldName: string, valId: int) {
+    interpObjFields.set(`${objId}:${fieldName}`, `${valId}`)
+}
+
+function interpCollectFields(className: string): string {
+    let fields = ""
+    if (interpClassParents.has(className) == 1) {
+        fields = interpCollectFields(interpClassParents.getString(className))
+    }
+    if (interpClasses.has(className) != 1) { return fields }
+    const classNodeId = parseInt(interpClasses.getString(className))
+    const fieldList = nGetList(classNodeId)
+    if (fieldList != "") {
+        if (fields != "") {
+            fields = `${fields},${fieldList}`
+        } else {
+            fields = fieldList
+        }
+    }
+    return fields
+}
+
+function interpFindMethod(className: string, methodName: string): int {
+    if (interpClasses.has(className) != 1) { return 0 }
+    const classNodeId = parseInt(interpClasses.getString(className))
+    const methodsBlock = nGetI2(classNodeId)
+    if (methodsBlock > 0) {
+        const methodList = nGetList(methodsBlock)
+        if (methodList != "") {
+            const methods = methodList.split(",")
+            let i = 0
+            while (i < methods.length()) {
+                const mId = parseInt(methods[i])
+                if (nGetS1(mId) == methodName) { return mId }
+                i = i + 1
+            }
+        }
+    }
+    if (interpClassParents.has(className) == 1) {
+        return interpFindMethod(interpClassParents.getString(className), methodName)
+    }
+    return 0
+}
+
 // ── Compound Assignment ───────────────────────────────────────
 
 function interpCompoundOp(op: string, lv: int, rv: int): int {
@@ -253,6 +313,14 @@ function interpEval(nodeId: int): int {
         return old
     }
     if (kind == "CALL") { return interpCall(nodeId) }
+    if (kind == "THIS") {
+        if (interpThisVal > 0) { return interpThisVal }
+        println("[interp] 'this' used outside method")
+        return interpNewNull()
+    }
+    if (kind == "NEW_EXPR") { return interpNewExpr(nodeId) }
+    if (kind == "MEMBER_ACCESS") { return interpMemberAccess(nodeId) }
+    if (kind == "METHOD_CALL") { return interpMethodCall(nodeId) }
     println(`[interp] unsupported expr: ${kind}`)
     return interpNewNull()
 }
@@ -509,6 +577,146 @@ function interpCall(nodeId: int): int {
     return result
 }
 
+// ── New Expression ────────────────────────────────────────────
+
+function interpNewExpr(nodeId: int): int {
+    const className = nGetS1(nodeId)
+    if (interpClasses.has(className) != 1) {
+        println(`[interp] unknown class: ${className}`)
+        return interpNewNull()
+    }
+    const objId = interpNewVal("object", className)
+    const allFields = interpCollectFields(className)
+    let fieldNames: Array<string> = []
+    if (allFields != "") {
+        const fieldParts = allFields.split(",")
+        let fi = 0
+        while (fi < fieldParts.length()) {
+            const fId = parseInt(fieldParts[fi])
+            const fName = nGetS1(fId)
+            fieldNames = fieldNames.push(fName)
+            const defaultId = nGetI1(fId)
+            if (defaultId > 0) {
+                interpSetField(objId, fName, interpEval(defaultId))
+            } else {
+                interpSetField(objId, fName, interpNewNull())
+            }
+            fi = fi + 1
+        }
+    }
+    const argList = nGetList(nodeId)
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let posIdx = 0
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                interpSetField(objId, nGetS1(argNodeId), interpEval(nGetI1(argNodeId)))
+            } else {
+                const argVal = interpEval(argNodeId)
+                if (posIdx < fieldNames.length()) {
+                    interpSetField(objId, fieldNames[posIdx], argVal)
+                }
+                posIdx = posIdx + 1
+            }
+            i = i + 1
+        }
+    }
+    return objId
+}
+
+// ── Member Access ─────────────────────────────────────────────
+
+function interpMemberAccess(nodeId: int): int {
+    const objVal = interpEval(nGetI1(nodeId))
+    const fieldName = nGetS1(nodeId)
+    if (interpType(objVal) == "object") {
+        return interpGetField(objVal, fieldName)
+    }
+    println(`[interp] no field '${fieldName}' on ${interpType(objVal)}`)
+    return interpNewNull()
+}
+
+// ── Method Call ───────────────────────────────────────────────
+
+function interpMethodCall(nodeId: int): int {
+    const methodName = nGetS1(nodeId)
+    const objVal = interpEval(nGetI1(nodeId))
+    if (interpType(objVal) != "object") {
+        println(`[interp] cannot call method '${methodName}' on ${interpType(objVal)}`)
+        return interpNewNull()
+    }
+    const className = interpAsStr(objVal)
+    const methodNode = interpFindMethod(className, methodName)
+    if (methodNode == 0) {
+        println(`[interp] no method '${methodName}' on class ${className}`)
+        return interpNewNull()
+    }
+    const argList = nGetList(nodeId)
+    let argVals: Array<string> = []
+    let namedArgs = new Map()
+    let hasNamed = 0
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                hasNamed = 1
+                namedArgs.set(nGetS1(argNodeId), `${interpEval(nGetI1(argNodeId))}`)
+            } else {
+                argVals = argVals.push(`${interpEval(argNodeId)}`)
+            }
+            i = i + 1
+        }
+    }
+    const savedThis = interpThisVal
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    interpThisVal = objVal
+    interpPushScope()
+    const paramList = nGetList(methodNode)
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let posIdx = 0
+        let pi = 0
+        while (pi < params.length()) {
+            const paramId = parseInt(params[pi])
+            const pName = nGetS1(paramId)
+            if (hasNamed == 1 && namedArgs.has(pName) == 1) {
+                interpSetVar(pName, parseInt(namedArgs.getString(pName)))
+            } else if (posIdx < argVals.length()) {
+                interpSetVar(pName, parseInt(argVals[posIdx]))
+                posIdx = posIdx + 1
+            } else {
+                const defaultId = nGetI1(paramId)
+                if (defaultId > 0) {
+                    interpSetVar(pName, interpEval(defaultId))
+                } else {
+                    interpSetVar(pName, interpNewNull())
+                }
+            }
+            pi = pi + 1
+        }
+    }
+    const bodyId = nGetI1(methodNode)
+    if (bodyId > 0) { interpExec(bodyId) }
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+    interpPopScope()
+    interpThisVal = savedThis
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+    return result
+}
+
 // ── Statement Execution ───────────────────────────────────────
 
 function interpExec(nodeId: int) {
@@ -543,6 +751,16 @@ function interpExec(nodeId: int) {
     if (kind == "FUNC_DECL") {
         const name = nGetS1(nodeId)
         interpSetVar(name, interpNewVal("fn", `${nodeId}`))
+        return
+    }
+
+    if (kind == "CLASS_DECL") {
+        const className = nGetS1(nodeId)
+        interpClasses.set(className, `${nodeId}`)
+        const parentName = nGetS2(nodeId)
+        if (parentName != "") {
+            interpClassParents.set(className, parentName)
+        }
         return
     }
 
@@ -650,6 +868,22 @@ function interpExec(nodeId: int) {
         return
     }
 
+    if (kind == "MEMBER_ASSIGN") {
+        const objVal = interpEval(nGetI1(nodeId))
+        const fieldName = nGetS1(nodeId)
+        const op = nGetS2(nodeId)
+        const rhs = interpEval(nGetI2(nodeId))
+        if (interpType(objVal) == "object") {
+            if (op == "ASSIGN") {
+                interpSetField(objVal, fieldName, rhs)
+            } else {
+                const old = interpGetField(objVal, fieldName)
+                interpSetField(objVal, fieldName, interpCompoundOp(op, old, rhs))
+            }
+        }
+        return
+    }
+
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
         interpEval(nodeId)
         return
@@ -700,4 +934,8 @@ function interpReset() {
     interpContinueFlag = 0
     interpReturnFlag = 0
     interpReturnVal = 0
+    interpClasses = new Map()
+    interpClassParents = new Map()
+    interpObjFields = new Map()
+    interpThisVal = 0
 }
