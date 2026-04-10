@@ -282,7 +282,12 @@ function genStmt(id: int) {
     if (kind == "DESTRUCTURE_ARRAY") { genDestructureArray(id); return }
     if (kind == "DESTRUCTURE_OBJECT") { genDestructureObject(id); return }
     if (kind == "ASSIGN") { genAssign(id); return }
-    if (kind == "EXPR_STMT") { genExpr(nGetI1(id)); return }
+    if (kind == "EXPR_STMT") {
+        const esExpr = nGetI1(id)
+        if (esExpr > 0 && nGetKind(esExpr) == "CALL" && nGetS1(esExpr) == "annotationMapping") { return }
+        genExpr(esExpr)
+        return
+    }
     if (kind == "RETURN") { genReturn(id); return }
     if (kind == "IF") { genIf(id); return }
     if (kind == "FOR") { genFor(id); return }

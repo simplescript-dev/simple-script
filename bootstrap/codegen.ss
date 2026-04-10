@@ -62,7 +62,6 @@ let enumValues = ""
 let enumTypes = ""
 let enumDeclNodes = ""
 let enumReady = 0
-let annotatedRoutes = ""
 let isThreadClosure = 0    // D082 Phase 3: set to 1 when generating Thread.start arrow
 
 // Generic function state (monomorphization)
@@ -299,14 +298,30 @@ function registerAllDecls(rootId: int) {
         if (sk == "INTERFACE_DECL") {
             registerInterface(sid)
         }
+        if (sk == "EXPR_STMT") {
+            // Process compile-time annotationMapping() directives
+            const amExpr = nGetI1(sid)
+            if (amExpr > 0 && nGetKind(amExpr) == "CALL" && nGetS1(amExpr) == "annotationMapping") {
+                const amArgs = nGetList(amExpr)
+                if (amArgs != "") {
+                    const amParts = amArgs.split(",")
+                    if (amParts.length() >= 2) {
+                        const amNameId = parseInt(amParts[0])
+                        const amHandlerId = parseInt(amParts[1])
+                        if (amNameId > 0 && nGetKind(amNameId) == "STRING_LIT" && amHandlerId > 0 && nGetKind(amHandlerId) == "IDENT") {
+                            registerAnnotation(nGetS1(amNameId), nGetS1(amHandlerId))
+                        }
+                    }
+                }
+            }
+        }
         if (sk == "CLASS_DECL") {
             registerClass(sid)
             // Track generic classes for monomorphization
             if (classTypeParams(sid) != "") {
                 genericClassNodes.set(nGetS1(sid), `${sid}`)
             }
-            // Scan for @RestController / @RequestMapping annotations
-            collectAnnotatedRoutes(sid)
+            collectClassAnnotations(sid)
         }
     }
     // Resolve inheritance after all classes are registered
@@ -322,65 +337,6 @@ function registerAllDecls(rootId: int) {
     detectCyclicOwnership()
     // Generate interface dispatch functions (switch on class_id)
     generateInterfaceDispatchers()
-}
-
-function collectAnnotatedRoutes(classId: int) {
-    const annListId = nGetI4(classId)
-    if (annListId <= 0) { return }
-    if (nGetKind(annListId) != "ANNOTATION_LIST") { return }
-    const annList = nGetList(annListId)
-    if (annList == "") { return }
-    // Check if class has @RestController
-    let isController = 0
-    let basePath = ""
-    const annParts = annList.split(",")
-    for (ap in annParts) {
-        const aId = parseInt(ap)
-        if (aId > 0 && nGetKind(aId) == "ANNOTATION") {
-            if (nGetS1(aId) == "RestController") { isController = 1 }
-            if (nGetS1(aId) == "RequestMapping") { basePath = nGetS2(aId) }
-        }
-    }
-    if (isController == 0) { return }
-    // Scan methods for @GetMapping, @PostMapping, etc.
-    const className = nGetS1(classId)
-    const methodsBlockId = nGetI2(classId)
-    if (methodsBlockId <= 0) { return }
-    const mList = nGetList(methodsBlockId)
-    if (mList == "") { return }
-    const mParts = mList.split(",")
-    for (mp in mParts) {
-        const mId = parseInt(mp)
-        if (mId <= 0 || nGetKind(mId) != "FUNC_DECL") { continue }
-        const mAnnId = nGetI4(mId)
-        if (mAnnId <= 0) { continue }
-        if (nGetKind(mAnnId) != "ANNOTATION_LIST") { continue }
-        const mAnnList = nGetList(mAnnId)
-        if (mAnnList == "") { continue }
-        const mAnnParts = mAnnList.split(",")
-        for (ma in mAnnParts) {
-            const maId = parseInt(ma)
-            if (maId <= 0 || nGetKind(maId) != "ANNOTATION") { continue }
-            const annName = nGetS1(maId)
-            const annPath = nGetS2(maId)
-            let httpMethod = ""
-            if (annName == "GetMapping") { httpMethod = "GET" }
-            if (annName == "PostMapping") { httpMethod = "POST" }
-            if (annName == "PutMapping") { httpMethod = "PUT" }
-            if (annName == "DeleteMapping") { httpMethod = "DELETE" }
-            if (annName == "PatchMapping") { httpMethod = "PATCH" }
-            if (httpMethod != "") {
-                const fullPath = `${basePath}${annPath}`
-                const methodName = nGetS1(mId)
-                // Store: "METHOD:path:ClassName:methodName"
-                if (annotatedRoutes == "") {
-                    annotatedRoutes = `${httpMethod}:${fullPath}:${className}:${methodName}`
-                } else {
-                    annotatedRoutes = `${annotatedRoutes}\n${httpMethod}:${fullPath}:${className}:${methodName}`
-                }
-            }
-        }
-    }
 }
 
 function emitGlobalsAndCode(rootId: int) {
@@ -433,7 +389,7 @@ function resetCodegen() {
     enumTypes = ""
     enumDeclNodes = ""
     enumReady = 0
-    annotatedRoutes = ""
+    resetAnnotationState()
     // Arrow functions (gen_exprs.ss)
     arrowCount = 0
     arrowDefs = ""

@@ -14,6 +14,8 @@ import { registerClass, initClassState } from "./gen_class"
 import { emitRuntimeDefs } from "./gen_runtime"
 import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./gen_pir"
 import { pirLivenessPass, pirMoveAnalysis } from "./pir_opt"
+import { collectClassAnnotations, emitAnnotationInits, resetAnnotationState, registerAnnotation } from "./gen_annotations"
+import { JSON_parse, JsonNode } from "@/lib/json"
 
 // ── Import resolution ─────────────────────────────────────────
 
@@ -91,9 +93,93 @@ function normalizePath(path: string): string {
     return result.substring(1, result.length() - 1)
 }
 
+// D085: Package dependency cache — loaded once per compilation from ss.json
+let depCache = ""
+let depCacheReady = 0
+
+function loadDeps() {
+    if (depCacheReady == 1) { return }
+    depCache = new Map()
+    depCacheReady = 1
+    const jsonPath = `${projectRoot}/ss.json`
+    if (fileExists(jsonPath) == 0) { return }
+    const root = JSON.parse(readFile(jsonPath))
+    if (root.has("dependencies") == 0) { return }
+    const deps = root.get("dependencies")
+    const keys = deps.keys()
+    let i = 0
+    while (i < keys.length()) {
+        const key = keys[i]
+        depCache.set(key, deps.getString(key))
+        i = i + 1
+    }
+}
+
+function resolvePackageEntry(pkgDir: string): string {
+    // Try ss.json main field
+    const jsonPath = `${pkgDir}/ss.json`
+    if (fileExists(jsonPath) == 1) {
+        const pkgJson = JSON.parse(readFile(jsonPath))
+        const mainFile = pkgJson.getString("main")
+        if (mainFile != "") {
+            const fullMain = `${pkgDir}/${mainFile}`
+            if (fileExists(fullMain) == 1) { return fullMain }
+        }
+    }
+    // Convention: src/index.ss or index.ss
+    if (fileExists(`${pkgDir}/src/index.ss`) == 1) { return `${pkgDir}/src/index.ss` }
+    if (fileExists(`${pkgDir}/index.ss`) == 1) { return `${pkgDir}/index.ss` }
+    return ""
+}
+
+function resolvePackage(importPath: string): string {
+    loadDeps()
+    // Check ss.json dependencies
+    if (depCache.has(importPath) == 1) {
+        const depVal = depCache.getString(importPath)
+        let pkgDir = ""
+        if (depVal.startsWith("./") == 1 || depVal.startsWith("../") == 1) {
+            // Local path reference (relative to project root)
+            pkgDir = normalizePath(`${projectRoot}/${depVal}`)
+        } else {
+            // Version string → ~/.ss/packages/
+            const home = getenv("HOME")
+            pkgDir = `${home}/.ss/packages/${importPath}/${depVal}`
+        }
+        // Package is a directory → find entry point
+        if (fileExists(pkgDir) == 1) {
+            const entry = resolvePackageEntry(pkgDir)
+            if (entry != "") { return entry }
+        }
+        // Maybe it's a direct .ss file
+        if (fileExists(`${pkgDir}.ss`) == 1) { return `${pkgDir}.ss` }
+        println(`error: cannot resolve package '${importPath}' at '${pkgDir}'`)
+        exit(1)
+    }
+    // Fallback: check ~/.ss/packages/ directly
+    const home = getenv("HOME")
+    const globalDir = `${home}/.ss/packages/${importPath}`
+    if (fileExists(globalDir) == 1) {
+        const entry = resolvePackageEntry(globalDir)
+        if (entry != "") { return entry }
+    }
+    println(`error: package '${importPath}' not found (add to ss.json dependencies)`)
+    exit(1)
+    return ""
+}
+
 function resolveImports(filePath: string): string {
     initVisited()
     projectRoot = findProjectRoot(filePath)
+    // Ensure projectRoot is absolute for correct relative dependency resolution
+    if (projectRoot.startsWith("/") == 0) {
+        const cwd = getenv("PWD")
+        if (projectRoot == ".") {
+            projectRoot = cwd
+        } else {
+            projectRoot = `${cwd}/${projectRoot}`
+        }
+    }
     return resolveInner(filePath)
 }
 
@@ -124,8 +210,8 @@ function resolveInner(filePath: string): string {
                 } else if (importPath.startsWith("./") == 1 || importPath.startsWith("../") == 1) {
                     fullPath = baseDir + importPath
                 } else {
-                    // Package import: look in ss_modules/
-                    fullPath = projectRoot + "/ss_modules/" + importPath
+                    // Package import: resolve via ss.json dependencies or ~/.ss/packages/
+                    fullPath = resolvePackage(importPath)
                 }
                 if (fullPath.endsWith(".ss") == 0) {
                     fullPath = fullPath + ".ss"
@@ -189,7 +275,7 @@ function main() {
     } else if (cmd == "clean") { cmdClean()
     } else if (cmd == "init") { cmdInit()
     } else if (cmd == "add") { cmdAdd()
-    } else if (cmd == "install") { cmdInstall()
+    } else if (cmd == "publish") { cmdPublish()
     } else if (cmd == "help" || cmd == "--help" || cmd == "-h") { printUsage()
     } else {
         // Legacy: ss file.ss -o output (no subcommand)
@@ -207,8 +293,8 @@ function printUsage() {
     println("  ss check <file.ss>")
     println("  ss new <name>")
     println("  ss init")
-    println("  ss add <github.com/user/repo@version>")
-    println("  ss install")
+    println("  ss add <@scope/name> <path>")
+    println("  ss publish")
     println("  ss clean")
 }
 
@@ -400,67 +486,79 @@ function cmdInit() {
 // ── ss add ───────────────────────────────────────────────────
 
 function cmdAdd() {
-    if (args() < 3) {
-        println("usage: ss add <github.com/user/repo@version>")
+    if (args() < 4) {
+        println("usage: ss add <@scope/name> <path>")
+        println("  e.g. ss add @van/tailwindcss ../van-ss/tailwindcss")
         exit(1)
     }
-    const pkg = arg(2)
-    // Parse: github.com/user/repo@v1.0.0
-    const atIdx = pkg.indexOf("@")
-    let repoUrl = pkg
-    let version = ""
-    if (atIdx > 0) {
-        repoUrl = pkg.substring(0, atIdx)
-        version = pkg.substring(atIdx + 1, pkg.length() - atIdx - 1)
-    }
-    // Extract package name (last path segment)
-    const lastSlash = repoUrl.indexOf("/")
-    let pkgName = repoUrl
-    let searchPos = 0
-    while (searchPos < repoUrl.length()) {
-        const idx = repoUrl.substring(searchPos, repoUrl.length() - searchPos).indexOf("/")
-        if (idx < 0) { break }
-        pkgName = repoUrl.substring(searchPos + idx + 1, repoUrl.length() - searchPos - idx - 1)
-        searchPos = searchPos + idx + 1
-    }
-    // Clone to ss_modules/
-    mkdirp("ss_modules")
-    const destDir = `ss_modules/${pkgName}`
-    if (fileExists(destDir) == 1) {
-        println(`package '${pkgName}' already installed, removing...`)
-        system(`rm -rf ${destDir}`)
-    }
-    let cloneCmd = `git clone --depth 1 https://${repoUrl} ${destDir} 2>&1`
-    if (version != "") {
-        cloneCmd = `git clone --depth 1 --branch ${version} https://${repoUrl} ${destDir} 2>&1`
-    }
-    println(`installing ${pkgName}...`)
-    const rc = system(cloneCmd)
-    if (rc != 0) {
-        println(`error: failed to install ${pkg}`)
-        exit(1)
-    }
-    // Update ss.json — add to dependencies
-    const json = readFile("ss.json")
-    if (json.contains(`"dependencies"`) == 1) {
-        // Simple: append before the closing } of dependencies
-        const depIdx = json.indexOf(`"dependencies"`)
-        if (depIdx >= 0) {
-            println(`added ${pkgName} (${pkg})`)
-        }
-    }
-    println(`installed: ${destDir}`)
-}
-
-// ── ss install ───────────────────────────────────────────────
-
-function cmdInstall() {
+    const pkgName = arg(2)
+    const pkgPath = arg(3)
     if (fileExists("ss.json") == 0) {
         println("error: ss.json not found (run 'ss init' first)")
         exit(1)
     }
-    println("dependencies up to date")
+    // Read and update ss.json — replace empty deps {} or insert before closing }
+    const json = readFile("ss.json")
+    const entry = `"${pkgName}": "${pkgPath}"`
+    if (json.contains(`"dependencies"`) == 0) {
+        // No dependencies block — add one before the last }
+        const lastBrace = lastIndexOf(json, "}")
+        if (lastBrace >= 0) {
+            const before = json.substring(0, lastBrace)
+            writeFile("ss.json", `${before},\n    "dependencies": {\n        ${entry}\n    }\n}\n`)
+        }
+    } else if (json.contains(`"dependencies": {}`) == 1) {
+        // Empty dependencies — replace {}
+        const newJson = json.replace(`"dependencies": {}`, `"dependencies": {\n        ${entry}\n    }`)
+        writeFile("ss.json", newJson)
+    } else {
+        // Has deps — find last " before closing } of dependencies, append comma + new entry
+        const depIdx = json.indexOf(`"dependencies"`)
+        const afterDep = json.substring(depIdx, json.length() - depIdx)
+        const braceStart = afterDep.indexOf("{")
+        const searchFrom = depIdx + braceStart + 1
+        const rest = json.substring(searchFrom, json.length() - searchFrom)
+        const braceEnd = rest.indexOf("}")
+        // Find last quote inside deps block
+        const depsBlock = rest.substring(0, braceEnd)
+        const lastQuote = lastIndexOf(depsBlock, "\"")
+        const insertAt = searchFrom + lastQuote + 1
+        const before = json.substring(0, insertAt)
+        const after = json.substring(insertAt, json.length() - insertAt)
+        writeFile("ss.json", `${before},\n        ${entry}${after}`)
+    }
+    println(`added: ${pkgName} → ${pkgPath}`)
 }
+
+// ── ss publish ──────────────────────────────────────────────
+
+function cmdPublish() {
+    if (fileExists("ss.json") == 0) {
+        println("error: ss.json not found")
+        exit(1)
+    }
+    // Read name and version from ss.json
+    const root = JSON.parse(readFile("ss.json"))
+    let pkgName = root.getString("name")
+    let pkgVersion = root.getString("version")
+    if (pkgName == "") { println("error: 'name' not found in ss.json"); exit(1) }
+    if (pkgVersion == "") { pkgVersion = "0.1.0" }
+
+    const home = getenv("HOME")
+    const destDir = `${home}/.ss/packages/${pkgName}/${pkgVersion}`
+    mkdirp(destDir)
+
+    // Copy ss.json and all .ss source files
+    system(`cp ss.json "${destDir}/"`)
+    if (fileExists("src") == 1) {
+        system(`cp -r src "${destDir}/"`)
+    }
+    if (fileExists("lib") == 1) {
+        system(`cp -r lib "${destDir}/"`)
+    }
+    println(`published: ${pkgName}@${pkgVersion} → ${destDir}`)
+}
+
 
 // ── ss clean ──────────────────────────────────────────────────
 

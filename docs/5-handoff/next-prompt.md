@@ -1,4 +1,4 @@
-# Round 119
+# Round 126
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~16700 LOC).
@@ -7,25 +7,23 @@ Senior technical architect. Project: SimpleScript (self-bootstrapping compiled l
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
-- docs/3-decisions/D082-concurrency-model.md
-- bootstrap/gen_rt_channel.ss (Channel runtime: bounded + unbounded)
-- bootstrap/gen_class.ss (Channel constructor with optional capacity arg)
+- docs/3-decisions/D087-comptime.md (comptime 完整设计 + 实现路径 + 设计细节)
+- bootstrap/gen_annotations.ss (当前注解处理，comptime 完成后删除)
 
 ## Last Round (max 3 sentences)
-Added bounded channel support to Channel<T>. `new Channel<int>(10)` creates a bounded queue where send() blocks when full (backpressure via cond_send condvar). 175 tests passing, fixed-point verified, seed updated.
+确定 comptime（编译期执行）为 SimpleScript 元编程方案，淘汰插件系统和外部工具方案。D087 记录了完整选型决策、4 Phase 实现路径（含 16 个子步骤和完成标准）、解释器设计细节。同时完成了 D086 v2 注解分发重构（annotationMapping + handler dispatch），作为 comptime 前的工作实现。
 
 ## Task
-Phase: D082 concurrency complete (Phase 1-4 + bounded channels). **Next: choose one of these directions:**
+**D087 Phase 1a：解释器骨架**
 
-1. **D082 Phase 5 — computed()** reactive primitive:
-   - `const isHigh = computed(() => count.value > 100)`
-   - Auto-derive values from refs, lazy recalculation
-   - Sugar over watch + ref
+实现 SimpleScript AST 解释器的基础：
+- 文件：`bootstrap/interp.ss`
+- 值表示：int/string/double/bool/null（用 Map 存储）
+- 环境/作用域栈
+- 表达式求值：算术、比较、逻辑、字符串拼接、模板字符串
+- **完成标准：** 写测试验证 `comptime { const x = 1 + 2 }` 能执行并产出值
 
-2. **Fix open issues** (recommended if any blockers found):
-   - Review `docs/4-issues/1-open/` before adding new features
-
-3. **New feature** outside D082 — evaluate other spec items in `spec/`.
+详细设计见 D087 "设计细节" 章节。
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -35,26 +33,21 @@ Phase: D082 concurrency complete (Phase 1-4 + bounded channels). **Next: choose 
 5. **I008 — Parser no precedence table** [LOW]: Works, recursive descent is standard.
 
 ### Project Status
-- **D082 Phase 1 done**: `ref()` + `watch()` — gen_rt_ref.ss
-- **D082 Phase 2 done**: `Thread.start(fn)` + `.join()` — gen_rt_thread.ss, M:N thread pool
-- **D082 Phase 3 done**: Thread closure capture analysis — checker rejects `let` captures, codegen deep-clones class instances
-- **D082 Phase 4 done**: `Channel<T>` — gen_rt_channel.ss, blocking FIFO queue with mutex+condvar
-- **D082 Bounded channels done**: `new Channel<int>(capacity)` — backpressure via cond_send
-- **Bootstrap**: 38 files, ~16700 LOC, 175 tests (all passing).
-- **Bootstrap perf**: Three-stage bootstrap ~27s.
+- **D087 planned**: Comptime — 编译期执行用户代码，Zig 模型
+- **D086 v2 done**: annotationMapping + handler dispatch（comptime 前的工作实现）
+- **Spring Boot DI**: @Component/@Service/@Repository → springAnnotationHandler in lib
+- **D085 done**: Package system
+- **D082 Phase 1-4 done**: ref/watch, Thread, Channel<T>
+- **Bootstrap**: 40 files, ~16700 LOC, 180 tests (all passing).
 
 ## Watch Out For
+- **D087 是唯一真相**：每轮开头读 D087，不重新讨论选型
+- **Phase 编号跟踪**：当前步骤写在 handoff Task 中（如 "D087 Phase 1a"），完成后更新到下一步
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **Bootstrap pattern for new builtins**: Don't add builtin calls to prelude.ss — seed won't know them. Use genCall special case instead.
-- **Nested arrows**: irBuf/strOutFile save/restore fixed in gen_arrows.ss. isThreadClosure also correctly saved/reset for nested arrows.
-- **Thread.start double return**: i64 storage means double return values from thread callbacks don't work (double returns in xmm0, not rax).
-- **Array/Map thread capture**: Not yet auto-cloned (no deep clone for container types). Users should use Ref<T> for shared mutable containers.
-- **Checker captures are approximate**: Shadowed variables inside arrow body may cause false positives (rare, acceptable).
-- **Channel<T> bounded**: capacity=0 means unbounded (default), capacity>0 means bounded. Struct uses i64 for capacity (alignment). sext i32→i64 so negative cap → unbounded.
-- **Channel values via i64**: All types encoded as i64 for send/receive. Works for int/double/string/ptr. Class instances sent as ptr (no auto-clone on send — user responsibility for thread safety).
-- **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen. Do not propose.
-- **No new keywords**: Thread.start, Channel are built-in classes, not keywords.
+- **interp.ss 自举安全**: 解释器是普通 SS 代码，seed 能编译。解释器不使用 comptime 自身。
+- **FUNC_DECL I4 conflict**: I4 is used for both annotations and isAbstract. Known issue.
+- **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen, Kotlin/Scala syntax. Do not propose.
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
@@ -63,6 +56,6 @@ Phase: D082 concurrency complete (Phase 1-4 + bounded channels). **Next: choose 
 3. Run `/simplify` to review code quality before commit
 4. Self-review for contradictions
 5. Commit and push to remote
-5. Generate next docs/5-handoff/next-prompt.md
-6. List files created/modified
-7. **Stop.**
+6. Generate next docs/5-handoff/next-prompt.md (include "Next Direction" summary)
+7. List files created/modified + brief next direction
+8. **Stop.**

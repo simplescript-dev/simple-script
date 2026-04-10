@@ -188,6 +188,10 @@ function _ss_padEnd(s: string, width: int, pad: string): string {
     return result
 }
 
+// Compile-time directive: maps annotation name → handler function.
+// No runtime behavior — processed during compilation.
+function annotationMapping(name: string, handler: fn) {}
+
 function _ss_join(arr: List<string>, delim: string): string {
     const len = arr.length()
     if (len == 0) { return "" }
