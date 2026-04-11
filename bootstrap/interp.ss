@@ -1036,3 +1036,8 @@ function interpReset() {
     interpThisVal = 0
     interpResetBuiltins()
 }
+
+function interpExecComptime(bodyId: int) {
+    interpReset()
+    interpExec(bodyId)
+}

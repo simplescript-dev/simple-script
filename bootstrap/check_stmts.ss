@@ -179,6 +179,11 @@ function checkStmt(id: int) {
         const varKind = nGetS2(id)
         let typeAnn = nGetS3(id)
         const initId = nGetI1(id)
+        // D084: Rewrite OBJ_LITERAL → NEW_EXPR when type annotation present
+        if (initId > 0 && nGetKind(initId) == "OBJ_LITERAL" && typeAnn != "") {
+            nKind.set(initId + "", "NEW_EXPR")
+            nSetS1(initId, typeAnn)
+        }
         if (initId > 0) { checkExpr(initId) }
         if (typeAnn == "") { typeAnn = "auto" }
         rejectPrimitiveNullable(typeAnn, id)
@@ -510,6 +515,10 @@ function checkStmt(id: int) {
         checkExpr(nGetI1(id))
         return
     }
+    if (kind == "COMPTIME_BLOCK") {
+        // Skip: checker pre-registration doesn't cover comptime-local functions
+        return
+    }
     // IMPORT, INTERFACE_DECL, ENUM_DECL, BREAK, CONTINUE — no checks needed
 }
 
@@ -814,6 +823,10 @@ function checkExpr(id: int) {
     }
     if (kind == "ARRAY_LIT") {
         checkArgList(nGetList(id))
+        return
+    }
+    if (kind == "OBJ_LITERAL") {
+        checkerError("object literal requires type annotation", nGetLine(id), nGetCol(id))
         return
     }
     if (kind == "TERNARY") {

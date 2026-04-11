@@ -484,6 +484,14 @@ function genMethodCall(id: int, preObj: string = ""): string {
         return emitClassMethodCall(objClass, method, objVal, argList, 0)
     }
 
+    // fn field call: obj.field() where field is fn type → load field, indirect call
+    if (objClass != "") {
+        const fnFieldType = classFieldTypes.getString(`${objClass}.${method}`)
+        if (fnFieldType == "fn") {
+            return genFnFieldCall(objClass, method, objVal, argList)
+        }
+    }
+
     // Set<T> methods
     if (objClass == "Set") {
         const setResult = genSetMethod(method, objVal, argList)
@@ -527,6 +535,61 @@ function genMethodCall(id: int, preObj: string = ""): string {
 
     emitIR(`  ; TODO: method call .${method}`)
     return "0"
+}
+
+// ── fn field indirect call ───────────────────────────────────
+
+function genFnFieldCall(className: string, field: string, objVal: string, argList: string): string {
+    const fpVal = emitFieldLoad(className, objVal, field)
+    let args = ""
+    if (argList != "") {
+        const argParts = argList.split(",")
+        let first = 1
+        for (ap in argParts) {
+            const argId = parseInt(ap)
+            if (argId > 0) {
+                const aVal = genExpr(argId)
+                const aType = inferType(argId)
+                if (first == 1) { first = 0 } else { args = `${args}, ` }
+                args = `${args}${ssTypeToLLVM(aType)} ${aVal}`
+            }
+        }
+    }
+    // Check tag bit 0: if set, this is a closure
+    const tagBit = nextReg()
+    emitIR(`  ${tagBit} = and i64 ${fpVal}, 1`)
+    const isClosure = nextReg()
+    emitIR(`  ${isClosure} = icmp eq i64 ${tagBit}, 1`)
+    const lblClosure = nextLabel("closure.call")
+    const lblDirect = nextLabel("direct.call")
+    const lblDone = nextLabel("call.done")
+    emitIR(`  br i1 ${isClosure}, label %${lblClosure}, label %${lblDirect}`)
+    // Closure path: untag, load fn_ptr, call with closure as first arg
+    emitIR(`${lblClosure}:`)
+    const untagged = nextReg()
+    emitIR(`  ${untagged} = and i64 ${fpVal}, -2`)
+    const closurePtr = nextReg()
+    emitIR(`  ${closurePtr} = inttoptr i64 ${untagged} to ptr`)
+    const fnField = nextReg()
+    emitIR(`  ${fnField} = getelementptr ptr, ptr ${closurePtr}, i32 2`)
+    const fnPtr = nextReg()
+    emitIR(`  ${fnPtr} = load ptr, ptr ${fnField}, align 8`)
+    const closureArgs = args != "" ? `ptr ${closurePtr}, ${args}` : `ptr ${closurePtr}`
+    const r1 = nextReg()
+    emitIR(`  ${r1} = call i64 ${fnPtr}(${closureArgs})`)
+    emitIR(`  br label %${lblDone}`)
+    // Direct path: raw function pointer call
+    emitIR(`${lblDirect}:`)
+    const fpPtr = nextReg()
+    emitIR(`  ${fpPtr} = inttoptr i64 ${fpVal} to ptr`)
+    const r2 = nextReg()
+    emitIR(`  ${r2} = call i64 ${fpPtr}(${args})`)
+    emitIR(`  br label %${lblDone}`)
+    // Merge
+    emitIR(`${lblDone}:`)
+    const r = nextReg()
+    emitIR(`  ${r} = phi i64 [${r1}, %${lblClosure}], [${r2}, %${lblDirect}]`)
+    return r
 }
 
 // ── D082 Phase 2: Thread.start / .join ───────────────────────

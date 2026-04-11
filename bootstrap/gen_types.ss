@@ -165,6 +165,13 @@ function resolveObjClass(nodeId: int): string {
     if (kind == "BINARY" && nGetS1(nodeId) == "As") {
         return nGetS1(nGetI2(nodeId))
     }
+    // Index access → resolve array element type as class
+    if (kind == "INDEX_ACCESS") {
+        const iaElem = inferArrayElemType(nGetI1(nodeId))
+        if (iaElem != "" && classFields.has(iaElem) == 1) { return iaElem }
+        if (iaElem != "" && ifaceMethodsCG.has(iaElem) == 1) { return iaElem }
+        return ""
+    }
     // Member access → resolve object class, look up field type
     if (kind == "MEMBER_ACCESS") {
         // D078: Static field → resolve type as class name
@@ -323,6 +330,10 @@ function inferType(id: int): string {
                     lookupClass = ""
                 }
             }
+        }
+        // fn field call: obj.field() where field is fn type → returns i64
+        if (objType != "" && classFieldTypes.getString(`${objType}.${method}`) == "fn") {
+            return "i64"
         }
         // Interface method return type lookup
         if (ifaceMethodsCG.has(objType) == 1 && ifaceMethodRets.has(`${objType}.${method}`) == 1) {

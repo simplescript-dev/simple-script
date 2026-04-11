@@ -2,6 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
+import { interpExecComptime } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 
@@ -305,6 +306,10 @@ function genStmt(id: int) {
     if (kind == "INTERFACE_DECL") { return }
     if (kind == "TRY") { genTryCatch(id); return }
     if (kind == "THROW") { genThrow(id); return }
+    if (kind == "COMPTIME_BLOCK") {
+        interpExecComptime(nGetI1(id))
+        return
+    }
 }
 
 function genBlock(blockId: int) {

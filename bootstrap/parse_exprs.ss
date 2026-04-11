@@ -470,6 +470,31 @@ function parseAtom(): int {
         nSetList(id, elems)
         return id
     }
+    // Object literal: { key: value, ... }
+    if (k == "LBRACE") {
+        pAdvance()
+        skipNL()
+        let fields = ""
+        if (curKind() != "RBRACE") {
+            while (curKind() != "EOF") {
+                skipNL()
+                const fieldName = pExpectIdent()
+                pExpect("COLON")
+                const valId = parseExpr()
+                const naId = newNode("NAMED_ARG")
+                nSetS1(naId, fieldName)
+                nSetI1(naId, valId)
+                fields = listAppend(fields, naId)
+                skipNL()
+                if (curKind() == "COMMA") { pAdvance() } else { break }
+            }
+        }
+        skipNL()
+        pExpect("RBRACE")
+        const id = newNode("OBJ_LITERAL")
+        nSetList(id, fields)
+        return id
+    }
     println(`parse error at line ${curLineNum()}: unexpected token ${k} '${v}'`)
     exit(1)
     return 0

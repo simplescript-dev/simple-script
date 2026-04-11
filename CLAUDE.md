@@ -83,6 +83,7 @@ bootstrap/            # 编译器源码（全部 .ss 文件，~15900 LOC，35 �
   gen_generic_class.ss # 泛型类单态化：preRegisterSpecializedClass + genGenericNewExpr + deferred codegen
   gen_type_ops.ss     # 类型操作生成：TypeInfo/drop/clone + vtable + dtor + toJson
   gen_types.ss        # 类型辅助函数
+  gen_annotations.ss  # 注解驱动 codegen：bean DI + 路由注册 + 生命周期回调（通用模式，非框架特定）
   gen_runtime.ss      # 运行时核心：dispatcher + libc 声明 + globals + helpers + RC 系统
   gen_rt_string.ss    # 运行时：字符串操作 + 类型转换
   gen_rt_array.ss     # 运行时：数组/列表操作
@@ -119,7 +120,7 @@ spec/                 # 语言规范文档
 - `FUNC_DECL`: S1=名称, S2=返回类型, S3=类型参数, List=参数, I1=函数体, I2=isStatic (0=no, 1=yes) (D070), I3=access level (0=public, 1=private, 2=protected) (D068), I4=isAbstract (0=no, 1=yes) (D071)
 - `CLASS_DECL`: S1=类名, S2=父类名, List=字段, I1=isAbstract (0=no, 1=yes) (D071), I2=方法块
 - `VAR_DECL`: S1=变量名, S2=CONST/LET, S3=类型标注, I1=初始值
-- `PARAM`: S1=参数名, S2=类型, S3="const"（字段级 const 标记）, I1=默认值, I2=isOptional, I3=access level (0=public, 1=private, 2=protected) (D068)
+- `PARAM`: S1=参数名, S2=类型, S3="const"（字段级 const 标记）, I1=默认值, I2=isOptional, I3=access level (0=public, 1=private, 2=protected) (D068), I4=annotation node ID（参数级注解，如 @PathVariable）
 - `BINARY`: S1=操作符, I1=左, I2=右
 - `CALL`: S1=被调函数, S2=显式类型参数（逗号分隔，D028）, List=参数
 - `NEW_EXPR`: S1=类名, S2=显式类型参数（逗号分隔，D028）, List=参数
@@ -200,7 +201,13 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 
 ### Import 系统
 
-`resolveImports(filePath)`（main.ss）在解析前递归内联所有导入，生成一个合并的源码字符串。`@/` 解析为项目根路径（向上查找 `ss.json` 或 `bootstrap/`）。prelude.ss 在编译时自动注入到源码前部。
+`resolveImports(filePath)`（main.ss）在解析前递归内联所有导入，生成一个合并的源码字符串。prelude.ss 在编译时自动注入到源码前部。
+
+**解析顺序**（D085）：
+- `@/path` → 项目根路径（向上查找 `ss.json` 或 `bootstrap/`）
+- `./path` / `../path` → 相对路径
+- `@scope/name` 或裸名 → 读 `ss.json` dependencies：路径值（`"../pkg"`）直接解析，版本值（`"0.1.0"`）从 `~/.ss/packages/` 加载
+- 包入口点：`ss.json` 的 `main` 字段 → `src/index.ss` → `index.ss`
 
 ## 添加新语言特性
 
@@ -240,9 +247,10 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **Access modifiers**: `private` (class-only) and `protected` (class + subclasses) keywords for class fields/methods — compile-time access control (D068)
 - **`static` methods**: `static function method()` in class body — no `this`, called via `ClassName.method()` (D070)
 - **`abstract` classes/methods**: `abstract class Shape { abstract function area(): double }` — cannot instantiate, concrete subclasses must implement (D071)
-- **Field-level const**: `class Player(const name: string, health: int)` — const 字段构造后不可赋值
+- **Field-level const**: `class Player { const name: string; health: int }` — const 字段构造后不可赋值
 - **Field assignment**: `obj.field = value`, `obj.field += value`, 支持嵌套 `a.b.c = v`
 - **Named params**: `new Player(name: "Alice", health: 100)`
+- **Object literal**: `const p: Point = { x: 10, y: 20 }` — 类型标注 + `{ k: v }` 等价于 `new ClassName(k: v, ...)`（D084）
 - **deepClone/shallowClone**: 自动生成，支持用户 override
 - **Perceus RC**: class 实例自动引用计数，PIR liveness 分析优化
 - **List\<T\>**: Array 的用户侧别名（`List<string>` 等价于 `Array<string>`）
@@ -264,6 +272,7 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 - **并发**: `Thread.start(() => { ... })` / `.join()`（M:N 虚拟线程），`ref(value)` / `.value` / `watch(ref, fn)`（响应式），`new Channel<int>()` / `new Channel<int>(10)`（bounded）/ `.send(v)` / `.receive()` / `.close()`（阻塞队列，D082）
 - 默认参数, 短路 &&/||, 三元表达式
 - import { ... } from "./module" 或 "@/lib/module"
+- **Spring Boot DI**: `@Component`/`@Service`/`@Repository` 标记 bean 类，编译时拓扑排序 + 自动构造函数注入。`@RestController` 控制器自动注入 bean 依赖。`@SpringBootApplication` 标记入口类。`@PostConstruct` 方法在 bean 创建 + DI 完成后自动调用
 
 ## 开发原则
 

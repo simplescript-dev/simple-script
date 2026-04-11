@@ -615,6 +615,15 @@ function parseParams(): string {
     let params = ""
     while (curKind() != "EOF") {
         skipNL()
+        // Parameter-level annotation: @PathVariable name: type
+        let paramAnn = 0
+        if (curKind() == "ANNOTATION") {
+            const annName = curValue()
+            pAdvance()
+            paramAnn = newNode("ANNOTATION")
+            nSetS1(paramAnn, annName)
+            skipNL()
+        }
         // Field-level const: const name: Type
         let isFieldConst = 0
         if (curKind() == "CONST") {
@@ -641,6 +650,7 @@ function parseParams(): string {
         nSetI1(pId, defId)
         nSetI2(pId, isOptional)
         if (isFieldConst == 1) { nSetS3(pId, "const") }
+        if (paramAnn > 0) { nSetI4(pId, paramAnn) }
         params = listAppend(params, pId)
         if (curKind() == "COMMA") { pAdvance() } else { break }
     }

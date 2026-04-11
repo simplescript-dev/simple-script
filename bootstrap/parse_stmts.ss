@@ -44,6 +44,7 @@ function parseStmt(): int {
     }
     if (k == "TRY") { return parseTryCatch() }
     if (k == "THROW") { return parseThrow() }
+    if (k == "COMPTIME") { return parseComptime() }
     if (k == "IMPORT") { return parseImport() }
     if (k == "IDENT" || k == "THIS") { return parseAssignOrExpr() }
     // Fallback: expression statement
@@ -99,6 +100,15 @@ function parseThrow(): int {
     pExpect("RPAREN")
     const id = newNode("THROW")
     nSetI1(id, msgId)
+    return id
+}
+
+// comptime { ... } — compile-time execution block (D087)
+function parseComptime(): int {
+    pExpect("COMPTIME")
+    const body = parseBlock()
+    const id = newNode("COMPTIME_BLOCK")
+    nSetI1(id, body)
     return id
 }
 
@@ -466,15 +476,68 @@ function parseAssignOrExpr(): int {
             nSetI2(id, valId)
             return id
         }
-        // Not assignment, expression stmt
+        // Not assignment — build INDEX_ACCESS and continue postfix chain
         const objExpr = newNode("IDENT")
+        nSetLine(objExpr, startLine)
+        nSetCol(objExpr, startCol)
         nSetS1(objExpr, name)
         const accessId = newNode("INDEX_ACCESS")
         nSetI1(accessId, objExpr)
         nSetI2(accessId, indexId)
+        let expr = accessId
+        // Postfix chain: .field, .method(), [i], ?.member
+        while (curKind() == "DOT" || curKind() == "LBRACKET" || curKind() == "OPT_CHAIN") {
+            if (curKind() == "LBRACKET") {
+                pAdvance()
+                const idx2 = parseExpr()
+                pExpect("RBRACKET")
+                const ia2 = newNode("INDEX_ACCESS")
+                nSetI1(ia2, expr)
+                nSetI2(ia2, idx2)
+                expr = ia2
+                continue
+            }
+            const isOpt = curKind() == "OPT_CHAIN" ? 1 : 0
+            pAdvance()
+            const mem = pExpectIdent()
+            if (curKind() == "LPAREN") {
+                pAdvance()
+                const args = parseArgs()
+                pExpect("RPAREN")
+                const mc = newNode("METHOD_CALL")
+                nSetS1(mc, mem)
+                nSetI1(mc, expr)
+                nSetList(mc, args)
+                nSetI3(mc, isOpt)
+                expr = mc
+            } else {
+                const ma = newNode("MEMBER_ACCESS")
+                nSetS1(ma, mem)
+                nSetI1(ma, expr)
+                nSetI3(ma, isOpt)
+                expr = ma
+            }
+        }
+        // Member assign: arr[i].field = val
+        const ck2 = curKind()
+        if (nGetKind(expr) == "MEMBER_ACCESS" && (ck2 == "ASSIGN" || ck2 == "PLUS_ASSIGN" || ck2 == "MINUS_ASSIGN" || ck2 == "STAR_ASSIGN" || ck2 == "SLASH_ASSIGN" || ck2 == "PERCENT_ASSIGN" || ck2 == "POWER_ASSIGN")) {
+            let mOp = "ASSIGN"
+            if (ck2 != "ASSIGN") { mOp = ck2 }
+            pAdvance()
+            const mVal = parseExpr()
+            expectNLOrRB()
+            const mId = newNode("MEMBER_ASSIGN")
+            nSetLine(mId, startLine)
+            nSetCol(mId, startCol)
+            nSetI1(mId, nGetI1(expr))
+            nSetS1(mId, nGetS1(expr))
+            nSetS2(mId, mOp)
+            nSetI2(mId, mVal)
+            return mId
+        }
         expectNLOrRB()
         const stmtId = newNode("EXPR_STMT")
-        nSetI1(stmtId, accessId)
+        nSetI1(stmtId, expr)
         return stmtId
     }
     // Simple assignment: x = expr

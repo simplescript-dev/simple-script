@@ -83,6 +83,11 @@ class HttpServletRequest {
         this.attributes.set(name, value)
     }
 
+    // Path variable from route pattern {var} — stored by DispatcherServlet
+    function getPathVariable(name: string): string {
+        return this.attributes.getString(name)
+    }
+
     function getRemoteAddr(): string {
         return "127.0.0.1"
     }

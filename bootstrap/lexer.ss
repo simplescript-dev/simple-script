@@ -452,6 +452,7 @@ function keywordKind(text: string): string {
     if (text == "finally") { return "FINALLY" }
     if (text == "instanceof") { return "INSTANCEOF" }
     if (text == "as") { return "AS" }
+    if (text == "comptime") { return "COMPTIME" }
     return "IDENT"
 }
 

@@ -390,7 +390,6 @@ function emitClassShallowCloneFn(className: string, fieldStr: string, hasVtable:
 // ── Auto toJson ──────────────────────────────────────────────
 
 function genAutoToJson(className: string, fieldStr: string) {
-    if (fieldStr == "") { return }
     funcRetTypes.set(`${className}_toJson`, "string")
 
     regCount = 0
@@ -398,6 +397,15 @@ function genAutoToJson(className: string, fieldStr: string) {
     emitIR("entry:")
     emitIR("  %this = alloca ptr, align 8")
     emitIR("  store ptr %this.ptr, ptr %this, align 8")
+
+    // Fieldless class: return "{}"
+    if (fieldStr == "") {
+        const emptyObj = addStringConst("{}")
+        emitIR(`  ret ptr ${emptyObj}`)
+        emitIR("}")
+        emitIR("")
+        return
+    }
 
     // Build JSON string: {"field1":value1,"field2":value2}
     let resultReg = addStringConst("{")
