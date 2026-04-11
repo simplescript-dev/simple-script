@@ -1,4 +1,4 @@
-# Round 131
+# Round 132
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18600 LOC).
@@ -8,22 +8,22 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D087-comptime.md (comptime 完整设计 + 实现路径 + 设计细节)
-- bootstrap/interp.ss (Phase 1a-1e 解释器核心)
+- bootstrap/interp.ss (Phase 1a-1e 解释器核心 + interpExecComptime)
 - bootstrap/interp_builtins.ss (Phase 1e 内置类型方法)
 
 ## Last Round (max 3 sentences)
-完成 D087 Phase 1e：解释器内置类型方法。实现 string 12 方法、Array 9 方法（含 map/filter/reduce/forEach 高阶函数）、Map 7 方法、new Map() 支持、arrow 函数求值、interpCallValue（高阶回调）、parseInt/parseDouble/toString 内置函数。发现并绕过编译器 bug I009（int 参数传给返回 double 的函数时被破坏）。28 新测试，185 总测试全过，bootstrap 固定点验证通过。
+完成 D087 Phase 1f：comptime 块与编译器集成。Lexer 识别 `comptime` 关键字，Parser 解析 `comptime { ... }` 为 COMPTIME_BLOCK AST 节点，Checker 跳过深检查（预注册不覆盖 comptime 局部函数），Codegen 调用 `interpExecComptime()` 执行解释器后跳过 IR 生成。验证通过：编译期输出算术/字符串/循环/递归/数组结果，运行时无 comptime 代码，186 测试全过，bootstrap 固定点通过。
 
 ## Task
-**D087 Phase 1f：与编译器集成**
+**D087 Phase 3a：编译期反射 @typeInfo(T)**
 
-将解释器连接到编译管道：
-- **Parser**: 识别 `comptime` 关键字，解析 `comptime { ... }` 块为新 AST 节点 COMPTIME_BLOCK
-- **Checker**: 验证 comptime 块（基础验证即可，完整限制后续添加）
-- **Codegen**: 遇到 COMPTIME_BLOCK 时调用解释器执行，跳过 IR 生成
-- **完成标准**: `comptime { let x = 1 + 2; println(x) }` 编译时输出 3，运行时无代码
+实现 `@typeInfo(T)` 内置函数，在 comptime 块中返回 ClassInfo 对象：
+- fields 数组（每个元素有 name、type 属性）
+- methods 数组（每个元素有 name、params、returnType 属性）
+- annotations 数组（如有）
+- 完成标准：`comptime { const info = @typeInfo(MyClass); println(info.fields.length()) }` 输出字段数
 
-注意：这一步合并了 D087 设计文档中的 Phase 1f 和 Phase 2a-2c，因为解释器已完备，集成可一步完成。
+注意：Phase 2（comptime 函数参数、I/O 限制）可以按需实现，但 Phase 3a 的反射是 Phase 4（用 comptime 重写注解处理）的前置依赖。如果 @typeInfo 需要 comptime 块能看到外层声明（类定义），需要先解决 comptime 块与编译上下文的连接。
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -34,14 +34,17 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 6. **I009 — double return corrupts int params** [MEDIUM]: Functions with `(int): double` signature corrupt int param values. Workaround: use `parseDouble(interpAsStr(id))` instead of `interpAsDouble(id)`.
 
 ### Project Status
-- **D087 Phase 1a-1e done**: 解释器 — 值表示 + 作用域 + 表达式 + 控制流 + 赋值 + 数组 + 函数 + 类 + 内置类型方法 + arrow + Map
-- **D087 next**: Phase 1f/2a-2c (comptime integration) → Phase 3 (reflection) → Phase 4 (rewrite annotations)
+- **D087 Phase 1a-1f done**: 解释器 + comptime 块集成到编译管道
+- **D087 next**: Phase 3a (@typeInfo 反射) → Phase 4 (rewrite annotations)
+- **COMPTIME_BLOCK**: AST 节点，I1=body BLOCK，Codegen 调用 interpExecComptime(bodyId)
+- **interpExecComptime**: interpReset() + interpExec(bodyId)，每个 comptime 块独立状态
+- **Checker skip**: comptime 块不做深检查，解释器自己处理错误
 - **RETURN flag fix**: `interpReturnFlag=1` 必须在 `interpEval(returnExpr)` 之后设置
 - **D086 v2 done**: annotationMapping + handler dispatch
 - **Spring Boot DI**: @Component/@Service/@Repository → springAnnotationHandler in lib
 - **D085 done**: Package system
 - **D082 Phase 1-4 done**: ref/watch, Thread, Channel<T>
-- **Bootstrap**: 43 files, ~18600 LOC, 185 tests (all passing).
+- **Bootstrap**: 43 files, ~18600 LOC, 186 tests (all passing).
 
 ## Watch Out For
 - **D087 是唯一真相**：每轮开头读 D087，不重新讨论选型
@@ -61,6 +64,7 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - **I009 workaround**: 避免 `(int): double` 函数签名，用 `parseDouble(interpAsStr(id))` 代替 `interpAsDouble(id)`。
 - **interp_builtins.ss forward refs**: 该文件通过 forward reference 调用 interp.ss 的函数（interpNewVal、interpAsStr 等）和 interpCallValue。registerAllDecls 确保安全。
 - **Map 值存储**: interpMapEntries (`"valId:keyStr" → "valId"`) + interpMapKeyIds (`"valId" → "keyValId1,keyValId2,..."`). interpResetBuiltins() 清理。
+- **comptime 块独立**: interpExecComptime 每次 reset，块间不共享状态。Phase 3+ 可能需要让 comptime 看到编译上下文。
 - **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen, Kotlin/Scala syntax. Do not propose.
 - **for-in 不支持 const/let 前缀**: `for (x in arr)` 可以，`for (const x in arr)` 不行。
 
