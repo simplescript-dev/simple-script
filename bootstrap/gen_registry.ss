@@ -7,6 +7,7 @@ let funcRetTypes = ""
 let funcRetReady = 0
 let funcDefaults = ""    // "funcName" -> "paramIdx:defaultNodeId,..."
 let funcParamCount = ""  // "funcName" -> param count
+let funcParamTypes = ""  // "funcName:paramIndex" -> SS type
 let methodRetTypes = ""  // "methodName" -> return type (built-in method fallback)
 let overloadCount = ""
 let overloadReady = 0
@@ -37,6 +38,7 @@ function initFuncRetTypes() {
     funcRetTypes = Map()
     funcDefaults = Map()
     funcParamCount = Map()
+    funcParamTypes = Map()
     // Map method return types (class registration in initClassState)
     funcRetTypes.set("Map_set", "void")
     funcRetTypes.set("Map_get", "i64")

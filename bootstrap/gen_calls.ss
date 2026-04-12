@@ -224,7 +224,7 @@ function genTestCall(argList: string) {
 
 // ── Call argument resolution ────────────────────────────────────
 
-function resolveCallArgs(callee: string, argList: string, expectsDouble: int): string {
+function resolveCallArgs(callee: string, argList: string, typeCallee: string): string {
     let providedArgs = ""
     let providedCount = 0
     let spreadNodeId = 0
@@ -265,12 +265,14 @@ function resolveCallArgs(callee: string, argList: string, expectsDouble: int): s
     if (fullArgs != "") {
         const argParts = fullArgs.split(",")
         let first = 1
+        let argIdx = 0
         for (ap in argParts) {
             const argId = parseInt(ap)
             if (argId > 0) {
                 let val = genExpr(argId)
                 let vType = inferType(argId)
-                if (expectsDouble && (vType == "int" || vType == "auto")) {
+                const ptKey = `${typeCallee}:${argIdx}`
+                if (funcParamTypes.has(ptKey) == 1 && funcParamTypes.getString(ptKey) == "double" && (vType == "int" || vType == "auto")) {
                     const cvR = nextReg()
                     emitIR(`  ${cvR} = sitofp i32 ${val} to double`)
                     val = cvR
@@ -279,6 +281,7 @@ function resolveCallArgs(callee: string, argList: string, expectsDouble: int): s
                 const llType = ssTypeToLLVM(vType)
                 if (first == 1) { first = 0 } else { args = args + ", " }
                 args = `${args}${llType} ${val}`
+                argIdx = argIdx + 1
             }
         }
     }
@@ -295,7 +298,8 @@ function resolveCallArgs(callee: string, argList: string, expectsDouble: int): s
             emitIR(`  ${elemVal} = call i64 @ss_arrayGet(ptr ${spreadArr}, i32 ${idx})`)
             let converted = emitI64ToValue(elemVal, elemType)
             let convType = elemType
-            if (expectsDouble && (convType == "int" || convType == "auto")) {
+            const spKey = `${typeCallee}:${providedCount + idx}`
+            if (funcParamTypes.has(spKey) == 1 && funcParamTypes.getString(spKey) == "double" && (convType == "int" || convType == "auto")) {
                 const dblR = nextReg()
                 emitIR(`  ${dblR} = sitofp i32 ${converted} to double`)
                 converted = dblR
@@ -427,8 +431,20 @@ function genGenericCall(id: int, callee: string, argList: string): string {
         specFuncName = ""
     }
 
-    // 5. Emit the call using mangled name
-    const args = resolveCallArgs(callee, argList, resolvedRet == "double" ? 1 : 0)
+    // 5. Register specialized param types and emit call
+    if (declParams != "") {
+        const ptParts = declParams.split(",")
+        let ptIdx = 0
+        for (ptp in ptParts) {
+            const ptId = parseInt(ptp)
+            if (ptId <= 0 || nGetKind(ptId) != "PARAM") { continue }
+            let pt = nGetS2(ptId)
+            if (subs.has(pt) == 1) { pt = subs.getString(pt) }
+            funcParamTypes.set(`${mangledName}:${ptIdx}`, pt)
+            ptIdx = ptIdx + 1
+        }
+    }
+    const args = resolveCallArgs(callee, argList, mangledName)
     const llRetType = ssTypeToLLVM(resolvedRet)
     if (llRetType == "void") {
         emitIR(`  call void @${mangledName}(${args})`)
@@ -480,7 +496,7 @@ function genCall(id: int): string {
 
     const effectiveName = resolvedName != callee ? resolvedName : callee
     const rtName = runtimeName(effectiveName)
-    const args = resolveCallArgs(callee, argList, callReturnType(effectiveName) == "double" ? 1 : 0)
+    const args = resolveCallArgs(callee, argList, effectiveName)
     const retType = callReturnType(effectiveName)
     const llRetType = ssTypeToLLVM(retType)
 

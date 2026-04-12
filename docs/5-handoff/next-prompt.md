@@ -1,4 +1,4 @@
-# Round 140
+# Round 141
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -7,31 +7,22 @@ Senior technical architect. Project: SimpleScript (self-bootstrapping compiled l
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
-- docs/4-issues/1-open/I009-double-return-corrupts-int-params.md (the bug to fix)
-- bootstrap/gen_decls.ss (function declaration codegen — calling convention)
-- bootstrap/gen_calls.ss (function call codegen — argument passing)
-- bootstrap/gen_exprs.ss (inferType, expression codegen)
+- docs/4-issues/1-open/ (check remaining open issues)
+- bootstrap/gen_calls.ss (recently fixed resolveCallArgs)
+- bootstrap/gen_registry.ss (funcParamTypes registry added)
 
 ## Last Round (max 3 sentences)
-D087 Phase 4d verified: spring_di.ss test passes end-to-end (DI injection, @PostConstruct, @GetMapping + @PathVariable parameter bridging). 184/189 tests pass (5 pre-existing interp_* failures), bootstrap fixed-point verified. D087 Phase 4 (comptime annotation rewrite) is complete.
+Fixed I009: functions returning `double` with `int` params had calling convention mismatch. Root cause was `resolveCallArgs` blanket `expectsDouble` flag based on return type — replaced with per-parameter `funcParamTypes` registry lookup. 185/190 tests pass (5 pre-existing interp_*), bootstrap fixed-point verified.
 
 ## Task
-**I009: Fix double return corrupts int parameters**
+**Review open issues and pick next task**
 
-Functions with `(int): double` signature corrupt the int parameter values at the call site. The int value received by the callee is garbage. This is a codegen calling convention bug.
-
-1. **Read the reproduction case** in I009 issue doc — understand the symptom
-2. **Investigate codegen for (int): double functions**: compare LLVM IR generated for `(int): int`, `(int): string`, and `(int): double` signatures. The difference should reveal the calling convention bug
-3. **Root cause**: likely LLVM IR parameter types or calling convention mismatch when return type is `double` (i32 params may be promoted or stack-misaligned)
-4. **Fix in codegen**: correct the IR generation for functions returning double with int parameters
-5. **Write a test**: `tests/phase5/double_return.ss` — function with `(int): double` signature, verify int param is received correctly
-6. **Verify**: full test suite + bootstrap
-
-### Investigation hints
-- Compare the `define` signatures and `call` instructions for functions returning i32 vs double
-- Check if function declaration uses `double` return type but call site uses `i32` or vice versa
-- Check `genCallExpr` and `genFuncDecl` for return type handling
-- The LLVM IR `call` instruction's return type must match the function's `define` return type exactly
+1. **Check `docs/4-issues/1-open/`** for remaining open issues
+2. If no actionable issues, consider next improvement from the project roadmap
+3. Possible directions:
+   - Remove I009 workaround in interp.ss: `interpAsDouble()` is defined but unused (callers use `parseDouble(interpAsStr(id))` workaround). Could restore direct usage now that the bug is fixed
+   - Address other open issues (I001-I008)
+   - New language features or stdlib improvements
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -39,16 +30,16 @@ Functions with `(int): double` signature corrupt the int parameter values at the
 3. **I005 — AST list as string** [PARTIAL]: Has helpers, perf issues need proper array type.
 4. **I006 — Runtime raw IR** [LOW]: Mostly converted, 401 raw emitIR remaining.
 5. **I008 — Parser no precedence table** [LOW]: Works, recursive descent is standard.
-6. **I009 — double return corrupts int params** [MEDIUM]: Functions with `(int): double` signature corrupt int param values. Workaround: use `parseDouble(interpAsStr(id))` instead of `interpAsDouble(id)`.
 
 ### Project Status
+- **I009 fixed**: funcParamTypes registry, per-parameter int→double promotion
 - **D087 complete**: Phase 1-4 all done. comptime blocks, @typeInfo, @comptimeEmit, emit()/registerFunction()/getAnnotatedClasses()/getTypeInfo()/addStringConst() builtins, Spring Boot annotation pipeline fully in comptime
 - **COMPTIME_BLOCK**: AST node, I1=body BLOCK, Codegen calls interpExecComptime(bodyId)
 - **TYPEINFO_EXPR**: AST node, S1=className, interpEval calls interpBuildTypeInfo
 - **COMPTIME_EMIT**: AST node, I1=expression, interpEval accumulates to comptimeSS
 - **comptimeIR**: interp.ss global buffer, emit() appends IR strings, genStmt flushes to output
 - **comptimeSS**: interp.ss global buffer, @comptimeEmit() appends SS source, genStmt tokenizes→parses→registers→genStmts
-- **registerFuncDeclNode**: codegen.ss extracted function, registers FUNC_DECL retType/paramCount/overloads/generics/defaults
+- **registerFuncDeclNode**: codegen.ss extracted function, registers FUNC_DECL retType/paramCount/overloads/generics/defaults/paramTypes
 - **emit(irString)**: comptime builtin, appends LLVM IR to comptimeIR
 - **registerFunction(name, retType, paramCount)**: comptime builtin, registers to funcRetTypes/funcParamCount
 - **getAnnotatedClasses(annName)**: comptime builtin (D087 4a), queries annClassNodeIds/annClassAnnNames, returns array of unique class names
@@ -61,7 +52,7 @@ Functions with `(int): double` signature corrupt the int parameter values at the
 - **D085 done**: Package system
 - **D082 Phase 1-4 done**: ref/watch, Thread, Channel<T>
 - **Interpreter split**: interp.ss (core 303) + interp_eval.ss (237) + interp_calls.ss (393) + interp_exec.ss (210) + interp_reflect.ss (146) + interp_builtins.ss (321)
-- **Bootstrap**: 47 files, ~18700 LOC, 189 tests (184 passing, 5 pre-existing interp_* failures).
+- **Bootstrap**: 47 files, ~18700 LOC, 190 tests (185 passing, 5 pre-existing interp_* failures).
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
@@ -77,7 +68,7 @@ Functions with `(int): double` signature corrupt the int parameter values at the
 - **interpCollectFields order**: parent fields first, child fields after.
 - **interpFindMethod priority**: child methods first (check child, then recurse parent).
 - **Keyword conflict**: `double` is a type keyword, cannot be used as method/variable name.
-- **I009 workaround**: avoid `(int): double` function signature, use `parseDouble(interpAsStr(id))` instead of `interpAsDouble(id)`.
+- **funcParamTypes**: registered in registerFuncDeclNode (base + mangled name) and genGenericCall (specialized name). Key format `"funcName:paramIndex"`.
 - **interp_builtins.ss forward refs**: uses forward references to interp.ss functions. registerAllDecls ensures safety.
 - **Map value storage**: interpMapEntries (`"valId:keyStr" → "valId"`) + interpMapKeyIds (`"valId" → "keyValId1,keyValId2,..."`). interpResetBuiltins() cleans up.
 - **comptime blocks independent**: interpExecComptime resets each time, blocks don't share state. @typeInfo queries compiler registry directly, not interpreter class system.

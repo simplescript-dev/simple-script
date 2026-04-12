@@ -276,6 +276,10 @@ function registerFuncDeclNode(sid: int) {
                 if (defId > 0) {
                     defaults = listAppendStr(defaults, `${pCount}:${defId}`)
                 }
+                funcParamTypes.set(`${fname}:${pCount}`, nGetS2(fpId))
+                if (fSig != "") {
+                    funcParamTypes.set(`${fname}_${fSig}:${pCount}`, nGetS2(fpId))
+                }
                 pCount = pCount + 1
             }
         }
