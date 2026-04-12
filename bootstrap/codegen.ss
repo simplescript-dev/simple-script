@@ -312,7 +312,7 @@ function flushComptimeSS() {
             if (fsSid > 0 && nGetKind(fsSid) == "VAR_DECL") { genGlobalVar(fsSid) }
         }
         currentFunc = fssSavedFunc
-        // Pass 1: CLASS_DECL/ENUM_DECL → register before codegen
+        // Pass 1: CLASS_DECL/ENUM_DECL/INTERFACE_DECL → register before codegen
         for (fp in fssParts) {
             const fsSid = parseInt(fp)
             if (fsSid <= 0) { continue }
@@ -324,6 +324,7 @@ function flushComptimeSS() {
                 assignDtorTagForClass(nGetS1(fsSid))
             }
             if (fsKind == "ENUM_DECL") { registerEnum(fsSid) }
+            if (fsKind == "INTERFACE_DECL") { registerInterface(fsSid) }
         }
         // Pass 2: FUNC_DECL → register
         for (fp in fssParts) {
@@ -335,6 +336,8 @@ function flushComptimeSS() {
             const fsSid = parseInt(fp)
             if (fsSid > 0 && nGetKind(fsSid) != "VAR_DECL") { genStmt(fsSid) }
         }
+        // Pass 4: generate interface dispatchers (idempotent — skips already emitted)
+        generateInterfaceDispatchers()
     }
     interpClearComptimeSS()
 }

@@ -50,9 +50,14 @@ function generateInterfaceDispatchers() {
     }
 }
 
+// Track emitted dispatchers for idempotency (comptime may trigger re-generation)
+let emittedDispatchers = new Map()
+
 // Emit one dispatch function: @__iface_Shape_area(ptr %self, params...) { switch on class_id }
 function emitIfaceDispatchFn(iface: string, method: string, impls: string) {
     const dispName = `__iface_${iface}_${method}`
+    if (emittedDispatchers.has(dispName) == 1) { return }
+    emittedDispatchers.set(dispName, "1")
     const retStr = ifaceMethodRets.getString(`${iface}.${method}`) ?? "void"
     const retLLVM = ssTypeToLLVM(retStr)
     // Register return type for inferType

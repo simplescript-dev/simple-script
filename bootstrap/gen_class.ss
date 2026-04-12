@@ -54,6 +54,7 @@ function initClassState() {
     ifaceMethodRets = Map()
     ifaceMethodPars = Map()
     ifaceImplementors = Map()
+    emittedDispatchers = Map()
     classNodeIds = Map()
     classIds = Map()
     nextClassId = 1
