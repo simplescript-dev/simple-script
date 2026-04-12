@@ -1,4 +1,4 @@
-# Round 139
+# Round 140
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -7,27 +7,31 @@ Senior technical architect. Project: SimpleScript (self-bootstrapping compiled l
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
-- docs/3-decisions/D087-comptime.md (comptime full design + implementation path + details)
-- bootstrap/interp.ss (interpreter core — value storage, scope, class infra, reset)
-- lib/spring/boot.ss (comptime factory + wrapper generation block)
+- docs/4-issues/1-open/I009-double-return-corrupts-int-params.md (the bug to fix)
+- bootstrap/gen_decls.ss (function declaration codegen — calling convention)
+- bootstrap/gen_calls.ss (function call codegen — argument passing)
+- bootstrap/gen_exprs.ss (inferType, expression codegen)
 
 ## Last Round (max 3 sentences)
-Split interp.ss (1272 lines) into 5 files by responsibility: interp.ss core (303), interp_eval.ss (237), interp_calls.ss (393), interp_exec.ss (210), interp_reflect.ss (146). Fixed a latent bug: added collectBeans("SpringBootApplication") in boot.ss — the removed gen_annotations.ss fallback had been masking the missing factory generation for @SpringBootApplication classes. 184 tests passing, bootstrap fixed-point verified.
+D087 Phase 4d verified: spring_di.ss test passes end-to-end (DI injection, @PostConstruct, @GetMapping + @PathVariable parameter bridging). 184/189 tests pass (5 pre-existing interp_* failures), bootstrap fixed-point verified. D087 Phase 4 (comptime annotation rewrite) is complete.
 
 ## Task
-**D087 Phase 4d: Verify full comptime pipeline — end-to-end annotation test**
+**I009: Fix double return corrupts int parameters**
 
-The comptime annotation pipeline is now complete: comptime blocks generate ALL factory + wrapper IR, gen_annotations.ss only dispatches handler calls. Verify the full pipeline works end-to-end:
+Functions with `(int): double` signature corrupt the int parameter values at the call site. The int value received by the callee is garbage. This is a codegen calling convention bug.
 
-1. **Review the existing spring_di test** (`tests/phase5/spring_di.ss`): check it covers DI injection, @PostConstruct, and route handler wrappers
-2. **Add coverage for method wrappers**: if the test doesn't exercise @GetMapping/@PostMapping with @PathVariable parameter bridging, add a test case that verifies wrapper generation works correctly
-3. **Verify no regressions**: run full test suite + bootstrap
-4. **If all passes, D087 Phase 4 is complete**: update handoff to mark Phase 4 done and identify next direction
+1. **Read the reproduction case** in I009 issue doc — understand the symptom
+2. **Investigate codegen for (int): double functions**: compare LLVM IR generated for `(int): int`, `(int): string`, and `(int): double` signatures. The difference should reveal the calling convention bug
+3. **Root cause**: likely LLVM IR parameter types or calling convention mismatch when return type is `double` (i32 params may be promoted or stack-misaligned)
+4. **Fix in codegen**: correct the IR generation for functions returning double with int parameters
+5. **Write a test**: `tests/phase5/double_return.ss` — function with `(int): double` signature, verify int param is received correctly
+6. **Verify**: full test suite + bootstrap
 
-Design consideration:
-- The test should verify that comptime-generated factories create singletons (same instance returned)
-- The test should verify that comptime-generated wrappers correctly bridge parameters
-- Keep tests self-contained (no actual HTTP server needed — test the DI/factory machinery directly)
+### Investigation hints
+- Compare the `define` signatures and `call` instructions for functions returning i32 vs double
+- Check if function declaration uses `double` return type but call site uses `i32` or vice versa
+- Check `genCallExpr` and `genFuncDecl` for return type handling
+- The LLVM IR `call` instruction's return type must match the function's `define` return type exactly
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -38,14 +42,7 @@ Design consideration:
 6. **I009 — double return corrupts int params** [MEDIUM]: Functions with `(int): double` signature corrupt int param values. Workaround: use `parseDouble(interpAsStr(id))` instead of `interpAsDouble(id)`.
 
 ### Project Status
-- **D087 Phase 1a-1f done**: interpreter + comptime block integration
-- **D087 Phase 3a done**: @typeInfo(T) compile-time reflection
-- **D087 Phase 3b done**: comptime code generation (emit + registerFunction)
-- **D087 Phase 3c done**: @comptimeEmit — SS source string → compiled code
-- **D087 Phase 4a done**: comptime factory generation for @Component beans
-- **D087 Phase 4b done**: comptime method wrapper generation for annotated beans
-- **D087 Phase 4c done**: cleaned gen_annotations.ss — removed dead factory/wrapper codegen (-48%)
-- **D087 next**: Phase 4d (verify full pipeline) → Phase 4 complete
+- **D087 complete**: Phase 1-4 all done. comptime blocks, @typeInfo, @comptimeEmit, emit()/registerFunction()/getAnnotatedClasses()/getTypeInfo()/addStringConst() builtins, Spring Boot annotation pipeline fully in comptime
 - **COMPTIME_BLOCK**: AST node, I1=body BLOCK, Codegen calls interpExecComptime(bodyId)
 - **TYPEINFO_EXPR**: AST node, S1=className, interpEval calls interpBuildTypeInfo
 - **COMPTIME_EMIT**: AST node, I1=expression, interpEval accumulates to comptimeSS
@@ -58,25 +55,15 @@ Design consideration:
 - **getTypeInfo(className)**: comptime builtin (D087 4a), calls interpBuildTypeInfo with string arg
 - **addStringConst(str)**: comptime builtin (D087 4b), calls compiler's addStringConst, returns IR ref string
 - **@comptimeEmit(ssSource)**: comptime expression, accumulates SS source for post-block compilation
-- **interpBuildAnnotationArray(annListId)**: helper, parses ANNOTATION_LIST → array of {name, args}
-- **interpBuildTypeInfo**: queries classFields/classFieldTypes/classMethods/funcRetTypes/classNodeIds; returns methods with annotations + params with annotation field
-- **classNodeIds**: gen_class.ss Map, "ClassName" → CLASS_DECL AST node ID
-- **interpExecComptime**: interpReset() + interpExec(bodyId), each comptime block independent
-- **Checker skip**: comptime blocks not deeply checked, interpreter handles errors
-- **RETURN flag fix**: `interpReturnFlag=1` must be set AFTER `interpEval(returnExpr)`
+- **gen_annotations.ss**: only collection + handler dispatch, no IR generation
 - **D086 v2 done**: annotationMapping + handler dispatch
 - **Spring Boot DI**: @Component/@Service/@Repository → springAnnotationHandler in lib
-- **Phase 4a factories**: comptime block in boot.ss uses getAnnotatedClasses + getTypeInfo + emit() + registerFunction() to generate @__ann_factory_ClassName singleton factories
-- **Phase 4b wrappers**: same comptime block generates @__ann_wrapper_ClassName_methodName with parameter bridging (HttpServletRequest/Response/PathVariable). addStringConst builtin for IR string refs
-- **Phase 4c cleanup**: gen_annotations.ss reduced to collection + handler dispatch only. emitFactory/emitMethodWrapper/annClassSet deleted. No fallback IR generation
 - **D085 done**: Package system
 - **D082 Phase 1-4 done**: ref/watch, Thread, Channel<T>
 - **Interpreter split**: interp.ss (core 303) + interp_eval.ss (237) + interp_calls.ss (393) + interp_exec.ss (210) + interp_reflect.ss (146) + interp_builtins.ss (321)
 - **Bootstrap**: 47 files, ~18700 LOC, 189 tests (184 passing, 5 pre-existing interp_* failures).
 
 ## Watch Out For
-- **D087 is the single source of truth**: read D087 at start, don't re-discuss selection
-- **Phase numbering**: current step in handoff Task
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
 - **interp.ss bootstrap safe**: interpreter is plain SS code, seed can compile. Interpreter doesn't use comptime itself.
