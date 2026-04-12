@@ -340,6 +340,69 @@ comptime {
         @comptimeEmit(ctGenMethodEmpty(className))
     }
 
+    // ── Field iteration template helper ──
+
+    // Apply a template to each field of a class, join with separator.
+    // Replaces $name with field name and $type with field type in each expansion.
+    function ctForEachField(className: string, template: string, sep: string): string {
+        const info = getTypeInfo(className)
+        let result = ""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            if (i > 0) { result = result + sep }
+            let line = template.replace("$name", f.name)
+            line = line.replace("$type", f.type)
+            result = result + line
+            i = i + 1
+        }
+        return result
+    }
+
+    // ── Hash derive: generates hashCode(): int ──
+
+    function ctGenMethodHash(className: string): string {
+        const info = getTypeInfo(className)
+        let body = "    let h = 17\n"
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            if (f.type == "int") {
+                body = body + "    h = h * 31 + this." + f.name + "\n"
+            } else if (f.type == "string") {
+                body = body + "    h = h * 31 + this." + f.name + ".length()\n"
+            }
+            i = i + 1
+        }
+        body = body + "    if (h < 0) { h = 0 - h }\n"
+        body = body + "    return h"
+        return "function hashCode(): int {\n" + body + "\n}"
+    }
+
+    function ctDeriveHash(className: string) {
+        @comptimeEmit(ctGenMethodHash(className))
+    }
+
+    // ── Comparable derive: generates compareTo(other): int ──
+
+    function ctGenMethodCompareTo(className: string): string {
+        const info = getTypeInfo(className)
+        let body = ""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            body = body + "    if (this." + f.name + " < other." + f.name + ") { return -1 }\n"
+            body = body + "    if (this." + f.name + " > other." + f.name + ") { return 1 }\n"
+            i = i + 1
+        }
+        body = body + "    return 0"
+        return "function compareTo(other: " + className + "): int {\n" + body + "\n}"
+    }
+
+    function ctDeriveComparable(className: string) {
+        @comptimeEmit(ctGenMethodCompareTo(className))
+    }
+
     // ── Lookup table generation ──
 
     // Generate a lookup function from comma-separated keys and values
