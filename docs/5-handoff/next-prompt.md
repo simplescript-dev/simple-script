@@ -1,4 +1,4 @@
-# Round 143
+# Round 144
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,22 +8,22 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/4-issues/1-open/ (check remaining open issues)
-- bootstrap/interp_reflect.ss (enum reflection: interpBuildEnumInfo, field annotations)
+- bootstrap/interp_reflect.ss (interface reflection: interpBuildInterfaceInfo)
 - bootstrap/interp_calls.ss (comptime builtins: compileError/hasField/hasMethod)
-- bootstrap/codegen.ss:335 (registerEnum added to registerAllDecls)
 
 ## Last Round (max 3 sentences)
-Extended getTypeInfo() to support enum reflection: returns EnumInfo with name, kind="enum", isString, variants [{name, value}]. Added enum registration to registerAllDecls so enums are available in comptime blocks. Also added field-level annotations, compileError/hasField/hasMethod builtins. 189/194 tests pass, bootstrap fixed-point verified.
+Extended getTypeInfo() to support interface reflection: returns InterfaceInfo with name, kind="interface", methods [{name, returnType, params [{name, type, annotation}], annotations}]. Reads from ifaceMethodsCG/ifaceMethodRets/ifaceMethodPars registries. 190/195 tests pass, bootstrap fixed-point verified.
 
 ## Task
 **Continue comptime enhancement toward Zig-level**
 
 1. **Check `docs/4-issues/1-open/`** for remaining open issues (priority: fix before new features)
 2. If no actionable issues, continue comptime roadmap:
-   - **Interface reflection**: extend getTypeInfo to cover interfaces (methods list)
-   - **ORM proof-of-concept**: @Entity/@Table/@Column/@Id comptime-driven SQL generation using current capabilities
    - **@field(obj, "name")**: compile-time field access by string name (biggest unlock for generic serialization)
+   - **ORM proof-of-concept**: @Entity/@Table/@Column/@Id comptime-driven SQL generation using current capabilities
    - **Comptime-driven enum serializer**: use enum reflection to auto-generate toString/fromString
+   - **Comptime string operations**: substring, startsWith, endsWith, replace in interpreter
+   - **Comptime array/map literals**: allow building data structures at compile time
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -36,6 +36,8 @@ Extended getTypeInfo() to support enum reflection: returns EnumInfo with name, k
 - **comptime blocks**: AST interpreter executes at compile time
 - **@comptimeEmit(ssSource)**: generate SS source → compile (string mixin, D-language level)
 - **@typeInfo / getTypeInfo**: class reflection — fields (name, type, annotations), methods (name, returnType, params, annotations), class annotations
+- **Interface reflection**: getTypeInfo returns InterfaceInfo {name, kind="interface", methods [{name, returnType, params, annotations}]}
+- **Enum reflection**: getTypeInfo returns EnumInfo {name, kind="enum", isString, variants [{name, value}]}
 - **Field-level annotations**: @Id, @Column("name"), @NotNull on class fields, stored in PARAM nList as ANNOTATION_LIST node
 - **compileError(msg)**: abort compilation with error message from comptime
 - **hasField(class, field)**: compile-time check if class has field (returns 0/1)
@@ -47,12 +49,13 @@ Extended getTypeInfo() to support enum reflection: returns EnumInfo with name, k
 
 ### Project Status
 - **D087 complete**: Phase 1-4 all done. comptime blocks, @typeInfo, @comptimeEmit, Spring Boot annotation pipeline
+- **Interface reflection**: getTypeInfo returns InterfaceInfo {name, kind="interface", methods}. Dispatched from interpBuildTypeInfo via ifaceMethodsCG check.
 - **Enum reflection**: getTypeInfo returns EnumInfo {name, kind="enum", isString, variants [{name, value}]}. Enums registered in registerAllDecls.
 - **Field annotations**: parser isFieldPatternAt() extracted, PARAM nList stores ANNOTATION_LIST
 - **Comptime builtins**: compileError, hasField, hasMethod added to interp_calls.ss
 - **I009 fixed**: funcParamTypes registry, per-parameter int→double promotion
 - **Interpreter split**: interp.ss (core) + interp_eval.ss + interp_calls.ss + interp_exec.ss + interp_reflect.ss + interp_builtins.ss
-- **Bootstrap**: 47 files, ~18700 LOC, 194 tests (189 passing, 5 pre-existing interp_* failures).
+- **Bootstrap**: 47 files, ~18700 LOC, 195 tests (190 passing, 5 pre-existing interp_* failures).
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
@@ -62,6 +65,8 @@ Extended getTypeInfo() to support enum reflection: returns EnumInfo with name, k
 - **PARAM nList for field annotations**: PARAM I4 is isStatic for class fields, so field annotations use nList to store ANNOTATION_LIST node ID. Don't confuse with function param PARAM I4 which stores single ANNOTATION node.
 - **isFieldPatternAt(pos)**: shared helper for field detection — used by isBodyFieldStart at tPos, tPos+1 (after access modifier), and after annotation peek.
 - **hasMethod exact match**: uses `,methods,`.indexOf(`,name,`) pattern to avoid substring false positives.
+- **Interface reflection data sources**: ifaceMethodsCG (name→methods), ifaceMethodRets (name.method→returnType), ifaceMethodPars (name.method→"paramName:paramType,..."). Param string parsed with indexOf(":") + substring.
+- **Interface vs class detection**: `ifaceMethodsCG.has(name) && !classFields.has(name)` distinguishes interfaces from classes that implement interfaces.
 - **interp.ss bootstrap safe**: interpreter is plain SS code, seed can compile. Interpreter doesn't use comptime itself.
 - **Interpreter file split**: interp.ss imports interp_eval/calls/exec/reflect. Sub-files use forward references (no imports between them).
 - **FUNC_DECL I4 conflict**: I4 is used for both annotations and isAbstract. Known issue.
