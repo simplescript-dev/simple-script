@@ -250,6 +250,8 @@ function emitAnnotationInits() {
     }
 
     // Generate wrappers and call handlers for method annotations
+    // Uses deterministic naming: __ann_wrapper_ClassName_methodName (D087 Phase 4b)
+    // Skips wrapper generation when comptime already emitted it (funcRetTypes check)
     i = 0
     while (i < annMethodAnnNames.length()) {
         const classId = parseInt(annMethodClassIds[i])
@@ -260,8 +262,10 @@ function emitAnnotationInits() {
         const annArg = annMethodAnnArgs[i]
         const handlerName = annHandlerMap.getString(annName)
 
-        const wrapperName = `__ann_wrapper_${i}`
-        emitMethodWrapper(wrapperName, className, funcId)
+        const wrapperName = `__ann_wrapper_${className}_${methodName}`
+        if (funcRetTypes.has(wrapperName) == 0) {
+            emitMethodWrapper(wrapperName, className, funcId)
+        }
 
         const nameStr = addStringConst(annName)
         const classStr = addStringConst(className)

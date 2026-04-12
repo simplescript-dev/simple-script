@@ -91,23 +91,21 @@ comptime {
     collectBeans("Repository")
     collectBeans("RestController")
 
-    // Generate singleton factory for each bean class
+    // Generate singleton factory + method wrappers for each bean class
+    let wrappersDone = new Map()
     let bi = 0
     while (bi < beanNames.length()) {
         const className = beanNames[bi]
         const info = getTypeInfo(className)
 
-        // Cache global
+        // ── Factory: cached singleton @__ann_factory_ClassName ──
         emit(`@__ann_cache_${className} = internal global ptr null\n`)
-
-        // Factory function: check cache, create if null, return cached
         let body = `define ptr @__ann_factory_${className}() {\nentry:\n`
         body = body + `  %cached = load ptr, ptr @__ann_cache_${className}\n`
         body = body + `  %isNull = icmp eq ptr %cached, null\n`
         body = body + `  br i1 %isNull, label %create, label %done\n`
         body = body + `create:\n`
 
-        // Build constructor args: bean fields → call their factory, others → zero/null
         const fields = info.fields
         let callArgs = ""
         let fi = 0
@@ -148,6 +146,47 @@ comptime {
 
         emit(body)
         registerFunction(`__ann_factory_${className}`, className, 0)
+
+        // ── Method wrappers: parameter bridging for annotated methods ──
+        // Framework knowledge (HttpServletRequest/Response/PathVariable) lives here, not in compiler
+        const methods = info.methods
+        let wmi = 0
+        while (wmi < methods.length()) {
+            const wm = methods[wmi]
+            if (wm.annotations.length() > 0) {
+                const wrapName = `__ann_wrapper_${className}_${wm.name}`
+                if (wrappersDone.has(wrapName) == 0) {
+                    wrappersDone.set(wrapName, "1")
+                    let wBody = `define ptr @${wrapName}(ptr %request, ptr %response) {\nentry:\n`
+                    wBody = wBody + `  %inst = call ptr @__ann_factory_${className}()\n`
+                    let wCallArgs = "ptr %inst"
+                    let pvIdx = 0
+                    const wParams = wm.params
+                    let wpi = 0
+                    while (wpi < wParams.length()) {
+                        const wp = wParams[wpi]
+                        if (wp.annotation != "") {
+                            const pvRef = addStringConst(wp.name)
+                            wBody = wBody + `  %pv.${pvIdx} = call ptr @HttpServletRequest_getPathVariable(ptr %request, ptr ${pvRef})\n`
+                            wCallArgs = wCallArgs + `, ptr %pv.${pvIdx}`
+                            pvIdx = pvIdx + 1
+                        } else if (wp.type == "HttpServletRequest") {
+                            wCallArgs = wCallArgs + ", ptr %request"
+                        } else if (wp.type == "HttpServletResponse") {
+                            wCallArgs = wCallArgs + ", ptr %response"
+                        } else {
+                            wCallArgs = wCallArgs + ", ptr null"
+                        }
+                        wpi = wpi + 1
+                    }
+                    wBody = wBody + `  %r = call ptr @${className}_${wm.name}(${wCallArgs})\n`
+                    wBody = wBody + `  ret ptr %r\n}\n\n`
+                    emit(wBody)
+                    registerFunction(wrapName, "string", 2)
+                }
+            }
+            wmi = wmi + 1
+        }
 
         bi = bi + 1
     }

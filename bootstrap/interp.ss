@@ -598,6 +598,16 @@ function interpCall(nodeId: int): int {
         }
         return gacResult
     }
+    // Built-in: addStringConst(str) — calls compiler's addStringConst, returns IR ref (D087 Phase 4b)
+    if (name == "addStringConst") {
+        if (argList == "") {
+            println("[comptime] addStringConst requires 1 argument: str")
+            return interpNewString("")
+        }
+        const ascVal = interpEval(parseInt(argList.split(",")[0]))
+        const ascRef = addStringConst(interpAsStr(ascVal))
+        return interpNewString(ascRef)
+    }
     // Built-in: getTypeInfo(className) — like @typeInfo but takes a string arg (D087 Phase 4a)
     if (name == "getTypeInfo") {
         if (argList == "") {
@@ -1114,6 +1124,13 @@ function interpBuildMethodParams(mdParts: Array<string>, mName: string): int {
                         const pObj = interpNewVal("object", "ParamInfo")
                         interpSetField(pObj, "name", interpNewString(nGetS1(pId)))
                         interpSetField(pObj, "type", interpNewString(nGetS2(pId)))
+                        // Param annotation (e.g., @PathVariable) — PARAM I4
+                        const pAnnId = nGetI4(pId)
+                        let pAnnName = ""
+                        if (pAnnId > 0 && nGetKind(pAnnId) == "ANNOTATION") {
+                            pAnnName = nGetS1(pAnnId)
+                        }
+                        interpSetField(pObj, "annotation", interpNewString(pAnnName))
                         interpArrayPush(paramsArr, pObj)
                     }
                     pi = pi + 1
@@ -1124,6 +1141,27 @@ function interpBuildMethodParams(mdParts: Array<string>, mName: string): int {
         mdi = mdi + 1
     }
     return paramsArr
+}
+
+// Build interpreter array of AnnotationInfo {name, args} from ANNOTATION_LIST node
+function interpBuildAnnotationArray(annListId: int): int {
+    const annArr = interpNewArray("")
+    if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return annArr }
+    const annListStr = nGetList(annListId)
+    if (annListStr == "") { return annArr }
+    const annParts = annListStr.split(",")
+    let ai = 0
+    while (ai < annParts.length()) {
+        const aId = parseInt(annParts[ai])
+        if (aId > 0 && nGetKind(aId) == "ANNOTATION") {
+            const aObj = interpNewVal("object", "AnnotationInfo")
+            interpSetField(aObj, "name", interpNewString(nGetS1(aId)))
+            interpSetField(aObj, "args", interpNewString(nGetS2(aId)))
+            interpArrayPush(annArr, aObj)
+        }
+        ai = ai + 1
+    }
+    return annArr
 }
 
 function interpBuildTypeInfo(className: string): int {
@@ -1180,13 +1218,31 @@ function interpBuildTypeInfo(className: string): int {
             interpSetField(methodObj, "name", interpNewString(mName))
             interpSetField(methodObj, "returnType", interpNewString(mRetType))
             interpSetField(methodObj, "params", interpBuildMethodParams(mdParts, mName))
+            // Method annotations — find FUNC_DECL for this method, extract I4
+            let mAnnListId = 0
+            let mdx = 0
+            while (mdx < mdParts.length()) {
+                const mdxId = parseInt(mdParts[mdx])
+                if (nGetKind(mdxId) == "FUNC_DECL" && nGetS1(mdxId) == mName) {
+                    mAnnListId = nGetI4(mdxId)
+                    mdx = mdParts.length()
+                } else {
+                    mdx = mdx + 1
+                }
+            }
+            interpSetField(methodObj, "annotations", interpBuildAnnotationArray(mAnnListId))
             interpArrayPush(methodsArr, methodObj)
             mi = mi + 1
         }
     }
     interpSetField(infoId, "methods", methodsArr)
 
-    interpSetField(infoId, "annotations", interpNewArray(""))
+    // Class annotations
+    let caAnnListId = 0
+    if (classNodeIds.has(className) == 1) {
+        caAnnListId = nGetI4(parseInt(classNodeIds.getString(className)))
+    }
+    interpSetField(infoId, "annotations", interpBuildAnnotationArray(caAnnListId))
     return infoId
 }
 
