@@ -390,6 +390,9 @@ function emitClassShallowCloneFn(className: string, fieldStr: string, hasVtable:
 // ── Auto toJson ──────────────────────────────────────────────
 
 function genAutoToJson(className: string, fieldStr: string) {
+    // Skip if comptime/@derive already generated a toJson method
+    const existingMethods = classMethods.has(className) == 1 ? classMethods.getString(className) : ""
+    if (`,${existingMethods},`.indexOf(",toJson,") >= 0) { return }
     funcRetTypes.set(`${className}_toJson`, "string")
 
     regCount = 0

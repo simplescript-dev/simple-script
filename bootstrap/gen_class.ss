@@ -394,6 +394,42 @@ function emitClassConstructor(name: string, fieldStr: string, hasVtable: int) {
 
 import { assignClassDtorTags, buildClassVtables, emitClassVtableConst, emitClassDtorRegister, emitClassTypeInfo, emitClassDropFieldsFn, emitClassCtorBody, emitClassConstructorReuse, genAutoToJson } from "./gen_type_ops"
 
+// Process comptimeSS as class methods: register + generate FUNC_DECLs, top-level for rest.
+// Used by class-level comptime blocks and @derive annotation.
+function emitClassComptimeMethods(className: string) {
+    const ccSS = interpGetComptimeSS()
+    if (ccSS == "") { return }
+    const ccTokens = tokenize(ccSS)
+    const ccRoot = parse(ccTokens)
+    const ccList = nGetList(ccRoot)
+    if (ccList == "") { interpClearComptimeSS(); return }
+    const ccParts = ccList.split(",")
+    let ccMethods = classMethods.getString(className)
+    for (ccp in ccParts) {
+        const ccSid = parseInt(ccp)
+        if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
+            const ccMName = nGetS1(ccSid)
+            let ccRet = stripNullableCG(nGetS2(ccSid))
+            if (ccRet == "") { ccRet = "void" }
+            funcRetTypes.set(`${className}_${ccMName}`, ccRet)
+            const ccMSig = paramSig(nGetList(ccSid))
+            if (ccMSig != "") { funcRetTypes.set(`${className}_${ccMName}_${ccMSig}`, ccRet) }
+            trackOverload(`${className}_${ccMName}`)
+            ccMethods = listAppendStr(ccMethods, ccMName)
+        }
+    }
+    classMethods.set(className, ccMethods)
+    for (ccp in ccParts) {
+        const ccSid = parseInt(ccp)
+        if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") { genClassMethod(className, ccSid) }
+    }
+    for (ccp in ccParts) {
+        const ccSid = parseInt(ccp)
+        if (ccSid > 0 && nGetKind(ccSid) != "FUNC_DECL") { genStmt(ccSid) }
+    }
+    interpClearComptimeSS()
+}
+
 function genClassDecl(id: int) {
     const name = specClassName != "" ? specClassName : classNodeName(id)
     const fieldStr = classFields.getString(name)
@@ -419,7 +455,7 @@ function genClassDecl(id: int) {
             }
         }
     }
-    // Execute class-level comptime blocks: @comptimeEmit FUNC_DECLs become class methods
+    // Execute class-level comptime blocks
     if (methodsBlockId > 0) {
         const ctmList = nGetList(methodsBlockId)
         if (ctmList != "") {
@@ -429,39 +465,32 @@ function genClassDecl(id: int) {
                 if (ctmId <= 0 || nGetKind(ctmId) != "COMPTIME_BLOCK") { continue }
                 interpExecComptime(nGetI1(ctmId))
                 flushComptimeIR()
-                const ccSS = interpGetComptimeSS()
-                if (ccSS == "") { continue }
-                const ccTokens = tokenize(ccSS)
-                const ccRoot = parse(ccTokens)
-                const ccList = nGetList(ccRoot)
-                if (ccList == "") { interpClearComptimeSS(); continue }
-                const ccParts = ccList.split(",")
-                let ccMethods = classMethods.getString(name)
-                for (ccp in ccParts) {
-                    const ccSid = parseInt(ccp)
-                    if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
-                        const ccMName = nGetS1(ccSid)
-                        let ccRet = stripNullableCG(nGetS2(ccSid))
-                        if (ccRet == "") { ccRet = "void" }
-                        funcRetTypes.set(`${name}_${ccMName}`, ccRet)
-                        const ccMSig = paramSig(nGetList(ccSid))
-                        if (ccMSig != "") { funcRetTypes.set(`${name}_${ccMName}_${ccMSig}`, ccRet) }
-                        trackOverload(`${name}_${ccMName}`)
-                        ccMethods = listAppendStr(ccMethods, ccMName)
-                    }
+                emitClassComptimeMethods(name)
+            }
+        }
+    }
+    // @derive annotation: call ctDerive{Name}(className) in comptime scope
+    const deriveAnnListId = nGetI4(id)
+    if (deriveAnnListId > 0 && nGetKind(deriveAnnListId) == "ANNOTATION_LIST") {
+        const deriveAnns = nGetList(deriveAnnListId)
+        if (deriveAnns != "") {
+            const daParts = deriveAnns.split(",")
+            for (da in daParts) {
+                const daId = parseInt(da)
+                if (daId <= 0 || nGetKind(daId) != "ANNOTATION" || nGetS1(daId) != "derive") { continue }
+                const deriveArg = nGetS2(daId)
+                if (deriveArg == "") { continue }
+                const deriveNames = deriveArg.split(",")
+                for (dn in deriveNames) {
+                    const deriveSrc = `ctDerive${dn}("${name}")\n`
+                    const dTokens = tokenize(deriveSrc)
+                    const dRoot = parse(dTokens)
+                    const dBlock = newNode("BLOCK")
+                    nSetList(dBlock, nGetList(dRoot))
+                    interpExecComptime(dBlock)
+                    flushComptimeIR()
+                    emitClassComptimeMethods(name)
                 }
-                classMethods.set(name, ccMethods)
-                for (ccp in ccParts) {
-                    const ccSid = parseInt(ccp)
-                    if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
-                        genClassMethod(name, ccSid)
-                    }
-                }
-                for (ccp in ccParts) {
-                    const ccSid = parseInt(ccp)
-                    if (ccSid > 0 && nGetKind(ccSid) != "FUNC_DECL") { genStmt(ccSid) }
-                }
-                interpClearComptimeSS()
             }
         }
     }

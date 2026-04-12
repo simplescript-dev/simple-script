@@ -101,7 +101,8 @@ comptime {
 
     // ── JSON serialization helpers ──
 
-    function ctGenToJson(className: string, funcName: string): string {
+    // Core: accessor is "obj" (standalone) or "this" (class method)
+    function ctJsonBody(className: string, accessor: string): string {
         const info = getTypeInfo(className)
         let body = ""
         let i = 0
@@ -111,13 +112,50 @@ comptime {
             if (i > 0) { line = line + "\",\" + " }
             line = line + "q + \"" + f.name + "\" + q + \":\" + "
             if (f.type == "string") {
-                line = line + "q + obj." + f.name + " + q"
+                line = line + "q + " + accessor + "." + f.name + " + q"
             } else {
-                line = line + "\"\" + obj." + f.name
+                line = line + "\"\" + " + accessor + "." + f.name
             }
             body = body + line + "\n"
             i = i + 1
         }
+        return body
+    }
+
+    function ctGenToJson(className: string, funcName: string): string {
+        const body = ctJsonBody(className, "obj")
         return "function " + funcName + "(obj: " + className + "): string {\n    const q = \"\\\"\"\n    let r = \"{\"\n" + body + "    return r + \"}\"\n}"
+    }
+
+    // ── Method generators (for class-level comptime / @derive) ──
+
+    function ctGenMethodToJson(className: string): string {
+        const body = ctJsonBody(className, "this")
+        return "function toJson(): string {\n    const q = \"\\\"\"\n    let r = \"{\"\n" + body + "    return r + \"}\"\n}"
+    }
+
+    function ctGenMethodToString(className: string): string {
+        const info = getTypeInfo(className)
+        let body = "    return \"" + className + "(\""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            if (i > 0) { body = body + " + \", \"" }
+            body = body + " + \"" + f.name + "=\" + this." + f.name
+            i = i + 1
+        }
+        body = body + " + \")\""
+        return "function toString(): string {\n" + body + "\n}"
+    }
+
+    // ── @derive handlers ──
+    // Convention: @derive("Xxx") calls ctDeriveXxx(className)
+
+    function ctDeriveToJson(className: string) {
+        @comptimeEmit(ctGenMethodToJson(className))
+    }
+
+    function ctDeriveToString(className: string) {
+        @comptimeEmit(ctGenMethodToString(className))
     }
 }
