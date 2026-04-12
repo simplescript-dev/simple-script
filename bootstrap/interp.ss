@@ -151,6 +151,7 @@ function interpClearComptimeIR() { comptimeIR = "" }
 // Flushed after each comptime block: tokenize → parse → register → genStmt.
 
 let comptimeSS = ""
+let comptimeReleaseMode = 0
 
 function interpGetComptimeSS(): string { return comptimeSS }
 function interpClearComptimeSS() { comptimeSS = "" }
@@ -291,6 +292,16 @@ function interpExecComptime(bodyId: int) {
     if (interpComptimeRootScope == 0) {
         interpScopeNext = interpScopeNext + 1
         interpComptimeRootScope = interpScopeNext
+        interpScopes = [`${interpComptimeRootScope}`]
+        // Inject predefined compile-time constants
+        let targetOS = getenv("SS_TARGET_OS")
+        if (targetOS == "") { targetOS = "linux" }
+        let targetArch = getenv("SS_TARGET_ARCH")
+        if (targetArch == "") { targetArch = "x86_64" }
+        interpSetVar("OS", interpNewString(targetOS))
+        interpSetVar("ARCH", interpNewString(targetArch))
+        interpSetVar("DEBUG", interpNewInt(comptimeReleaseMode == 0 ? 1 : 0))
+        interpSetVar("COMPILER_VERSION", interpNewString("0.1.0"))
     }
     interpScopes = [`${interpComptimeRootScope}`]
     // Execute body statements directly in root scope (skip BLOCK push/pop)

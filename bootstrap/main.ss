@@ -586,6 +586,7 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     setLineOffset(preludeLines + 1)
     const root = parse(tokens)
     check(root)
+    comptimeReleaseMode = release
     const llFile = outputFile + ".ll"
     generateToFile(root, llFile)
 

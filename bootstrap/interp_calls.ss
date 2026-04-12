@@ -5,6 +5,14 @@
 // Forward-references interpEval from interp_eval.ss, interpExec from interp_exec.ss,
 // interpBuildTypeInfo from interp_reflect.ss, and value/scope helpers from interp.ss.
 
+// ── Helpers ───────────────────────────────────────────────────
+
+function interpComptimeAbort(msg: string) {
+    println(`error: ${msg}`)
+    println("  --> comptime block")
+    exit(1)
+}
+
 // ── Function Calls ────────────────────────────────────────────
 
 function interpCall(nodeId: int): int {
@@ -110,10 +118,25 @@ function interpCall(nodeId: int): int {
     // Built-in: compileError(msg) — abort compilation with error message
     if (name == "compileError") {
         const ceMsg = argList != "" ? interpAsStr(interpEval(parseInt(argList.split(",")[0]))) : "compile error"
-        println(`error: ${ceMsg}`)
-        println("  --> comptime block")
-        exit(1)
+        interpComptimeAbort(ceMsg)
         return interpNewNull()
+    }
+    // Built-in: comptimeAssert(cond, msg) — abort compilation if condition is false
+    if (name == "comptimeAssert") {
+        if (argList == "") { interpComptimeAbort("comptimeAssert requires at least 1 argument") }
+        const caArgs = argList.split(",")
+        const caCond = interpEval(parseInt(caArgs[0]))
+        if (interpTruthy(caCond) == 0) {
+            const caMsg = caArgs.length() > 1 ? interpAsStr(interpEval(parseInt(caArgs[1]))) : "comptime assertion failed"
+            interpComptimeAbort(caMsg)
+        }
+        return interpNewNull()
+    }
+    // Built-in: getenv(name) — read environment variable at compile time
+    if (name == "getenv") {
+        if (argList == "") { return interpNewString("") }
+        const geName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        return interpNewString(getenv(geName))
     }
     // Built-in: hasField(className, fieldName) — check if class has field, returns 0/1
     if (name == "hasField") {
