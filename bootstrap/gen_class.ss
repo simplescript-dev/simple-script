@@ -419,6 +419,52 @@ function genClassDecl(id: int) {
             }
         }
     }
+    // Execute class-level comptime blocks: @comptimeEmit FUNC_DECLs become class methods
+    if (methodsBlockId > 0) {
+        const ctmList = nGetList(methodsBlockId)
+        if (ctmList != "") {
+            const ctmParts = ctmList.split(",")
+            for (ctmp in ctmParts) {
+                const ctmId = parseInt(ctmp)
+                if (ctmId <= 0 || nGetKind(ctmId) != "COMPTIME_BLOCK") { continue }
+                interpExecComptime(nGetI1(ctmId))
+                flushComptimeIR()
+                const ccSS = interpGetComptimeSS()
+                if (ccSS == "") { continue }
+                const ccTokens = tokenize(ccSS)
+                const ccRoot = parse(ccTokens)
+                const ccList = nGetList(ccRoot)
+                if (ccList == "") { interpClearComptimeSS(); continue }
+                const ccParts = ccList.split(",")
+                let ccMethods = classMethods.getString(name)
+                for (ccp in ccParts) {
+                    const ccSid = parseInt(ccp)
+                    if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
+                        const ccMName = nGetS1(ccSid)
+                        let ccRet = stripNullableCG(nGetS2(ccSid))
+                        if (ccRet == "") { ccRet = "void" }
+                        funcRetTypes.set(`${name}_${ccMName}`, ccRet)
+                        const ccMSig = paramSig(nGetList(ccSid))
+                        if (ccMSig != "") { funcRetTypes.set(`${name}_${ccMName}_${ccMSig}`, ccRet) }
+                        trackOverload(`${name}_${ccMName}`)
+                        ccMethods = listAppendStr(ccMethods, ccMName)
+                    }
+                }
+                classMethods.set(name, ccMethods)
+                for (ccp in ccParts) {
+                    const ccSid = parseInt(ccp)
+                    if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
+                        genClassMethod(name, ccSid)
+                    }
+                }
+                for (ccp in ccParts) {
+                    const ccSid = parseInt(ccp)
+                    if (ccSid > 0 && nGetKind(ccSid) != "FUNC_DECL") { genStmt(ccSid) }
+                }
+                interpClearComptimeSS()
+            }
+        }
+    }
     genAutoToJson(name, fieldStr)
     emitClassDtorRegister(name, fieldStr, hasVtable)
     emitClassTypeInfo(name, fieldStr, hasVtable)

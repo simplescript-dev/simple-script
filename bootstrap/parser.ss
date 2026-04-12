@@ -375,6 +375,15 @@ function parseClassDecl(): int {
         pExpect("LBRACE")
         skipNL()
         while (curKind() != "RBRACE" && curKind() != "EOF") {
+            if (curKind() == "COMPTIME") {
+                pAdvance()
+                const ctBody = parseBlock()
+                const ctId = newNode("COMPTIME_BLOCK")
+                nSetI1(ctId, ctBody)
+                methods = listAppend(methods, ctId)
+                skipNL()
+                continue
+            }
             if (isBodyFieldStart() == 1) {
                 let fieldAnns = ""
                 if (curKind() == "ANNOTATION") {
