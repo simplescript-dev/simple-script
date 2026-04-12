@@ -279,25 +279,35 @@ function interpCompoundOp(op: string, lv: int, rv: int): int {
 
 // ── Reset ──────────────────────────────────────────────────────
 
-function interpReset() {
-    interpVT = new Map()
-    interpVD = new Map()
-    interpVC = 0
-    interpScopes = []
-    interpScopeNext = 0
-    interpVars = new Map()
+// Persistent comptime root scope — survives across comptime blocks
+let interpComptimeRootScope = 0
+
+function interpExecComptime(bodyId: int) {
     interpBreakFlag = 0
     interpContinueFlag = 0
     interpReturnFlag = 0
     interpReturnVal = 0
-    interpClasses = new Map()
-    interpClassParents = new Map()
-    interpObjFields = new Map()
-    interpThisVal = 0
-    interpResetBuiltins()
-}
-
-function interpExecComptime(bodyId: int) {
-    interpReset()
-    interpExec(bodyId)
+    // Ensure persistent root scope exists
+    if (interpComptimeRootScope == 0) {
+        interpScopeNext = interpScopeNext + 1
+        interpComptimeRootScope = interpScopeNext
+    }
+    interpScopes = [`${interpComptimeRootScope}`]
+    // Execute body statements directly in root scope (skip BLOCK push/pop)
+    if (nGetKind(bodyId) == "BLOCK") {
+        const list = nGetList(bodyId)
+        if (list != "") {
+            const stmts = list.split(",")
+            let i = 0
+            while (i < stmts.length()) {
+                interpExec(parseInt(stmts[i]))
+                if (interpShouldStop() == 1) { break }
+                i = i + 1
+            }
+        }
+    } else {
+        interpExec(bodyId)
+    }
+    // Root scope persists for next comptime block
+    interpScopes = [`${interpComptimeRootScope}`]
 }
