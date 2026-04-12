@@ -376,7 +376,17 @@ function parseClassDecl(): int {
         skipNL()
         while (curKind() != "RBRACE" && curKind() != "EOF") {
             if (isBodyFieldStart() == 1) {
+                let fieldAnns = ""
+                if (curKind() == "ANNOTATION") {
+                    fieldAnns = parseAnnotationList()
+                }
                 const pId = parseBodyField()
+                if (fieldAnns != "") {
+                    // Store as ANNOTATION_LIST node ID in PARAM's nList
+                    const fAnnList = newNode("ANNOTATION_LIST")
+                    nSetList(fAnnList, fieldAnns)
+                    nSetList(pId, fAnnList + "")
+                }
                 fields = listAppend(fields, pId)
             } else {
                 let methodAccess = 0
@@ -526,41 +536,42 @@ function parseImport(): int {
 
 // ── Helpers ───────────────────────────────────────────────────
 
+// Check if tokens at pos match [const] | [static [const]] ident(:|?)
+function isFieldPatternAt(pos: int): int {
+    if (kindAt(pos) == "CONST") { return 1 }
+    if (kindAt(pos) == "STATIC") {
+        const afterStatic = kindAt(pos + 1)
+        if (afterStatic == "CONST") { return 1 }
+        if (afterStatic == "IDENT") {
+            if (kindAt(pos + 2) == "COLON" || kindAt(pos + 2) == "QUESTION") { return 1 }
+        }
+        return 0
+    }
+    if (kindAt(pos) == "IDENT") {
+        if (kindAt(pos + 1) == "COLON" || kindAt(pos + 1) == "QUESTION") { return 1 }
+    }
+    return 0
+}
+
 // Check if current token starts a field declaration in class body
 function isBodyFieldStart(): int {
-    if (curKind() == "CONST") { return 1 }
-    // D078: static [const] field: Type — but NOT static function (that's a method)
-    if (curKind() == "STATIC") {
-        const nextTok = kindAt(tPos + 1)
-        if (nextTok == "CONST") { return 1 }
-        if (nextTok == "IDENT") {
-            const afterIdent = kindAt(tPos + 2)
-            if (afterIdent == "COLON" || afterIdent == "QUESTION") { return 1 }
-        }
-        return 0
-    }
+    if (isFieldPatternAt(tPos) == 1) { return 1 }
     if (curKind() == "PRIVATE" || curKind() == "PROTECTED") {
-        const nextTok = kindAt(tPos + 1)
-        if (nextTok == "CONST") { return 1 }
-        // D078: private/protected static field
-        if (nextTok == "STATIC") {
-            const afterStatic = kindAt(tPos + 2)
-            if (afterStatic == "CONST") { return 1 }
-            if (afterStatic == "IDENT") {
-                const afterIdent = kindAt(tPos + 3)
-                if (afterIdent == "COLON" || afterIdent == "QUESTION") { return 1 }
-            }
-            return 0
-        }
-        if (nextTok == "IDENT") {
-            const nextNextTok = kindAt(tPos + 2)
-            if (nextNextTok == "COLON" || nextNextTok == "QUESTION") { return 1 }
-        }
-        return 0
+        return isFieldPatternAt(tPos + 1)
     }
-    if (curKind() == "IDENT") {
-        const nextTok = kindAt(tPos + 1)
-        if (nextTok == "COLON" || nextTok == "QUESTION") { return 1 }
+    if (curKind() == "ANNOTATION") {
+        // Peek past all annotations to see if a field pattern follows
+        let pos = tPos
+        while (kindAt(pos) == "ANNOTATION") {
+            pos = pos + 1
+            if (kindAt(pos) == "LPAREN") {
+                pos = pos + 1
+                if (kindAt(pos) == "STRING") { pos = pos + 1 }
+                if (kindAt(pos) == "RPAREN") { pos = pos + 1 }
+            }
+            while (kindAt(pos) == "NEWLINE") { pos = pos + 1 }
+        }
+        return isFieldPatternAt(pos)
     }
     return 0
 }

@@ -107,6 +107,34 @@ function interpCall(nodeId: int): int {
         const gtiName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
         return interpBuildTypeInfo(gtiName)
     }
+    // Built-in: compileError(msg) — abort compilation with error message
+    if (name == "compileError") {
+        const ceMsg = argList != "" ? interpAsStr(interpEval(parseInt(argList.split(",")[0]))) : "compile error"
+        println(`error: ${ceMsg}`)
+        println("  --> comptime block")
+        exit(1)
+        return interpNewNull()
+    }
+    // Built-in: hasField(className, fieldName) — check if class has field, returns 0/1
+    if (name == "hasField") {
+        if (argList == "") { return interpNewInt(0) }
+        const hfArgs = argList.split(",")
+        if (hfArgs.length() < 2) { return interpNewInt(0) }
+        const hfClass = interpAsStr(interpEval(parseInt(hfArgs[0])))
+        const hfField = interpAsStr(interpEval(parseInt(hfArgs[1])))
+        return interpNewInt(classFieldTypes.has(`${hfClass}.${hfField}`) == 1 ? 1 : 0)
+    }
+    // Built-in: hasMethod(className, methodName) — check if class has method, returns 0/1
+    if (name == "hasMethod") {
+        if (argList == "") { return interpNewInt(0) }
+        const hmArgs = argList.split(",")
+        if (hmArgs.length() < 2) { return interpNewInt(0) }
+        const hmClass = interpAsStr(interpEval(parseInt(hmArgs[0])))
+        const hmMethod = interpAsStr(interpEval(parseInt(hmArgs[1])))
+        const hmMethods = classMethods.has(hmClass) == 1 ? classMethods.getString(hmClass) : ""
+        const hmSearch = `,${hmMethods},`
+        return interpNewInt(hmSearch.indexOf(`,${hmMethod},`) >= 0 ? 1 : 0)
+    }
 
     // Look up function value
     const fnVal = interpGetVar(name)

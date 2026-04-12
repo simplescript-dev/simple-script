@@ -71,8 +71,19 @@ function interpBuildTypeInfo(className: string): int {
     const infoId = interpNewVal("object", "ClassInfo")
     interpSetField(infoId, "name", interpNewString(className))
 
+    // Resolve CLASS_DECL node once for fields, methods, and class annotations
+    let classNodeId = 0
+    if (classNodeIds.has(className) == 1) {
+        classNodeId = parseInt(classNodeIds.getString(className))
+    }
+
     // Fields
     const fieldsArr = interpNewArray("")
+    let fieldParamParts: Array<string> = []
+    if (classNodeId > 0) {
+        const fNodeList = nGetList(classNodeId)
+        if (fNodeList != "") { fieldParamParts = fNodeList.split(",") }
+    }
     const fieldStr = classFields.getString(className)
     if (fieldStr != "") {
         const fParts = fieldStr.split(",")
@@ -86,18 +97,32 @@ function interpBuildTypeInfo(className: string): int {
             const fieldObj = interpNewVal("object", "FieldInfo")
             interpSetField(fieldObj, "name", interpNewString(fName))
             interpSetField(fieldObj, "type", interpNewString(fType))
+            // Field annotations — PARAM nList stores ANNOTATION_LIST node ID
+            // (can't use I4 like methods because PARAM I4 is isStatic for class fields)
+            let fAnnListId = 0
+            let fpi = 0
+            while (fpi < fieldParamParts.length()) {
+                const fpId = parseInt(fieldParamParts[fpi])
+                if (fpId > 0 && nGetKind(fpId) == "PARAM" && nGetS1(fpId) == fName) {
+                    const fpList = nGetList(fpId)
+                    if (fpList != "") { fAnnListId = parseInt(fpList) }
+                    fpi = fieldParamParts.length()
+                } else {
+                    fpi = fpi + 1
+                }
+            }
+            interpSetField(fieldObj, "annotations", interpBuildAnnotationArray(fAnnListId))
             interpArrayPush(fieldsArr, fieldObj)
             fi = fi + 1
         }
     }
     interpSetField(infoId, "fields", fieldsArr)
 
-    // Methods — cache AST method list outside loop
+    // Methods
     const methodsArr = interpNewArray("")
     let mdParts: Array<string> = []
-    if (classNodeIds.has(className) == 1) {
-        const cNodeId = parseInt(classNodeIds.getString(className))
-        const mBlock = nGetI2(cNodeId)
+    if (classNodeId > 0) {
+        const mBlock = nGetI2(classNodeId)
         if (mBlock > 0) {
             const mList = nGetList(mBlock)
             if (mList != "") { mdParts = mList.split(",") }
@@ -117,7 +142,6 @@ function interpBuildTypeInfo(className: string): int {
             interpSetField(methodObj, "name", interpNewString(mName))
             interpSetField(methodObj, "returnType", interpNewString(mRetType))
             interpSetField(methodObj, "params", interpBuildMethodParams(mdParts, mName))
-            // Method annotations — find FUNC_DECL for this method, extract I4
             let mAnnListId = 0
             let mdx = 0
             while (mdx < mdParts.length()) {
@@ -138,8 +162,8 @@ function interpBuildTypeInfo(className: string): int {
 
     // Class annotations
     let caAnnListId = 0
-    if (classNodeIds.has(className) == 1) {
-        caAnnListId = nGetI4(parseInt(classNodeIds.getString(className)))
+    if (classNodeId > 0) {
+        caAnnListId = nGetI4(classNodeId)
     }
     interpSetField(infoId, "annotations", interpBuildAnnotationArray(caAnnListId))
     return infoId
