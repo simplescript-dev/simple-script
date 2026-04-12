@@ -64,12 +64,17 @@ function interpBuildAnnotationArray(annListId: int): int {
 }
 
 function interpBuildTypeInfo(className: string): int {
+    // Enum reflection — check enumDeclNodes before class
+    if (enumReady == 1 && enumDeclNodes.has(className) == 1) {
+        return interpBuildEnumInfo(className)
+    }
     if (classFields.has(className) == 0) {
-        println(`[interp] @typeInfo: unknown class '${className}'`)
+        println(`[interp] @typeInfo: unknown type '${className}'`)
         return interpNewNull()
     }
     const infoId = interpNewVal("object", "ClassInfo")
     interpSetField(infoId, "name", interpNewString(className))
+    interpSetField(infoId, "kind", interpNewString("class"))
 
     // Resolve CLASS_DECL node once for fields, methods, and class annotations
     let classNodeId = 0
@@ -166,5 +171,42 @@ function interpBuildTypeInfo(className: string): int {
         caAnnListId = nGetI4(classNodeId)
     }
     interpSetField(infoId, "annotations", interpBuildAnnotationArray(caAnnListId))
+    return infoId
+}
+
+// ── Enum Reflection ─────────────────────────────────────────
+
+function interpBuildEnumInfo(enumName: string): int {
+    const infoId = interpNewVal("object", "EnumInfo")
+    interpSetField(infoId, "name", interpNewString(enumName))
+    interpSetField(infoId, "kind", interpNewString("enum"))
+    const isString = enumTypes.has(enumName) == 1 ? 1 : 0
+    interpSetField(infoId, "isString", interpNewInt(isString))
+
+    // Build variants array from ENUM_DECL AST node
+    const variantsArr = interpNewArray("")
+    const nodeId = parseInt(enumDeclNodes.getString(enumName))
+    if (nodeId > 0) {
+        const vList = nGetList(nodeId)
+        if (vList != "") {
+            const vParts = vList.split(",")
+            let vi = 0
+            while (vi < vParts.length()) {
+                const vid = parseInt(vParts[vi])
+                if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+                    const vObj = interpNewVal("object", "VariantInfo")
+                    interpSetField(vObj, "name", interpNewString(nGetS1(vid)))
+                    if (isString == 1) {
+                        interpSetField(vObj, "value", interpNewString(nGetS2(vid)))
+                    } else {
+                        interpSetField(vObj, "value", interpNewInt(nGetI1(vid)))
+                    }
+                    interpArrayPush(variantsArr, vObj)
+                }
+                vi = vi + 1
+            }
+        }
+    }
+    interpSetField(infoId, "variants", variantsArr)
     return infoId
 }

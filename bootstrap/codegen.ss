@@ -330,6 +330,9 @@ function registerAllDecls(rootId: int) {
             }
             collectClassAnnotations(sid)
         }
+        if (sk == "ENUM_DECL") {
+            registerEnum(sid)
+        }
     }
     // Resolve inheritance after all classes are registered
     resolveInheritance()
