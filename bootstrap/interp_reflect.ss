@@ -64,9 +64,13 @@ function interpBuildAnnotationArray(annListId: int): int {
 }
 
 function interpBuildTypeInfo(className: string): int {
-    // Enum reflection — check enumDeclNodes before class
+    // Enum reflection
     if (enumReady == 1 && enumDeclNodes.has(className) == 1) {
         return interpBuildEnumInfo(className)
+    }
+    // Interface reflection
+    if (ifaceMethodsCG.has(className) == 1 && classFields.has(className) == 0) {
+        return interpBuildInterfaceInfo(className)
     }
     if (classFields.has(className) == 0) {
         println(`[interp] @typeInfo: unknown type '${className}'`)
@@ -208,5 +212,61 @@ function interpBuildEnumInfo(enumName: string): int {
         }
     }
     interpSetField(infoId, "variants", variantsArr)
+    return infoId
+}
+
+// ── Interface Reflection ────────────────────────────────────
+
+function interpBuildInterfaceInfo(ifaceName: string): int {
+    const infoId = interpNewVal("object", "InterfaceInfo")
+    interpSetField(infoId, "name", interpNewString(ifaceName))
+    interpSetField(infoId, "kind", interpNewString("interface"))
+
+    const methodsArr = interpNewArray("")
+    const methodStr = ifaceMethodsCG.getString(ifaceName)
+    if (methodStr != "") {
+        const mParts = methodStr.split(",")
+        let mi = 0
+        while (mi < mParts.length()) {
+            const mName = mParts[mi]
+            if (mName != "") {
+                const methodObj = interpNewVal("object", "MethodInfo")
+                interpSetField(methodObj, "name", interpNewString(mName))
+                const methodKey = `${ifaceName}.${mName}`
+                let mRetType = "void"
+                if (ifaceMethodRets.has(methodKey) == 1) {
+                    mRetType = ifaceMethodRets.getString(methodKey)
+                }
+                interpSetField(methodObj, "returnType", interpNewString(mRetType))
+                const paramsArr = interpNewArray("")
+                if (ifaceMethodPars.has(methodKey) == 1) {
+                    const parStr = ifaceMethodPars.getString(methodKey)
+                    if (parStr != "") {
+                        const pParts = parStr.split(",")
+                        let pi = 0
+                        while (pi < pParts.length()) {
+                            const pp = pParts[pi]
+                            if (pp != "") {
+                                const colonIdx = pp.indexOf(":")
+                                if (colonIdx >= 0) {
+                                    const pObj = interpNewVal("object", "ParamInfo")
+                                    interpSetField(pObj, "name", interpNewString(pp.substring(0, colonIdx)))
+                                    interpSetField(pObj, "type", interpNewString(pp.substring(colonIdx + 1, pp.length() - colonIdx - 1)))
+                                    interpSetField(pObj, "annotation", interpNewString(""))
+                                    interpArrayPush(paramsArr, pObj)
+                                }
+                            }
+                            pi = pi + 1
+                        }
+                    }
+                }
+                interpSetField(methodObj, "params", paramsArr)
+                interpSetField(methodObj, "annotations", interpNewArray(""))
+                interpArrayPush(methodsArr, methodObj)
+            }
+            mi = mi + 1
+        }
+    }
+    interpSetField(infoId, "methods", methodsArr)
     return infoId
 }
