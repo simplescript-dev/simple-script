@@ -1,0 +1,393 @@
+// interp_calls.ss — Function/method call handling for the AST interpreter
+//
+// Handles interpCall (user + builtin functions), interpNewExpr (class instantiation),
+// interpMemberAccess, interpMethodCall, interpCallValue (higher-order).
+// Forward-references interpEval from interp_eval.ss, interpExec from interp_exec.ss,
+// interpBuildTypeInfo from interp_reflect.ss, and value/scope helpers from interp.ss.
+
+// ── Function Calls ────────────────────────────────────────────
+
+function interpCall(nodeId: int): int {
+    const name = nGetS1(nodeId)
+    const argList = nGetList(nodeId)
+
+    // Built-in: println (allowed for comptime debugging)
+    if (name == "println") {
+        if (argList != "") {
+            const argIds = argList.split(",")
+            println(interpToStr(interpEval(parseInt(argIds[0]))))
+        } else {
+            println("")
+        }
+        return interpNewNull()
+    }
+    // Built-in: parseInt, parseDouble, toString
+    if (name == "parseInt") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            return interpNewInt(parseInt(interpAsStr(val)))
+        }
+        return interpNewInt(0)
+    }
+    if (name == "parseDouble") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            return interpNewDouble(parseDouble(interpAsStr(val)))
+        }
+        return interpNewDouble(0.0)
+    }
+    if (name == "toString") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            return interpNewString(interpToStr(val))
+        }
+        return interpNewString("")
+    }
+    // Built-in: emit(irString) — append LLVM IR to comptime output (D087 Phase 3b)
+    if (name == "emit") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            comptimeIR = `${comptimeIR}${interpAsStr(val)}`
+        }
+        return interpNewNull()
+    }
+    // Built-in: registerFunction(name, retType, paramCount) — register in compiler tables (D087 Phase 3b)
+    if (name == "registerFunction") {
+        if (argList == "") {
+            println("[comptime] registerFunction requires at least 1 argument: name")
+            return interpNewNull()
+        }
+        const rfArgs = argList.split(",")
+        const rfName = interpAsStr(interpEval(parseInt(rfArgs[0])))
+        const rfRetType = rfArgs.length() > 1 ? interpAsStr(interpEval(parseInt(rfArgs[1]))) : "void"
+        const rfParamCount = rfArgs.length() > 2 ? interpAsInt(interpEval(parseInt(rfArgs[2]))) : 0
+        funcRetTypes.set(rfName, rfRetType)
+        funcParamCount.set(rfName, `${rfParamCount}`)
+        return interpNewNull()
+    }
+    // Built-in: getAnnotatedClasses(annName) — return array of class names with annotation (D087 Phase 4a)
+    if (name == "getAnnotatedClasses") {
+        if (argList == "") {
+            println("[comptime] getAnnotatedClasses requires 1 argument: annName")
+            return interpNewArray("")
+        }
+        const gacName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        const gacResult = interpNewArray("")
+        let gacSeen = new Map()
+        let gacI = 0
+        while (gacI < annClassAnnNames.length()) {
+            if (annClassAnnNames[gacI] == gacName) {
+                const gacClassId = parseInt(annClassNodeIds[gacI])
+                const gacClassName = nGetS1(gacClassId)
+                if (gacSeen.has(gacClassName) == 0) {
+                    interpArrayPush(gacResult, interpNewString(gacClassName))
+                    gacSeen.set(gacClassName, "1")
+                }
+            }
+            gacI = gacI + 1
+        }
+        return gacResult
+    }
+    // Built-in: addStringConst(str) — calls compiler's addStringConst, returns IR ref (D087 Phase 4b)
+    if (name == "addStringConst") {
+        if (argList == "") {
+            println("[comptime] addStringConst requires 1 argument: str")
+            return interpNewString("")
+        }
+        const ascVal = interpEval(parseInt(argList.split(",")[0]))
+        const ascRef = addStringConst(interpAsStr(ascVal))
+        return interpNewString(ascRef)
+    }
+    // Built-in: getTypeInfo(className) — like @typeInfo but takes a string arg (D087 Phase 4a)
+    if (name == "getTypeInfo") {
+        if (argList == "") {
+            println("[comptime] getTypeInfo requires 1 argument: className")
+            return interpNewNull()
+        }
+        const gtiName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        return interpBuildTypeInfo(gtiName)
+    }
+
+    // Look up function value
+    const fnVal = interpGetVar(name)
+    if (interpType(fnVal) != "fn") {
+        println(`[interp] not a function: ${name}`)
+        return interpNewNull()
+    }
+
+    const funcNodeId = parseInt(interpAsStr(fnVal))
+    const paramList = nGetList(funcNodeId)
+    const bodyId = nGetI1(funcNodeId)
+
+    // Evaluate all arguments before pushing scope
+    let argVals: Array<string> = []
+    let namedArgs = new Map()
+    let hasNamed = 0
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                hasNamed = 1
+                const argVal = interpEval(nGetI1(argNodeId))
+                namedArgs.set(nGetS1(argNodeId), `${argVal}`)
+            } else {
+                const argVal = interpEval(argNodeId)
+                argVals = argVals.push(`${argVal}`)
+            }
+            i = i + 1
+        }
+    }
+
+    // Save and reset control flow flags (isolate function body)
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+
+    // Push scope and bind parameters
+    interpPushScope()
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let posIdx = 0
+        let pi = 0
+        while (pi < params.length()) {
+            const paramId = parseInt(params[pi])
+            const pName = nGetS1(paramId)
+            if (hasNamed == 1 && namedArgs.has(pName) == 1) {
+                interpSetVar(pName, parseInt(namedArgs.getString(pName)))
+            } else if (posIdx < argVals.length()) {
+                interpSetVar(pName, parseInt(argVals[posIdx]))
+                posIdx = posIdx + 1
+            } else {
+                // Default parameter value
+                const defaultId = nGetI1(paramId)
+                if (defaultId > 0) {
+                    interpSetVar(pName, interpEval(defaultId))
+                } else {
+                    interpSetVar(pName, interpNewNull())
+                }
+            }
+            pi = pi + 1
+        }
+    }
+
+    // Execute function body
+    if (bodyId > 0) { interpExec(bodyId) }
+
+    // Capture return value and reset return flag
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+
+    interpPopScope()
+
+    // Restore caller's control flow flags
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+
+    return result
+}
+
+// ── New Expression ────────────────────────────────────────────
+
+function interpNewExpr(nodeId: int): int {
+    const className = nGetS1(nodeId)
+    if (className == "Map") { return interpNewMap() }
+    if (interpClasses.has(className) != 1) {
+        println(`[interp] unknown class: ${className}`)
+        return interpNewNull()
+    }
+    const objId = interpNewVal("object", className)
+    const allFields = interpCollectFields(className)
+    let fieldNames: Array<string> = []
+    if (allFields != "") {
+        const fieldParts = allFields.split(",")
+        let fi = 0
+        while (fi < fieldParts.length()) {
+            const fId = parseInt(fieldParts[fi])
+            const fName = nGetS1(fId)
+            fieldNames = fieldNames.push(fName)
+            const defaultId = nGetI1(fId)
+            if (defaultId > 0) {
+                interpSetField(objId, fName, interpEval(defaultId))
+            } else {
+                interpSetField(objId, fName, interpNewNull())
+            }
+            fi = fi + 1
+        }
+    }
+    const argList = nGetList(nodeId)
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let posIdx = 0
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                interpSetField(objId, nGetS1(argNodeId), interpEval(nGetI1(argNodeId)))
+            } else {
+                const argVal = interpEval(argNodeId)
+                if (posIdx < fieldNames.length()) {
+                    interpSetField(objId, fieldNames[posIdx], argVal)
+                }
+                posIdx = posIdx + 1
+            }
+            i = i + 1
+        }
+    }
+    return objId
+}
+
+// ── Member Access ─────────────────────────────────────────────
+
+function interpMemberAccess(nodeId: int): int {
+    const objVal = interpEval(nGetI1(nodeId))
+    const fieldName = nGetS1(nodeId)
+    if (interpType(objVal) == "object") {
+        return interpGetField(objVal, fieldName)
+    }
+    println(`[interp] no field '${fieldName}' on ${interpType(objVal)}`)
+    return interpNewNull()
+}
+
+// ── Method Call ───────────────────────────────────────────────
+
+function interpMethodCall(nodeId: int): int {
+    const methodName = nGetS1(nodeId)
+    const objVal = interpEval(nGetI1(nodeId))
+    const objType = interpType(objVal)
+
+    // Built-in type methods (string, array, map)
+    if (objType == "string" || objType == "array" || objType == "map") {
+        const bArgList = nGetList(nodeId)
+        let bArgs: Array<string> = []
+        if (bArgList != "") {
+            const bArgIds = bArgList.split(",")
+            let bi = 0
+            while (bi < bArgIds.length()) {
+                bArgs = bArgs.push(`${interpEval(parseInt(bArgIds[bi]))}`)
+                bi = bi + 1
+            }
+        }
+        return interpBuiltinMethod(objType, objVal, methodName, bArgs)
+    }
+
+    if (objType != "object") {
+        println(`[interp] cannot call method '${methodName}' on ${objType}`)
+        return interpNewNull()
+    }
+    const className = interpAsStr(objVal)
+    const methodNode = interpFindMethod(className, methodName)
+    if (methodNode == 0) {
+        println(`[interp] no method '${methodName}' on class ${className}`)
+        return interpNewNull()
+    }
+    const argList = nGetList(nodeId)
+    let argVals: Array<string> = []
+    let namedArgs = new Map()
+    let hasNamed = 0
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                hasNamed = 1
+                namedArgs.set(nGetS1(argNodeId), `${interpEval(nGetI1(argNodeId))}`)
+            } else {
+                argVals = argVals.push(`${interpEval(argNodeId)}`)
+            }
+            i = i + 1
+        }
+    }
+    const savedThis = interpThisVal
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    interpThisVal = objVal
+    interpPushScope()
+    const paramList = nGetList(methodNode)
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let posIdx = 0
+        let pi = 0
+        while (pi < params.length()) {
+            const paramId = parseInt(params[pi])
+            const pName = nGetS1(paramId)
+            if (hasNamed == 1 && namedArgs.has(pName) == 1) {
+                interpSetVar(pName, parseInt(namedArgs.getString(pName)))
+            } else if (posIdx < argVals.length()) {
+                interpSetVar(pName, parseInt(argVals[posIdx]))
+                posIdx = posIdx + 1
+            } else {
+                const defaultId = nGetI1(paramId)
+                if (defaultId > 0) {
+                    interpSetVar(pName, interpEval(defaultId))
+                } else {
+                    interpSetVar(pName, interpNewNull())
+                }
+            }
+            pi = pi + 1
+        }
+    }
+    const bodyId = nGetI1(methodNode)
+    if (bodyId > 0) { interpExec(bodyId) }
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+    interpPopScope()
+    interpThisVal = savedThis
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+    return result
+}
+
+// ── Call Function Value (for higher-order methods) ────────────
+
+function interpCallValue(fnValId: int, args: Array<string>): int {
+    if (interpType(fnValId) != "fn") {
+        println("[interp] interpCallValue: not a function")
+        return interpNewNull()
+    }
+    const funcNodeId = parseInt(interpAsStr(fnValId))
+    const paramList = nGetList(funcNodeId)
+    const bodyId = nGetI1(funcNodeId)
+
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+
+    interpPushScope()
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let pi = 0
+        while (pi < params.length() && pi < args.length()) {
+            interpSetVar(nGetS1(parseInt(params[pi])), parseInt(args[pi]))
+            pi = pi + 1
+        }
+    }
+
+    if (bodyId > 0) { interpExec(bodyId) }
+
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+
+    interpPopScope()
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+    return result
+}

@@ -90,6 +90,7 @@ comptime {
     collectBeans("Service")
     collectBeans("Repository")
     collectBeans("RestController")
+    collectBeans("SpringBootApplication")
 
     // Generate singleton factory + method wrappers for each bean class
     let wrappersDone = new Map()
