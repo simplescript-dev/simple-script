@@ -160,6 +160,26 @@ function interpCall(nodeId: int): int {
         const fePath = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
         return interpNewInt(fileExists(fePath))
     }
+    // Built-in: classNames() — return array of all registered class names
+    if (name == "classNames") {
+        const cnList = classFields.keys()
+        const cnResult = interpNewArray("")
+        for (cn in cnList) {
+            if (cn == "" || cn == "Map") { continue }
+            interpArrayPush(cnResult, interpNewString(cn))
+        }
+        return cnResult
+    }
+    // Built-in: enumNames() — return array of all registered enum names
+    if (name == "enumNames") {
+        const enList = enumDeclNodes.keys()
+        const enResult = interpNewArray("")
+        for (en in enList) {
+            if (en == "") { continue }
+            interpArrayPush(enResult, interpNewString(en))
+        }
+        return enResult
+    }
     // Built-in: hasField(className, fieldName) — check if class has field, returns 0/1
     if (name == "hasField") {
         if (argList == "") { return interpNewInt(0) }
