@@ -1,4 +1,4 @@
-# Round 159
+# Round 160
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,11 +8,11 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/4-issues/1-open/ (check remaining open issues)
-- lib/comptime.ss (all built-in derive handlers + string utilities + lookup generators)
-- tests/phase5/comptime_string_utils.ss (string utilities + lookup + @derive(Default) test)
+- lib/comptime.ss (all built-in derive handlers + string utilities + lookup generators + field template + hash/comparable)
+- tests/phase5/comptime_derive_hash_comparable.ss (Hash, Comparable, ctForEachField test)
 
 ## Last Round (max 3 sentences)
-Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table generation (ctGenLookup/ctGenReverseLookup), and @derive("Default") generating `empty()` zero-value factory. All functions are pure library additions to lib/comptime.ss, no compiler changes needed. 213 tests (208 passing, 5 pre-existing interp_* failures), bootstrap fixed-point verified.
+Added ctForEachField template helper ($name/$type per-field expansion), @derive("Hash") generating Java-style polynomial hashCode(), and @derive("Comparable") generating field-by-field compareTo(). All pure library additions to lib/comptime.ss, no compiler changes. 214 tests (209 passing, 5 pre-existing interp_* failures), bootstrap fixed-point verified.
 
 ## Task
 **Continue comptime enhancement toward Zig-level**
@@ -21,7 +21,7 @@ Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table 
 2. If no actionable issues, continue comptime roadmap:
    - **Comptime Map operations**: build Maps at compile time, emit runtime lookup structures
    - **Comptime array comprehension**: generate arrays/lists at compile time
-   - **@derive new handlers**: consider Hash, Comparable, or other common patterns
+   - **@derive new handlers**: consider Builder, Serializable, or other common patterns
    - **Comptime loop unrolling**: generate repetitive code from comptime loops (e.g., N fields -> N accessors)
    - **Comptime code templates**: parameterized multi-line code generation patterns
    - **Comptime import/plugin**: load external .ss files as comptime plugins
@@ -37,7 +37,7 @@ Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table 
 - **comptime blocks**: AST interpreter executes at compile time
 - **Inline comptime expressions**: `comptime { return expr }` -- compile-time constant
 - **Type-level comptime**: `comptime { }` in class body -- FUNC_DECLs become class methods
-- **@derive annotation**: `@derive("ToJson,ToString,Equals,Copy,With,Default")` -> ctDeriveXxx(className) -> generates methods
+- **@derive annotation**: `@derive("ToJson,ToString,Equals,Copy,With,Default,Hash,Comparable")` -> ctDeriveXxx(className) -> generates methods
 - **Custom derive handlers**: Users define `ctDeriveXxx(className)` in comptime blocks -- fully extensible
 - **Comptime type generation**: CLASS_DECL, ENUM_DECL, INTERFACE_DECL via @comptimeEmit
 - **Comptime type discovery**: classNames(), enumNames() -- all registered type names
@@ -47,6 +47,7 @@ Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table 
 - **Structural validation**: fieldCount(cls), fieldNames(cls), hasInterface(cls, iface), isSubclassOf(child, parent)
 - **Validation helpers**: ctAssertHasField, ctAssertHasMethod, ctAssertImplements, ctAssertExtends (lib/comptime.ss)
 - **String utilities**: ctJoin, ctRepeat, ctIndent, ctWrap (lib/comptime.ss)
+- **Field template**: ctForEachField(className, template, sep) -- $name/$type per-field expansion (lib/comptime.ss)
 - **Lookup table generation**: ctGenLookup, ctGenReverseLookup (lib/comptime.ss)
 - **Cross-block persistence**: root scope survives across comptime blocks
 - **Comptime libraries**: `import { } from "@/lib/comptime"` -- shared helpers
@@ -64,8 +65,12 @@ Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table 
 - **Copy**: generates `copy(): ClassName` -- returns new instance with same field values
 - **With**: generates `withFieldName(value): ClassName` -- per-field wither (immutable builder)
 - **Default**: generates `empty(): ClassName` -- zero-value factory (0/0.0/"" per type)
+- **Hash**: generates `hashCode(): int` -- Java-style polynomial hash (h*31+field, abs for non-negative)
+- **Comparable**: generates `compareTo(other: ClassName): int` -- field-by-field ordering (-1/0/1)
 
 ### Proven Comptime Patterns (test-verified)
+- **Hash + Comparable derives**: hashCode() + compareTo() with int/string field support (comptime_derive_hash_comparable.ss)
+- **Field template expansion**: ctForEachField with $name/$type placeholders (comptime_derive_hash_comparable.ss)
 - **String utilities + lookup tables**: ctJoin/ctRepeat/ctIndent/ctWrap + ctGenLookup/ctGenReverseLookup (comptime_string_utils.ss)
 - **Structural validation**: fieldCount/fieldNames/hasInterface/isSubclassOf + ctAssert helpers (comptime_validation.ss)
 - **Comprehensive showcase**: 7 features combined in one scenario (comptime_showcase.ss)
@@ -87,8 +92,8 @@ Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table 
 - **JSON serialization**: standalone serializeX(obj) (comptime_json_serializer.ss)
 
 ### Project Status
-- **Bootstrap**: 47 files, ~18700 LOC, 213 tests (208 passing, 5 pre-existing interp_* failures).
-- **Comptime system**: 21 comptime tests, full type generation + discovery + shell execution + custom derives + structural validation + string utilities + lookup tables.
+- **Bootstrap**: 47 files, ~18700 LOC, 214 tests (209 passing, 5 pre-existing interp_* failures).
+- **Comptime system**: 22 comptime tests, full type generation + discovery + shell execution + custom derives + structural validation + string utilities + lookup tables + field templates + hash/comparable.
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
