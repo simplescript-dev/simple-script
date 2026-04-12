@@ -406,6 +406,16 @@ function parseAtom(): int {
         nSetS1(tiId, tiName)
         return tiId
     }
+    // @comptimeEmit(expr) — compile SS source string into code (D087 Phase 3c)
+    if (k == "ANNOTATION" && v == "comptimeEmit") {
+        pAdvance()
+        pExpect("LPAREN")
+        const ceExpr = parseExpr()
+        pExpect("RPAREN")
+        const ceId = newNode("COMPTIME_EMIT")
+        nSetI1(ceId, ceExpr)
+        return ceId
+    }
     if (k == "IDENT") {
         const identLine = curLineNum()
         const identCol = curColNum()

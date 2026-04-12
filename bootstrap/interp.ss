@@ -152,6 +152,15 @@ let comptimeIR = ""
 function interpGetComptimeIR(): string { return comptimeIR }
 function interpClearComptimeIR() { comptimeIR = "" }
 
+// ── Comptime SS Buffer (D087 Phase 3c) ──────────────────────
+// Accumulates SS source strings emitted by @comptimeEmit(str).
+// Flushed after each comptime block: tokenize → parse → register → genStmt.
+
+let comptimeSS = ""
+
+function interpGetComptimeSS(): string { return comptimeSS }
+function interpClearComptimeSS() { comptimeSS = "" }
+
 function interpShouldStop(): int {
     return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1) ? 1 : 0
 }
@@ -346,6 +355,12 @@ function interpEval(nodeId: int): int {
     if (kind == "METHOD_CALL") { return interpMethodCall(nodeId) }
     if (kind == "ARROW_FUNC") { return interpNewVal("fn", `${nodeId}`) }
     if (kind == "TYPEINFO_EXPR") { return interpBuildTypeInfo(nGetS1(nodeId)) }
+    // @comptimeEmit(ssSource) — accumulate SS source for post-block compilation (D087 Phase 3c)
+    if (kind == "COMPTIME_EMIT") {
+        const ssCode = interpAsStr(interpEval(nGetI1(nodeId)))
+        comptimeSS = `${comptimeSS}${ssCode}`
+        return interpNewNull()
+    }
     println(`[interp] unsupported expr: ${kind}`)
     return interpNewNull()
 }

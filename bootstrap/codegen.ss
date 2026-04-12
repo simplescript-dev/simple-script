@@ -3,7 +3,7 @@
 // Uses SSA registers (%1, %2, ...) and named allocas for variables.
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "./parser"
-import { interpClearComptimeIR } from "./interp"
+import { interpClearComptimeIR, interpClearComptimeSS } from "./interp"
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -234,6 +234,58 @@ function addStringConst(value: string): string {
 // ── Public API ────────────────────────────────────────────────
 
 // Shared codegen passes
+// Register a single FUNC_DECL node: retType, paramCount, overloads, generics, defaults.
+// Used by registerAllDecls and comptime @comptimeEmit processing.
+function registerFuncDeclNode(sid: int) {
+    const fname = nGetS1(sid)
+    let fret = stripNullableCG(nGetS2(sid))
+    if (fret == "") { fret = "void" }
+    funcRetTypes.set(fname, fret)
+    const fparams = nGetList(sid)
+    const fSig = paramSig(fparams)
+    if (fSig != "") {
+        funcRetTypes.set(`${fname}_${fSig}`, fret)
+        funcParamCount.set(`${fname}_${fSig}`, funcParamCount.getString(fname) ?? "0")
+    }
+    trackOverload(fname)
+    if (nGetS3(sid) != "") {
+        genericFuncNodes.set(fname, `${sid}`)
+    }
+    if (fparams != "") {
+        const fps = fparams.split(",")
+        let pCount = 0
+        let defaults = ""
+        for (fp in fps) {
+            const fpId = parseInt(fp)
+            if (fpId > 0 && nGetKind(fpId) == "PARAM") {
+                let defId = nGetI1(fpId)
+                if (defId <= 0 && nGetI2(fpId) > 0) {
+                    const pType = nGetS2(fpId)
+                    if (pType == "string") {
+                        defId = newNode("STRING_LIT")
+                        nSetS1(defId, "")
+                    } else if (pType == "double") {
+                        defId = newNode("DOUBLE_LIT")
+                        nSetS1(defId, "0.0")
+                    } else {
+                        defId = newNode("INT_LIT")
+                        nSetS1(defId, "0")
+                    }
+                    nSetI1(fpId, defId)
+                }
+                if (defId > 0) {
+                    defaults = listAppendStr(defaults, `${pCount}:${defId}`)
+                }
+                pCount = pCount + 1
+            }
+        }
+        funcParamCount.set(fname, `${pCount}`)
+        if (defaults != "") { funcDefaults.set(fname, defaults) }
+    } else {
+        funcParamCount.set(fname, "0")
+    }
+}
+
 function registerAllDecls(rootId: int) {
     const stmtList0 = nGetList(rootId)
     if (stmtList0 == "") { return }
@@ -244,57 +296,7 @@ function registerAllDecls(rootId: int) {
         if (sid <= 0) { continue }
         const sk = nGetKind(sid)
         if (sk == "FUNC_DECL") {
-            const fname = nGetS1(sid)
-            let fret = stripNullableCG(nGetS2(sid))
-            if (fret == "") { fret = "void" }
-            funcRetTypes.set(fname, fret)
-            // Register mangled name + track overload count
-            const fSig = paramSig(nGetList(sid))
-            if (fSig != "") {
-                funcRetTypes.set(`${fname}_${fSig}`, fret)
-                funcParamCount.set(`${fname}_${fSig}`, funcParamCount.getString(fname) ?? "0")
-            }
-            trackOverload(fname)
-            // Track generic functions for monomorphization
-            const fTypeParams = nGetS3(sid)
-            if (fTypeParams != "") {
-                genericFuncNodes.set(fname, `${sid}`)
-            }
-            const fparams = nGetList(sid)
-            if (fparams != "") {
-                const fps = fparams.split(",")
-                let pCount = 0
-                let defaults = ""
-                for (fp in fps) {
-                    const fpId = parseInt(fp)
-                    if (fpId > 0 && nGetKind(fpId) == "PARAM") {
-                        let defId = nGetI1(fpId)
-                        // ? optional param without explicit default → generate default node
-                        if (defId <= 0 && nGetI2(fpId) > 0) {
-                            const pType = nGetS2(fpId)
-                            if (pType == "string") {
-                                defId = newNode("STRING_LIT")
-                                nSetS1(defId, "")
-                            } else if (pType == "double") {
-                                defId = newNode("DOUBLE_LIT")
-                                nSetS1(defId, "0.0")
-                            } else {
-                                defId = newNode("INT_LIT")
-                                nSetS1(defId, "0")
-                            }
-                            nSetI1(fpId, defId)
-                        }
-                        if (defId > 0) {
-                            defaults = listAppendStr(defaults, `${pCount}:${defId}`)
-                        }
-                        pCount = pCount + 1
-                    }
-                }
-                funcParamCount.set(fname, `${pCount}`)
-                if (defaults != "") { funcDefaults.set(fname, defaults) }
-            } else {
-                funcParamCount.set(fname, "0")
-            }
+            registerFuncDeclNode(sid)
         }
         if (sk == "INTERFACE_DECL") {
             registerInterface(sid)
@@ -367,8 +369,9 @@ function resetCodegen() {
     initClassState()
     initFuncRegistry()
     initVarAliases()
-    // Comptime IR (D087 Phase 3b)
+    // Comptime buffers
     interpClearComptimeIR()
+    interpClearComptimeSS()
     // IR output
     irBuf = ""
     strConsts = ""

@@ -2,7 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
-import { interpExecComptime, interpGetComptimeIR, interpClearComptimeIR } from "./interp"
+import { interpExecComptime, interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 
@@ -313,6 +313,28 @@ function genStmt(id: int) {
         if (cIR != "") {
             emitIR(cIR)
             interpClearComptimeIR()
+        }
+        // D087 Phase 3c: compile SS source emitted by @comptimeEmit(str)
+        // Two passes: register declarations first so genStmt can resolve return types.
+        const cSS = interpGetComptimeSS()
+        if (cSS != "") {
+            const ctTokens = tokenize(cSS)
+            const ctRoot = parse(ctTokens)
+            const ctList = nGetList(ctRoot)
+            if (ctList != "") {
+                const ctParts = ctList.split(",")
+                for (ctp in ctParts) {
+                    const ctSid = parseInt(ctp)
+                    if (ctSid > 0 && nGetKind(ctSid) == "FUNC_DECL") {
+                        registerFuncDeclNode(ctSid)
+                    }
+                }
+                for (ctp in ctParts) {
+                    const ctSid = parseInt(ctp)
+                    if (ctSid > 0) { genStmt(ctSid) }
+                }
+            }
+            interpClearComptimeSS()
         }
         return
     }

@@ -248,6 +248,8 @@ function parseAnnotationList(): string {
     let annotations = ""
     while (curKind() == "ANNOTATION") {
         const aName = curValue()
+        // D087: comptime directives are expressions, not annotations
+        if (aName == "typeInfo" || aName == "comptimeEmit") { break }
         pAdvance()
         let aArg = ""
         if (curKind() == "LPAREN") {
