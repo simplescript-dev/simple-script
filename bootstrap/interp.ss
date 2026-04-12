@@ -143,6 +143,15 @@ let interpContinueFlag = 0
 let interpReturnFlag = 0
 let interpReturnVal = 0
 
+// ── Comptime IR Buffer (D087 Phase 3b) ──────────────────────
+// Accumulates LLVM IR emitted by comptime blocks via emit().
+// NOT reset between comptime blocks — persists across all blocks in a compilation.
+
+let comptimeIR = ""
+
+function interpGetComptimeIR(): string { return comptimeIR }
+function interpClearComptimeIR() { comptimeIR = "" }
+
 function interpShouldStop(): int {
     return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1) ? 1 : 0
 }
@@ -528,6 +537,28 @@ function interpCall(nodeId: int): int {
             return interpNewString(interpToStr(val))
         }
         return interpNewString("")
+    }
+    // Built-in: emit(irString) — append LLVM IR to comptime output (D087 Phase 3b)
+    if (name == "emit") {
+        if (argList != "") {
+            const val = interpEval(parseInt(argList.split(",")[0]))
+            comptimeIR = `${comptimeIR}${interpAsStr(val)}`
+        }
+        return interpNewNull()
+    }
+    // Built-in: registerFunction(name, retType, paramCount) — register in compiler tables (D087 Phase 3b)
+    if (name == "registerFunction") {
+        if (argList == "") {
+            println("[comptime] registerFunction requires at least 1 argument: name")
+            return interpNewNull()
+        }
+        const rfArgs = argList.split(",")
+        const rfName = interpAsStr(interpEval(parseInt(rfArgs[0])))
+        const rfRetType = rfArgs.length() > 1 ? interpAsStr(interpEval(parseInt(rfArgs[1]))) : "void"
+        const rfParamCount = rfArgs.length() > 2 ? interpAsInt(interpEval(parseInt(rfArgs[2]))) : 0
+        funcRetTypes.set(rfName, rfRetType)
+        funcParamCount.set(rfName, `${rfParamCount}`)
+        return interpNewNull()
     }
 
     // Look up function value

@@ -1,4 +1,4 @@
-# Round 133
+# Round 134
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,21 +8,21 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D087-comptime.md (comptime 完整设计 + 实现路径 + 设计细节)
-- bootstrap/interp.ss (解释器核心 + interpBuildTypeInfo + interpExecComptime)
+- bootstrap/interp.ss (解释器核心 + emit/registerFunction builtins + interpBuildTypeInfo)
 - bootstrap/interp_builtins.ss (内置类型方法)
 
 ## Last Round (max 3 sentences)
-完成 D087 Phase 3a：`@typeInfo(T)` 编译期反射。Parser 识别 `@typeInfo(ClassName)` 为 TYPEINFO_EXPR 节点，解释器查询编译器的 classFields/classFieldTypes/classMethods/funcRetTypes 注册表构建 ClassInfo 对象（含 fields 数组带 name/type、methods 数组带 name/returnType/params、annotations 空数组）。`classNodeIds` Map 存储 CLASS_DECL AST ID 用于提取方法参数信息。182 测试通过，bootstrap 固定点验证通过。
+完成 D087 Phase 3b：comptime 代码生成。解释器新增 `emit(irString)` 将 LLVM IR 追加到 `comptimeIR` 缓冲区，`registerFunction(name, retType, paramCount)` 向编译器 funcRetTypes/funcParamCount 注册函数签名。genStmt 在 COMPTIME_BLOCK 执行后 flush comptimeIR 到 IR 输出。183 测试通过（+1 comptime_emit），bootstrap 固定点验证通过。
 
 ## Task
-**D087 Phase 3b：comptime 代码生成**
+**D087 Phase 3c：comptime 字符串→代码（@comptimeEmit）**
 
-实现 comptime 块向编译输出注入声明的能力：
-- comptime 块可调用编译器 API 注入函数声明、全局变量到后续编译阶段
-- 完成标准：comptime 生成的函数在运行时可调用
-- 这是 Phase 4（用 comptime 重写注解处理）的核心依赖
+实现类 D 语言 mixin 的能力——comptime 块将 SimpleScript 源码字符串编译并注入到输出：
+- `@comptimeEmit(ssSourceString)` 在 comptime 块内可用，解析并编译 SS 源码字符串
+- 完成标准：comptime 可根据 @typeInfo 反射结果动态生成 SS 级别的函数，不需要手写 LLVM IR
+- 这比 Phase 3b 的 `emit()` 更高层，用户写 SS 代码而非 IR
 
-设计思路：comptime 块目前只做 println 调试输出，结果不传递到编译管道。需要一个机制让 comptime 块的结果（如生成的函数声明）注入到后续 codegen。参考 D 语言 mixin 或 Zig comptime 的代码注入方式。
+设计思路：`@comptimeEmit(str)` 调用 tokenize+parse 生成 AST 节点，然后将这些 AST 节点注入到当前编译单元的根节点。需要重新 registerAllDecls 处理新注入的声明，然后在 codegen 中处理它们。或者直接在 comptime 执行点对新 AST 调用 genStmt/genFuncDeclStmt。
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -35,9 +35,13 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 ### Project Status
 - **D087 Phase 1a-1f done**: 解释器 + comptime 块集成到编译管道
 - **D087 Phase 3a done**: @typeInfo(T) 编译期反射
-- **D087 next**: Phase 3b (comptime 代码生成) → Phase 3c (comptime string→code) → Phase 4 (rewrite annotations)
+- **D087 Phase 3b done**: comptime 代码生成 (emit + registerFunction)
+- **D087 next**: Phase 3c (comptime string→code @comptimeEmit) → Phase 4 (rewrite annotations)
 - **COMPTIME_BLOCK**: AST 节点，I1=body BLOCK，Codegen 调用 interpExecComptime(bodyId)
 - **TYPEINFO_EXPR**: AST 节点，S1=className，interpEval 调用 interpBuildTypeInfo
+- **comptimeIR**: interp.ss 全局缓冲区，emit() 追加 IR 字符串，genStmt flush 到输出
+- **emit(irString)**: comptime 内置函数，追加 LLVM IR 到 comptimeIR
+- **registerFunction(name, retType, paramCount)**: comptime 内置函数，注册函数到 funcRetTypes/funcParamCount
 - **interpBuildTypeInfo**: 查询 classFields/classFieldTypes/classMethods/funcRetTypes/classNodeIds 构建 ClassInfo 对象
 - **interpBuildMethodParams**: 从 CLASS_DECL AST 提取方法参数信息
 - **classNodeIds**: gen_class.ss 中的 Map，"ClassName" → CLASS_DECL AST node ID
@@ -48,7 +52,7 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - **Spring Boot DI**: @Component/@Service/@Repository → springAnnotationHandler in lib
 - **D085 done**: Package system
 - **D082 Phase 1-4 done**: ref/watch, Thread, Channel<T>
-- **Bootstrap**: 43 files, ~18700 LOC, 187 tests (182 passing, 5 pre-existing interp_* failures).
+- **Bootstrap**: 43 files, ~18700 LOC, 188 tests (183 passing, 5 pre-existing interp_* failures).
 
 ## Watch Out For
 - **D087 是唯一真相**：每轮开头读 D087，不重新讨论选型
@@ -69,6 +73,7 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - **interp_builtins.ss forward refs**: 该文件通过 forward reference 调用 interp.ss 的函数（interpNewVal、interpAsStr 等）和 interpCallValue。registerAllDecls 确保安全。
 - **Map 值存储**: interpMapEntries (`"valId:keyStr" → "valId"`) + interpMapKeyIds (`"valId" → "keyValId1,keyValId2,..."`). interpResetBuiltins() 清理。
 - **comptime 块独立**: interpExecComptime 每次 reset，块间不共享状态。@typeInfo 直接查编译器注册表，不走解释器类系统。
+- **comptimeIR 跨块累积**: comptimeIR 不在 interpReset 中清理，在 resetCodegen 中初始化。genStmt 在每个 COMPTIME_BLOCK 后 flush。
 - **classNodeIds vs interpClasses**: classNodeIds 是编译器的类注册表（gen_class.ss），interpClasses 是解释器的类注册表（comptime 块内声明的类）。两者完全独立。
 - **@typeInfo 只在 comptime 中有效**: TYPEINFO_EXPR 在 parseAtom 解析，checker 跳过 comptime 块所以不检查。
 - **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen, Kotlin/Scala syntax. Do not propose.

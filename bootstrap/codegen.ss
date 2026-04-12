@@ -3,6 +3,7 @@
 // Uses SSA registers (%1, %2, ...) and named allocas for variables.
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "./parser"
+import { interpClearComptimeIR } from "./interp"
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -366,6 +367,8 @@ function resetCodegen() {
     initClassState()
     initFuncRegistry()
     initVarAliases()
+    // Comptime IR (D087 Phase 3b)
+    interpClearComptimeIR()
     // IR output
     irBuf = ""
     strConsts = ""

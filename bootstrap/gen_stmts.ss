@@ -2,7 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
-import { interpExecComptime } from "./interp"
+import { interpExecComptime, interpGetComptimeIR, interpClearComptimeIR } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 
@@ -308,6 +308,12 @@ function genStmt(id: int) {
     if (kind == "THROW") { genThrow(id); return }
     if (kind == "COMPTIME_BLOCK") {
         interpExecComptime(nGetI1(id))
+        // D087 Phase 3b: flush any LLVM IR emitted by comptime emit() calls
+        const cIR = interpGetComptimeIR()
+        if (cIR != "") {
+            emitIR(cIR)
+            interpClearComptimeIR()
+        }
         return
     }
 }
