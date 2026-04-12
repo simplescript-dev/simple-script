@@ -1,4 +1,4 @@
-# Round 156
+# Round 157
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -9,21 +9,21 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 ## Read These Files
 - docs/4-issues/1-open/ (check remaining open issues)
 - lib/comptime.ss (all built-in derive handlers + helpers)
-- tests/phase5/comptime_derive_custom.ss (custom derive test)
+- tests/phase5/comptime_showcase.ss (comprehensive showcase combining 7 features)
 
 ## Last Round (max 3 sentences)
-Added @derive("Equals") built-in handler for field-by-field equality comparison. Demonstrated user-defined custom derive handlers (ctDeriveDebug) proving the derive system is extensible. 204/209 tests pass, bootstrap fixed-point verified.
+Created comptime comprehensive showcase test combining shell execution, file I/O config parsing, built-in @derive, user-defined @derive(Schema), auto-registry via type discovery, conditional compilation, and comptimeAssert in a single real-world scenario. 205/210 tests pass, bootstrap fixed-point verified.
 
 ## Task
 **Continue comptime enhancement toward Zig-level**
 
 1. **Check `docs/4-issues/1-open/`** for remaining open issues (priority: fix before new features)
 2. If no actionable issues, continue comptime roadmap:
-   - **Comptime comprehensive showcase**: combine all features in a real-world scenario (build info module, auto-registry, config-driven codegen)
-   - **Comptime code validation**: compile-time structural checks — e.g., `fieldCount(cls)`, `fieldNames(cls)`, `implements(cls, iface)`, `isSubclassOf(child, parent)`
+   - **Comptime code validation**: compile-time structural checks — `fieldCount(cls)`, `fieldNames(cls)`, `implements(cls, iface)`, `isSubclassOf(child, parent)`
    - **Comptime Map operations**: generate runtime lookup tables from compile-time Maps
    - **Comptime array comprehension**: generate arrays/lists at compile time
    - **@derive new handlers**: consider Hash, Copy, or other common patterns
+   - **Comptime loop unrolling**: generate repetitive code from comptime loops (e.g., N fields → N accessors)
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -58,6 +58,7 @@ Added @derive("Equals") built-in handler for field-by-field equality comparison.
 - **Equals**: generates `equals(other: ClassName): int` — field-by-field comparison (0/1)
 
 ### Proven Comptime Patterns (test-verified)
+- **Comprehensive showcase**: 7 features combined in one scenario (comptime_showcase.ss)
 - **Shell execution**: git hash, build timestamp, uname, conditional on kernel (comptime_shell.ss)
 - **Type discovery**: classNames/enumNames → auto-describe + enum registry (comptime_discovery.ss)
 - **Type generation**: enum/interface/class with polymorphic dispatch (comptime_type_gen.ss)
@@ -65,7 +66,7 @@ Added @derive("Equals") built-in handler for field-by-field equality comparison.
 - **Conditional compilation**: OS/ARCH/DEBUG + comptimeAssert (comptime_conditional.ss)
 - **Class generation**: Vector3/Pair/Greeting with RC (comptime_class_gen.ss)
 - **@derive built-in**: ToJson/ToString/Equals (comptime_derive.ss, comptime_derive_custom.ss)
-- **@derive user-defined**: ctDeriveDebug custom handler (comptime_derive_custom.ss)
+- **@derive user-defined**: ctDeriveDebug/ctDeriveSchema custom handlers (comptime_derive_custom.ss, comptime_showcase.ss)
 - **Class-level comptime**: describe/fieldCount/fieldNames (comptime_class_methods.ss)
 - **Inline comptime**: `const x = comptime { return 6 * 7 }` (comptime_inline_expr.ss)
 - **Comptime library**: lib/comptime.ss helpers (comptime_library.ss)
@@ -74,13 +75,13 @@ Added @derive("Equals") built-in handler for field-by-field equality comparison.
 - **JSON serialization**: standalone serializeX(obj) (comptime_json_serializer.ss)
 
 ### Project Status
-- **Bootstrap**: 47 files, ~18700 LOC, 209 tests (204 passing, 5 pre-existing interp_* failures).
-- **Comptime system**: 18 comptime tests, full type generation + discovery + shell execution + custom derives.
+- **Bootstrap**: 47 files, ~18700 LOC, 210 tests (205 passing, 5 pre-existing interp_* failures).
+- **Comptime system**: 19 comptime tests, full type generation + discovery + shell execution + custom derives + showcase.
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **shellOutput temp file**: Uses /tmp/ss_comptime_exec.tmp — concurrent compilations could conflict.
+- **shellOutput trailing newline**: Always `.trim()` shell output before embedding in generated code strings.
 - **COMPTIME_EXPR in genGlobalVar**: Emits typed globals directly.
 - **emittedDispatchers guard**: emitIfaceDispatchFn is idempotent.
 - **flushComptimeSS 5-pass**: Pass 0 VAR_DECL → Pass 1 type registration → Pass 2 FUNC_DECL → Pass 3 codegen → Pass 4 interface dispatchers.
