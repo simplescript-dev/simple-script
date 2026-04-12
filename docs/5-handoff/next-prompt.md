@@ -1,4 +1,4 @@
-# Round 138
+# Round 139
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,11 +8,11 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D087-comptime.md (comptime full design + implementation path + details)
-- bootstrap/gen_annotations.ss (annotation dispatch — collection + handler calls only, no IR generation)
+- bootstrap/interp.ss (interpreter core — value storage, scope, class infra, reset)
 - lib/spring/boot.ss (comptime factory + wrapper generation block)
 
 ## Last Round (max 3 sentences)
-Completed D087 Phase 4c: removed dead factory/wrapper codegen from gen_annotations.ss. Deleted emitFactory(), emitMethodWrapper(), annClassSet, and factory/wrapper generation loops from emitAnnotationInits(). File reduced from 282 to 148 lines (-48%), retaining only annotation collection and handler dispatch. 184 tests passing, bootstrap fixed-point verified.
+Split interp.ss (1272 lines) into 5 files by responsibility: interp.ss core (303), interp_eval.ss (237), interp_calls.ss (393), interp_exec.ss (210), interp_reflect.ss (146). Fixed a latent bug: added collectBeans("SpringBootApplication") in boot.ss — the removed gen_annotations.ss fallback had been masking the missing factory generation for @SpringBootApplication classes. 184 tests passing, bootstrap fixed-point verified.
 
 ## Task
 **D087 Phase 4d: Verify full comptime pipeline — end-to-end annotation test**
@@ -71,7 +71,8 @@ Design consideration:
 - **Phase 4c cleanup**: gen_annotations.ss reduced to collection + handler dispatch only. emitFactory/emitMethodWrapper/annClassSet deleted. No fallback IR generation
 - **D085 done**: Package system
 - **D082 Phase 1-4 done**: ref/watch, Thread, Channel<T>
-- **Bootstrap**: 43 files, ~18700 LOC, 189 tests (184 passing, 5 pre-existing interp_* failures).
+- **Interpreter split**: interp.ss (core 303) + interp_eval.ss (237) + interp_calls.ss (393) + interp_exec.ss (210) + interp_reflect.ss (146) + interp_builtins.ss (321)
+- **Bootstrap**: 47 files, ~18700 LOC, 189 tests (184 passing, 5 pre-existing interp_* failures).
 
 ## Watch Out For
 - **D087 is the single source of truth**: read D087 at start, don't re-discuss selection
@@ -79,6 +80,7 @@ Design consideration:
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
 - **interp.ss bootstrap safe**: interpreter is plain SS code, seed can compile. Interpreter doesn't use comptime itself.
+- **Interpreter file split**: interp.ss imports interp_eval/calls/exec/reflect. Sub-files use forward references (no imports between them), same pattern as interp_builtins.ss.
 - **Lexer multi-call fixed**: tokenize() now resets token array.
 - **FUNC_DECL I4 conflict**: I4 is used for both annotations and isAbstract. Known issue.
 - **RETURN flag ordering**: interpReturnFlag must be set AFTER interpEval(returnExpr), not before.
@@ -98,7 +100,8 @@ Design consideration:
 - **@typeInfo only in comptime**: TYPEINFO_EXPR parsed in parseAtom, checker skips comptime blocks.
 - **@comptimeEmit two-pass**: first pass registers FUNC_DECL nodes, second pass calls genStmt — enables forward references between generated functions.
 - **getAnnotatedClasses queries annClassNodeIds/annClassAnnNames**: these are populated during registerAllDecls (before codegen), so available when comptime blocks execute.
-- **comptime factory vs gen_annotations.ss**: comptime-generated factories register in funcRetTypes via registerFunction(). gen_annotations.ss only dispatches handler calls, no IR generation
+- **comptime factory vs gen_annotations.ss**: comptime-generated factories register in funcRetTypes via registerFunction(). gen_annotations.ss only dispatches handler calls, no IR generation.
+- **collectBeans coverage**: boot.ss comptime must collectBeans for ALL annotations whose classes need factories (Component/Service/Repository/RestController/SpringBootApplication). Missing one causes undefined symbol at link time.
 - **interpUpdateVar updates across scopes**: finds variable in parent scope and updates there, enabling closures in comptime blocks.
 - **interpToStr doesn't handle array type**: returns "null" for arrays in template strings — values are correct, just display issue.
 - **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen, Kotlin/Scala syntax. Do not propose.
