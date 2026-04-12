@@ -160,6 +160,21 @@ function interpCall(nodeId: int): int {
         const fePath = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
         return interpNewInt(fileExists(fePath))
     }
+    // Built-in: system(cmd) — execute shell command at compile time, return exit code
+    if (name == "system") {
+        if (argList == "") { return interpNewInt(-1) }
+        const sysCmd = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        return interpNewInt(system(sysCmd))
+    }
+    // Built-in: shellOutput(cmd) — execute shell command, return stdout as string
+    if (name == "shellOutput") {
+        if (argList == "") { return interpNewString("") }
+        const soCmd = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        const soTmp = "/tmp/ss_comptime_exec.tmp"
+        system(`${soCmd} > ${soTmp} 2>/dev/null`)
+        const soOut = readFile(soTmp)
+        return interpNewString(soOut)
+    }
     // Built-in: classNames() — return array of all registered class names
     if (name == "classNames") {
         const cnList = classFields.keys()
