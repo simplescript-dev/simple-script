@@ -178,4 +178,30 @@ comptime {
     function ctDeriveEquals(className: string) {
         @comptimeEmit(ctGenMethodEquals(className))
     }
+
+    // ── Structural validation helpers ──
+
+    function ctAssertHasField(cls: string, field: string) {
+        if (hasField(cls, field) == 0) {
+            compileError(`${cls} must have field '${field}'`)
+        }
+    }
+
+    function ctAssertHasMethod(cls: string, method: string) {
+        if (hasMethod(cls, method) == 0) {
+            compileError(`${cls} must have method '${method}'`)
+        }
+    }
+
+    function ctAssertImplements(cls: string, iface: string) {
+        if (hasInterface(cls, iface) == 0) {
+            compileError(`${cls} must implement ${iface}`)
+        }
+    }
+
+    function ctAssertExtends(child: string, parent: string) {
+        if (isSubclassOf(child, parent) == 0) {
+            compileError(`${child} must extend ${parent}`)
+        }
+    }
 }

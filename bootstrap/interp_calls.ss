@@ -215,6 +215,48 @@ function interpCall(nodeId: int): int {
         const hmSearch = `,${hmMethods},`
         return interpNewInt(hmSearch.indexOf(`,${hmMethod},`) >= 0 ? 1 : 0)
     }
+    // Built-in: fieldCount(className) — return number of fields in a class
+    if (name == "fieldCount") {
+        if (argList == "") { return interpNewInt(0) }
+        const fcClass = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        if (classFields.has(fcClass) == 0) { return interpNewInt(0) }
+        const fcStr = classFields.getString(fcClass)
+        if (fcStr == "") { return interpNewInt(0) }
+        return interpNewInt(fcStr.split(",").length())
+    }
+    // Built-in: fieldNames(className) — return comma-separated field names string
+    if (name == "fieldNames") {
+        if (argList == "") { return interpNewString("") }
+        const fnClass = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        if (classFields.has(fnClass) == 0) { return interpNewString("") }
+        return interpNewString(classFields.getString(fnClass))
+    }
+    // Built-in: hasInterface(className, ifaceName) — check if class implements interface, returns 0/1
+    if (name == "hasInterface") {
+        if (argList == "") { return interpNewInt(0) }
+        const imArgs = argList.split(",")
+        if (imArgs.length() < 2) { return interpNewInt(0) }
+        const imClass = interpAsStr(interpEval(parseInt(imArgs[0])))
+        const imIface = interpAsStr(interpEval(parseInt(imArgs[1])))
+        if (ifaceImplementors.has(imIface) == 0) { return interpNewInt(0) }
+        const imImpls = `,${ifaceImplementors.getString(imIface)},`
+        return interpNewInt(imImpls.indexOf(`,${imClass},`) >= 0 ? 1 : 0)
+    }
+    // Built-in: isSubclassOf(child, parent) — check inheritance chain, returns 0/1
+    if (name == "isSubclassOf") {
+        if (argList == "") { return interpNewInt(0) }
+        const scArgs = argList.split(",")
+        if (scArgs.length() < 2) { return interpNewInt(0) }
+        const scChild = interpAsStr(interpEval(parseInt(scArgs[0])))
+        const scParent = interpAsStr(interpEval(parseInt(scArgs[1])))
+        if (scChild == "" || scParent == "") { return interpNewInt(0) }
+        let scCls = scChild
+        while (classParents.has(scCls) == 1) {
+            scCls = classParents.getString(scCls)
+            if (scCls == scParent) { return interpNewInt(1) }
+        }
+        return interpNewInt(0)
+    }
 
     // Look up function value
     const fnVal = interpGetVar(name)
