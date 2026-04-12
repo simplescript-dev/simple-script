@@ -56,7 +56,6 @@ function collectClassAnnotations(classId: int) {
         const aId = parseInt(ap)
         if (aId <= 0 || nGetKind(aId) != "ANNOTATION") { continue }
         const annName = nGetS1(aId)
-        if (annHandlerMap.has(annName) == 0) { continue }
         annClassNodeIds = annClassNodeIds.push(`${classId}`)
         annClassAnnNames = annClassAnnNames.push(annName)
         annClassAnnArgs = annClassAnnArgs.push(nGetS2(aId))
@@ -83,7 +82,6 @@ function collectMethodAnnotations(classId: int) {
             const maId = parseInt(ma)
             if (maId <= 0 || nGetKind(maId) != "ANNOTATION") { continue }
             const mAnnName = nGetS1(maId)
-            if (annHandlerMap.has(mAnnName) == 0) { continue }
             annMethodClassIds = annMethodClassIds.push(`${classId}`)
             annMethodFuncIds = annMethodFuncIds.push(`${mId}`)
             annMethodAnnNames = annMethodAnnNames.push(mAnnName)
@@ -105,6 +103,7 @@ function emitAnnotationInits() {
         const classId = parseInt(annClassNodeIds[i])
         const className = nGetS1(classId)
         const annName = annClassAnnNames[i]
+        if (annHandlerMap.has(annName) == 0) { i = i + 1; continue }
         const annArg = annClassAnnArgs[i]
         const handlerName = annHandlerMap.getString(annName)
 
@@ -128,6 +127,7 @@ function emitAnnotationInits() {
         const className = nGetS1(classId)
         const methodName = nGetS1(funcId)
         const annName = annMethodAnnNames[i]
+        if (annHandlerMap.has(annName) == 0) { i = i + 1; continue }
         const annArg = annMethodAnnArgs[i]
         const handlerName = annHandlerMap.getString(annName)
 
