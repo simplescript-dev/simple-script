@@ -179,6 +179,60 @@ comptime {
         @comptimeEmit(ctGenMethodEquals(className))
     }
 
+    // ── Copy derive: generates copy() returning new instance with same field values ──
+
+    function ctGenMethodCopy(className: string): string {
+        const info = getTypeInfo(className)
+        let args = ""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            if (i > 0) { args = args + ", " }
+            args = args + f.name + ": this." + f.name
+            i = i + 1
+        }
+        return "function copy(): " + className + " {\n    return new " + className + "(" + args + ")\n}"
+    }
+
+    function ctDeriveCopy(className: string) {
+        @comptimeEmit(ctGenMethodCopy(className))
+    }
+
+    // ── String helpers ──
+
+    function ctCapitalize(s: string): string {
+        return s.charAt(0).toUpperCase() + s.substring(1, s.length())
+    }
+
+    // ── With derive: generates withXxx() per-field wither methods (immutable builder) ──
+
+    function ctGenMethodWithField(className: string, info: TypeInfo, fieldIdx: int): string {
+        const target = info.fields[fieldIdx]
+        const cap = ctCapitalize(target.name)
+        let args = ""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            if (i > 0) { args = args + ", " }
+            if (i == fieldIdx) {
+                args = args + f.name + ": " + f.name
+            } else {
+                args = args + f.name + ": this." + f.name
+            }
+            i = i + 1
+        }
+        return "function with" + cap + "(" + target.name + ": " + target.type + "): " + className + " {\n    return new " + className + "(" + args + ")\n}"
+    }
+
+    function ctDeriveWith(className: string) {
+        const info = getTypeInfo(className)
+        let i = 0
+        while (i < info.fields.length()) {
+            @comptimeEmit(ctGenMethodWithField(className, info, i))
+            i = i + 1
+        }
+    }
+
     // ── Structural validation helpers ──
 
     function ctAssertHasField(cls: string, field: string) {
@@ -203,5 +257,127 @@ comptime {
         if (isSubclassOf(child, parent) == 0) {
             compileError(`${child} must extend ${parent}`)
         }
+    }
+
+    // ── String utilities for code generation ──
+
+    // Join comma-separated items with a custom separator
+    function ctJoin(items: string, sep: string): string {
+        if (items == "") { return "" }
+        const parts = items.split(",")
+        let result = ""
+        let i = 0
+        while (i < parts.length()) {
+            if (i > 0) { result = result + sep }
+            result = result + parts[i]
+            i = i + 1
+        }
+        return result
+    }
+
+    // Repeat a string N times
+    function ctRepeat(s: string, n: int): string {
+        let result = ""
+        let i = 0
+        while (i < n) {
+            result = result + s
+            i = i + 1
+        }
+        return result
+    }
+
+    // Add prefix to each newline-separated line
+    function ctIndent(code: string, prefix: string): string {
+        const lines = code.split("\n")
+        let result = ""
+        let i = 0
+        while (i < lines.length()) {
+            if (i > 0) { result = result + "\n" }
+            if (lines[i] != "") {
+                result = result + prefix + lines[i]
+            }
+            i = i + 1
+        }
+        return result
+    }
+
+    // Wrap each comma-separated item with prefix/suffix, join with sep
+    function ctWrap(items: string, prefix: string, suffix: string, sep: string): string {
+        if (items == "") { return "" }
+        const parts = items.split(",")
+        let result = ""
+        let i = 0
+        while (i < parts.length()) {
+            if (i > 0) { result = result + sep }
+            result = result + prefix + parts[i] + suffix
+            i = i + 1
+        }
+        return result
+    }
+
+    // ── Default derive: generates empty() returning zero-value instance ──
+
+    function ctGenMethodEmpty(className: string): string {
+        const info = getTypeInfo(className)
+        let args = ""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            if (i > 0) { args = args + ", " }
+            if (f.type == "int") {
+                args = args + f.name + ": 0"
+            } else if (f.type == "double") {
+                args = args + f.name + ": 0.0"
+            } else {
+                args = args + f.name + ": \"\""
+            }
+            i = i + 1
+        }
+        return "function empty(): " + className + " {\n    return new " + className + "(" + args + ")\n}"
+    }
+
+    function ctDeriveDefault(className: string) {
+        @comptimeEmit(ctGenMethodEmpty(className))
+    }
+
+    // ── Lookup table generation ──
+
+    // Generate a lookup function from comma-separated keys and values
+    // retType: "string" or "int"; fallback: value returned when key not found
+    function ctGenLookup(funcName: string, keys: string, values: string, retType: string, fallback: string): string {
+        const keyParts = keys.split(",")
+        const valParts = values.split(",")
+        let body = ""
+        let i = 0
+        while (i < keyParts.length()) {
+            if (i < valParts.length()) {
+                if (retType == "string") {
+                    body = body + "    if (key == \"" + keyParts[i] + "\") { return \"" + valParts[i] + "\" }\n"
+                } else {
+                    body = body + "    if (key == \"" + keyParts[i] + "\") { return " + valParts[i] + " }\n"
+                }
+            }
+            i = i + 1
+        }
+        return "function " + funcName + "(key: string): " + retType + " {\n" + body + "    return " + fallback + "\n}"
+    }
+
+    // Generate a reverse lookup function (value -> key)
+    function ctGenReverseLookup(funcName: string, keys: string, values: string, valType: string, fallback: string): string {
+        const keyParts = keys.split(",")
+        const valParts = values.split(",")
+        let body = ""
+        let i = 0
+        while (i < keyParts.length()) {
+            if (i < valParts.length()) {
+                if (valType == "string") {
+                    body = body + "    if (value == \"" + valParts[i] + "\") { return \"" + keyParts[i] + "\" }\n"
+                } else {
+                    body = body + "    if (value == " + valParts[i] + ") { return \"" + keyParts[i] + "\" }\n"
+                }
+            }
+            i = i + 1
+        }
+        return "function " + funcName + "(value: " + valType + "): string {\n" + body + "    return " + fallback + "\n}"
     }
 }
