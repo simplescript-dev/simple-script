@@ -2,7 +2,8 @@
 //
 // D086: compiler provides ONE tool — annotation dispatch.
 // annotationMapping(name, handler) in lib registers annotation→handler mapping.
-// Compiler generates factories + method wrappers, calls handler with fn pointers.
+// Comptime blocks generate factories + method wrappers (D087).
+// This module collects annotations and dispatches handler calls with fn pointers.
 // ALL framework logic (DI, routing, lifecycle) lives in lib handler functions.
 
 import { nGetKind, nGetS1, nGetS2, nGetI2, nGetI4, nGetList } from "./parser"
@@ -23,9 +24,6 @@ let annMethodFuncIds: Array<string> = []
 let annMethodAnnNames: Array<string> = []
 let annMethodAnnArgs: Array<string> = []
 
-// Set of all annotated class names (for factory dependency detection)
-let annClassSet = new Map()
-
 function resetAnnotationState() {
     annHandlerMap = new Map()
     annClassNodeIds = []
@@ -35,7 +33,6 @@ function resetAnnotationState() {
     annMethodFuncIds = []
     annMethodAnnNames = []
     annMethodAnnArgs = []
-    annClassSet = new Map()
 }
 
 // ── Registration (called from codegen.ss for annotationMapping() directives) ──
@@ -54,7 +51,6 @@ function collectClassAnnotations(classId: int) {
     if (annList == "") { return }
 
     const className = nGetS1(classId)
-    let hasAnn = 0
     const annParts = annList.split(",")
     for (ap in annParts) {
         const aId = parseInt(ap)
@@ -64,10 +60,6 @@ function collectClassAnnotations(classId: int) {
         annClassNodeIds = annClassNodeIds.push(`${classId}`)
         annClassAnnNames = annClassAnnNames.push(annName)
         annClassAnnArgs = annClassAnnArgs.push(nGetS2(aId))
-        hasAnn = 1
-    }
-    if (hasAnn == 1) {
-        annClassSet.set(className, "1")
     }
     collectMethodAnnotations(classId)
 }
@@ -77,7 +69,6 @@ function collectMethodAnnotations(classId: int) {
     if (methodsBlockId <= 0) { return }
     const mList = nGetList(methodsBlockId)
     if (mList == "") { return }
-    const className = nGetS1(classId)
     const mParts = mList.split(",")
     for (mp in mParts) {
         const mId = parseInt(mp)
@@ -97,139 +88,19 @@ function collectMethodAnnotations(classId: int) {
             annMethodFuncIds = annMethodFuncIds.push(`${mId}`)
             annMethodAnnNames = annMethodAnnNames.push(mAnnName)
             annMethodAnnArgs = annMethodAnnArgs.push(nGetS2(maId))
-            annClassSet.set(className, "1")
         }
     }
-}
-
-// ── Factory generation ────────────────────────────────────────
-// Generates a cached singleton factory: @__ann_factory_ClassName()
-// Dependencies on other annotated classes resolved via their factories.
-
-function emitFactory(className: string) {
-    arrowDefs = `${arrowDefs}@__ann_cache_${className} = internal global ptr null\n`
-
-    let body = `define ptr @__ann_factory_${className}() {\nentry:\n`
-    body = `${body}  %cached = load ptr, ptr @__ann_cache_${className}\n`
-    body = `${body}  %isNull = icmp eq ptr %cached, null\n`
-    body = `${body}  br i1 %isNull, label %create, label %done\n`
-    body = `${body}create:\n`
-
-    const fieldStr = classFields.getString(className)
-    let callArgs = ""
-    if (fieldStr != "") {
-        const fields = fieldStr.split(",")
-        let argIdx = 0
-        for (f in fields) {
-            const fType = classFieldTypes.getString(`${className}.${f}`)
-            let argVal = ""
-            if (annClassSet.has(fType) == 1) {
-                body = `${body}  %dep.${argIdx} = call ptr @__ann_factory_${fType}()\n`
-                argVal = `ptr %dep.${argIdx}`
-            } else {
-                const llvmType = ssTypeToLLVM(fType)
-                if (llvmType == "i32") { argVal = "i32 0" }
-                else if (llvmType == "double") { argVal = "double 0.0" }
-                else { argVal = "ptr null" }
-            }
-            if (callArgs == "") { callArgs = argVal } else { callArgs = `${callArgs}, ${argVal}` }
-            argIdx = argIdx + 1
-        }
-    }
-
-    if (callArgs == "") {
-        body = `${body}  %inst = call ptr @${className}_new()\n`
-    } else {
-        body = `${body}  %inst = call ptr @${className}_new(${callArgs})\n`
-    }
-    body = `${body}  store ptr %inst, ptr @__ann_cache_${className}\n`
-    body = `${body}  br label %done\n`
-    body = `${body}done:\n`
-    body = `${body}  %result = load ptr, ptr @__ann_cache_${className}\n`
-    body = `${body}  ret ptr %result\n}\n\n`
-
-    arrowDefs = `${arrowDefs}${body}`
-}
-
-// ── Method wrapper generation ─────────────────────────────────
-// All wrappers have uniform signature: (ptr request, ptr response) -> ptr
-// Wrapper calls factory to get/create instance, then calls method.
-
-function emitMethodWrapper(wrapperName: string, className: string, funcDeclId: int) {
-    let wrapBody = `define ptr @${wrapperName}(ptr %request, ptr %response) {\nentry:\n`
-    wrapBody = `${wrapBody}  %inst = call ptr @__ann_factory_${className}()\n`
-
-    let callArgs = `ptr %inst`
-    let pvIdx = 0
-    if (funcDeclId > 0) {
-        const paramList = nGetList(funcDeclId)
-        if (paramList != "") {
-            const paramParts = paramList.split(",")
-            for (pp in paramParts) {
-                const pId = parseInt(pp)
-                if (pId <= 0) { continue }
-                const pAnnId = nGetI4(pId)
-                if (pAnnId > 0 && nGetKind(pAnnId) == "ANNOTATION") {
-                    // Any parameter annotation → extract value by param name from request
-                    const pvStr = addStringConst(nGetS1(pId))
-                    wrapBody = `${wrapBody}  %pv.${pvIdx} = call ptr @HttpServletRequest_getPathVariable(ptr %request, ptr ${pvStr})\n`
-                    callArgs = `${callArgs}, ptr %pv.${pvIdx}`
-                    pvIdx = pvIdx + 1
-                } else {
-                    const cpType = nGetS2(pId)
-                    if (cpType == "HttpServletRequest") {
-                        callArgs = `${callArgs}, ptr %request`
-                    } else if (cpType == "HttpServletResponse") {
-                        callArgs = `${callArgs}, ptr %response`
-                    } else {
-                        callArgs = `${callArgs}, ptr null`
-                    }
-                }
-            }
-        }
-    }
-
-    const methodName = nGetS1(funcDeclId)
-    wrapBody = `${wrapBody}  %r = call ptr @${className}_${methodName}(${callArgs})\n`
-    wrapBody = `${wrapBody}  ret ptr %r\n}\n\n`
-    arrowDefs = `${arrowDefs}${wrapBody}`
 }
 
 // ── Emission ──────────────────────────────────────────────────
+// Comptime blocks generate factory + wrapper IR (via emit/registerFunction).
+// This function dispatches handler calls with fn pointers at init time.
 
 function emitAnnotationInits() {
     if (annClassAnnNames.length() == 0 && annMethodAnnNames.length() == 0) { return }
 
-    // Generate factories for annotated classes (skip if comptime already generated them)
-    let factoryGenerated = new Map()
-    let i = 0
-    while (i < annClassNodeIds.length()) {
-        const classId = parseInt(annClassNodeIds[i])
-        const className = nGetS1(classId)
-        if (factoryGenerated.has(className) == 0) {
-            if (funcRetTypes.has(`__ann_factory_${className}`) == 0) {
-                emitFactory(className)
-            }
-            factoryGenerated.set(className, "1")
-        }
-        i = i + 1
-    }
-    // Also for classes that only have method annotations
-    i = 0
-    while (i < annMethodClassIds.length()) {
-        const classId = parseInt(annMethodClassIds[i])
-        const className = nGetS1(classId)
-        if (factoryGenerated.has(className) == 0) {
-            if (funcRetTypes.has(`__ann_factory_${className}`) == 0) {
-                emitFactory(className)
-            }
-            factoryGenerated.set(className, "1")
-        }
-        i = i + 1
-    }
-
     // Call handlers for class annotations (before method annotations)
-    i = 0
+    let i = 0
     while (i < annClassAnnNames.length()) {
         const classId = parseInt(annClassNodeIds[i])
         const className = nGetS1(classId)
@@ -249,9 +120,7 @@ function emitAnnotationInits() {
         i = i + 1
     }
 
-    // Generate wrappers and call handlers for method annotations
-    // Uses deterministic naming: __ann_wrapper_ClassName_methodName (D087 Phase 4b)
-    // Skips wrapper generation when comptime already emitted it (funcRetTypes check)
+    // Call handlers for method annotations
     i = 0
     while (i < annMethodAnnNames.length()) {
         const classId = parseInt(annMethodClassIds[i])
@@ -263,9 +132,6 @@ function emitAnnotationInits() {
         const handlerName = annHandlerMap.getString(annName)
 
         const wrapperName = `__ann_wrapper_${className}_${methodName}`
-        if (funcRetTypes.has(wrapperName) == 0) {
-            emitMethodWrapper(wrapperName, className, funcId)
-        }
 
         const nameStr = addStringConst(annName)
         const classStr = addStringConst(className)
