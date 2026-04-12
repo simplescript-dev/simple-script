@@ -148,8 +148,24 @@ comptime {
         return "function toString(): string {\n" + body + "\n}"
     }
 
+    // ── Equals generator ──
+
+    function ctGenMethodEquals(className: string): string {
+        const info = getTypeInfo(className)
+        let body = ""
+        let i = 0
+        while (i < info.fields.length()) {
+            const f = info.fields[i]
+            body = body + "    if (this." + f.name + " != other." + f.name + ") { return 0 }\n"
+            i = i + 1
+        }
+        body = body + "    return 1"
+        return "function equals(other: " + className + "): int {\n" + body + "\n}"
+    }
+
     // ── @derive handlers ──
     // Convention: @derive("Xxx") calls ctDeriveXxx(className)
+    // Users can define their own ctDeriveXxx(className) in comptime blocks.
 
     function ctDeriveToJson(className: string) {
         @comptimeEmit(ctGenMethodToJson(className))
@@ -157,5 +173,9 @@ comptime {
 
     function ctDeriveToString(className: string) {
         @comptimeEmit(ctGenMethodToString(className))
+    }
+
+    function ctDeriveEquals(className: string) {
+        @comptimeEmit(ctGenMethodEquals(className))
     }
 }
