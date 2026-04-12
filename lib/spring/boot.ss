@@ -63,6 +63,96 @@ annotationMapping("PutMapping", springAnnotationHandler)
 annotationMapping("DeleteMapping", springAnnotationHandler)
 annotationMapping("PatchMapping", springAnnotationHandler)
 
+// ── Comptime: generate singleton factory functions for beans (D087 Phase 4a) ──
+// Replaces hardcoded LLVM IR factory generation in gen_annotations.ss.
+// Uses @typeInfo reflection + emit() to generate the same factory pattern:
+//   @__ann_cache_ClassName (global ptr null) + @__ann_factory_ClassName()
+
+comptime {
+    // Collect all bean classes across DI annotations
+    let beanSet = new Map()
+    let beanNames: Array<string> = []
+
+    function collectBeans(annName: string) {
+        const classes = getAnnotatedClasses(annName)
+        let j = 0
+        while (j < classes.length()) {
+            const cn = classes[j]
+            if (beanSet.has(cn) == 0) {
+                beanSet.set(cn, "1")
+                beanNames = beanNames.push(cn)
+            }
+            j = j + 1
+        }
+    }
+
+    collectBeans("Component")
+    collectBeans("Service")
+    collectBeans("Repository")
+    collectBeans("RestController")
+
+    // Generate singleton factory for each bean class
+    let bi = 0
+    while (bi < beanNames.length()) {
+        const className = beanNames[bi]
+        const info = getTypeInfo(className)
+
+        // Cache global
+        emit(`@__ann_cache_${className} = internal global ptr null\n`)
+
+        // Factory function: check cache, create if null, return cached
+        let body = `define ptr @__ann_factory_${className}() {\nentry:\n`
+        body = body + `  %cached = load ptr, ptr @__ann_cache_${className}\n`
+        body = body + `  %isNull = icmp eq ptr %cached, null\n`
+        body = body + `  br i1 %isNull, label %create, label %done\n`
+        body = body + `create:\n`
+
+        // Build constructor args: bean fields → call their factory, others → zero/null
+        const fields = info.fields
+        let callArgs = ""
+        let fi = 0
+        while (fi < fields.length()) {
+            const f = fields[fi]
+            const fType = f.type
+            let argVal = ""
+            if (beanSet.has(fType) == 1) {
+                body = body + `  %dep.${fi} = call ptr @__ann_factory_${fType}()\n`
+                argVal = `ptr %dep.${fi}`
+            } else {
+                if (fType == "int" || fType == "bool") {
+                    argVal = "i32 0"
+                } else if (fType == "double") {
+                    argVal = "double 0.0"
+                } else {
+                    argVal = "ptr null"
+                }
+            }
+            if (callArgs == "") {
+                callArgs = argVal
+            } else {
+                callArgs = callArgs + ", " + argVal
+            }
+            fi = fi + 1
+        }
+
+        if (callArgs == "") {
+            body = body + `  %inst = call ptr @${className}_new()\n`
+        } else {
+            body = body + `  %inst = call ptr @${className}_new(${callArgs})\n`
+        }
+        body = body + `  store ptr %inst, ptr @__ann_cache_${className}\n`
+        body = body + `  br label %done\n`
+        body = body + `done:\n`
+        body = body + `  %result = load ptr, ptr @__ann_cache_${className}\n`
+        body = body + `  ret ptr %result\n}\n\n`
+
+        emit(body)
+        registerFunction(`__ann_factory_${className}`, className, 0)
+
+        bi = bi + 1
+    }
+}
+
 // ── Route registry ───────────────────────────────────────────
 
 // Each route: { method, pattern (original string), segments (parsed), handler }

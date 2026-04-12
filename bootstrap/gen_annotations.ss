@@ -200,14 +200,16 @@ function emitMethodWrapper(wrapperName: string, className: string, funcDeclId: i
 function emitAnnotationInits() {
     if (annClassAnnNames.length() == 0 && annMethodAnnNames.length() == 0) { return }
 
-    // Generate factories for all annotated classes
+    // Generate factories for annotated classes (skip if comptime already generated them)
     let factoryGenerated = new Map()
     let i = 0
     while (i < annClassNodeIds.length()) {
         const classId = parseInt(annClassNodeIds[i])
         const className = nGetS1(classId)
         if (factoryGenerated.has(className) == 0) {
-            emitFactory(className)
+            if (funcRetTypes.has(`__ann_factory_${className}`) == 0) {
+                emitFactory(className)
+            }
             factoryGenerated.set(className, "1")
         }
         i = i + 1
@@ -218,7 +220,9 @@ function emitAnnotationInits() {
         const classId = parseInt(annMethodClassIds[i])
         const className = nGetS1(classId)
         if (factoryGenerated.has(className) == 0) {
-            emitFactory(className)
+            if (funcRetTypes.has(`__ann_factory_${className}`) == 0) {
+                emitFactory(className)
+            }
             factoryGenerated.set(className, "1")
         }
         i = i + 1

@@ -575,6 +575,38 @@ function interpCall(nodeId: int): int {
         funcParamCount.set(rfName, `${rfParamCount}`)
         return interpNewNull()
     }
+    // Built-in: getAnnotatedClasses(annName) — return array of class names with annotation (D087 Phase 4a)
+    if (name == "getAnnotatedClasses") {
+        if (argList == "") {
+            println("[comptime] getAnnotatedClasses requires 1 argument: annName")
+            return interpNewArray("")
+        }
+        const gacName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        const gacResult = interpNewArray("")
+        let gacSeen = new Map()
+        let gacI = 0
+        while (gacI < annClassAnnNames.length()) {
+            if (annClassAnnNames[gacI] == gacName) {
+                const gacClassId = parseInt(annClassNodeIds[gacI])
+                const gacClassName = nGetS1(gacClassId)
+                if (gacSeen.has(gacClassName) == 0) {
+                    interpArrayPush(gacResult, interpNewString(gacClassName))
+                    gacSeen.set(gacClassName, "1")
+                }
+            }
+            gacI = gacI + 1
+        }
+        return gacResult
+    }
+    // Built-in: getTypeInfo(className) — like @typeInfo but takes a string arg (D087 Phase 4a)
+    if (name == "getTypeInfo") {
+        if (argList == "") {
+            println("[comptime] getTypeInfo requires 1 argument: className")
+            return interpNewNull()
+        }
+        const gtiName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        return interpBuildTypeInfo(gtiName)
+    }
 
     // Look up function value
     const fnVal = interpGetVar(name)
