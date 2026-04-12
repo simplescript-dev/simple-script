@@ -396,6 +396,16 @@ function parseAtom(): int {
     if (k == "TMPL_LIT" || k == "TMPL_EXPR_START") {
         return parseTemplateLit()
     }
+    // @typeInfo(ClassName) — compile-time reflection (D087 Phase 3a)
+    if (k == "ANNOTATION" && v == "typeInfo") {
+        pAdvance()
+        pExpect("LPAREN")
+        const tiName = pExpectIdent()
+        pExpect("RPAREN")
+        const tiId = newNode("TYPEINFO_EXPR")
+        nSetS1(tiId, tiName)
+        return tiId
+    }
     if (k == "IDENT") {
         const identLine = curLineNum()
         const identCol = curColNum()

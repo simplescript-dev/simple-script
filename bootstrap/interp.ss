@@ -336,6 +336,7 @@ function interpEval(nodeId: int): int {
     if (kind == "MEMBER_ACCESS") { return interpMemberAccess(nodeId) }
     if (kind == "METHOD_CALL") { return interpMethodCall(nodeId) }
     if (kind == "ARROW_FUNC") { return interpNewVal("fn", `${nodeId}`) }
+    if (kind == "TYPEINFO_EXPR") { return interpBuildTypeInfo(nGetS1(nodeId)) }
     println(`[interp] unsupported expr: ${kind}`)
     return interpNewNull()
 }
@@ -1015,6 +1016,100 @@ function interpExec(nodeId: int) {
     }
 
     println(`[interp] unsupported stmt: ${kind}`)
+}
+
+// ── @typeInfo Reflection (D087 Phase 3a) ─────────────────────
+
+function interpBuildMethodParams(mdParts: Array<string>, mName: string): int {
+    const paramsArr = interpNewArray("")
+    let mdi = 0
+    while (mdi < mdParts.length()) {
+        const mdId = parseInt(mdParts[mdi])
+        if (nGetKind(mdId) == "FUNC_DECL" && nGetS1(mdId) == mName) {
+            const pList = nGetList(mdId)
+            if (pList != "") {
+                const pParts = pList.split(",")
+                let pi = 0
+                while (pi < pParts.length()) {
+                    const pId = parseInt(pParts[pi])
+                    if (nGetKind(pId) == "PARAM") {
+                        const pObj = interpNewVal("object", "ParamInfo")
+                        interpSetField(pObj, "name", interpNewString(nGetS1(pId)))
+                        interpSetField(pObj, "type", interpNewString(nGetS2(pId)))
+                        interpArrayPush(paramsArr, pObj)
+                    }
+                    pi = pi + 1
+                }
+            }
+            return paramsArr
+        }
+        mdi = mdi + 1
+    }
+    return paramsArr
+}
+
+function interpBuildTypeInfo(className: string): int {
+    if (classFields.has(className) == 0) {
+        println(`[interp] @typeInfo: unknown class '${className}'`)
+        return interpNewNull()
+    }
+    const infoId = interpNewVal("object", "ClassInfo")
+    interpSetField(infoId, "name", interpNewString(className))
+
+    // Fields
+    const fieldsArr = interpNewArray("")
+    const fieldStr = classFields.getString(className)
+    if (fieldStr != "") {
+        const fParts = fieldStr.split(",")
+        let fi = 0
+        while (fi < fParts.length()) {
+            const fName = fParts[fi]
+            let fType = "unknown"
+            if (classFieldTypes.has(`${className}.${fName}`) == 1) {
+                fType = classFieldTypes.getString(`${className}.${fName}`)
+            }
+            const fieldObj = interpNewVal("object", "FieldInfo")
+            interpSetField(fieldObj, "name", interpNewString(fName))
+            interpSetField(fieldObj, "type", interpNewString(fType))
+            interpArrayPush(fieldsArr, fieldObj)
+            fi = fi + 1
+        }
+    }
+    interpSetField(infoId, "fields", fieldsArr)
+
+    // Methods — cache AST method list outside loop
+    const methodsArr = interpNewArray("")
+    let mdParts: Array<string> = []
+    if (classNodeIds.has(className) == 1) {
+        const cNodeId = parseInt(classNodeIds.getString(className))
+        const mBlock = nGetI2(cNodeId)
+        if (mBlock > 0) {
+            const mList = nGetList(mBlock)
+            if (mList != "") { mdParts = mList.split(",") }
+        }
+    }
+    const methodStr = classMethods.getString(className)
+    if (methodStr != "") {
+        const mParts = methodStr.split(",")
+        let mi = 0
+        while (mi < mParts.length()) {
+            const mName = mParts[mi]
+            let mRetType = "void"
+            if (funcRetTypes.has(`${className}_${mName}`) == 1) {
+                mRetType = funcRetTypes.getString(`${className}_${mName}`)
+            }
+            const methodObj = interpNewVal("object", "MethodInfo")
+            interpSetField(methodObj, "name", interpNewString(mName))
+            interpSetField(methodObj, "returnType", interpNewString(mRetType))
+            interpSetField(methodObj, "params", interpBuildMethodParams(mdParts, mName))
+            interpArrayPush(methodsArr, methodObj)
+            mi = mi + 1
+        }
+    }
+    interpSetField(infoId, "methods", methodsArr)
+
+    interpSetField(infoId, "annotations", interpNewArray(""))
+    return infoId
 }
 
 // ── Reset ──────────────────────────────────────────────────────

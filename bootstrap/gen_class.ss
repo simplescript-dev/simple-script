@@ -20,6 +20,7 @@ let ifaceMethodsCG = ""   // "Shape" -> "area,name" (interface method list)
 let ifaceMethodRets = ""  // "Shape.area" -> "int" (return type)
 let ifaceMethodPars = ""  // "Shape.area" -> "p1:int,p2:string" (param name:type pairs)
 let ifaceImplementors = "" // "Shape" -> "Circle,Rect"
+let classNodeIds = ""     // "ClassName" -> AST node ID (for @typeInfo reflection)
 let classIds = ""         // "Dog" -> "1" (unique class_id for TypeInfo)
 let nextClassId = 1
 // Generic class inheritance: deferred struct emission + codegen tracking
@@ -53,6 +54,7 @@ function initClassState() {
     ifaceMethodRets = Map()
     ifaceMethodPars = Map()
     ifaceImplementors = Map()
+    classNodeIds = Map()
     classIds = Map()
     nextClassId = 1
     // Register Map as a built-in class (eliminates special cases)
@@ -287,6 +289,7 @@ function registerClass(id: int) {
     }
     classMethods.set(name, methodNames)
     // Assign unique class_id for TypeInfo dispatch
+    classNodeIds.set(name, `${id}`)
     classIds.set(name, `${nextClassId}`)
     nextClassId = nextClassId + 1
     // Track interface implementations
