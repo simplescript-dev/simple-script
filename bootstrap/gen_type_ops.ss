@@ -4,28 +4,32 @@
 // Assign unique tags (>= 10) to classes with ptr fields for destructor dispatch.
 // Called after resolveInheritance() so inherited fields are known.
 
+// Per-class dtor tag assignment for comptime-generated classes.
+function assignDtorTagForClass(className: string) {
+    if (classDtorTags.has(className) == 1) { return }
+    const fieldStr = classFields.getString(className)
+    if (fieldStr == "") { return }
+    let hasPtrField = 0
+    const dtFields = fieldStr.split(",")
+    for (dtf in dtFields) {
+        if (dtf == "") { continue }
+        const dtOwner = findFieldOwner(dtf, className)
+        if (dtOwner == "") { continue }
+        const dtType = classFieldTypes.getString(`${dtOwner}.${dtf}`)
+        if (dtType == "" ) { continue }
+        if (ssTypeToLLVM(dtType) == "ptr") { hasPtrField = 1 }
+    }
+    if (hasPtrField == 1) {
+        classDtorTags.set(className, `${dtorNextTag}`)
+        dtorNextTag = dtorNextTag + 1
+    }
+}
+
 function assignClassDtorTags() {
     const cList = classFields.keys()
     for (c in cList) {
         if (c == "" || c == "Map") { continue }
-        const fieldStr = classFields.getString(c)
-        if (fieldStr == "") { continue }
-        // Check if any field (own or inherited) has ptr type
-        let hasPtrField = 0
-        const fields = fieldStr.split(",")
-        for (f in fields) {
-            if (f == "") { continue }
-            const owner = findFieldOwner(f, c)
-            if (owner == "") { continue }
-            const fType = classFieldTypes.getString(`${owner}.${f}`)
-            if (fType == "") { continue }
-            const llType = ssTypeToLLVM(fType)
-            if (llType == "ptr") { hasPtrField = 1 }
-        }
-        if (hasPtrField == 1) {
-            classDtorTags.set(c, `${dtorNextTag}`)
-            dtorNextTag = dtorNextTag + 1
-        }
+        assignDtorTagForClass(c)
     }
 }
 

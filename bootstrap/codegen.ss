@@ -294,7 +294,7 @@ function registerFuncDeclNode(sid: int) {
     }
 }
 
-// Flush @comptimeEmit SS source: tokenize → parse → three-pass codegen.
+// Flush @comptimeEmit SS source: tokenize → parse → multi-pass codegen.
 // Shared by COMPTIME_BLOCK (gen_stmts) and COMPTIME_EXPR (gen_types).
 function flushComptimeSS() {
     const fss = interpGetComptimeSS()
@@ -304,6 +304,7 @@ function flushComptimeSS() {
     const fssList = nGetList(fssRoot)
     if (fssList != "") {
         const fssParts = fssList.split(",")
+        // Pass 0: VAR_DECL → global vars
         const fssSavedFunc = currentFunc
         currentFunc = ""
         for (fp in fssParts) {
@@ -311,10 +312,25 @@ function flushComptimeSS() {
             if (fsSid > 0 && nGetKind(fsSid) == "VAR_DECL") { genGlobalVar(fsSid) }
         }
         currentFunc = fssSavedFunc
+        // Pass 1: CLASS_DECL/ENUM_DECL → register before codegen
+        for (fp in fssParts) {
+            const fsSid = parseInt(fp)
+            if (fsSid <= 0) { continue }
+            const fsKind = nGetKind(fsSid)
+            if (fsKind == "CLASS_DECL") {
+                registerClass(fsSid)
+                collectClassAnnotations(fsSid)
+                resolveInheritanceForClass(nGetS1(fsSid))
+                assignDtorTagForClass(nGetS1(fsSid))
+            }
+            if (fsKind == "ENUM_DECL") { registerEnum(fsSid) }
+        }
+        // Pass 2: FUNC_DECL → register
         for (fp in fssParts) {
             const fsSid = parseInt(fp)
             if (fsSid > 0 && nGetKind(fsSid) == "FUNC_DECL") { registerFuncDeclNode(fsSid) }
         }
+        // Pass 3: codegen (skip VAR_DECL, already emitted)
         for (fp in fssParts) {
             const fsSid = parseInt(fp)
             if (fsSid > 0 && nGetKind(fsSid) != "VAR_DECL") { genStmt(fsSid) }
