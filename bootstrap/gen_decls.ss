@@ -203,6 +203,23 @@ function genGlobalVar(id: int) {
     } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "DOUBLE_LIT") {
         emitIR(`@${name} = global double -${nGetS1(nGetI1(initId))}, align 8`)
         gType = "double"
+    } else if (ik == "COMPTIME_EXPR") {
+        const ceType = inferType(initId)
+        const ceLit = comptimeExprLiteral.getString(`${initId}`)
+        if (ceType == "int") {
+            emitIR(`@${name} = global i32 ${ceLit}, align 4`)
+            gType = "int"
+        } else if (ceType == "double") {
+            emitIR(`@${name} = global double ${ceLit}, align 8`)
+            gType = "double"
+        } else if (ceType == "string") {
+            emitIR(`@${name} = global ptr ${ceLit}, align 8`)
+            gType = "string"
+        } else {
+            emitIR(`@${name} = global ptr null, align 8`)
+            if (globalInitIds == "") { globalInitIds = `${id}` }
+            else { globalInitIds = `${globalInitIds},${id}` }
+        }
     } else {
         // Non-literal init: declare null, queue runtime init
         emitIR(`@${name} = global ptr null, align 8`)

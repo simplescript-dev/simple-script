@@ -138,6 +138,28 @@ function interpCall(nodeId: int): int {
         const geName = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
         return interpNewString(getenv(geName))
     }
+    // Built-in: readFile(path) — read file contents at compile time
+    if (name == "readFile") {
+        if (argList == "") { return interpNewString("") }
+        const rfPath = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        return interpNewString(readFile(rfPath))
+    }
+    // Built-in: writeFile(path, content) — write file at compile time
+    if (name == "writeFile") {
+        if (argList == "") { return interpNewNull() }
+        const wfArgs = argList.split(",")
+        if (wfArgs.length() < 2) { return interpNewNull() }
+        const wfPath = interpAsStr(interpEval(parseInt(wfArgs[0])))
+        const wfContent = interpAsStr(interpEval(parseInt(wfArgs[1])))
+        writeFile(wfPath, wfContent)
+        return interpNewNull()
+    }
+    // Built-in: fileExists(path) — check file existence at compile time
+    if (name == "fileExists") {
+        if (argList == "") { return interpNewInt(0) }
+        const fePath = interpAsStr(interpEval(parseInt(argList.split(",")[0])))
+        return interpNewInt(fileExists(fePath))
+    }
     // Built-in: hasField(className, fieldName) — check if class has field, returns 0/1
     if (name == "hasField") {
         if (argList == "") { return interpNewInt(0) }
