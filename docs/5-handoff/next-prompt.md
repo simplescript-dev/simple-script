@@ -1,4 +1,4 @@
-# Round 158
+# Round 159
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,22 +8,23 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/4-issues/1-open/ (check remaining open issues)
-- lib/comptime.ss (all built-in derive handlers + validation helpers)
-- tests/phase5/comptime_validation.ss (structural validation builtins test)
+- lib/comptime.ss (all built-in derive handlers + string utilities + lookup generators)
+- tests/phase5/comptime_string_utils.ss (string utilities + lookup + @derive(Default) test)
 
 ## Last Round (max 3 sentences)
-Added 4 comptime structural validation builtins: fieldCount(cls), fieldNames(cls), hasInterface(cls, iface), isSubclassOf(child, parent). Plus 4 library helpers in lib/comptime.ss: ctAssertHasField/ctAssertHasMethod/ctAssertImplements/ctAssertExtends. 206/211 tests pass (5 pre-existing interp_* failures), bootstrap fixed-point verified.
+Added comptime string utilities (ctJoin/ctRepeat/ctIndent/ctWrap), lookup table generation (ctGenLookup/ctGenReverseLookup), and @derive("Default") generating `empty()` zero-value factory. All functions are pure library additions to lib/comptime.ss, no compiler changes needed. 213 tests (208 passing, 5 pre-existing interp_* failures), bootstrap fixed-point verified.
 
 ## Task
 **Continue comptime enhancement toward Zig-level**
 
 1. **Check `docs/4-issues/1-open/`** for remaining open issues (priority: fix before new features)
 2. If no actionable issues, continue comptime roadmap:
-   - **Comptime Map operations**: generate runtime lookup tables from compile-time Maps
+   - **Comptime Map operations**: build Maps at compile time, emit runtime lookup structures
    - **Comptime array comprehension**: generate arrays/lists at compile time
-   - **@derive new handlers**: consider Hash, Copy, or other common patterns
+   - **@derive new handlers**: consider Hash, Comparable, or other common patterns
    - **Comptime loop unrolling**: generate repetitive code from comptime loops (e.g., N fields -> N accessors)
-   - **Comptime string utilities**: format/join/repeat at compile time for code generation
+   - **Comptime code templates**: parameterized multi-line code generation patterns
+   - **Comptime import/plugin**: load external .ss files as comptime plugins
 
 ### Open Issues (by priority)
 1. **I001 -- Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -36,7 +37,7 @@ Added 4 comptime structural validation builtins: fieldCount(cls), fieldNames(cls
 - **comptime blocks**: AST interpreter executes at compile time
 - **Inline comptime expressions**: `comptime { return expr }` -- compile-time constant
 - **Type-level comptime**: `comptime { }` in class body -- FUNC_DECLs become class methods
-- **@derive annotation**: `@derive("ToJson,ToString,Equals")` -> ctDeriveXxx(className) -> generates methods
+- **@derive annotation**: `@derive("ToJson,ToString,Equals,Copy,With,Default")` -> ctDeriveXxx(className) -> generates methods
 - **Custom derive handlers**: Users define `ctDeriveXxx(className)` in comptime blocks -- fully extensible
 - **Comptime type generation**: CLASS_DECL, ENUM_DECL, INTERFACE_DECL via @comptimeEmit
 - **Comptime type discovery**: classNames(), enumNames() -- all registered type names
@@ -45,6 +46,8 @@ Added 4 comptime structural validation builtins: fieldCount(cls), fieldNames(cls
 - **Comptime shell execution**: system(cmd) -> exit code, shellOutput(cmd) -> stdout string
 - **Structural validation**: fieldCount(cls), fieldNames(cls), hasInterface(cls, iface), isSubclassOf(child, parent)
 - **Validation helpers**: ctAssertHasField, ctAssertHasMethod, ctAssertImplements, ctAssertExtends (lib/comptime.ss)
+- **String utilities**: ctJoin, ctRepeat, ctIndent, ctWrap (lib/comptime.ss)
+- **Lookup table generation**: ctGenLookup, ctGenReverseLookup (lib/comptime.ss)
 - **Cross-block persistence**: root scope survives across comptime blocks
 - **Comptime libraries**: `import { } from "@/lib/comptime"` -- shared helpers
 - **@comptimeEmit(ssSource)**: string mixin -> compile
@@ -58,8 +61,12 @@ Added 4 comptime structural validation builtins: fieldCount(cls), fieldNames(cls
 - **ToJson**: generates `toJson(): string` -- JSON serialization of all fields
 - **ToString**: generates `toString(): string` -- `ClassName(field1=val1, field2=val2)` format
 - **Equals**: generates `equals(other: ClassName): int` -- field-by-field comparison (0/1)
+- **Copy**: generates `copy(): ClassName` -- returns new instance with same field values
+- **With**: generates `withFieldName(value): ClassName` -- per-field wither (immutable builder)
+- **Default**: generates `empty(): ClassName` -- zero-value factory (0/0.0/"" per type)
 
 ### Proven Comptime Patterns (test-verified)
+- **String utilities + lookup tables**: ctJoin/ctRepeat/ctIndent/ctWrap + ctGenLookup/ctGenReverseLookup (comptime_string_utils.ss)
 - **Structural validation**: fieldCount/fieldNames/hasInterface/isSubclassOf + ctAssert helpers (comptime_validation.ss)
 - **Comprehensive showcase**: 7 features combined in one scenario (comptime_showcase.ss)
 - **Shell execution**: git hash, build timestamp, uname, conditional on kernel (comptime_shell.ss)
@@ -69,6 +76,8 @@ Added 4 comptime structural validation builtins: fieldCount(cls), fieldNames(cls
 - **Conditional compilation**: OS/ARCH/DEBUG + comptimeAssert (comptime_conditional.ss)
 - **Class generation**: Vector3/Pair/Greeting with RC (comptime_class_gen.ss)
 - **@derive built-in**: ToJson/ToString/Equals (comptime_derive.ss, comptime_derive_custom.ss)
+- **@derive Copy/With**: immutable copy + per-field withers (comptime_derive_with.ss)
+- **@derive Default**: zero-value factory (comptime_string_utils.ss)
 - **@derive user-defined**: ctDeriveDebug/ctDeriveSchema custom handlers (comptime_derive_custom.ss, comptime_showcase.ss)
 - **Class-level comptime**: describe/fieldCount/fieldNames (comptime_class_methods.ss)
 - **Inline comptime**: `const x = comptime { return 6 * 7 }` (comptime_inline_expr.ss)
@@ -78,8 +87,8 @@ Added 4 comptime structural validation builtins: fieldCount(cls), fieldNames(cls
 - **JSON serialization**: standalone serializeX(obj) (comptime_json_serializer.ss)
 
 ### Project Status
-- **Bootstrap**: 47 files, ~18700 LOC, 211 tests (206 passing, 5 pre-existing interp_* failures).
-- **Comptime system**: 20 comptime tests, full type generation + discovery + shell execution + custom derives + structural validation.
+- **Bootstrap**: 47 files, ~18700 LOC, 213 tests (208 passing, 5 pre-existing interp_* failures).
+- **Comptime system**: 21 comptime tests, full type generation + discovery + shell execution + custom derives + structural validation + string utilities + lookup tables.
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
