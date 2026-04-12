@@ -1,4 +1,4 @@
-# Round 147
+# Round 148
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,23 +8,23 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/4-issues/1-open/ (check remaining open issues)
-- bootstrap/interp.ss:282-315 (persistent comptime root scope)
-- lib/comptime.ss (comptime standard library)
-- tests/phase5/comptime_library.ss (cross-block + library import test)
+- bootstrap/gen_types.ss:215-252 (COMPTIME_EXPR in inferType)
+- bootstrap/codegen.ss:297-330 (flushComptimeSS/flushComptimeIR helpers)
+- tests/phase5/comptime_inline_expr.ss (inline comptime expression tests)
 
 ## Last Round (max 3 sentences)
-Implemented comptime cross-block state persistence: root scope survives across comptime blocks, enabling `import { } from "@/lib/comptime"` pattern. Created lib/comptime.ss with reusable ORM/enum/JSON comptime helpers. Also added enum serializer and JSON serializer demo tests. 194/199 tests pass, bootstrap fixed-point verified.
+Implemented inline comptime expressions: `comptime { return expr }` usable in expression position, evaluated at compile time, cached as constant. Parser creates COMPTIME_EXPR node, inferType evaluates and caches type+literal, genExpr reads cache. Extracted flushComptimeSS/flushComptimeIR shared helpers to eliminate duplication between COMPTIME_BLOCK and COMPTIME_EXPR. 195/200 tests pass, bootstrap fixed-point verified.
 
 ## Task
 **Continue comptime enhancement toward Zig-level**
 
 1. **Check `docs/4-issues/1-open/`** for remaining open issues (priority: fix before new features)
 2. If no actionable issues, continue comptime roadmap:
-   - **Inline comptime expressions**: `comptime { val }` usable as expression (returns last expression value to compile-time constant)
    - **Type-level comptime**: comptime inside class body to generate methods/fields
    - **Comptime map literals**: Map construction in interpreter for lookup tables
    - **@field(obj, "name")**: dynamic field access by comptime string
    - **Generic comptime serializer**: bridge comptime + generics for `@serialize<T>()`
+   - **Comptime conditional compilation**: `comptime { if (TARGET == "linux") { ... } }`
 
 ### Open Issues (by priority)
 1. **I001 — Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -35,6 +35,7 @@ Implemented comptime cross-block state persistence: root scope survives across c
 
 ### Comptime Capabilities (current)
 - **comptime blocks**: AST interpreter executes at compile time
+- **Inline comptime expressions**: `comptime { return expr }` in expression position — evaluated once, cached as compile-time constant (int/double/string/bool)
 - **Cross-block persistence**: root scope survives — functions/variables from earlier comptime blocks available in later ones
 - **Comptime libraries**: `import { } from "@/lib/comptime"` imports shared comptime helpers
 - **@comptimeEmit(ssSource)**: generate SS source → compile (string mixin)
@@ -45,8 +46,10 @@ Implemented comptime cross-block state persistence: root scope survives across c
 - **emit(irString)**: inject raw LLVM IR
 - **registerFunction/addStringConst**: low-level codegen helpers
 - **Interpreter builtins**: string methods, concat, arithmetic, arrays, maps
+- **Shared helpers**: flushComptimeSS() + flushComptimeIR() in codegen.ss (used by COMPTIME_BLOCK and COMPTIME_EXPR)
 
 ### Proven Comptime Patterns (test-verified)
+- **Inline comptime expression**: `const x = comptime { return 6 * 7 }` → int/string/arithmetic/loops (comptime_inline_expr.ss)
 - **Comptime library import**: lib/comptime.ss helpers used across files (comptime_library.ss)
 - **ORM SQL generation**: @Entity/@Id/@Column → CREATE TABLE + INSERT SQL (comptime_orm.ss)
 - **Enum serialization**: nameOf + fromString for int/string/auto enums (comptime_enum_serializer.ss)
@@ -54,8 +57,8 @@ Implemented comptime cross-block state persistence: root scope survives across c
 - **Class/enum/interface introspection**: full reflection test suite
 
 ### Project Status
-- **Bootstrap**: 47 files, ~18700 LOC, 199 tests (194 passing, 5 pre-existing interp_* failures).
-- **Comptime system**: 8 comptime tests, cross-block persistence, shared library.
+- **Bootstrap**: 47 files, ~18700 LOC, 200 tests (195 passing, 5 pre-existing interp_* failures).
+- **Comptime system**: 9 comptime tests, inline expressions, cross-block persistence, shared library.
 
 ## Watch Out For
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
@@ -72,6 +75,8 @@ Implemented comptime cross-block state persistence: root scope survives across c
 - **FUNC_DECL I4 conflict**: I4 for annotations and isAbstract. Known issue.
 - **@comptimeEmit two-pass**: first pass registers FUNC_DECL, second calls genStmt.
 - **double→string**: `0.0` displays as `"0"` (runtime behavior).
+- **COMPTIME_EXPR side effects in inferType**: Intentional — inferType is the earliest point where type is needed; cache prevents double execution. See comment at gen_types.ss:215.
+- **flushComptimeSS/flushComptimeIR**: Shared helpers in codegen.ss. Both COMPTIME_BLOCK (gen_stmts.ss) and COMPTIME_EXPR (gen_types.ss) use them.
 - **Rejected features**: Range syntax, pattern matching type patterns, Result<T,E> + ? operator, FFI via dlopen, Kotlin/Scala syntax.
 
 ## When Done

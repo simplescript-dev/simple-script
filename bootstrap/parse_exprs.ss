@@ -376,6 +376,13 @@ function parseAtom(): int {
         pAdvance()
         return newNode("SUPER")
     }
+    if (k == "COMPTIME") {
+        pAdvance()
+        const body = parseBlock()
+        const id = newNode("COMPTIME_EXPR")
+        nSetI1(id, body)
+        return id
+    }
     if (k == "NEW") {
         pAdvance()
         const className = pExpectIdent()

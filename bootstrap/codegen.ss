@@ -65,6 +65,10 @@ let enumDeclNodes = ""
 let enumReady = 0
 let isThreadClosure = 0    // D082 Phase 3: set to 1 when generating Thread.start arrow
 
+// Inline comptime expression cache (evaluated once in inferType, read in genExpr)
+let comptimeExprType = new Map()
+let comptimeExprLiteral = new Map()
+
 // Generic function state (monomorphization)
 let genericFuncNodes = ""
 let specializedFuncs = ""
@@ -288,6 +292,41 @@ function registerFuncDeclNode(sid: int) {
     } else {
         funcParamCount.set(fname, "0")
     }
+}
+
+// Flush @comptimeEmit SS source: tokenize → parse → three-pass codegen.
+// Shared by COMPTIME_BLOCK (gen_stmts) and COMPTIME_EXPR (gen_types).
+function flushComptimeSS() {
+    const fss = interpGetComptimeSS()
+    if (fss == "") { return }
+    const fssTokens = tokenize(fss)
+    const fssRoot = parse(fssTokens)
+    const fssList = nGetList(fssRoot)
+    if (fssList != "") {
+        const fssParts = fssList.split(",")
+        const fssSavedFunc = currentFunc
+        currentFunc = ""
+        for (fp in fssParts) {
+            const fsSid = parseInt(fp)
+            if (fsSid > 0 && nGetKind(fsSid) == "VAR_DECL") { genGlobalVar(fsSid) }
+        }
+        currentFunc = fssSavedFunc
+        for (fp in fssParts) {
+            const fsSid = parseInt(fp)
+            if (fsSid > 0 && nGetKind(fsSid) == "FUNC_DECL") { registerFuncDeclNode(fsSid) }
+        }
+        for (fp in fssParts) {
+            const fsSid = parseInt(fp)
+            if (fsSid > 0 && nGetKind(fsSid) != "VAR_DECL") { genStmt(fsSid) }
+        }
+    }
+    interpClearComptimeSS()
+}
+
+// Flush comptime IR buffer emitted by emit() calls.
+function flushComptimeIR() {
+    const fir = interpGetComptimeIR()
+    if (fir != "") { emitIR(fir); interpClearComptimeIR() }
 }
 
 function registerAllDecls(rootId: int) {

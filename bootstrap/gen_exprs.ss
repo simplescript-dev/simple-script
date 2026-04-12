@@ -112,6 +112,12 @@ function genExpr(id: int): string {
     if (kind == "INDEX_ACCESS") { return genIndexAccess(id) }
     if (kind == "POSTFIX_INC") { return genPostfixExpr(id) }
     if (kind == "NAMED_ARG") { return genExpr(nGetI1(id)) }
+    if (kind == "COMPTIME_EXPR") {
+        const ceKey = `${id}`
+        // Ensure evaluated (inferType caches result)
+        if (comptimeExprType.has(ceKey) == 0) { inferType(id) }
+        return comptimeExprLiteral.getString(ceKey)
+    }
     return "0"
 }
 

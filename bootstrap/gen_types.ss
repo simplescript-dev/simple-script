@@ -212,6 +212,47 @@ function inferType(id: int): string {
         }
         return "ptr"
     }
+    // COMPTIME_EXPR: evaluate once, cache type+literal for genExpr.
+    // Side effects (flushComptimeSS/IR) are intentional — inferType is the earliest
+    // point where the type is needed, and cache prevents double execution.
+    if (kind == "COMPTIME_EXPR") {
+        const ceKey = `${id}`
+        if (comptimeExprType.has(ceKey) == 1) { return comptimeExprType.getString(ceKey) }
+        interpExecComptime(nGetI1(id))
+        const ceRetFlag = interpGetReturnFlag()
+        const ceRetVal = interpGetReturnVal()
+        flushComptimeSS()
+        flushComptimeIR()
+        if (ceRetFlag == 1 && ceRetVal > 0) {
+            const ceType = interpType(ceRetVal)
+            if (ceType == "int") {
+                comptimeExprType.set(ceKey, "int")
+                comptimeExprLiteral.set(ceKey, `${interpAsInt(ceRetVal)}`)
+                return "int"
+            }
+            if (ceType == "double") {
+                comptimeExprType.set(ceKey, "double")
+                comptimeExprLiteral.set(ceKey, interpAsStr(ceRetVal))
+                return "double"
+            }
+            if (ceType == "string") {
+                const ceStr = interpAsStr(ceRetVal)
+                const ceConst = addStringConst(ceStr)
+                comptimeExprType.set(ceKey, "string")
+                comptimeExprLiteral.set(ceKey, ceConst)
+                return "string"
+            }
+            // SS bool is i32 at IR level
+            if (ceType == "bool") {
+                comptimeExprType.set(ceKey, "int")
+                comptimeExprLiteral.set(ceKey, `${interpAsBool(ceRetVal)}`)
+                return "int"
+            }
+        }
+        comptimeExprType.set(ceKey, "int")
+        comptimeExprLiteral.set(ceKey, "0")
+        return "int"
+    }
     if (kind == "IDENT") {
         const vType = getVarType(nGetS1(id))
         if (vType != "") { return vType }
