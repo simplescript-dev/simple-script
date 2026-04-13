@@ -226,6 +226,18 @@ function _ss_jsonValue(v: double): string {
     return `${v}`
 }
 
+function _ss_zero(v: int): int {
+    return 0
+}
+
+function _ss_zero(v: string): string {
+    return ""
+}
+
+function _ss_zero(v: double): double {
+    return 0.0
+}
+
 function _ss_join(arr: List<string>, delim: string): string {
     const len = arr.length()
     if (len == 0) { return "" }

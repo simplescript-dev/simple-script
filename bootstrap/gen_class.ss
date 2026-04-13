@@ -627,6 +627,21 @@ function genNewExpr(id: int): string {
     }
     if (hasNamed == 1) {
         args = genNamedConstructorArgs(className, argList)
+    } else if (argList == "" && classFields.has(className) == 1) {
+        // No args: fill in zero values for all fields
+        const zfStr = classFields.getString(className)
+        if (zfStr != "") {
+            const zfParts = zfStr.split(",")
+            let zfFirst = 1
+            for (zf in zfParts) {
+                const zfType = classFieldTypes.getString(`${className}.${zf}`)
+                const zfLL = ssTypeToLLVM(zfType)
+                if (zfFirst == 1) { zfFirst = 0 } else { args = args + ", " }
+                if (zfLL == "ptr") { args = args + "ptr null" }
+                else if (zfLL == "double") { args = args + "double 0.0" }
+                else { args = `${args}${zfLL} 0` }
+            }
+        }
     } else if (argList != "") {
         const parts = argList.split(",")
         let first = 1

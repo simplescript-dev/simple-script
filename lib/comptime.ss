@@ -170,16 +170,13 @@ comptime {
     // ── Copy derive: generates copy() returning new instance with same field values ──
 
     function ctGenMethodCopy(className: string): string {
-        const info = getTypeInfo(className)
-        let args = ""
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            if (i > 0) { args = args + ", " }
-            args = args + f.name + ": this." + f.name
-            i = i + 1
-        }
-        return "function copy(): " + className + " {\n    return new " + className + "(" + args + ")\n}"
+        return `function copy(): ${className} {
+    const result = new ${className}()
+    for (name in this.fields()) {
+        result[name] = this[name]
+    }
+    return result
+}`
     }
 
     function ctDeriveCopy(className: string) {
@@ -306,22 +303,13 @@ comptime {
     // ── Default derive: generates empty() returning zero-value instance ──
 
     function ctGenMethodEmpty(className: string): string {
-        const info = getTypeInfo(className)
-        let args = ""
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            if (i > 0) { args = args + ", " }
-            if (f.type == "int") {
-                args = args + f.name + ": 0"
-            } else if (f.type == "double") {
-                args = args + f.name + ": 0.0"
-            } else {
-                args = args + f.name + ": \"\""
-            }
-            i = i + 1
-        }
-        return "function empty(): " + className + " {\n    return new " + className + "(" + args + ")\n}"
+        return `function empty(): ${className} {
+    const result = new ${className}()
+    for (name in result.fields()) {
+        result[name] = _ss_zero(result[name])
+    }
+    return result
+}`
     }
 
     function ctDeriveDefault(className: string) {

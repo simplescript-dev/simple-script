@@ -235,6 +235,44 @@ function genPostfixStmt(id: int) {
 }
 
 function genIndexAssign(id: int) {
+    // D088: compile-time field name → direct GEP+store; otherwise fall through to ss_arraySet
+    const iaIdxNode = nGetI1(id)
+    const iaIdxKind = nGetKind(iaIdxNode)
+    if (iaIdxKind == "STRING_LIT" || (iaIdxKind == "IDENT" && comptimeConsts.has(nGetS1(iaIdxNode)) == 1)) {
+        let iaObjClass = getObjClass(nGetS1(id))
+        if (iaObjClass == "") {
+            const vt = getVarType(nGetS1(id))
+            if (vt != "" && classFields.has(vt) == 1) { iaObjClass = vt }
+        }
+        if (iaObjClass != "" && classFields.has(iaObjClass) == 1) {
+            const iaFieldName = iaIdxKind == "STRING_LIT" ? nGetS1(iaIdxNode) : comptimeConsts.getString(nGetS1(iaIdxNode))
+            const iaObjReg = nextReg()
+            emitIR(`  ${iaObjReg} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
+            const iaIdx = getFieldIndex(iaObjClass, iaFieldName)
+            if (iaIdx < 0) {
+                println(`codegen error: class '${iaObjClass}' has no field '${iaFieldName}'`)
+                exit(1)
+            }
+            const iaFType = classFieldTypes.getString(`${iaObjClass}.${iaFieldName}`)
+            const iaLLType = ssTypeToLLVM(iaFType)
+            const iaGep = nextReg()
+            emitIR(`  ${iaGep} = getelementptr %${iaObjClass}, ptr ${iaObjReg}, i32 0, i32 ${iaIdx}`)
+            const iaVal = genExpr(nGetI2(id))
+            if (iaLLType == "ptr") {
+                const iaOld = nextReg()
+                emitIR(`  ${iaOld} = load ptr, ptr ${iaGep}, align 8`)
+                if (isOwnedExpr(nGetI2(id)) == 0) {
+                    emitRetainForType(iaVal, iaFType)
+                }
+                emitIR(`  store ptr ${iaVal}, ptr ${iaGep}, align 8`)
+                emitReleaseForType(iaOld, iaFType)
+            } else {
+                emitIR(`  store ${iaLLType} ${iaVal}, ptr ${iaGep}, align 8`)
+            }
+            return
+        }
+    }
+
     const arrPtr = nextReg(); emitIR(`  ${arrPtr} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
     const idxVal = genExpr(nGetI1(id))
     const valVal = genExpr(nGetI2(id))
