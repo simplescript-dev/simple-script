@@ -1,4 +1,4 @@
-# Round 165
+# Round 166
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -9,17 +9,17 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 ## Read These Files
 - docs/3-decisions/D088-comptime-zig-route.md (CRITICAL: Zig route decision, verification checklist, anti-patterns)
 - docs/4-issues/1-open/ (check remaining open issues)
-- lib/comptime.ss (current comptime library — all @derive handlers now use fields()+bracket)
-- bootstrap/prelude.ss (overloaded _ss_hashContrib/_ss_jsonValue helpers)
+- lib/comptime.ss (current comptime library — 7/8 @derive handlers use fields()+bracket)
+- bootstrap/prelude.ss (overloaded helpers: _ss_hashContrib, _ss_jsonValue, _ss_zero)
 
 ## Last Round (max 3 sentences)
-Fixed 5 pre-existing interp_* test failures by adding interpReset() and creating interp_stubs.ss for standalone compilation. Rewrote @derive(Hash) and @derive(ToJson) using fields()+bracket + overloaded runtime helpers (_ss_hashContrib, _ss_jsonValue), eliminating per-field string-based code generation. Key technique: function overload resolution during for-in unrolling automatically picks the correct type-specific variant at compile time.
+Implemented bracket WRITE (`obj[name] = value`) in genIndexAssign with compile-time field name detection and RC-safe GEP+store, mirroring existing bracket READ. Fixed zero-arg constructor (`new ClassName()`) to pass zero values for all fields. Rewrote @derive(Copy) and @derive(Default) using fields()+bracket+overload pattern, eliminating getTypeInfo — 7/8 handlers now use D088 pattern.
 
 ## Task
-**Continue @derive rewrites or advance D088 roadmap**
+**Continue D088 roadmap or advance remaining items**
 
 ### D088 Phase Status
-- **Phase 5** ✅ obj.fields() + obj[name] + compile-time for-in unrolling
+- **Phase 5** ✅ obj.fields() + obj[name] READ + obj[name] WRITE + compile-time for-in unrolling
 - **Phase 6** ✅ interpreter class support
 - **Phase 7** ✅ interpreter enum/try-catch/closures
 - **Phase 8** ⬜ comptime parameters — `function repeat(@comptime n: int, s: string)` specialization
@@ -31,21 +31,21 @@ Fixed 5 pre-existing interp_* test failures by adding interpReset() and creating
 - ✅ Comparable — for-in + this[name] < other[name]
 - ✅ Hash — for-in + _ss_hashContrib(this[name]) (overloaded)
 - ✅ ToJson — for-in + _ss_jsonValue(this[name]) (overloaded)
-- ❌ Copy — needs `new ClassName(field: this.field)` construction
-- ❌ Default — needs `new ClassName(field: zero)` with type-specific zeros
-- ❌ With — needs per-field `withXxx()` method generation
+- ✅ Copy — for-in + result[name] = this[name] (bracket write)
+- ✅ Default — for-in + result[name] = _ss_zero(result[name]) (overloaded)
+- ❌ With — per-field `withXxx()` method generation (inherently per-field, stays with getTypeInfo)
 
-### Overload + unrolling pattern (new capability)
-- `_ss_hashContrib(v: int/string/double)` in prelude.ss — overloaded type-specific hash
-- `_ss_jsonValue(v: int/string/double)` in prelude.ss — overloaded type-specific JSON serialization
+### Overload + unrolling pattern (proven capability)
+- `_ss_hashContrib(v: int/string/double)` — overloaded type-specific hash
+- `_ss_jsonValue(v: int/string/double)` — overloaded type-specific JSON
+- `_ss_zero(v: int/string/double)` — overloaded type-specific zero values
 - During for-in unrolling: `this[name]` has known type → `resolveOverload` picks correct variant
 - Pattern generalizable: any type-specific operation can use this overload dispatch
 
-### Remaining @derive handlers (Copy/Default/With)
-These need `new ClassName(field: value)` construction which requires field names as named arguments. Current for-in unrolling + bracket notation cannot construct objects. Options:
-1. Keep using getTypeInfo for these (pragmatic, limited scope)
-2. Add compile-time named argument resolution from comptime consts (extend Phase 5)
-3. Defer to Phase 8/9
+### New capabilities added this round
+- **Bracket WRITE**: `obj[name] = value` in genIndexAssign — compile-time field name (STRING_LIT or comptimeConst IDENT) + class detection (getObjClass + getVarType fallback) → GEP+store with RC handling
+- **Zero-arg constructor**: `new ClassName()` with no args now fills zero values for all fields (int→0, double→0.0, ptr→null)
+- **_ss_zero overloads**: type-dispatched zero values for @derive(Default) pattern
 
 ### Interpreter coverage
 - ✅ Literals, variables, functions, closures, classes, inheritance
@@ -64,18 +64,20 @@ These need `new ClassName(field: value)` construction which requires field names
 5. **I008 -- Parser no precedence table** [LOW]: Works, recursive descent is standard.
 
 ### Project Status
-- **Bootstrap**: 48 files, ~18700 LOC, 216 tests (216 passing, 0 failures).
+- **Bootstrap**: 48 files, ~18700 LOC, 217 tests (217 passing, 0 failures).
 - **Comptime**: D087 Phase 1-4 complete. D088 Phase 5-7 complete. ct* functions frozen.
-- **@derive**: 5/8 handlers rewritten with fields()+bracket. Copy/Default/With still use getTypeInfo.
-- **Next**: Copy/Default/With rewrites, Phase 8, or other improvements.
+- **@derive**: 7/8 handlers rewritten with fields()+bracket. Only With still uses getTypeInfo.
+- **Next**: Phase 8 (comptime parameters), or other improvements.
 
 ## Watch Out For
 - **D088 anti-patterns**: No new ct* functions, no new @derive handlers with string concat, no @comptimeEmit enhancements, no new template placeholders.
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **Phase 5 capabilities**: obj.fields() + obj[name] + for-in unrolling + overload dispatch.
-- **Overload pattern**: _ss_hashContrib/_ss_jsonValue demonstrate type-dispatched helpers via function overloading. Reusable for any type-specific operation.
+- **Phase 5 capabilities**: obj.fields() + obj[name] READ/WRITE + for-in unrolling + overload dispatch.
+- **Overload pattern**: _ss_hashContrib/_ss_jsonValue/_ss_zero demonstrate type-dispatched helpers via function overloading. Reusable for any type-specific operation.
 - **interp_stubs.ss**: Required for standalone interpreter tests (provides codegen global stubs).
+- **Zero-arg constructor**: `new ClassName()` with no args now works correctly (fills zeros). Used by @derive(Copy/Default).
+- **Bracket write class resolution**: Uses getObjClass + getVarType fallback (INDEX_ASSIGN S1 is string varName, not expression node, so can't use resolveObjClass directly).
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
