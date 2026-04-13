@@ -379,6 +379,7 @@ function emitClassConstructor(name: string, fieldStr: string, hasVtable: int) {
         }
     }
     regCount = 0
+    regTable = []
     emitIR(`define ptr @${name}_new(${ctorParams}) {`)
     emitIR("entry:")
     const sizeGep = nextReg()
@@ -535,6 +536,7 @@ function genClassMethod(className: string, id: int) {
     }
 
     regCount = 0
+    regTable = []
     terminated = 0
     currentFunc = llMethodName
     currentClassName = className

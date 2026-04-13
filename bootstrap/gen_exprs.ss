@@ -92,7 +92,7 @@ function genPostfixExpr(id: int): string {
 
 // ── Expression dispatcher ───────────────────────────────────────
 
-function genExpr(id: int): string {
+function genExprOld(id: int): string {
     if (id <= 0) { return "0" }
     const kind = nGetKind(id)
 
@@ -117,14 +117,14 @@ function genExpr(id: int): string {
         return genMemberAccess(id)
     }
     if (kind == "NEW_EXPR") { return genNewExpr(id) }
-    if (kind == "GROUPING") { return genExpr(nGetI1(id)) }
+    if (kind == "GROUPING") { return genExprOld(nGetI1(id)) }
     if (kind == "TERNARY") { return genTernary(id) }
     if (kind == "TEMPLATE_LIT") { return genTemplateLit(id) }
     if (kind == "ARRAY_LIT") { return genArrayLit(id) }
     if (kind == "ARROW_FUNC") { return genArrowFunc(id) }
     if (kind == "INDEX_ACCESS") { return genIndexAccess(id) }
     if (kind == "POSTFIX_INC") { return genPostfixExpr(id) }
-    if (kind == "NAMED_ARG") { return genExpr(nGetI1(id)) }
+    if (kind == "NAMED_ARG") { return genExprOld(nGetI1(id)) }
     if (kind == "COMPTIME_EXPR") {
         const ceKey = `${id}`
         // Ensure evaluated (inferType caches result)
@@ -132,6 +132,14 @@ function genExpr(id: int): string {
         return comptimeExprLiteral.getString(ceKey)
     }
     return "0"
+}
+
+function genVal(id: int): int {
+    return constVal(genExprOld(id))
+}
+
+function genExpr(id: int): string {
+    return reg(genVal(id))
 }
 
 // ── Binary operation helpers ────────────────────────────────────

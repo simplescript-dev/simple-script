@@ -8,7 +8,7 @@ import { generate, generateToFile, initCodegen, initVarAliases } from "./codegen
 import { initFuncRegistry } from "./gen_registry"
 import { initRcState, detectCyclicOwnership } from "./gen_rc"
 import { genStmt } from "./gen_stmts"
-import { genExpr } from "./gen_exprs"
+import { genExpr, genVal } from "./gen_exprs"
 import { inferType, ssTypeToLLVM } from "./gen_types"
 import { registerClass, initClassState } from "./gen_class"
 import { emitRuntimeDefs } from "./gen_runtime"

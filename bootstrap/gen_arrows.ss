@@ -154,6 +154,7 @@ function genArrowFunc(id: int): string {
     // Generate body into buffer; string constants still go to main .str
     currentFunc = fnName
     regCount = 0
+    regTable = []
     terminated = 0
     varAliases = Map()
     localPtrVars = ""

@@ -13,6 +13,7 @@ let strCount = 0
 let irOutFile = ""
 let strOutFile = ""
 let regCount = 0
+let regTable: Array<string> = []
 let labelCount = 0
 let varTypes = ""
 let varTypesReady = 0
@@ -105,6 +106,29 @@ function nextReg(): string {
 function nextLabel(prefix: string): string {
     labelCount = labelCount + 1
     return `${prefix}.${labelCount}`
+}
+
+// ── Tagged Value Infrastructure (D089) ──────────────────────
+
+function ctVal(interpId: int): int {
+    return interpId | 1073741824  // bit 30
+}
+
+function isCt(v: int): int {
+    return (v & 1073741824) != 0 ? 1 : 0  // bit 30
+}
+
+function payload(v: int): int {
+    return v & 1073741823  // bits 0-29
+}
+
+function constVal(s: string): int {
+    regTable.push(s)
+    return regTable.length()
+}
+
+function reg(v: int): string {
+    return regTable[payload(v) - 1]
 }
 
 // ── IR Builder Helpers ───────────────────────────────────────
@@ -448,6 +472,7 @@ function resetCodegen() {
     strOutFile = ""
     // SSA counters
     regCount = 0
+    regTable = []
     labelCount = 0
     varCounter = 0
     // Function context

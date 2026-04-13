@@ -76,6 +76,7 @@ function genFuncDecl(id: int) {
         if (fSig != "") { llName = `${name}_${fSig}` }
     }
     regCount = 0
+    regTable = []
     currentFunc = llName
     terminated = 0
     varAliases = Map()

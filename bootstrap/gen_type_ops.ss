@@ -157,6 +157,7 @@ function emitClassDtorRegister(name: string, fieldStr: string, hasVtable: int) {
 // Emit @ClassName_destroy(ptr %self) — release all ptr-type fields (old dtor system)
 function emitClassDestroy(className: string, fieldStr: string, hasVtable: int) {
     regCount = 0
+    regTable = []
     emitIR(`define void @${className}_destroy(ptr %self) {`)
     emitIR("entry:")
     emitFieldReleaseLoop(className, fieldStr, hasVtable)
@@ -236,6 +237,7 @@ function emitClassDropFn(className: string, fieldStr: string, hasVtable: int) {
 // Used by REUSE: keep memory, just release old field references
 function emitClassDropFieldsFn(className: string, fieldStr: string, hasVtable: int) {
     regCount = 0
+    regTable = []
     emitIR(`define void @ss_drop_fields_${className}(ptr %self) {`)
     emitIR("entry:")
     emitFieldReleaseLoop(className, fieldStr, hasVtable)
@@ -286,6 +288,7 @@ function emitClassConstructorReuse(name: string, fieldStr: string, hasVtable: in
         }
     }
     regCount = 0
+    regTable = []
     emitIR(`define ptr @${name}_new_reuse(${ctorParams}) {`)
     emitIR("entry:")
     emitClassCtorBody(name, fieldStr, hasVtable, "%__reuse")
@@ -297,6 +300,7 @@ function emitClassConstructorReuse(name: string, fieldStr: string, hasVtable: in
 // ss_deep_clone_ClassName — allocate new object, deep-copy fields
 function emitClassDeepCloneFn(className: string, fieldStr: string, hasVtable: int) {
     regCount = 0
+    regTable = []
     emitIR(`define ptr @ss_deep_clone_${className}(ptr %self) {`)
     emitIR("entry:")
     // Allocate new object via mimalloc
@@ -362,6 +366,7 @@ function emitClassDeepCloneFn(className: string, fieldStr: string, hasVtable: in
 // ss_shallow_clone_ClassName — memcpy + retain all ref-type fields
 function emitClassShallowCloneFn(className: string, fieldStr: string, hasVtable: int) {
     regCount = 0
+    regTable = []
     emitIR(`define ptr @ss_shallow_clone_${className}(ptr %self) {`)
     emitIR("entry:")
     // Allocate and memcpy
@@ -400,6 +405,7 @@ function genAutoToJson(className: string, fieldStr: string) {
     funcRetTypes.set(`${className}_toJson`, "string")
 
     regCount = 0
+    regTable = []
     emitIR(`define ptr @${className}_toJson(ptr %this.ptr) {`)
     emitIR("entry:")
     emitIR("  %this = alloca ptr, align 8")
