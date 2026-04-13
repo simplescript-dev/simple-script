@@ -1,4 +1,4 @@
-# Round 169
+# Round 170
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,60 +8,53 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D089-compiler-is-interpreter.md (CRITICAL: 统一架构设计，tagged int，迁移计划)
-- bootstrap/codegen.ss (ctVal/isCt/payload/constVal/reg/materialize)
-- bootstrap/gen_exprs.ss (genVal — Phase 1 literal cases + genExprOld fallback)
+- bootstrap/codegen.ss (ctVal/isCt/payload/constVal/reg/materialize/regTable)
+- bootstrap/gen_exprs.ss (genVal — Phase 1 literals + Phase 2 binary/unary + genExprOld fallback)
 
 ## Last Round (max 3 sentences)
-Skipped Phase 0b (nextReg int conversion, 363 sites) — unnecessary since Phase 2+ can use `constVal(nextReg())` pattern at ~50 individual migration points instead. Implemented D089 Phase 1: genVal returns ctVal for INT_LIT, STRING_LIT, TRUE/FALSE_LIT, NULL_LIT; added materialize() to convert comptime values to IR constants. DOUBLE_LIT deferred (formatting round-trip risk). Bootstrap fixed-point + 218 tests pass.
+Implemented D089 Phase 2: genValBinary folds int/bool binary ops at compile time via interpIntOp; genValUnary folds Neg/Not/BitNot. Short-circuit/instanceof/as/string/double ops fall back to genExprOld. Verified `1 + 2` emits `store i32 3` (no add instruction). Bootstrap fixed-point + 219 tests pass.
 
 ## Task
-**D089 Phase 2: Binary/Unary comptime propagation**
+**D089 Phase 3: TERNARY comptime propagation**
 
 ### What to do
-1. Move BINARY handling from genExprOld to genVal:
-   - Both operands ctVal → comptime result via interpBinaryOp (no IR emitted)
-   - Either operand runtime → materialize both, emit IR as before, return constVal(nextReg())
-2. Move UNARY handling from genExprOld to genVal:
-   - Operand ctVal → comptime result via interpUnaryOp
-   - Operand runtime → materialize, emit IR, return constVal(nextReg())
-3. Move TERNARY handling from genExprOld to genVal:
+1. Move TERNARY handling from genExprOld to genVal:
    - Condition ctVal → only evaluate taken branch (compile-time branch elimination)
-   - Condition runtime → emit IR as before
+   - Condition runtime → emit IR as before (materialize condition, emit branch/phi)
+2. Consider NULL_COALESCE comptime handling in genValBinary:
+   - If left operand ctVal and non-null → return left (no IR)
+   - If left operand ctVal and null → evaluate right
+   - Otherwise fall back to genExprOld
 
-### Key functions needed
-- `interpBinaryOp(op: string, lv: int, rv: int): int` — comptime binary evaluation
-  - Check interp_eval.ss for existing binary evaluation logic to reuse
-- `interpUnaryOp(op: string, v: int): int` — comptime unary evaluation
-
-### Phase 2 验证
+### Phase 3 验证
 - Bootstrap 固定点通过
-- `bin/ss test tests/` 全量通过（218 tests）
-- **新测试**: 验证 `1 + 2` 在 comptime 块外也产出 comptime 值（可以用 `--emit-ir` 验证无 add 指令）
-- 行为不变，但常量表达式现在是编译期求值
+- `bin/ss test tests/` 全量通过（219+ tests）
+- **新测试**: 验证 `true ? 1 : 2` 和 `false ? 1 : 2` 产出 comptime 值
+- 行为不变，但常量三元表达式现在是编译期求值
 
 ### Design notes
-- genBinary/genIntBinary/genDoubleBinary 等 helper 函数目前在 gen_exprs.ss 中
-- Phase 2 只迁移 genBinary 的 INT_LIT 分支（int 操作），不迁移 string concat、short-circuit、instanceof 等复杂 case
-- 对于 short-circuit (&&/||), ternary, null-coalesce: comptime condition → 编译期选择分支
-- String concat with comptime operands → 编译期拼接（interpBinaryOp 处理）
+- genTernary 在 gen_exprs.ss 中，处理 condition→then/else 分支 + phi 节点
+- Phase 3 只处理 condition 是 comptime 的 case，operands 可以是 comptime 或 runtime
+- Short-circuit (And/Or) 也可以考虑 comptime：`true || expr` → `true` 不求值 expr
 
 ## Project Status
-- **Bootstrap**: 48 files, ~18700 LOC, 218 tests (218 passing, 0 failures).
+- **Bootstrap**: 48 files, ~18700 LOC, 219 tests (219 passing, 0 failures).
 - **D089 Phase 0**: Complete. Tagged int infra + genVal/genExpr wrapper.
 - **D089 Phase 1**: Complete. Literal comptime + materialize.
-- **D089 Phase 2**: Binary/unary comptime propagation — pending.
+- **D089 Phase 2**: Complete. Binary/unary comptime constant folding.
+- **D089 Phase 3**: TERNARY/null-coalesce comptime — pending.
 
 ## Watch Out For
-- **genBinary 的复杂性**：有 string concat、short-circuit、instanceof、as、null-coalesce 等特殊 case。Phase 2 先只处理 int/bool 算术和比较，其他 case fallback 到 genExprOld。
-- **interpBinaryOp 是否已存在**：interp_eval.ss 有 interpBinaryOp 或类似函数，优先复用。
-- **DOUBLE_LIT 未走 ctVal**：Phase 2 的 double binary 操作暂不做 comptime 折叠。
+- **genTernary 的 label/phi 结构**：ternary 用 label + phi 实现，comptime 时直接返回分支值，不生成 phi。
+- **Short-circuit And/Or**：目前 fallback 到 genExprOld。可以在 Phase 3 加 comptime 处理（true && x → x, false || x → x）。
+- **DOUBLE_LIT 未走 ctVal**：Phase 3 仍不做 double comptime 折叠。
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
-1. Write tests verifying constant folding works
-2. Run `bin/ss test tests/` — 218+ tests pass
+1. Write tests verifying ternary/null-coalesce comptime folding
+2. Run `bin/ss test tests/` — 219+ tests pass
 3. Run `./build.sh bootstrap` — fixed-point verified
 4. Run `/simplify` to review code quality before commit
 5. Self-review for contradictions
