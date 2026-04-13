@@ -1,4 +1,4 @@
-# Round 163
+# Round 164
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -12,36 +12,31 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 - lib/comptime.ss (current comptime library — frozen ct* functions, @derive uses fields()+bracket)
 
 ## Last Round (max 3 sentences)
-Implemented D088 Phase 5: `obj.fields()` + `obj[name]` bracket notation + compile-time for-in unrolling. Rewrote @derive(ToString/Equals/Comparable) to use fields()+bracket notation instead of getTypeInfo + manual string concatenation — validates Phase 5 in real use. 216 tests (211 passing, 5 pre-existing interp_* failures), bootstrap fixed-point verified.
+Confirmed D088 Phase 6 (interpreter class support) was already implemented — class/new/field/method all work in comptime. Implemented Phase 7 gaps: throw/try/catch/finally and switch/case in interpreter (closures already worked). Rewrote @derive(ToString/Equals/Comparable) to use Phase 5's fields()+bracket notation. 216 tests (211 passing, 5 pre-existing interp_* failures), bootstrap fixed-point verified.
 
 ## Task
-**Continue D088: rewrite remaining @derive handlers and/or advance to Phase 6**
+**Continue D088 roadmap: Phase 8 (comptime parameters) or address remaining gaps**
 
-### What was done in Phase 5
-- `obj.fields()` — compiler built-in, returns field name array (compile-time constant for for-in, runtime Array<string> standalone)
-- `obj[name]` — bracket notation on class instances, resolves to GEP field access when name is compile-time constant string
-- Compile-time for-in unrolling — when iterating obj.fields(), compiler unrolls loop (zero runtime overhead)
-- @derive(ToString/Equals/Comparable) already rewritten to use fields()+bracket
+### D088 Phase Status
+- **Phase 5** ✅ obj.fields() + obj[name] + compile-time for-in unrolling
+- **Phase 6** ✅ interpreter class support (was already implemented)
+- **Phase 7** ✅ interpreter enum/try-catch/closures (try/catch/finally + switch added, closures already worked)
+- **Phase 8** ⬜ comptime parameters — `function repeat(@comptime n: int, s: string)` specialization
+- **Phase 9** ⬜ types as comptime values — `comptime { return Pair(int, string) }`
 
-### Remaining @derive handlers (cannot use fields()+bracket directly)
-These need type-specific logic per field and cannot simply loop with `this[name]`:
-- **Hash**: `h * 31 + this.x` (int) vs `h * 31 + this.name.length()` (string)
-- **ToJson**: strings need quotes, ints don't
-- **Copy/Default/With**: need `new ClassName(field: value)` construction, can't build named args dynamically
+### @derive rewrite status
+- ✅ ToString, Equals, Comparable — use fields()+bracket (no getTypeInfo)
+- ❌ Hash — needs type-specific logic (int: `h*31+val`, string: `h*31+val.length()`)
+- ❌ ToJson — needs type-specific logic (strings need quotes)
+- ❌ Copy, Default, With — need `new ClassName(field: value)` construction
 
-### D088 Phase 6: interpreter support for class
-**Goal:** comptime blocks can define class, instantiate objects, access fields, call methods.
-- interp.ss support CLASS_DECL → register class
-- interp.ss support NEW_EXPR → create object value
-- interp.ss support MEMBER_ACCESS / MEMBER_ASSIGN → field read/write
-- interp.ss support METHOD_CALL on object → method call
-- Verification: `comptime { class Foo { x: int }; const f = new Foo(x: 42); return f.x }` → 42
-
-### D088 verification checklist (MUST check before starting)
-1. This task solves the first-principle need: structural field access ✅ (Phase 5 done)
-2. No new ct* functions ✅
-3. No new keywords ✅
-4. User writes plain SS code, compiler absorbs complexity ✅
+### Interpreter coverage (after this round)
+- ✅ Literals, variables, functions, closures, classes, inheritance
+- ✅ if/while/do-while/for/for-in, break/continue/return
+- ✅ throw/try/catch/finally, switch/case
+- ✅ Arrays, Maps, string methods, higher-order methods
+- ✅ @comptimeEmit, emit(), getTypeInfo, file I/O, shell
+- ❌ enum (ENUM_DECL in interpreter — enum values exist via compiler registry)
 
 ### Open Issues (by priority)
 1. **I001 -- Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -52,18 +47,15 @@ These need type-specific logic per field and cannot simply loop with `this[name]
 
 ### Project Status
 - **Bootstrap**: 47 files, ~18700 LOC, 216 tests (211 passing, 5 pre-existing interp_* failures).
-- **Comptime**: D087 Phase 1-4 complete. D088 Phase 5 complete. ct* functions frozen.
-- **D088 Phase 5 done**: obj.fields() + obj[name] + compile-time for-in unrolling.
-- **Next direction**: Phase 6 (interpreter class support) or continue rewriting remaining @derive handlers.
+- **Comptime**: D087 Phase 1-4 complete. D088 Phase 5-7 complete. ct* functions frozen.
+- **Next**: Phase 8 (comptime parameters) or other improvements.
 
 ## Watch Out For
 - **D088 anti-patterns**: No new ct* functions, no new @derive handlers with string concat, no @comptimeEmit enhancements, no new template placeholders.
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **obj.fields() is compile-time only**: Returns compile-time constant array. Not runtime reflection.
-- **obj[name] requires constant name**: Only works when name is a compile-time constant string. Not runtime dynamic lookup.
-- **for-in unrolling**: Compiler detects compile-time constant iteration target → unrolls. No `inline` keyword needed.
-- **@derive rewrite status**: ToString/Equals/Comparable done. Hash/ToJson/Copy/Default/With still use old string concat approach (need type-specific logic).
+- **Phase 5 capabilities**: obj.fields() (compile-time constant array), obj[name] (constant string → GEP), for-in unrolling (zero overhead).
+- **Interpreter throw**: interpThrowFlag + interpThrowVal, propagates through interpShouldStop. TRY catches and clears. Finally preserves throw state.
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
