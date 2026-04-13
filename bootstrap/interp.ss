@@ -136,6 +136,8 @@ let interpBreakFlag = 0
 let interpContinueFlag = 0
 let interpReturnFlag = 0
 let interpReturnVal = 0
+let interpThrowFlag = 0
+let interpThrowVal = 0
 
 // ── Comptime IR Buffer (D087 Phase 3b) ──────────────────────
 // Accumulates LLVM IR emitted by comptime blocks via emit().
@@ -157,7 +159,7 @@ function interpGetComptimeSS(): string { return comptimeSS }
 function interpClearComptimeSS() { comptimeSS = "" }
 
 function interpShouldStop(): int {
-    return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1) ? 1 : 0
+    return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1 || interpThrowFlag == 1) ? 1 : 0
 }
 
 function interpGetReturnFlag(): int { return interpReturnFlag }
@@ -288,6 +290,8 @@ function interpExecComptime(bodyId: int) {
     interpContinueFlag = 0
     interpReturnFlag = 0
     interpReturnVal = 0
+    interpThrowFlag = 0
+    interpThrowVal = 0
     // Ensure persistent root scope exists
     if (interpComptimeRootScope == 0) {
         interpScopeNext = interpScopeNext + 1

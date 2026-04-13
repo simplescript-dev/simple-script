@@ -206,5 +206,107 @@ function interpExec(nodeId: int) {
         return
     }
 
+    if (kind == "THROW") {
+        const throwExprId = nGetI1(nodeId)
+        interpThrowVal = interpEval(throwExprId)
+        interpThrowFlag = 1
+        return
+    }
+
+    if (kind == "TRY") {
+        const tryBodyId = nGetI1(nodeId)
+        const finallyBodyId = nGetI3(nodeId)
+        const catchList = nGetList(nodeId)
+
+        // Execute try body
+        interpExec(tryBodyId)
+
+        // If throw occurred, find matching catch clause
+        if (interpThrowFlag == 1) {
+            interpThrowFlag = 0
+            const thrownVal = interpThrowVal
+            interpThrowVal = 0
+            let caught = 0
+            if (catchList != "") {
+                const clauses = catchList.split(",")
+                let ci = 0
+                while (ci < clauses.length() && caught == 0) {
+                    const clauseId = parseInt(clauses[ci])
+                    if (clauseId > 0) {
+                        const catchVarName = nGetS1(clauseId)
+                        const catchBodyId = nGetI1(clauseId)
+                        // Bind exception value to catch variable
+                        interpPushScope()
+                        if (catchVarName != "") {
+                            interpSetVar(catchVarName, thrownVal)
+                        }
+                        interpExec(catchBodyId)
+                        interpPopScope()
+                        caught = 1
+                    }
+                    ci = ci + 1
+                }
+            }
+            if (caught == 0) {
+                // No catch matched — re-throw
+                interpThrowVal = thrownVal
+                interpThrowFlag = 1
+            }
+        }
+
+        // Execute finally (always)
+        if (finallyBodyId > 0) {
+            const savedThrow = interpThrowFlag
+            const savedThrowVal = interpThrowVal
+            interpThrowFlag = 0
+            interpExec(finallyBodyId)
+            if (savedThrow == 1 && interpThrowFlag == 0) {
+                interpThrowFlag = savedThrow
+                interpThrowVal = savedThrowVal
+            }
+        }
+        return
+    }
+
+    if (kind == "SWITCH") {
+        const subjectVal = interpEval(nGetI1(nodeId))
+        const defaultBodyId = nGetI2(nodeId)
+        const caseList = nGetList(nodeId)
+        let matched = 0
+        if (caseList != "") {
+            const cases = caseList.split(",")
+            let si = 0
+            while (si < cases.length() && matched == 0) {
+                const caseId = parseInt(cases[si])
+                if (caseId > 0) {
+                    const patId = nGetI1(caseId)
+                    const bodyId = nGetI2(caseId)
+                    const patType = nGetS1(patId)
+                    const patValue = nGetS2(patId)
+                    // Compare subject with pattern value
+                    let patMatch = 0
+                    if (patType == "INT") {
+                        patMatch = interpAsInt(subjectVal) == parseInt(patValue) ? 1 : 0
+                    } else if (patType == "STRING") {
+                        patMatch = interpAsStr(subjectVal) == patValue ? 1 : 0
+                    } else if (patType == "BOOL") {
+                        patMatch = interpAsInt(subjectVal) == parseInt(patValue) ? 1 : 0
+                    } else {
+                        patMatch = interpToStr(subjectVal) == patValue ? 1 : 0
+                    }
+                    if (patMatch == 1) {
+                        interpExec(bodyId)
+                        matched = 1
+                    }
+                }
+                si = si + 1
+            }
+        }
+        if (matched == 0 && defaultBodyId > 0) {
+            interpExec(defaultBodyId)
+        }
+        return
+    }
+
     println(`[interp] unsupported stmt: ${kind}`)
 }
