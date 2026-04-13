@@ -46,6 +46,19 @@ function genUnary(id: int): string {
 }
 
 function genIndexAccess(id: int): string {
+    // D088: obj[name] bracket notation for class field access
+    // Only attempt resolveObjClass when index could be a field name (string lit or comptime const)
+    const idxId = nGetI2(id)
+    const idxKind = nGetKind(idxId)
+    if (idxKind == "STRING_LIT" || (idxKind == "IDENT" && comptimeConsts.has(nGetS1(idxId)) == 1)) {
+        const objClass = resolveObjClass(nGetI1(id))
+        if (objClass != "" && classFields.has(objClass) == 1) {
+            const fieldName = idxKind == "STRING_LIT" ? nGetS1(idxId) : comptimeConsts.getString(nGetS1(idxId))
+            const objVal = genExpr(nGetI1(id))
+            return emitFieldLoad(objClass, objVal, fieldName)
+        }
+    }
+
     let arrVal = genExpr(nGetI1(id))
     const arrType = inferType(nGetI1(id))
     if (arrType == "i64") {
@@ -53,14 +66,14 @@ function genIndexAccess(id: int): string {
         emitIR(`  ${cvtR} = inttoptr i64 ${arrVal} to ptr`)
         arrVal = cvtR
     }
-    const idxVal = genExpr(nGetI2(id))
+    const idxVal = genExpr(idxId)
     const rawR = nextReg(); emitIR(`  ${rawR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idxVal})`)
     // Tuple type: use positional element type
     let idxElem = ""
     if (nGetKind(nGetI1(id)) == "IDENT") {
         const tvt = getVarType(nGetS1(nGetI1(id)))
-        if (isTupleType(tvt) == 1 && nGetKind(nGetI2(id)) == "INT_LIT") {
-            idxElem = tupleElemTypeAtIndex(tvt, parseInt(nGetS1(nGetI2(id))))
+        if (isTupleType(tvt) == 1 && nGetKind(idxId) == "INT_LIT") {
+            idxElem = tupleElemTypeAtIndex(tvt, parseInt(nGetS1(idxId)))
         }
     }
     if (idxElem == "") { idxElem = inferArrayElemType(nGetI1(id)) }

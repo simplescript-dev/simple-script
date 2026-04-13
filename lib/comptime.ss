@@ -135,32 +135,27 @@ comptime {
     }
 
     function ctGenMethodToString(className: string): string {
-        const info = getTypeInfo(className)
-        let body = "    return \"" + className + "(\""
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            if (i > 0) { body = body + " + \", \"" }
-            body = body + " + \"" + f.name + "=\" + this." + f.name
-            i = i + 1
-        }
-        body = body + " + \")\""
-        return "function toString(): string {\n" + body + "\n}"
+        let s = "function toString(): string {\n"
+        s = s + "    let parts = \"\"\n"
+        s = s + "    for (name in this.fields()) {\n"
+        s = s + "        if (parts != \"\") { parts = parts + \", \" }\n"
+        s = s + "        parts = parts + name + \"=\" + this[name]\n"
+        s = s + "    }\n"
+        s = s + "    return \"" + className + "(\" + parts + \")\"\n"
+        s = s + "}"
+        return s
     }
 
     // ── Equals generator ──
 
     function ctGenMethodEquals(className: string): string {
-        const info = getTypeInfo(className)
-        let body = ""
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            body = body + "    if (this." + f.name + " != other." + f.name + ") { return 0 }\n"
-            i = i + 1
-        }
-        body = body + "    return 1"
-        return "function equals(other: " + className + "): int {\n" + body + "\n}"
+        let s = "function equals(other: " + className + "): int {\n"
+        s = s + "    for (name in this.fields()) {\n"
+        s = s + "        if (this[name] != other[name]) { return 0 }\n"
+        s = s + "    }\n"
+        s = s + "    return 1\n"
+        s = s + "}"
+        return s
     }
 
     // ── @derive handlers ──
@@ -386,17 +381,14 @@ comptime {
     // ── Comparable derive: generates compareTo(other): int ──
 
     function ctGenMethodCompareTo(className: string): string {
-        const info = getTypeInfo(className)
-        let body = ""
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            body = body + "    if (this." + f.name + " < other." + f.name + ") { return -1 }\n"
-            body = body + "    if (this." + f.name + " > other." + f.name + ") { return 1 }\n"
-            i = i + 1
-        }
-        body = body + "    return 0"
-        return "function compareTo(other: " + className + "): int {\n" + body + "\n}"
+        let s = "function compareTo(other: " + className + "): int {\n"
+        s = s + "    for (name in this.fields()) {\n"
+        s = s + "        if (this[name] < other[name]) { return -1 }\n"
+        s = s + "        if (this[name] > other[name]) { return 1 }\n"
+        s = s + "    }\n"
+        s = s + "    return 0\n"
+        s = s + "}"
+        return s
     }
 
     function ctDeriveComparable(className: string) {

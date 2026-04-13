@@ -356,6 +356,13 @@ function inferType(id: int): string {
                 return "int"
             }
         }
+        // D088: obj.fields() returns Array<string>
+        if (method == "fields") {
+            const fObjClass = resolveObjClass(mcObj)
+            if (fObjClass != "" && classFields.has(fObjClass) == 1) {
+                return "Array<string>"
+            }
+        }
         // Resolve object type FIRST via unified inferType (recursive)
         const objType = resolveObjClass(mcObj)
         // If object is a known class, look up method return type in class chain
@@ -428,6 +435,18 @@ function inferType(id: int): string {
     if (kind == "ARRAY_LIT") { return "ptr" }
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "INDEX_ACCESS") {
+        // D088: obj[name] bracket notation on class instance
+        // Only attempt resolveObjClass when index could be a field name
+        const iaIdxKind = nGetKind(nGetI2(id))
+        if (iaIdxKind == "STRING_LIT" || (iaIdxKind == "IDENT" && comptimeConsts.has(nGetS1(nGetI2(id))) == 1)) {
+            const iaObjClass = resolveObjClass(nGetI1(id))
+            if (iaObjClass != "" && classFields.has(iaObjClass) == 1) {
+                const iaFieldName = iaIdxKind == "STRING_LIT" ? nGetS1(nGetI2(id)) : comptimeConsts.getString(nGetS1(nGetI2(id)))
+                if (classFieldTypes.has(`${iaObjClass}.${iaFieldName}`) == 1) {
+                    return classFieldTypes.getString(`${iaObjClass}.${iaFieldName}`)
+                }
+            }
+        }
         // Tuple type: positional element type inference
         if (nGetKind(nGetI1(id)) == "IDENT") {
             const iaVarType = getVarType(nGetS1(nGetI1(id)))

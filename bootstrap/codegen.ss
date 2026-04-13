@@ -69,6 +69,9 @@ let isThreadClosure = 0    // D082 Phase 3: set to 1 when generating Thread.star
 let comptimeExprType = new Map()
 let comptimeExprLiteral = new Map()
 
+// Compile-time constant bindings (D088: for-in unrolling propagates field names)
+let comptimeConsts = new Map()
+
 // Generic function state (monomorphization)
 let genericFuncNodes = ""
 let specializedFuncs = ""
@@ -437,6 +440,7 @@ function resetCodegen() {
     // Comptime buffers
     interpClearComptimeIR()
     interpClearComptimeSS()
+    comptimeConsts = new Map()
     // IR output
     irBuf = ""
     strConsts = ""

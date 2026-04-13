@@ -425,10 +425,79 @@ function genFor(id: int) {
     loopBlockStackSaved = savedLoopStack
 }
 
+// D088 Phase 5: compile-time for-in unrolling for obj.fields()
+function genForInUnrolled(id: int, className: string) {
+    const itemName = nGetS1(id)
+    const bodyId = nGetI2(id)
+    const fieldStr = classFields.getString(className)
+
+    const itemLLName = allocVarName(itemName)
+    emitIR(`  %${itemLLName} = alloca ptr, align 8`)
+    setVarType(itemName, "string")
+
+    // No fields → skip entirely
+    if (fieldStr == "") { return }
+
+    const fields = fieldStr.split(",")
+    const fieldCount = fields.length()
+    const afterLabel = nextLabel("forin.unroll.after")
+
+    // Save/set break/continue
+    const savedBreak = breakLabel
+    const savedContinue = continueLabel
+    const savedLoopStack = loopBlockStackSaved
+    breakLabel = afterLabel
+    loopBlockStackSaved = blockPtrVarStack
+
+    let i = 0
+    for (fieldName in fields) {
+        comptimeConsts.set(itemName, fieldName)
+
+        const strConst = addStringConst(fieldName)
+        emitIR(`  store ptr ${strConst}, ptr %${itemLLName}, align 8`)
+
+        let nextIterLabel = afterLabel
+        if (i < fieldCount - 1) {
+            nextIterLabel = nextLabel("forin.unroll.next")
+        }
+        continueLabel = nextIterLabel
+
+        genNestedBlock(bodyId)
+
+        if (terminated == 0) {
+            emitIR(`  br label %${nextIterLabel}`)
+        }
+        if (i < fieldCount - 1) {
+            emitIR(`${nextIterLabel}:`)
+        }
+        terminated = 0
+
+        i = i + 1
+    }
+
+    comptimeConsts.delete(itemName)
+
+    emitIR(`${afterLabel}:`)
+    terminated = 0
+    breakLabel = savedBreak
+    continueLabel = savedContinue
+    loopBlockStackSaved = savedLoopStack
+}
+
 function genForIn(id: int) {
     const itemName = nGetS1(id)
     const iterableId = nGetI1(id)
     const bodyId = nGetI2(id)
+
+    // D088: detect obj.fields() → compile-time unroll
+    if (nGetKind(iterableId) == "METHOD_CALL" && nGetS1(iterableId) == "fields") {
+        const fieldsObjId = nGetI1(iterableId)
+        const fieldsClass = resolveObjClass(fieldsObjId)
+        if (fieldsClass != "" && classFields.has(fieldsClass) == 1) {
+            genForInUnrolled(id, fieldsClass)
+            return
+        }
+    }
 
     const arr = genExpr(iterableId)
     const lenReg = nextReg(); emitIR(`  ${lenReg} = call i32 @ss_arrayLen(ptr ${arr})`)

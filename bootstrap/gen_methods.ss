@@ -464,6 +464,23 @@ function genMethodCall(id: int, preObj: string = ""): string {
         }
     }
 
+    // D088: obj.fields() → returns Array<string> of field names at runtime
+    if (method == "fields" && objClass != "" && classFields.has(objClass) == 1) {
+        const fieldStr = classFields.getString(objClass)
+        let arrReg = nextReg()
+        emitIR(`  ${arrReg} = call ptr @ss_newArrayPtr(i32 0)`)
+        if (fieldStr != "") {
+            const fieldNames = fieldStr.split(",")
+            for (fn in fieldNames) {
+                const fnStr = addStringConst(fn)
+                const pushR = nextReg()
+                emitIR(`  ${pushR} = call ptr @ss_arrayPush(ptr ${arrReg}, i64 ptrtoint (ptr ${fnStr} to i64))`)
+                arrReg = pushR
+            }
+        }
+        return arrReg
+    }
+
     // Interface dispatch: objClass is an interface name
     if (objClass != "" && ifaceMethodsCG.has(objClass) == 1) {
         return genInterfaceMethodCall(objClass, method, objVal, argList)
