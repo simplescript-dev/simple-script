@@ -1,0 +1,294 @@
+# D088: Comptime 演进路线 — 走 Zig 路线
+
+**Status:** Accepted
+**Depends on:** D087 (comptime Phase 1–4 complete)
+**Date:** 2026-04-13
+
+## 第一性需求
+
+**给定一个对象，遍历它的字段名和值。**
+
+toString、toJson、equals、hashCode、copy——全部是同一个需求的不同操作：拿到每个字段的名字和值，然后拼字符串 / 比较 / 算哈希 / 复制。
+
+当前 SS 用 `@derive` + `@comptimeEmit` 字符串拼接为每个类生成专用代码，是因为 SS **没有按名称访问字段值**的能力。这是 workaround，不是解决方案。
+
+## 决策
+
+**实现结构化字段访问：`obj.fields()` + `obj[name]`。**
+
+```ss
+for (name in obj.fields()) {
+    println(name + "=" + obj[name])
+}
+```
+
+有了这个，一个通用函数就能处理所有类。不需要 per-class 代码生成，不需要 @derive（@derive 降为可选便捷层）。
+
+### 借鉴来源
+
+| 维度 | 借鉴 | 来源语言 |
+|------|------|---------|
+| 用户语法 | `Object.keys(obj)` + `obj[key]` | TypeScript/JavaScript |
+| 迭代模型 | `fieldPairs(obj)` — 编译器内置，普通 for 循环 | Nim |
+| 实现策略 | 编译期展开，零运行时开销 | Zig |
+
+### 编译器行为
+
+1. `obj.fields()` — 编译器内置方法，返回字段名列表，编译期已知
+2. `obj[name]` — `name` 是编译期常量时，编译器解析 `obj["x"]` 为 `obj.x` 静态字段访问
+3. for-in 迭代目标是编译期常量数组 → 编译器自动展开循环
+
+展开后等价于手写代码：
+```ss
+// 用户写的：
+for (name in point.fields()) {
+    parts = parts + name + "=" + point[name]
+}
+
+// 编译器展开为：
+parts = parts + "x" + "=" + point.x
+parts = parts + "y" + "=" + point.y
+```
+
+### 设计原则检查
+
+| SS 设计原则 | 检查结果 |
+|------------|---------|
+| Java/TS 优先 | TS 原生写法 `Object.keys(obj)` + `obj[key]` — 一一对应 |
+| 不加新关键字 | `fields()` 是方法，`obj[name]` 是已有索引语法，for-in 已有 |
+| 不自创语法 | 每个元素在 TS/JS 中都有直接对应物 |
+| 编译器吸收复杂度 | 用户写普通 for 循环，编译器自动展开 |
+
+## 背景：为什么做这个决策
+
+### Zig 的根
+
+Zig comptime 的所有能力源自一个架构决策：**编译器即解释器，类型是一等值。**
+
+```
+源码 → SEMA（= 完整 Zig 解释器 + 类型检查）→ 机器码
+```
+
+SS 当前是"独立解释器 + 字符串 mixin"：
+
+```
+源码 → Lexer → Parser → Checker → PIR → Codegen
+                           ↓
+                    interp.ss（SS 子集解释器）
+                           ↓
+                    @comptimeEmit(字符串) → 重新 parse → 注入 AST
+```
+
+### 根上的差距
+
+1. **解释器覆盖度** — Zig 解释器 = 完整语言，SS interp.ss = 子集
+2. **类型不是一等值** — SS 类型是字符串名称，不能传参/返回/操作
+
+### 路线选型
+
+**不走 D/Rust 路线**（继续堆 ct* 辅助函数 + @derive handler + 反射 API）。技术债线性增长，永远追不上 Zig。
+
+**走 Zig 路线**：解决第一性需求（`obj.fields()` + `obj[name]`），然后逐步增强解释器覆盖度和类型系统。
+
+## 方案对标
+
+研究了 13 种语言的结构化字段访问方案，分三类：
+
+### 编译期零开销
+
+| 语言 | 机制 | 语法 |
+|------|------|------|
+| Zig | `@typeInfo` + `@field` + `inline for` | `@field(self, f.name)` |
+| D | `__traits` + `static foreach` | `__traits(getMember, val, name)` |
+| Nim | `fieldPairs` 内置迭代器 | `for name, val in fieldPairs(obj)` |
+| Crystal | `@type.instance_vars` 宏 | `{% for ivar in @type.instance_vars %}` |
+
+### 运行时反射
+
+| 语言 | 机制 | 开销 |
+|------|------|------|
+| Java | `Field.get(obj)` | 2-10x |
+| Go | `reflect.ValueOf` | 5-10x |
+| Swift | `Mirror` | 低-中 |
+| TS/JS | `Object.entries(obj)` | 极低（动态语言天然支持） |
+
+### 编译期代码生成（SS 当前属于此类）
+
+| 语言 | 机制 |
+|------|------|
+| Rust | proc_macro derive |
+| C# | Roslyn Source Generator |
+| SS (当前) | @derive + @comptimeEmit 字符串拼接 |
+
+**SS 从第三类（代码生成）升级到第一类（编译期零开销）。**
+
+## 实施路线图
+
+优先级按第一性需求排列。`obj.fields()` + `obj[name]` 是第一优先级，其他是支撑。
+
+### Phase 5: `obj.fields()` + `obj[name]` + 编译期循环展开
+
+**目标：** 解决第一性需求。运行时函数内可遍历对象字段并按名访问值。
+
+**需要实现的三件事：**
+
+1. **`obj.fields()`** — 编译器为每个 class 自动生成 `fields()` 内置方法，返回字段名数组（编译期常量）
+
+2. **`obj[name]` bracket notation** — 当 `name` 是编译期常量字符串时，`obj["x"]` 在 codegen 阶段解析为 `obj.x` 的 GEP 指令（零运行时开销）
+
+3. **for-in 编译期展开** — 当 for-in 的迭代目标是编译期常量数组时，编译器展开循环，每次迭代的循环变量替换为常量
+
+**验证方法：**
+```ss
+class Point { x: int; y: int }
+
+function toString(p: Point): string {
+    let parts = ""
+    for (name in p.fields()) {
+        if (parts != "") { parts = parts + ", " }
+        parts = parts + name + "=" + p[name]
+    }
+    return "Point(" + parts + ")"
+}
+
+function main() {
+    const p = new Point(x: 10, y: 20)
+    assertEqual(toString(p), "Point(x=10, y=20)")
+}
+```
+
+**通过标准：** 编译通过，运行输出 `Point(x=10, y=20)`，生成的 LLVM IR 中无循环（已展开为逐字段访问）。
+
+### Phase 6: 解释器支持 class
+
+**目标：** comptime 块内可定义 class、实例化对象、访问字段、调用方法。
+
+**实现要点：**
+- interp.ss 支持 CLASS_DECL → 注册 class
+- interp.ss 支持 NEW_EXPR → 创建 object 值
+- interp.ss 支持 MEMBER_ACCESS / MEMBER_ASSIGN → 字段读写
+- interp.ss 支持 METHOD_CALL on object → 方法调用
+- 不需要 RC/PIR — comptime 对象由解释器管理
+
+**验证：** `comptime { class Foo { x: int }; const f = new Foo(x: 42); return f.x }` → 42
+
+### Phase 7: 解释器支持 enum + try/catch + 闭包
+
+**目标：** 补齐常用语言特性，comptime 覆盖日常 SS 代码。
+
+**验证：** `comptime { try { throw("err") } catch(e) { return e } }` → "err"
+
+### Phase 8: comptime 参数
+
+**目标：** 函数参数可标记 comptime，编译器在调用处求值并特化。
+
+**语法（遵循 Java/TS 优先，不照搬 Zig）：**
+```ss
+// 方案 1: 注解风格（Java）
+function repeat(@comptime n: int, s: string): string { ... }
+
+// 方案 2: const 参数（TS const type parameter 风格）
+function repeat(const n: int, s: string): string { ... }
+```
+
+**验证：** `repeat(3, "a")` 编译期展开为 `"aaa"`
+
+### Phase 9: 类型作为 comptime 值
+
+**目标：** comptime 函数可以接收和返回类型。
+
+**语法探索：**
+```ss
+comptime {
+    function Pair(T: type, U: type): type {
+        return class { first: T; second: U }
+    }
+}
+const IntStr = comptime { return Pair(int, string) }
+const p = new IntStr(first: 42, second: "hello")
+```
+
+**验证：** 可用 comptime 返回的类型 new 实例
+
+### 各 Phase 解锁的能力
+
+| 能力 | 当前 | Ph5 | Ph6 | Ph7 | Ph8 | Ph9 |
+|------|------|-----|-----|-----|-----|-----|
+| **obj.fields()** | ❌ | ✅ | | | | |
+| **obj[name] bracket notation** | ❌ | ✅ | | | | |
+| **for-in 编译期展开** | ❌ | ✅ | | | | |
+| comptime class 实例化 | ❌ | | ✅ | | | |
+| comptime enum/try-catch/闭包 | ❌ | | | ✅ | | |
+| comptime 参数特化 | ❌ | | | | ✅ | |
+| 类型作为值/函数返回 type | ❌ | | | | | ✅ |
+| comptime 块 | ✅ | | | | | |
+| comptime 表达式 | ✅ | | | | | |
+| @derive 注解 | ✅ | | | | | |
+| @typeInfo / 类型发现 | ✅ | | | | | |
+| 文件 I/O / Shell | ✅ | | | | | |
+| 条件编译 | ✅ | | | | | |
+| 字符串 mixin | ✅ | | | | | |
+
+## 过渡策略
+
+1. **@derive 保留为便捷层** — `@derive("ToString")` 继续可用。Phase 5 完成后，@derive handler 内部实现可改用 fields() + bracket notation，但用户接口不变
+2. **@comptimeEmit 保留但冻结** — 已有的字符串 mixin 继续工作，不再扩展
+3. **ct* 辅助函数冻结** — ctMap/ctZip/ctRange 等保留，不再新增
+4. **渐进替换** — Phase 5 完成后，新功能优先用 fields() + obj[name] 实现
+
+## 不做的事
+
+- 不实现运行时反射（Java/Go 模式）— SS 是编译型语言，编译期展开零开销
+- 不加 `inline` 关键字 — 编译器自动检测编译期常量迭代目标并展开
+- 不加 `@field` 内建函数 — 用 TS 风格 bracket notation `obj[name]`
+- 不照搬 Zig/D/Nim 语法 — 用 TS/Java 风格表达
+- 不取消现有泛型语法 — `Array<T>` 保留
+- 不限制 comptime I/O — readFile/shellOutput 是 SS 优势，保留
+
+## 验证标准（每轮必检）
+
+### 方向性检查（开始前）
+
+1. **这轮在解决第一性需求吗？**（结构化字段访问：fields() + obj[name] + 循环展开）
+   - 是 → 继续
+   - 不是 → 在缩小两个根本差距吗？（解释器覆盖度 / 类型是值）
+   - 都不是 → **停。偏了。**
+
+2. **这轮加的东西，在 fields() + obj[name] 可用后还需要吗？**
+   - 不需要 → **不做。** 在给过渡方案添砖加瓦。
+
+3. **是在加 ct* 辅助函数吗？**
+   - 是 → **不做。** ct* 已冻结。
+
+### 实现检查（完成后）
+
+4. **新代码是拼字符串还是操作值？**
+   - 拼字符串 → 过渡方案，标记为技术债
+   - 操作值 → 符合方向
+
+5. **用户体验是变好了还是变复杂了？**
+   - 需要学更多 API → 偏了
+   - 用普通 SS 写法搞定 → 符合方向
+
+### 反模式（出现即偏离）
+
+- ❌ 新增 ct* 辅助函数
+- ❌ 新增 @derive handler 用字符串拼接实现
+- ❌ 增强 @comptimeEmit
+- ❌ 给字符串模板加新占位符
+- ❌ 在 lib/comptime.ss 中加大量新函数
+
+### 正模式（应该做的事）
+
+- ✅ 实现 obj.fields() / obj[name] / 编译期循环展开
+- ✅ 增加 interp.ss 对 SS 语言特性的覆盖
+- ✅ 用户用普通 SS 写法搞定编译期任务
+- ✅ 减少 @comptimeEmit 的使用场景
+
+## 参考
+
+- Zig comptime: https://ziglang.org/documentation/master/#comptime
+- Nim fieldPairs: https://nim-lang.org/docs/iterators.html
+- D 语言 CTFE: https://dlang.org/ctfe.html
+- Rust proc-macro: https://doc.rust-lang.org/reference/procedural-macros.html
+- D087 决策文档: docs/3-decisions/D087-comptime.md

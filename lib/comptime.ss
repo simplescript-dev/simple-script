@@ -443,4 +443,90 @@ comptime {
         }
         return "function " + funcName + "(value: " + valType + "): string {\n" + body + "    return " + fallback + "\n}"
     }
+
+    // ── Collection utilities ──
+
+    // Replace all occurrences of old with rep in s
+    function ctReplaceAll(s: string, old: string, rep: string): string {
+        if (old == "") { return s }
+        let result = ""
+        let remaining = s
+        let pos = remaining.indexOf(old)
+        while (pos >= 0) {
+            result = result + remaining.substring(0, pos) + rep
+            remaining = remaining.substring(pos + old.length(), remaining.length())
+            pos = remaining.indexOf(old)
+        }
+        return result + remaining
+    }
+
+    // Apply template to each comma-separated item, join with separator.
+    // Replaces all $item with item value, all $index with 0-based position.
+    function ctMap(items: string, template: string, sep: string): string {
+        if (items == "") { return "" }
+        const parts = items.split(",")
+        let result = ""
+        let i = 0
+        while (i < parts.length()) {
+            if (i > 0) { result = result + sep }
+            let line = ctReplaceAll(template, "$item", parts[i])
+            line = ctReplaceAll(line, "$index", `${i}`)
+            result = result + line
+            i = i + 1
+        }
+        return result
+    }
+
+    // Generate comma-separated integer sequence: start,start+1,...,end-1
+    function ctRange(start: int, end: int): string {
+        let result = ""
+        let i = start
+        while (i < end) {
+            if (i > start) { result = result + "," }
+            result = `${result}${i}`
+            i = i + 1
+        }
+        return result
+    }
+
+    // Count items in comma-separated list (0 for empty string)
+    function ctLen(items: string): int {
+        if (items == "") { return 0 }
+        return items.split(",").length()
+    }
+
+    // Check if target exists in comma-separated list (1=found, 0=not found)
+    function ctContains(items: string, target: string): int {
+        if (items == "") { return 0 }
+        const parts = items.split(",")
+        let i = 0
+        while (i < parts.length()) {
+            if (parts[i] == target) { return 1 }
+            i = i + 1
+        }
+        return 0
+    }
+
+    // Apply template to paired items from two comma-separated lists, join with sep.
+    // Replaces all $key from keys list, all $value from values list.
+    function ctZip(keys: string, values: string, template: string, sep: string): string {
+        if (keys == "") { return "" }
+        const kParts = keys.split(",")
+        const vParts = values.split(",")
+        let result = ""
+        let i = 0
+        while (i < kParts.length()) {
+            if (i > 0) { result = result + sep }
+            let line = ctReplaceAll(template, "$key", kParts[i])
+            if (i < vParts.length()) {
+                line = ctReplaceAll(line, "$value", vParts[i])
+            } else {
+                line = ctReplaceAll(line, "$value", "")
+            }
+            result = result + line
+            i = i + 1
+        }
+        return result
+    }
+
 }
