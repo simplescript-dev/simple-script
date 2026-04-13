@@ -135,6 +135,13 @@ function genExprOld(id: int): string {
 }
 
 function genVal(id: int): int {
+    if (id <= 0) { return constVal("0") }
+    const kind = nGetKind(id)
+    if (kind == "INT_LIT") { return ctVal(interpNewInt(parseInt(nGetS1(id)))) }
+    if (kind == "STRING_LIT") { return ctVal(interpNewString(nGetS1(id))) }
+    if (kind == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
+    if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
+    if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     return constVal(genExprOld(id))
 }
 

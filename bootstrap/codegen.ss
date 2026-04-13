@@ -128,7 +128,18 @@ function constVal(s: string): int {
 }
 
 function reg(v: int): string {
+    if (isCt(v) == 1) { return materialize(payload(v)) }
     return regTable[payload(v) - 1]
+}
+
+function materialize(interpValId: int): string {
+    const t = interpType(interpValId)
+    if (t == "int") { return `${interpAsInt(interpValId)}` }
+    if (t == "string") { return addStringConst(interpAsStr(interpValId)) }
+    if (t == "bool") { return interpAsBool(interpValId) == 1 ? "1" : "0" }
+    if (t == "double") { return interpAsStr(interpValId) }
+    if (t == "null") { return "null" }
+    return "0"
 }
 
 // ── IR Builder Helpers ───────────────────────────────────────
