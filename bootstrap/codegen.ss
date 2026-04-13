@@ -14,6 +14,7 @@ let irOutFile = ""
 let strOutFile = ""
 let regCount = 0
 let regTable: Array<string> = []
+let ctVars = new Map()
 let labelCount = 0
 let varTypes = ""
 let varTypesReady = 0
@@ -484,6 +485,7 @@ function resetCodegen() {
     // SSA counters
     regCount = 0
     regTable = []
+    ctVars = new Map()
     labelCount = 0
     varCounter = 0
     // Function context

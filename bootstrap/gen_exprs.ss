@@ -146,6 +146,12 @@ function genVal(id: int): int {
     if (kind == "UNARY") { return genValUnary(id) }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "TERNARY") { return genValTernary(id) }
+    if (kind == "IDENT") {
+        const ctKey = `${currentFunc}:${nGetS1(id)}`
+        if (ctVars.has(ctKey) == 1) {
+            return parseInt(ctVars.getString(ctKey))
+        }
+    }
     return constVal(genExprOld(id))
 }
 

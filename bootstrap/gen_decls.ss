@@ -473,7 +473,11 @@ function genVarDecl(id: int) {
         }
     }
 
-    let val = genExpr(initId)
+    const initTagged = genVal(initId)
+    if (nGetS2(id) == "CONST" && isCt(initTagged) == 1) {
+        ctVars.set(`${currentFunc}:${name}`, `${initTagged}`)
+    }
+    let val = reg(initTagged)
     const valLLType = ssTypeToLLVM(inferType(initId))
     if (valLLType == "i64" && llType == "i32") {
         const trR = nextReg()
