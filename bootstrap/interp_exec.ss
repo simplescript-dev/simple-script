@@ -52,6 +52,29 @@ function interpExec(nodeId: int) {
         return
     }
 
+    if (kind == "ENUM_DECL") {
+        const eName = nGetS1(nodeId)
+        const isStringEnum = nGetI1(nodeId)
+        if (isStringEnum == 1) { interpEnumTypes.set(eName, "1") }
+        interpEnumNodes.set(eName, `${nodeId}`)
+        const vl = nGetList(nodeId)
+        if (vl != "") {
+            const parts = vl.split(",")
+            for (p in parts) {
+                const vid = parseInt(p)
+                if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+                    const vName = nGetS1(vid)
+                    if (isStringEnum == 1) {
+                        interpEnumValues.set(`${eName}.${vName}`, nGetS2(vid))
+                    } else {
+                        interpEnumValues.set(`${eName}.${vName}`, `${nGetI1(vid)}`)
+                    }
+                }
+            }
+        }
+        return
+    }
+
     if (kind == "EXPR_STMT") {
         if (nGetI1(nodeId) > 0) { interpEval(nGetI1(nodeId)) }
         return

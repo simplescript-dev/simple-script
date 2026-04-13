@@ -396,8 +396,21 @@ function interpNewExpr(nodeId: int): int {
 // ── Member Access ─────────────────────────────────────────────
 
 function interpMemberAccess(nodeId: int): int {
-    const objVal = interpEval(nGetI1(nodeId))
     const fieldName = nGetS1(nodeId)
+    const objNode = nGetI1(nodeId)
+    // Enum variant access: Color.Red → value
+    if (nGetKind(objNode) == "IDENT") {
+        const eName = nGetS1(objNode)
+        const enumKey = `${eName}.${fieldName}`
+        if (interpEnumValues.has(enumKey) == 1) {
+            const val = interpEnumValues.getString(enumKey)
+            if (interpEnumTypes.has(eName) == 1) {
+                return interpNewString(val)
+            }
+            return interpNewInt(parseInt(val))
+        }
+    }
+    const objVal = interpEval(objNode)
     if (interpType(objVal) == "object") {
         return interpGetField(objVal, fieldName)
     }
@@ -409,7 +422,17 @@ function interpMemberAccess(nodeId: int): int {
 
 function interpMethodCall(nodeId: int): int {
     const methodName = nGetS1(nodeId)
-    const objVal = interpEval(nGetI1(nodeId))
+    const objNode = nGetI1(nodeId)
+
+    // Enum static methods: Color.values(), Color.names(), Color.valueOf(name)
+    if (nGetKind(objNode) == "IDENT" && interpEnumNodes.has(nGetS1(objNode)) == 1) {
+        const eName = nGetS1(objNode)
+        if (methodName == "values") { return interpEnumListMethod(eName, 0) }
+        if (methodName == "names") { return interpEnumListMethod(eName, 1) }
+        if (methodName == "valueOf") { return interpEnumValueOfMethod(eName, nodeId) }
+    }
+
+    const objVal = interpEval(objNode)
     const objType = interpType(objVal)
 
     // Built-in type methods (string, array, map)
@@ -499,6 +522,47 @@ function interpMethodCall(nodeId: int): int {
     interpBreakFlag = savedBreak
     interpContinueFlag = savedContinue
     return result
+}
+
+// ── Enum Helper Methods ──────────────────────────────────────
+
+function interpEnumListMethod(eName: string, wantNames: int): int {
+    const enumId = parseInt(interpEnumNodes.getString(eName))
+    const vl = nGetList(enumId)
+    if (vl == "") { return interpNewArray("") }
+    const isString = interpEnumTypes.has(eName) == 1
+    const arr = interpNewArray("")
+    const parts = vl.split(",")
+    for (p in parts) {
+        const vid = parseInt(p)
+        if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+            if (wantNames == 1) {
+                interpArrayPush(arr, interpNewString(nGetS1(vid)))
+            } else {
+                const val = interpEnumValues.getString(`${eName}.${nGetS1(vid)}`)
+                if (isString) { interpArrayPush(arr, interpNewString(val)) }
+                else { interpArrayPush(arr, interpNewInt(parseInt(val))) }
+            }
+        }
+    }
+    return arr
+}
+
+function interpEnumValueOfMethod(eName: string, nodeId: int): int {
+    const voArgList = nGetList(nodeId)
+    if (voArgList != "") {
+        const voArgId = parseInt(voArgList.split(",")[0])
+        const voName = interpAsStr(interpEval(voArgId))
+        const voKey = `${eName}.${voName}`
+        if (interpEnumValues.has(voKey) == 1) {
+            const voVal = interpEnumValues.getString(voKey)
+            if (interpEnumTypes.has(eName) == 1) {
+                return interpNewString(voVal)
+            }
+            return interpNewInt(parseInt(voVal))
+        }
+    }
+    return interpNewNull()
 }
 
 // ── Call Function Value (for higher-order methods) ────────────

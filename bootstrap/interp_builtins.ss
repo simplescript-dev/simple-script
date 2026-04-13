@@ -143,6 +143,16 @@ function interpStringMethod(objVal: int, method: string, args: Array<string>): i
         const sub = args.length() > 0 ? interpAsStr(parseInt(args[0])) : ""
         return interpNewInt(s.indexOf(sub) >= 0 ? 1 : 0)
     }
+    if (method == "repeat") {
+        const n = args.length() > 0 ? interpAsInt(parseInt(args[0])) : 0
+        let result = ""
+        let i = 0
+        while (i < n) {
+            result = `${result}${s}`
+            i = i + 1
+        }
+        return interpNewString(result)
+    }
 
     println(`[interp] unsupported string method: ${method}`)
     return interpNewNull()

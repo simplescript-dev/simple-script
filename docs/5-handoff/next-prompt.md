@@ -1,4 +1,4 @@
-# Round 166
+# Round 167
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -7,72 +7,59 @@ Senior technical architect. Project: SimpleScript (self-bootstrapping compiled l
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
-- docs/3-decisions/D088-comptime-zig-route.md (CRITICAL: Zig route = 解释器覆盖完整语言，验证清单，反模式)
-- docs/4-issues/1-open/ (check remaining open issues)
-- bootstrap/interp.ss + interp_eval.ss + interp_exec.ss (interpreter — 补缺口的主战场)
+- docs/3-decisions/D089-compiler-is-interpreter.md (CRITICAL: 统一架构设计，tagged int，迁移计划)
+- docs/3-decisions/D088-comptime-zig-route.md (Zig route context)
+- bootstrap/codegen.ss (nextReg, emitIR, regCount — Phase 0 改造目标)
+- bootstrap/gen_exprs.ss (genExpr — genVal 的基础)
 
 ## Last Round (max 3 sentences)
-Implemented bracket WRITE, zero-arg constructor, rewrote @derive(Copy/Default). Then corrected the Zig route understanding: Phase 8/9 (comptime parameters, types as values) are Zig syntax features SS doesn't need — SS already has generics. The real Zig route is "interpreter = full language": close interpreter gaps so any SS code runs in `comptime {}`.
+Implemented interpreter enum support (ENUM_DECL, variant access, values/names/valueOf methods). Then discussed the fundamental architecture gap: SS has "compiler + interpreter" (two implementations), not "compiler = interpreter" (one implementation). Designed D089: tagged int Value encoding (bit 30 = comptime flag), genVal replaces genExpr, Zig-style value-level comptime propagation, 7-phase migration plan.
 
 ## Task
-**Close interpreter gaps — make `comptime {}` support more SS syntax**
+**D089 Phase 0: 基础设施 — tagged int + 寄存器表 + genVal wrapper**
 
-### Zig Route Core Principle
-> **编译器即解释器，解释器 = 完整语言。**
-> 每轮验证：**这轮完成后，有新的 SS 语法能在 `comptime {}` 里跑了吗？**
-> 是 → 在路线上。不是 → 偏了。
+### What to do
+1. Add tagged int operations to codegen.ss: `ctVal()`, `isCt()`, `payload()`, `r()`
+2. Add register table: `regTable` array, modify `nextReg()` to return int and store name in table
+3. Add `constVal(s: string): int` for non-register constants
+4. Add `genVal(id: int): int` initial version: wraps old genExpr, returns `constVal(oldGenExpr(id))`
+5. Rename current `genExpr` → `genExprOld`, add new `genExpr` wrapper: `return r(genVal(id))`
+6. Update all callers: `nextReg()` returns int now, wrap with `r()` where used in emitIR
 
-### Interpreter Gap List (by priority)
-| Gap | Compiler counterpart | Impact |
-|-----|---------------------|--------|
-| ENUM_DECL | registerEnum in gen_stmts.ss | Can't define/use enums in comptime |
-| destructuring array | genDestructureArray | `let [a, b] = arr` won't work |
-| destructuring object | genDestructureObject | `let {x, y} = obj` won't work |
-| spread | SPREAD_ELEM | `...arr` won't work |
-| super | SUPER in gen_exprs.ss | `super.method()` won't work |
-| bitwise compound assign | &= |= ^= <<= >>= | Won't work in comptime |
+### Phase 0 验证
+- Bootstrap 固定点通过（stage2 == stage3）
+- `bin/ss test tests/` 全量通过（218 tests）
+- 行为完全不变，纯重构
 
-### Interpreter Current Coverage
-- ✅ Literals, variables, functions, closures, classes, inheritance
-- ✅ if/while/do-while/for/for-in, break/continue/return
-- ✅ throw/try/catch/finally, switch/case
-- ✅ Arrays, Maps, string methods, higher-order methods
-- ✅ @comptimeEmit, emit(), getTypeInfo, file I/O, shell
-- ✅ interpReset() for standalone test use
-- ❌ enum, destructuring, spread, super, bitwise compound assign
+### D089 Core Principle
+> **新增语言特性时改几处？1 处 → 在路线上。2 处 → 没改到位。**
+> Phase 0 不改变这个数字，只搭基础设施。Phase 1-6 逐步统一。
 
-### Phase 5 Capabilities (completed, stable)
-- obj.fields() + obj[name] READ/WRITE + compile-time for-in unrolling + overload dispatch
-- @derive 7/8 rewritten with fields()+bracket (With stays with getTypeInfo — inherently per-field)
-- _ss_hashContrib / _ss_jsonValue / _ss_zero overloaded runtime helpers
+### Migration Baseline (from research)
+- genExpr 调用点: 111（97% 赋值到变量）
+- nextReg 调用点: 363
+- emitIR 调用点: 1,857
+- 解释器待删除代码: 1,782 行
 
-### Open Issues (by priority)
-1. **I001 -- Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
-2. **I002 -- String-based type system** [BLOCKED]: Types compared as raw strings. Needs enum/struct.
-3. **I005 -- AST list as string** [PARTIAL]: Has helpers, perf issues need proper array type.
-4. **I006 -- Runtime raw IR** [LOW]: Mostly converted, 401 raw emitIR remaining.
-5. **I008 -- Parser no precedence table** [LOW]: Works, recursive descent is standard.
-
-### Project Status
-- **Bootstrap**: 48 files, ~18700 LOC, 217 tests (217 passing, 0 failures).
-- **Comptime**: D087 Phase 1-4 complete. D088 Phase 5-7 complete. ct* functions frozen.
-- **Zig route**: Interpreter ~80% complete. Gaps: enum, destructuring, spread, super.
+## Project Status
+- **Bootstrap**: 48 files, ~18700 LOC, 218 tests (218 passing, 0 failures).
+- **Comptime**: D087 Phase 1-4, D088 Phase 5-7 complete. Interpreter enum just added.
+- **D089**: Phase 0 pending. Architecture designed, not yet implemented.
 
 ## Watch Out For
-- **D088 验证**: 每轮必过——有新的 SS 语法能在 comptime {} 里跑了吗？不是→偏了。
-- **不打磨便捷层**: @derive 已够用（7/8），不再花时间优化。
-- **不抄 Zig 语法**: 不做 @comptime 参数、不做 types as values，除非出现真实驱动场景。
+- **Phase 0 是纯重构**：行为不变，只搭基础设施。不要在这一步做 comptime 传播。
+- **nextReg 改造是最大风险**：363 个调用点从 string 变 int。用 `r()` wrapper 机械替换。
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **interp_stubs.ss**: Required for standalone interpreter tests (provides codegen global stubs).
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
-1. Write tests: SS code using the new feature inside `comptime {}`, proving it works
-2. Verify against D088 checklist: "有新语法能在 comptime 里跑了吗？"
-3. Run `/simplify` to review code quality before commit
-4. Self-review for contradictions
-5. Commit and push to remote
-6. Generate next docs/5-handoff/next-prompt.md (include "Next Direction" summary)
-7. List files created/modified + brief next direction
-8. **Stop.**
+1. Write tests verifying behavior unchanged
+2. Run `bin/ss test tests/` — 218 tests pass
+3. Run `./build.sh bootstrap` — fixed-point verified
+4. Run `/simplify` to review code quality before commit
+5. Self-review for contradictions
+6. Commit and push to remote
+7. Generate next docs/5-handoff/next-prompt.md (include "Next Direction" summary)
+8. List files created/modified + brief next direction
+9. **Stop.**

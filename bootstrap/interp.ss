@@ -206,6 +206,15 @@ let interpClassParents = new Map()
 let interpObjFields = new Map()
 let interpThisVal = 0
 
+// ── Enum Support ─────────────────────────────────────────────
+// interpEnumValues: "EnumName.VariantName" → value string
+// interpEnumTypes: "EnumName" → "1" for string enums
+// interpEnumNodes: "EnumName" → AST node ID string
+
+let interpEnumValues = new Map()
+let interpEnumTypes = new Map()
+let interpEnumNodes = new Map()
+
 function interpGetField(objId: int, fieldName: string): int {
     const key = `${objId}:${fieldName}`
     if (interpObjFields.has(key) == 1) {
@@ -304,6 +313,9 @@ function interpReset() {
     interpClassParents = new Map()
     interpObjFields = new Map()
     interpThisVal = 0
+    interpEnumValues = new Map()
+    interpEnumTypes = new Map()
+    interpEnumNodes = new Map()
     interpComptimeRootScope = 0
     interpResetBuiltins()
 }
