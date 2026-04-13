@@ -142,7 +142,57 @@ function genVal(id: int): int {
     if (kind == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
+    if (kind == "BINARY") { return genValBinary(id) }
+    if (kind == "UNARY") { return genValUnary(id) }
     return constVal(genExprOld(id))
+}
+
+function genValBinary(id: int): int {
+    const op = nGetS1(id)
+    if (op == "And" || op == "Or" || op == "NullCoalesce" || op == "Instanceof" || op == "As") {
+        return constVal(genExprOld(id))
+    }
+    const blt = inferType(nGetI1(id))
+    const brt = inferType(nGetI2(id))
+    if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
+        return constVal(genExprOld(id))
+    }
+    const lv = genVal(nGetI1(id))
+    const rv = genVal(nGetI2(id))
+    if (isCt(lv) == 1 && isCt(rv) == 1) {
+        return ctVal(interpIntOp(op, interpAsInt(payload(lv)), interpAsInt(payload(rv))))
+    }
+    return constVal(genIntBinary(op, reg(lv), reg(rv)))
+}
+
+function genValUnary(id: int): int {
+    const uType = inferType(nGetI1(id))
+    if (uType != "int" && uType != "bool") {
+        return constVal(genExprOld(id))
+    }
+    const ov = genVal(nGetI1(id))
+    const op = nGetS1(id)
+    if (isCt(ov) == 1) {
+        const val = interpAsInt(payload(ov))
+        if (op == "Neg") { return ctVal(interpNewInt(0 - val)) }
+        if (op == "Not") { return ctVal(interpNewBool(val == 0 ? 1 : 0)) }
+        if (op == "BitNot") { return ctVal(interpNewInt(~val)) }
+    }
+    // Runtime — operand already evaluated, emit IR directly
+    const valStr = reg(ov)
+    const r = nextReg()
+    if (op == "Neg") {
+        emitIR(`  ${r} = sub i32 0, ${valStr}`)
+        return constVal(r)
+    }
+    if (op == "BitNot") {
+        emitIR(`  ${r} = xor i32 ${valStr}, -1`)
+        return constVal(r)
+    }
+    emitIR(`  ${r} = icmp eq i32 ${valStr}, 0`)
+    const r2 = nextReg()
+    emitIR(`  ${r2} = zext i1 ${r} to i32`)
+    return constVal(r2)
 }
 
 function genExpr(id: int): string {
