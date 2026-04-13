@@ -178,56 +178,64 @@ function main() {
 
 **验证：** `comptime { try { throw("err") } catch(e) { return e } }` → "err"
 
-### Phase 8: comptime 参数
+### Phase 8: 解释器 = 完整语言（路线修正）
 
-**目标：** 函数参数可标记 comptime，编译器在调用处求值并特化。
+> **2026-04-13 路线修正：** 原 Phase 8（comptime 参数 `@comptime`）和 Phase 9（类型作为值）暂缓。
+> 原因：这两个是 Zig 的具体语法特性，不是 Zig 路线的本质。SS 已有泛型（`Array<T>`），
+> 不需要用 comptime 参数当泛型用。抄手段不等于走路线。
+>
+> **Zig 路线的本质是：编译器即解释器，解释器 = 完整语言。**
+> 任何 SS 代码都能在 `comptime {}` 里跑。每补一个解释器缺口，comptime 就能做更多事。
 
-**语法（遵循 Java/TS 优先，不照搬 Zig）：**
+**目标：** 补齐解释器缺失的 SS 语言特性，使 `comptime {}` 能执行任意 SS 代码。
+
+**当前解释器缺失清单：**
+
+| 缺失特性 | 编译器对应 | 影响 |
+|----------|-----------|------|
+| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum |
+| destructuring | genDestructureArray/Object | `let [a, b] = arr` 不能用 |
+| spread | genSpread | `...arr` 不能用 |
+| super | genSuperCall | 继承方法调用不能用 |
+| 位运算赋值 | genAssign compound | `&=` `\|=` `^=` 等不能用 |
+
+**验证方法：** 每轮完成后，写一段使用该特性的 SS 代码放进 `comptime {}`，确认能跑。
+
 ```ss
-// 方案 1: 注解风格（Java）
-function repeat(@comptime n: int, s: string): string { ... }
-
-// 方案 2: const 参数（TS const type parameter 风格）
-function repeat(const n: int, s: string): string { ... }
-```
-
-**验证：** `repeat(3, "a")` 编译期展开为 `"aaa"`
-
-### Phase 9: 类型作为 comptime 值
-
-**目标：** comptime 函数可以接收和返回类型。
-
-**语法探索：**
-```ss
+// 例：enum 支持完成后，这段必须能工作
 comptime {
-    function Pair(T: type, U: type): type {
-        return class { first: T; second: U }
-    }
+    enum Color { Red = 1, Green = 2, Blue = 3 }
+    const names = Color.names()
+    // names == ["Red", "Green", "Blue"]
 }
-const IntStr = comptime { return Pair(int, string) }
-const p = new IntStr(first: 42, second: "hello")
 ```
 
-**验证：** 可用 comptime 返回的类型 new 实例
+**完成标准：** 上述所有缺失特性在 `comptime {}` 中可用。
+
+### 原 Phase 8/9（暂缓，等有真实场景再推进）
+
+- **comptime 参数特化** — `function foo(const n: int, s: string)` 编译期求值。SS 已有泛型，当前无驱动场景。
+- **类型作为 comptime 值** — `comptime { return Pair(int, string) }`。复杂度高，等解释器完整后再评估。
 
 ### 各 Phase 解锁的能力
 
-| 能力 | 当前 | Ph5 | Ph6 | Ph7 | Ph8 | Ph9 |
-|------|------|-----|-----|-----|-----|-----|
-| **obj.fields()** | ❌ | ✅ | | | | |
-| **obj[name] bracket notation** | ❌ | ✅ | | | | |
-| **for-in 编译期展开** | ❌ | ✅ | | | | |
-| comptime class 实例化 | ❌ | | ✅ | | | |
-| comptime enum/try-catch/闭包 | ❌ | | | ✅ | | |
-| comptime 参数特化 | ❌ | | | | ✅ | |
-| 类型作为值/函数返回 type | ❌ | | | | | ✅ |
-| comptime 块 | ✅ | | | | | |
-| comptime 表达式 | ✅ | | | | | |
-| @derive 注解 | ✅ | | | | | |
-| @typeInfo / 类型发现 | ✅ | | | | | |
-| 文件 I/O / Shell | ✅ | | | | | |
-| 条件编译 | ✅ | | | | | |
-| 字符串 mixin | ✅ | | | | | |
+| 能力 | 当前 | Ph5 | Ph6 | Ph7 | Ph8 |
+|------|------|-----|-----|-----|-----|
+| **obj.fields()** | ❌ | ✅ | | | |
+| **obj[name] bracket READ/WRITE** | ❌ | ✅ | | | |
+| **for-in 编译期展开** | ❌ | ✅ | | | |
+| comptime class 实例化 | ❌ | | ✅ | | |
+| comptime try-catch/闭包 | ❌ | | | ✅ | |
+| comptime enum | ❌ | | | | ✅ |
+| comptime destructuring | ❌ | | | | ✅ |
+| comptime super | ❌ | | | | ✅ |
+| comptime 块 | ✅ | | | | |
+| comptime 表达式 | ✅ | | | | |
+| @derive 注解 | ✅ | | | | |
+| @typeInfo / 类型发现 | ✅ | | | | |
+| 文件 I/O / Shell | ✅ | | | | |
+| 条件编译 | ✅ | | | | |
+| 字符串 mixin | ✅ | | | | |
 
 ## 过渡策略
 
@@ -247,28 +255,37 @@ const p = new IntStr(first: 42, second: "hello")
 
 ## 验证标准（每轮必检）
 
+### 核心验证（最重要的一条）
+
+> **这轮完成后，有新的 SS 语法能在 `comptime {}` 里跑了吗？**
+> - 是 → 在路线上。
+> - 不是 → **偏了。停下来重新审视方向。**
+
+这条规则能过滤掉所有偏离：打磨 @derive 过不了（没让新语法在 comptime 工作），
+抄 Zig 语法特性也过不了（添加的是编译期语法，不是解释器覆盖度）。
+
 ### 方向性检查（开始前）
 
-1. **这轮在解决第一性需求吗？**（结构化字段访问：fields() + obj[name] + 循环展开）
+1. **这轮在补解释器的缺口吗？**（enum / destructuring / super / spread / 其他缺失语法）
    - 是 → 继续
-   - 不是 → 在缩小两个根本差距吗？（解释器覆盖度 / 类型是值）
+   - 不是 → 在解决第一性需求吗？（fields() + obj[name] + 循环展开）
    - 都不是 → **停。偏了。**
 
-2. **这轮加的东西，在 fields() + obj[name] 可用后还需要吗？**
-   - 不需要 → **不做。** 在给过渡方案添砖加瓦。
+2. **是在打磨 @derive / 便捷层 / 过渡方案吗？**
+   - 是 → **不做。** 便捷层不是主线。
 
 3. **是在加 ct* 辅助函数吗？**
    - 是 → **不做。** ct* 已冻结。
 
 ### 实现检查（完成后）
 
-4. **新代码是拼字符串还是操作值？**
+4. **写一段用到新特性的 SS 代码放进 `comptime {}`，能跑吗？**
+   - 能 → 符合方向
+   - 不能 → 没有真正缩小差距
+
+5. **新代码是拼字符串还是操作值？**
    - 拼字符串 → 过渡方案，标记为技术债
    - 操作值 → 符合方向
-
-5. **用户体验是变好了还是变复杂了？**
-   - 需要学更多 API → 偏了
-   - 用普通 SS 写法搞定 → 符合方向
 
 ### 反模式（出现即偏离）
 
@@ -277,13 +294,15 @@ const p = new IntStr(first: 42, second: "hello")
 - ❌ 增强 @comptimeEmit
 - ❌ 给字符串模板加新占位符
 - ❌ 在 lib/comptime.ss 中加大量新函数
+- ❌ 打磨 @derive 便捷层（已够用，不是主线）
+- ❌ 抄 Zig 的具体语法特性而不是架构本质
 
 ### 正模式（应该做的事）
 
-- ✅ 实现 obj.fields() / obj[name] / 编译期循环展开
-- ✅ 增加 interp.ss 对 SS 语言特性的覆盖
+- ✅ 补解释器缺失的 SS 语言特性（enum / destructuring / super / spread）
+- ✅ 让更多 SS 代码能在 comptime {} 中执行
 - ✅ 用户用普通 SS 写法搞定编译期任务
-- ✅ 减少 @comptimeEmit 的使用场景
+- ✅ 减少"这段代码在 comptime 里跑不了"的场景
 
 ## 参考
 

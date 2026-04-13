@@ -7,54 +7,44 @@ Senior technical architect. Project: SimpleScript (self-bootstrapping compiled l
 Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
-- docs/3-decisions/D088-comptime-zig-route.md (CRITICAL: Zig route decision, verification checklist, anti-patterns)
+- docs/3-decisions/D088-comptime-zig-route.md (CRITICAL: Zig route = 解释器覆盖完整语言，验证清单，反模式)
 - docs/4-issues/1-open/ (check remaining open issues)
-- lib/comptime.ss (current comptime library — 7/8 @derive handlers use fields()+bracket)
-- bootstrap/prelude.ss (overloaded helpers: _ss_hashContrib, _ss_jsonValue, _ss_zero)
+- bootstrap/interp.ss + interp_eval.ss + interp_exec.ss (interpreter — 补缺口的主战场)
 
 ## Last Round (max 3 sentences)
-Implemented bracket WRITE (`obj[name] = value`) in genIndexAssign with compile-time field name detection and RC-safe GEP+store, mirroring existing bracket READ. Fixed zero-arg constructor (`new ClassName()`) to pass zero values for all fields. Rewrote @derive(Copy) and @derive(Default) using fields()+bracket+overload pattern, eliminating getTypeInfo — 7/8 handlers now use D088 pattern.
+Implemented bracket WRITE, zero-arg constructor, rewrote @derive(Copy/Default). Then corrected the Zig route understanding: Phase 8/9 (comptime parameters, types as values) are Zig syntax features SS doesn't need — SS already has generics. The real Zig route is "interpreter = full language": close interpreter gaps so any SS code runs in `comptime {}`.
 
 ## Task
-**Continue D088 roadmap or advance remaining items**
+**Close interpreter gaps — make `comptime {}` support more SS syntax**
 
-### D088 Phase Status
-- **Phase 5** ✅ obj.fields() + obj[name] READ + obj[name] WRITE + compile-time for-in unrolling
-- **Phase 6** ✅ interpreter class support
-- **Phase 7** ✅ interpreter enum/try-catch/closures
-- **Phase 8** ⬜ comptime parameters — `function repeat(@comptime n: int, s: string)` specialization
-- **Phase 9** ⬜ types as comptime values — `comptime { return Pair(int, string) }`
+### Zig Route Core Principle
+> **编译器即解释器，解释器 = 完整语言。**
+> 每轮验证：**这轮完成后，有新的 SS 语法能在 `comptime {}` 里跑了吗？**
+> 是 → 在路线上。不是 → 偏了。
 
-### @derive rewrite status (all using fields()+bracket, no getTypeInfo)
-- ✅ ToString — for-in + name + this[name]
-- ✅ Equals — for-in + this[name] != other[name]
-- ✅ Comparable — for-in + this[name] < other[name]
-- ✅ Hash — for-in + _ss_hashContrib(this[name]) (overloaded)
-- ✅ ToJson — for-in + _ss_jsonValue(this[name]) (overloaded)
-- ✅ Copy — for-in + result[name] = this[name] (bracket write)
-- ✅ Default — for-in + result[name] = _ss_zero(result[name]) (overloaded)
-- ❌ With — per-field `withXxx()` method generation (inherently per-field, stays with getTypeInfo)
+### Interpreter Gap List (by priority)
+| Gap | Compiler counterpart | Impact |
+|-----|---------------------|--------|
+| ENUM_DECL | registerEnum in gen_stmts.ss | Can't define/use enums in comptime |
+| destructuring array | genDestructureArray | `let [a, b] = arr` won't work |
+| destructuring object | genDestructureObject | `let {x, y} = obj` won't work |
+| spread | SPREAD_ELEM | `...arr` won't work |
+| super | SUPER in gen_exprs.ss | `super.method()` won't work |
+| bitwise compound assign | &= |= ^= <<= >>= | Won't work in comptime |
 
-### Overload + unrolling pattern (proven capability)
-- `_ss_hashContrib(v: int/string/double)` — overloaded type-specific hash
-- `_ss_jsonValue(v: int/string/double)` — overloaded type-specific JSON
-- `_ss_zero(v: int/string/double)` — overloaded type-specific zero values
-- During for-in unrolling: `this[name]` has known type → `resolveOverload` picks correct variant
-- Pattern generalizable: any type-specific operation can use this overload dispatch
-
-### New capabilities added this round
-- **Bracket WRITE**: `obj[name] = value` in genIndexAssign — compile-time field name (STRING_LIT or comptimeConst IDENT) + class detection (getObjClass + getVarType fallback) → GEP+store with RC handling
-- **Zero-arg constructor**: `new ClassName()` with no args now fills zero values for all fields (int→0, double→0.0, ptr→null)
-- **_ss_zero overloads**: type-dispatched zero values for @derive(Default) pattern
-
-### Interpreter coverage
+### Interpreter Current Coverage
 - ✅ Literals, variables, functions, closures, classes, inheritance
 - ✅ if/while/do-while/for/for-in, break/continue/return
 - ✅ throw/try/catch/finally, switch/case
 - ✅ Arrays, Maps, string methods, higher-order methods
 - ✅ @comptimeEmit, emit(), getTypeInfo, file I/O, shell
 - ✅ interpReset() for standalone test use
-- ❌ enum (ENUM_DECL in interpreter — enum values exist via compiler registry)
+- ❌ enum, destructuring, spread, super, bitwise compound assign
+
+### Phase 5 Capabilities (completed, stable)
+- obj.fields() + obj[name] READ/WRITE + compile-time for-in unrolling + overload dispatch
+- @derive 7/8 rewritten with fields()+bracket (With stays with getTypeInfo — inherently per-field)
+- _ss_hashContrib / _ss_jsonValue / _ss_zero overloaded runtime helpers
 
 ### Open Issues (by priority)
 1. **I001 -- Global mutable state explosion** [BLOCKED]: 55+ globals. Needs struct support.
@@ -66,23 +56,20 @@ Implemented bracket WRITE (`obj[name] = value`) in genIndexAssign with compile-t
 ### Project Status
 - **Bootstrap**: 48 files, ~18700 LOC, 217 tests (217 passing, 0 failures).
 - **Comptime**: D087 Phase 1-4 complete. D088 Phase 5-7 complete. ct* functions frozen.
-- **@derive**: 7/8 handlers rewritten with fields()+bracket. Only With still uses getTypeInfo.
-- **Next**: Phase 8 (comptime parameters), or other improvements.
+- **Zig route**: Interpreter ~80% complete. Gaps: enum, destructuring, spread, super.
 
 ## Watch Out For
-- **D088 anti-patterns**: No new ct* functions, no new @derive handlers with string concat, no @comptimeEmit enhancements, no new template placeholders.
+- **D088 验证**: 每轮必过——有新的 SS 语法能在 comptime {} 里跑了吗？不是→偏了。
+- **不打磨便捷层**: @derive 已够用（7/8），不再花时间优化。
+- **不抄 Zig 语法**: 不做 @comptime 参数、不做 types as values，除非出现真实驱动场景。
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
-- **Phase 5 capabilities**: obj.fields() + obj[name] READ/WRITE + for-in unrolling + overload dispatch.
-- **Overload pattern**: _ss_hashContrib/_ss_jsonValue/_ss_zero demonstrate type-dispatched helpers via function overloading. Reusable for any type-specific operation.
 - **interp_stubs.ss**: Required for standalone interpreter tests (provides codegen global stubs).
-- **Zero-arg constructor**: `new ClassName()` with no args now works correctly (fills zeros). Used by @derive(Copy/Default).
-- **Bracket write class resolution**: Uses getObjClass + getVarType fallback (INDEX_ASSIGN S1 is string varName, not expression node, so can't use resolveObjClass directly).
 
 ## When Done
 **P18: One task per context. When done or context runs low, update handoff and stop.**
-1. Write tests for new features
-2. Verify against D088 checklist and design principles
+1. Write tests: SS code using the new feature inside `comptime {}`, proving it works
+2. Verify against D088 checklist: "有新语法能在 comptime 里跑了吗？"
 3. Run `/simplify` to review code quality before commit
 4. Self-review for contradictions
 5. Commit and push to remote
