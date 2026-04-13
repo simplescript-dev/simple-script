@@ -163,6 +163,10 @@ function genValBinary(id: int): int {
     }
     const blt = inferType(nGetI1(id))
     const brt = inferType(nGetI2(id))
+    // String comparison: both string operands → comptime fold or inline runtime
+    if (blt == "string" && brt == "string" && (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge")) {
+        return genValStringCompare(op, id)
+    }
     if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
         return constVal(genExprOld(id))
     }
@@ -269,6 +273,46 @@ function genValShortCircuit(op: string, id: int): int {
     const scRes = nextReg()
     emitIR(`  ${scRes} = load i32, ptr ${scResult}, align 4`)
     return constVal(scRes)
+}
+
+function genValStringCompare(op: string, id: int): int {
+    const lv = genVal(nGetI1(id))
+    const rv = genVal(nGetI2(id))
+    if (isCt(lv) == 1 && isCt(rv) == 1) {
+        const ls = interpAsStr(payload(lv))
+        const rs = interpAsStr(payload(rv))
+        if (op == "Eq") { return ctVal(interpNewBool(ls == rs ? 1 : 0)) }
+        if (op == "Ne") { return ctVal(interpNewBool(ls != rs ? 1 : 0)) }
+        if (op == "Lt") { return ctVal(interpNewBool(ls < rs ? 1 : 0)) }
+        if (op == "Gt") { return ctVal(interpNewBool(ls > rs ? 1 : 0)) }
+        if (op == "Le") { return ctVal(interpNewBool(ls <= rs ? 1 : 0)) }
+        return ctVal(interpNewBool(ls >= rs ? 1 : 0))
+    }
+    // Runtime — operands already evaluated, inline string compare IR
+    const lStr = reg(lv)
+    const rStr = reg(rv)
+    if (op == "Eq") {
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @ss_string_eq(ptr ${lStr}, ptr ${rStr})`)
+        return constVal(r)
+    }
+    if (op == "Ne") {
+        const r = nextReg()
+        emitIR(`  ${r} = call i32 @ss_string_ne(ptr ${lStr}, ptr ${rStr})`)
+        return constVal(r)
+    }
+    // Lt/Gt/Le/Ge: strcmp + icmp
+    const cmpR = nextReg()
+    emitIR(`  ${cmpR} = call i32 @ss_strcmp(ptr ${lStr}, ptr ${rStr})`)
+    let cmpOp = "slt"
+    if (op == "Gt") { cmpOp = "sgt" }
+    if (op == "Le") { cmpOp = "sle" }
+    if (op == "Ge") { cmpOp = "sge" }
+    const cmpBool = nextReg()
+    emitIR(`  ${cmpBool} = icmp ${cmpOp} i32 ${cmpR}, 0`)
+    const r = nextReg()
+    emitIR(`  ${r} = zext i1 ${cmpBool} to i32`)
+    return constVal(r)
 }
 
 function genExpr(id: int): string {
