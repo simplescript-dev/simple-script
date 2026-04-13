@@ -2,7 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
-import { interpExecComptime, interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS } from "./interp"
+import { interpExecComptime, interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpType, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 
@@ -210,6 +210,8 @@ function registerEnum(id: int) {
 // ── Statement handlers ──────────────────────────────────────
 
 function genBreak() {
+    // D089 Phase 3: comptime break → set flag
+    if (comptimeDepth > 0) { interpBreakFlag = 1; return }
     if (breakLabel != "") {
         emitReleaseBlockVarsSince(loopBlockStackSaved)
         emitIR(`  br label %${breakLabel}`)
@@ -218,6 +220,8 @@ function genBreak() {
 }
 
 function genContinueStmt() {
+    // D089 Phase 3: comptime continue → set flag
+    if (comptimeDepth > 0) { interpContinueFlag = 1; return }
     if (continueLabel != "") {
         emitReleaseBlockVarsSince(loopBlockStackSaved)
         emitIR(`  br label %${continueLabel}`)
@@ -226,6 +230,29 @@ function genContinueStmt() {
 }
 
 function genPostfixStmt(id: int) {
+    // D089 Phase 3+4: comptime postfix → update ctVars with scope chain lookup
+    if (comptimeDepth > 0) {
+        const pfName = nGetS1(id)
+        let pfKey = ""
+        if (ctScopeStack.length() > 0) {
+            let pfSi = ctScopeStack.length() - 1
+            while (pfSi >= 0) {
+                const pfCk = `${ctScopeStack[pfSi]}:${pfName}`
+                if (ctVars.has(pfCk) == 1) { pfKey = pfCk; break }
+                pfSi = pfSi - 1
+            }
+        }
+        if (pfKey == "") {
+            const pfFk = `${currentFunc}:${pfName}`
+            if (ctVars.has(pfFk) == 1) { pfKey = pfFk }
+        }
+        if (pfKey != "") {
+            const pfOld = payload(parseInt(ctVars.getString(pfKey)))
+            const pfDelta = nGetKind(id) == "POSTFIX_INC" ? 1 : -1
+            ctVars.set(pfKey, `${ctVal(interpNewInt(interpAsInt(pfOld) + pfDelta))}`)
+            return
+        }
+    }
     const kind = nGetKind(id)
     const pRef = varRef(nGetS1(id))
     const r1 = nextReg(); emitIR(`  ${r1} = load i32, ptr ${pRef}, align 4`)
@@ -316,7 +343,14 @@ function genThrow(id: int) {
 
 function genStmt(id: int) {
     const kind = nGetKind(id)
-    if (kind == "FUNC_DECL") { genFuncDeclStmt(id); return }
+    if (kind == "FUNC_DECL") {
+        if (comptimeDepth > 0) {
+            ctFuncNodes.set(nGetS1(id), `${id}`)
+            return
+        }
+        genFuncDeclStmt(id)
+        return
+    }
     if (kind == "VAR_DECL") { genVarDecl(id); return }
     if (kind == "DESTRUCTURE_ARRAY") { genDestructureArray(id); return }
     if (kind == "DESTRUCTURE_OBJECT") { genDestructureObject(id); return }
@@ -324,6 +358,10 @@ function genStmt(id: int) {
     if (kind == "EXPR_STMT") {
         const esExpr = nGetI1(id)
         if (esExpr > 0 && nGetKind(esExpr) == "CALL" && nGetS1(esExpr) == "annotationMapping") { return }
+        if (comptimeDepth > 0) {
+            genVal(esExpr)
+            return
+        }
         genExpr(esExpr)
         return
     }
@@ -339,17 +377,87 @@ function genStmt(id: int) {
     if (kind == "SWITCH") { genSwitch(id); return }
     if (kind == "INDEX_ASSIGN") { genIndexAssign(id); return }
     if (kind == "MEMBER_ASSIGN") { genMemberAssign(id); return }
-    if (kind == "CLASS_DECL") { genClassDecl(id); return }
-    if (kind == "ENUM_DECL") { registerEnum(id); return }
+    if (kind == "CLASS_DECL") {
+        if (comptimeDepth > 0) {
+            const ctClassName = nGetS1(id)
+            interpClasses.set(ctClassName, `${id}`)
+            const ctParent = nGetS2(id)
+            if (ctParent != "") { interpClassParents.set(ctClassName, ctParent) }
+            return
+        }
+        genClassDecl(id)
+        return
+    }
+    if (kind == "ENUM_DECL") {
+        if (comptimeDepth > 0) {
+            // Register enum values for comptime access
+            const ctEnumName = nGetS1(id)
+            interpEnumNodes.set(ctEnumName, `${id}`)
+            const ctVarList = nGetList(id)
+            if (ctVarList != "") {
+                let ctEnumVal = 0
+                let ctIsStr = 0
+                const ctEnumParts = ctVarList.split(",")
+                for (ctEp in ctEnumParts) {
+                    const ctVid = parseInt(ctEp)
+                    if (ctVid > 0 && nGetKind(ctVid) == "ENUM_VARIANT") {
+                        const ctVname = nGetS1(ctVid)
+                        const ctExplicit = nGetI1(ctVid)
+                        if (ctExplicit > 0 && nGetKind(ctExplicit) == "STRING_LIT") {
+                            ctIsStr = 1
+                            interpEnumValues.set(`${ctEnumName}.${ctVname}`, nGetS1(ctExplicit))
+                        } else if (ctExplicit > 0 && nGetKind(ctExplicit) == "INT_LIT") {
+                            ctEnumVal = parseInt(nGetS1(ctExplicit))
+                            interpEnumValues.set(`${ctEnumName}.${ctVname}`, `${ctEnumVal}`)
+                            ctEnumVal = ctEnumVal + 1
+                        } else {
+                            interpEnumValues.set(`${ctEnumName}.${ctVname}`, `${ctEnumVal}`)
+                            ctEnumVal = ctEnumVal + 1
+                        }
+                    }
+                }
+                if (ctIsStr == 1) { interpEnumTypes.set(ctEnumName, "1") }
+            }
+            return
+        }
+        registerEnum(id)
+        return
+    }
     if (kind == "INTERFACE_DECL") { return }
     if (kind == "TRY") { genTryCatch(id); return }
     if (kind == "THROW") { genThrow(id); return }
     if (kind == "COMPTIME_BLOCK") {
-        interpExecComptime(nGetI1(id))
+        runComptimeBlockBody(nGetI1(id))
         flushComptimeIR()
         flushComptimeSS()
         return
     }
+}
+
+// Run a comptime block body via genBlock without flushing comptimeSS (caller decides).
+function runComptimeBlockBody(bodyId: int) {
+    const savedFunc = currentFunc
+    const savedTerminated = terminated
+    currentFunc = "__comptime__"
+    ctScopeStack = ctScopeStack.push("__comptime__")
+    interpReturnFlag = 0
+    interpReturnVal = 0
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    terminated = 0
+    interpEnsureComptimeRoot()
+    comptimeDepth = comptimeDepth + 1
+    genBlock(bodyId)
+    comptimeDepth = comptimeDepth - 1
+    terminated = savedTerminated
+    let ctNewStack: Array<string> = []
+    let ctSi = 0
+    while (ctSi < ctScopeStack.length() - 1) {
+        ctNewStack = ctNewStack.push(ctScopeStack[ctSi])
+        ctSi = ctSi + 1
+    }
+    ctScopeStack = ctNewStack
+    currentFunc = savedFunc
 }
 
 function genBlock(blockId: int) {
@@ -362,6 +470,7 @@ function genBlock(blockId: int) {
         if (stmtId > 0) {
             genStmt(stmtId)
             if (terminated == 1) { return }
+            if (comptimeDepth > 0 && interpShouldStop() == 1) { return }
             pirEmitScheduled(stmtId)
         }
     }
@@ -386,6 +495,19 @@ function genIf(id: int) {
     const condId = nGetI1(id)
     const thenId = nGetI2(id)
     const elseId = nGetI3(id)
+
+    // D089 Phase 3: comptime condition in comptime block → only codegen hit branch
+    if (comptimeDepth > 0) {
+        const condTagged = genVal(condId)
+        if (isCt(condTagged) == 1) {
+            if (interpTruthy(payload(condTagged)) == 1) {
+                genBlock(thenId)
+            } else if (elseId > 0) {
+                genBlock(elseId)
+            }
+        }
+        return
+    }
 
     const condVal = genExpr(condId)
     const thenLabel = nextLabel("if.then")
@@ -425,6 +547,22 @@ function genFor(id: int) {
     const condId = nGetI2(id)
     const updateId = nGetI3(id)
     const bodyId = nGetI4(id)
+
+    // D089 Phase 3: comptime for in comptime block
+    if (comptimeDepth > 0) {
+        genStmt(initId)
+        let ctForLimit = 10000
+        while (ctForLimit > 0) {
+            const fCondTagged = genVal(condId)
+            if (isCt(fCondTagged) == 0 || interpTruthy(payload(fCondTagged)) == 0) { break }
+            genBlock(bodyId)
+            if (interpCheckLoopExit() == 1) { break }
+            genStmt(updateId)
+            ctForLimit = ctForLimit - 1
+        }
+        if (ctForLimit == 0) { println("[comptime] for loop exceeded 10000 iterations") }
+        return
+    }
 
     const condLabel = nextLabel("for.cond")
     const bodyLabel = nextLabel("for.body")
@@ -527,6 +665,25 @@ function genForIn(id: int) {
     const iterableId = nGetI1(id)
     const bodyId = nGetI2(id)
 
+    // D089 Phase 4: comptime for-in over array
+    if (comptimeDepth > 0) {
+        const ctIterVal = genVal(iterableId)
+        if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") {
+            const ctItems = interpAsStr(payload(ctIterVal))
+            if (ctItems != "") {
+                const ctParts = ctItems.split(",")
+                let ctFi = 0
+                while (ctFi < ctParts.length()) {
+                    ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(parseInt(ctParts[ctFi]))}`)
+                    genBlock(bodyId)
+                    if (interpCheckLoopExit() == 1) { break }
+                    ctFi = ctFi + 1
+                }
+            }
+        }
+        return
+    }
+
     // D088: detect obj.fields() → compile-time unroll
     if (nGetKind(iterableId) == "METHOD_CALL" && nGetS1(iterableId) == "fields") {
         const fieldsObjId = nGetI1(iterableId)
@@ -601,6 +758,20 @@ function genForIn(id: int) {
 function genWhile(id: int) {
     const condId = nGetI1(id)
     const bodyId = nGetI2(id)
+
+    // D089 Phase 3: comptime while in comptime block
+    if (comptimeDepth > 0) {
+        let ctWhileLimit = 10000
+        while (ctWhileLimit > 0) {
+            const wCondTagged = genVal(condId)
+            if (isCt(wCondTagged) == 0 || interpTruthy(payload(wCondTagged)) == 0) { break }
+            genBlock(bodyId)
+            if (interpCheckLoopExit() == 1) { break }
+            ctWhileLimit = ctWhileLimit - 1
+        }
+        if (ctWhileLimit == 0) { println("[comptime] while loop exceeded 10000 iterations") }
+        return
+    }
 
     const condLabel = nextLabel("while.cond")
     const bodyLabel = nextLabel("while.body")

@@ -15,6 +15,10 @@ let strOutFile = ""
 let regCount = 0
 let regTable: Array<string> = []
 let ctVars = new Map()
+let ctFuncNodes = new Map()
+let ctScopeStack: Array<string> = []
+let ctCallCounter = 0
+let comptimeDepth = 0
 let labelCount = 0
 let varTypes = ""
 let varTypesReady = 0
@@ -486,6 +490,10 @@ function resetCodegen() {
     regCount = 0
     regTable = []
     ctVars = new Map()
+    ctFuncNodes = new Map()
+    ctScopeStack = []
+    ctCallCounter = 0
+    comptimeDepth = 0
     labelCount = 0
     varCounter = 0
     // Function context

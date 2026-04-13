@@ -3,6 +3,8 @@
 
 import { genCall, genTemplateLit, genArrowFunc, flushArrowDefs, genArrayLit } from "./gen_calls"
 import { genMethodCall, genOptionalMethodCall } from "./gen_methods"
+import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCheckLoopExit, interpCompoundOp, interpBuiltinMethod } from "./interp"
+import { interpBuildTypeInfo } from "./interp_reflect"
 
 // ── Simple expression handlers ──────────────────────────────────
 
@@ -142,15 +144,65 @@ function genVal(id: int): int {
     if (kind == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
+    if (kind == "DOUBLE_LIT") {
+        if (comptimeDepth > 0) { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
+    }
     if (kind == "BINARY") { return genValBinary(id) }
     if (kind == "UNARY") { return genValUnary(id) }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "TERNARY") { return genValTernary(id) }
     if (kind == "IDENT") {
-        const ctKey = `${currentFunc}:${nGetS1(id)}`
-        if (ctVars.has(ctKey) == 1) {
-            return parseInt(ctVars.getString(ctKey))
+        // Scope chain lookup for comptime
+        if (comptimeDepth > 0) {
+            const ctIdName = nGetS1(id)
+            if (ctScopeStack.length() > 0) {
+                let ctSi = ctScopeStack.length() - 1
+                while (ctSi >= 0) {
+                    const ctScopeKey = `${ctScopeStack[ctSi]}:${ctIdName}`
+                    if (ctVars.has(ctScopeKey) == 1) {
+                        return parseInt(ctVars.getString(ctScopeKey))
+                    }
+                    ctSi = ctSi - 1
+                }
+            } else {
+                const ctKey = `${currentFunc}:${ctIdName}`
+                if (ctVars.has(ctKey) == 1) {
+                    return parseInt(ctVars.getString(ctKey))
+                }
+            }
+            // Fall back to interpreter's scope (for OS/ARCH/DEBUG/COMPILER_VERSION and similar)
+            const ctInterpKey = interpFindScopeKey(ctIdName)
+            if (ctInterpKey != "") {
+                return ctVal(parseInt(interpVars.getString(ctInterpKey)))
+            }
         }
+    }
+    if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
+    // D089 Phase 4: comptime expression handlers
+    if (comptimeDepth > 0) {
+        if (kind == "CALL") { return genValCtCall(id) }
+        if (kind == "NEW_EXPR") { return ctVal(genValCtNewExpr(id)) }
+        if (kind == "MEMBER_ACCESS") { return genValCtMemberAccess(id) }
+        if (kind == "METHOD_CALL") { return genValCtMethodCall(id) }
+        if (kind == "TEMPLATE_LIT") { return genValCtTemplateLit(id) }
+        if (kind == "ARRAY_LIT") { return genValCtArrayLit(id) }
+        if (kind == "INDEX_ACCESS") { return genValCtIndexAccess(id) }
+        if (kind == "THIS") {
+            if (interpThisVal > 0) { return ctVal(interpThisVal) }
+            return ctVal(interpNewNull())
+        }
+        if (kind == "ARROW_FUNC") { return ctVal(interpNewVal("fn", `${id}`)) }
+        if (kind == "COMPTIME_EMIT") {
+            const ctEmitVal = genVal(nGetI1(id))
+            if (isCt(ctEmitVal) == 1) {
+                comptimeSS = `${comptimeSS}${interpAsStr(payload(ctEmitVal))}`
+            }
+            return ctVal(interpNewNull())
+        }
+        if (kind == "TYPEINFO_EXPR") { return ctVal(interpBuildTypeInfo(nGetS1(id))) }
+        // Unsupported comptime expression — warn and return null
+        println(`[comptime] unsupported expression: ${kind}`)
+        return ctVal(interpNewNull())
     }
     return constVal(genExprOld(id))
 }
@@ -158,7 +210,42 @@ function genVal(id: int): int {
 function genValBinary(id: int): int {
     const op = nGetS1(id)
     if (op == "And" || op == "Or") { return genValShortCircuit(op, id) }
-    if (op == "NullCoalesce" || op == "Instanceof" || op == "As") {
+    // Comptime: evaluate operands via genVal (handles ctVars scope chain) and dispatch by actual interp types
+    if (comptimeDepth > 0) {
+        if (op == "NullCoalesce") {
+            const ctNcL = genVal(nGetI1(id))
+            if (isCt(ctNcL) == 1 && interpType(payload(ctNcL)) != "null") { return ctNcL }
+            return genVal(nGetI2(id))
+        }
+        if (op == "Instanceof" || op == "As" || op == "Pow") { return ctVal(interpNewNull()) }
+        const ctBlv = genVal(nGetI1(id))
+        const ctBrv = genVal(nGetI2(id))
+        if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) { return ctVal(interpNewNull()) }
+        const ctBlp = payload(ctBlv)
+        const ctBrp = payload(ctBrv)
+        const ctBlt = interpType(ctBlp)
+        const ctBrt = interpType(ctBrp)
+        if (op == "Add" && (ctBlt == "string" || ctBrt == "string")) {
+            return ctVal(interpNewString(`${interpToStr(ctBlp)}${interpToStr(ctBrp)}`))
+        }
+        if (ctBlt == "string" && ctBrt == "string") {
+            const cLs = interpAsStr(ctBlp)
+            const cRs = interpAsStr(ctBrp)
+            if (op == "Eq") { return ctVal(interpNewBool(cLs == cRs ? 1 : 0)) }
+            if (op == "Ne") { return ctVal(interpNewBool(cLs != cRs ? 1 : 0)) }
+            if (op == "Lt") { return ctVal(interpNewBool(cLs < cRs ? 1 : 0)) }
+            if (op == "Gt") { return ctVal(interpNewBool(cLs > cRs ? 1 : 0)) }
+            if (op == "Le") { return ctVal(interpNewBool(cLs <= cRs ? 1 : 0)) }
+            if (op == "Ge") { return ctVal(interpNewBool(cLs >= cRs ? 1 : 0)) }
+        }
+        if (ctBlt == "double" || ctBrt == "double") {
+            const ctLd = ctBlt == "double" ? parseDouble(interpAsStr(ctBlp)) : parseDouble(`${interpAsInt(ctBlp)}`)
+            const ctRd = ctBrt == "double" ? parseDouble(interpAsStr(ctBrp)) : parseDouble(`${interpAsInt(ctBrp)}`)
+            return ctVal(interpDoubleOp(op, ctLd, ctRd))
+        }
+        return ctVal(interpIntOp(op, interpAsInt(ctBlp), interpAsInt(ctBrp)))
+    }
+    if (op == "NullCoalesce" || op == "Instanceof" || op == "As" || op == "Pow") {
         return constVal(genExprOld(id))
     }
     const blt = inferType(nGetI1(id))
@@ -179,6 +266,21 @@ function genValBinary(id: int): int {
 }
 
 function genValUnary(id: int): int {
+    // Comptime: evaluate via genVal + interp, never fall through to IR emission
+    if (comptimeDepth > 0) {
+        const ctUv = genVal(nGetI1(id))
+        const ctUop = nGetS1(id)
+        if (isCt(ctUv) == 0) { return ctVal(interpNewNull()) }
+        const ctUp = payload(ctUv)
+        const ctUt = interpType(ctUp)
+        if (ctUop == "Neg") {
+            if (ctUt == "double") { return ctVal(interpNewDouble(0.0 - parseDouble(interpAsStr(ctUp)))) }
+            return ctVal(interpNewInt(0 - interpAsInt(ctUp)))
+        }
+        if (ctUop == "Not") { return ctVal(interpNewBool(interpTruthy(ctUp) == 1 ? 0 : 1)) }
+        if (ctUop == "BitNot") { return ctVal(interpNewInt(~interpAsInt(ctUp))) }
+        return ctVal(interpNewNull())
+    }
     const uType = inferType(nGetI1(id))
     if (uType != "int" && uType != "bool") {
         return constVal(genExprOld(id))
@@ -211,9 +313,10 @@ function genValUnary(id: int): int {
 function genValTernary(id: int): int {
     const cv = genVal(nGetI1(id))
     if (isCt(cv) == 1) {
-        if (interpAsInt(payload(cv)) != 0) { return genVal(nGetI2(id)) }
+        if (interpTruthy(payload(cv)) == 1) { return genVal(nGetI2(id)) }
         return genVal(nGetI3(id))
     }
+    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
     // Runtime — condition already evaluated, emit branch directly
     const condStr = reg(cv)
     const vType = inferType(nGetI2(id))
@@ -243,14 +346,15 @@ function genValTernary(id: int): int {
 function genValShortCircuit(op: string, id: int): int {
     const lv = genVal(nGetI1(id))
     if (isCt(lv) == 1) {
-        const leftVal = interpAsInt(payload(lv))
+        const leftTruthy = interpTruthy(payload(lv))
         if (op == "And") {
-            if (leftVal == 0) { return ctVal(interpNewInt(0)) }
+            if (leftTruthy == 0) { return ctVal(interpNewBool(0)) }
             return genVal(nGetI2(id))
         }
-        if (leftVal != 0) { return lv }
+        if (leftTruthy == 1) { return lv }
         return genVal(nGetI2(id))
     }
+    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
     // Runtime left — inline short-circuit IR (left already evaluated)
     const leftStr = reg(lv)
     const scResult = nextReg()
@@ -313,6 +417,647 @@ function genValStringCompare(op: string, id: int): int {
     const r = nextReg()
     emitIR(`  ${r} = zext i1 ${cmpBool} to i32`)
     return constVal(r)
+}
+
+// ── D089 Phase 4: Comptime expression helpers ──────────────────
+
+// Comptime CALL: intrinsics + user-defined functions
+function genValCtCall(id: int): int {
+    const name = nGetS1(id)
+    const argList = nGetList(id)
+
+    // Evaluate all args
+    let ctArgVals: Array<string> = []
+    let ctNamedArgs = new Map()
+    let ctHasNamed = 0
+    if (argList != "") {
+        const argParts = argList.split(",")
+        for (ap in argParts) {
+            const argId = parseInt(ap)
+            if (argId > 0) {
+                if (nGetKind(argId) == "NAMED_ARG") {
+                    ctHasNamed = 1
+                    const nav = genVal(nGetI1(argId))
+                    ctNamedArgs.set(nGetS1(argId), `${isCt(nav) == 1 ? payload(nav) : interpNewNull()}`)
+                } else {
+                    const av = genVal(argId)
+                    ctArgVals = ctArgVals.push(`${isCt(av) == 1 ? payload(av) : interpNewNull()}`)
+                }
+            }
+        }
+    }
+
+    // ── Intrinsics ──
+    if (name == "println") {
+        if (ctArgVals.length() > 0) { println(interpToStr(parseInt(ctArgVals[0]))) }
+        else { println("") }
+        return ctVal(interpNewNull())
+    }
+    if (name == "print") {
+        if (ctArgVals.length() > 0) { print(interpToStr(parseInt(ctArgVals[0]))) }
+        return ctVal(interpNewNull())
+    }
+    if (name == "parseInt") {
+        if (ctArgVals.length() > 0) { return ctVal(interpNewInt(parseInt(interpAsStr(parseInt(ctArgVals[0]))))) }
+        return ctVal(interpNewInt(0))
+    }
+    if (name == "parseDouble") {
+        if (ctArgVals.length() > 0) { return ctVal(interpNewDouble(parseDouble(interpAsStr(parseInt(ctArgVals[0]))))) }
+        return ctVal(interpNewDouble(0.0))
+    }
+    if (name == "toString") {
+        if (ctArgVals.length() > 0) { return ctVal(interpNewString(interpToStr(parseInt(ctArgVals[0])))) }
+        return ctVal(interpNewString(""))
+    }
+    if (name == "emit") {
+        if (ctArgVals.length() > 0) { comptimeIR = `${comptimeIR}${interpAsStr(parseInt(ctArgVals[0]))}` }
+        return ctVal(interpNewNull())
+    }
+    if (name == "registerFunction") {
+        if (ctArgVals.length() >= 1) {
+            const rfName = interpAsStr(parseInt(ctArgVals[0]))
+            const rfRet = ctArgVals.length() > 1 ? interpAsStr(parseInt(ctArgVals[1])) : "void"
+            const rfPc = ctArgVals.length() > 2 ? interpAsInt(parseInt(ctArgVals[2])) : 0
+            funcRetTypes.set(rfName, rfRet)
+            funcParamCount.set(rfName, `${rfPc}`)
+        }
+        return ctVal(interpNewNull())
+    }
+    if (name == "getAnnotatedClasses") {
+        if (ctArgVals.length() >= 1) {
+            const gacName = interpAsStr(parseInt(ctArgVals[0]))
+            const gacResult = interpNewArray("")
+            let gacSeen = new Map()
+            let gacI = 0
+            while (gacI < annClassAnnNames.length()) {
+                if (annClassAnnNames[gacI] == gacName) {
+                    const gacClassId = parseInt(annClassNodeIds[gacI])
+                    const gacCn = nGetS1(gacClassId)
+                    if (gacSeen.has(gacCn) == 0) {
+                        interpArrayPush(gacResult, interpNewString(gacCn))
+                        gacSeen.set(gacCn, "1")
+                    }
+                }
+                gacI = gacI + 1
+            }
+            return ctVal(gacResult)
+        }
+        return ctVal(interpNewArray(""))
+    }
+    if (name == "addStringConst") {
+        if (ctArgVals.length() >= 1) {
+            return ctVal(interpNewString(addStringConst(interpAsStr(parseInt(ctArgVals[0])))))
+        }
+        return ctVal(interpNewString(""))
+    }
+    if (name == "getTypeInfo") {
+        if (ctArgVals.length() >= 1) {
+            return ctVal(interpBuildTypeInfo(interpAsStr(parseInt(ctArgVals[0]))))
+        }
+        return ctVal(interpNewNull())
+    }
+    if (name == "compileError") {
+        const ceMsg = ctArgVals.length() > 0 ? interpAsStr(parseInt(ctArgVals[0])) : "compile error"
+        println(`error: ${ceMsg}`)
+        println("  --> comptime block")
+        exit(1)
+        return ctVal(interpNewNull())
+    }
+    if (name == "comptimeAssert") {
+        if (ctArgVals.length() >= 1) {
+            if (interpTruthy(parseInt(ctArgVals[0])) == 0) {
+                const caMsg = ctArgVals.length() > 1 ? interpAsStr(parseInt(ctArgVals[1])) : "comptime assertion failed"
+                println(`error: ${caMsg}`)
+                println("  --> comptime block")
+                exit(1)
+            }
+        }
+        return ctVal(interpNewNull())
+    }
+    if (name == "getenv") {
+        if (ctArgVals.length() >= 1) { return ctVal(interpNewString(getenv(interpAsStr(parseInt(ctArgVals[0]))))) }
+        return ctVal(interpNewString(""))
+    }
+    if (name == "readFile") {
+        if (ctArgVals.length() >= 1) { return ctVal(interpNewString(readFile(interpAsStr(parseInt(ctArgVals[0]))))) }
+        return ctVal(interpNewString(""))
+    }
+    if (name == "writeFile") {
+        if (ctArgVals.length() >= 2) {
+            writeFile(interpAsStr(parseInt(ctArgVals[0])), interpAsStr(parseInt(ctArgVals[1])))
+        }
+        return ctVal(interpNewNull())
+    }
+    if (name == "fileExists") {
+        if (ctArgVals.length() >= 1) { return ctVal(interpNewInt(fileExists(interpAsStr(parseInt(ctArgVals[0]))))) }
+        return ctVal(interpNewInt(0))
+    }
+    if (name == "system") {
+        if (ctArgVals.length() >= 1) { return ctVal(interpNewInt(system(interpAsStr(parseInt(ctArgVals[0]))))) }
+        return ctVal(interpNewInt(-1))
+    }
+    if (name == "shellOutput") {
+        if (ctArgVals.length() >= 1) {
+            const soCmd = interpAsStr(parseInt(ctArgVals[0]))
+            const soTmp = "/tmp/ss_comptime_exec.tmp"
+            system(`${soCmd} > ${soTmp} 2>/dev/null`)
+            return ctVal(interpNewString(readFile(soTmp)))
+        }
+        return ctVal(interpNewString(""))
+    }
+    if (name == "classNames") {
+        const cnList = classFields.keys()
+        const cnResult = interpNewArray("")
+        for (cn in cnList) {
+            if (cn == "" || cn == "Map") { continue }
+            interpArrayPush(cnResult, interpNewString(cn))
+        }
+        return ctVal(cnResult)
+    }
+    if (name == "enumNames") {
+        const enResult = interpNewArray("")
+        if (enumReady == 1) {
+            const enList = enumDeclNodes.keys()
+            for (en in enList) {
+                if (en == "") { continue }
+                interpArrayPush(enResult, interpNewString(en))
+            }
+        }
+        return ctVal(enResult)
+    }
+    if (name == "hasField") {
+        if (ctArgVals.length() >= 2) {
+            const hfCls = interpAsStr(parseInt(ctArgVals[0]))
+            const hfFld = interpAsStr(parseInt(ctArgVals[1]))
+            return ctVal(interpNewInt(classFieldTypes.has(`${hfCls}.${hfFld}`) == 1 ? 1 : 0))
+        }
+        return ctVal(interpNewInt(0))
+    }
+    if (name == "hasMethod") {
+        if (ctArgVals.length() >= 2) {
+            const hmCls = interpAsStr(parseInt(ctArgVals[0]))
+            const hmMth = interpAsStr(parseInt(ctArgVals[1]))
+            const hmMethods = classMethods.has(hmCls) == 1 ? classMethods.getString(hmCls) : ""
+            return ctVal(interpNewInt(`,${hmMethods},`.indexOf(`,${hmMth},`) >= 0 ? 1 : 0))
+        }
+        return ctVal(interpNewInt(0))
+    }
+    if (name == "fieldCount") {
+        if (ctArgVals.length() >= 1) {
+            const fcCls = interpAsStr(parseInt(ctArgVals[0]))
+            if (classFields.has(fcCls) == 0) { return ctVal(interpNewInt(0)) }
+            const fcStr = classFields.getString(fcCls)
+            if (fcStr == "") { return ctVal(interpNewInt(0)) }
+            return ctVal(interpNewInt(fcStr.split(",").length()))
+        }
+        return ctVal(interpNewInt(0))
+    }
+    if (name == "fieldNames") {
+        if (ctArgVals.length() >= 1) {
+            const fnCls = interpAsStr(parseInt(ctArgVals[0]))
+            if (classFields.has(fnCls) == 0) { return ctVal(interpNewString("")) }
+            return ctVal(interpNewString(classFields.getString(fnCls)))
+        }
+        return ctVal(interpNewString(""))
+    }
+    if (name == "hasInterface") {
+        if (ctArgVals.length() >= 2) {
+            const imCls = interpAsStr(parseInt(ctArgVals[0]))
+            const imIface = interpAsStr(parseInt(ctArgVals[1]))
+            if (ifaceImplementors.has(imIface) == 0) { return ctVal(interpNewInt(0)) }
+            return ctVal(interpNewInt(`,${ifaceImplementors.getString(imIface)},`.indexOf(`,${imCls},`) >= 0 ? 1 : 0))
+        }
+        return ctVal(interpNewInt(0))
+    }
+    if (name == "isSubclassOf") {
+        if (ctArgVals.length() >= 2) {
+            const scChild = interpAsStr(parseInt(ctArgVals[0]))
+            const scParent = interpAsStr(parseInt(ctArgVals[1]))
+            let scCls = scChild
+            while (classParents.has(scCls) == 1) {
+                scCls = classParents.getString(scCls)
+                if (scCls == scParent) { return ctVal(interpNewInt(1)) }
+            }
+        }
+        return ctVal(interpNewInt(0))
+    }
+
+    // ── User-defined function call ──
+    if (ctFuncNodes.has(name) == 1) {
+        const ctFuncId = parseInt(ctFuncNodes.getString(name))
+        const ctParamList = nGetList(ctFuncId)
+        const ctBodyId = nGetI1(ctFuncId)
+
+        // Save state
+        const savedFunc = currentFunc
+        const savedBreak = interpBreakFlag
+        const savedContinue = interpContinueFlag
+        const savedTerm = terminated
+        interpBreakFlag = 0
+        interpContinueFlag = 0
+        terminated = 0
+
+        // Push new scope
+        ctCallCounter = ctCallCounter + 1
+        currentFunc = `__ct_${name}_${ctCallCounter}`
+        ctScopeStack = ctScopeStack.push(currentFunc)
+
+        // Bind parameters (store tagged ct values in ctVars for consistency with VAR_DECL)
+        if (ctParamList != "") {
+            const ctParams = ctParamList.split(",")
+            let ctPosIdx = 0
+            let ctPi = 0
+            while (ctPi < ctParams.length()) {
+                const ctPid = parseInt(ctParams[ctPi])
+                const ctPname = nGetS1(ctPid)
+                if (ctHasNamed == 1 && ctNamedArgs.has(ctPname) == 1) {
+                    ctVars.set(`${currentFunc}:${ctPname}`, `${ctVal(parseInt(ctNamedArgs.getString(ctPname)))}`)
+                } else if (ctPosIdx < ctArgVals.length()) {
+                    ctVars.set(`${currentFunc}:${ctPname}`, `${ctVal(parseInt(ctArgVals[ctPosIdx]))}`)
+                    ctPosIdx = ctPosIdx + 1
+                } else {
+                    const ctDefId = nGetI1(ctPid)
+                    if (ctDefId > 0) {
+                        const ctDefVal = genVal(ctDefId)
+                        ctVars.set(`${currentFunc}:${ctPname}`, `${isCt(ctDefVal) == 1 ? ctDefVal : ctVal(interpNewNull())}`)
+                    } else {
+                        ctVars.set(`${currentFunc}:${ctPname}`, `${ctVal(interpNewNull())}`)
+                    }
+                }
+                ctPi = ctPi + 1
+            }
+        }
+
+        // Execute body
+        if (ctBodyId > 0) { genBlock(ctBodyId) }
+
+        // Capture return value
+        let ctResult = interpNewNull()
+        if (interpReturnFlag == 1) {
+            ctResult = interpReturnVal
+            interpReturnFlag = 0
+            interpReturnVal = 0
+        }
+
+        // Pop scope
+        let ctNs: Array<string> = []
+        let ctNsi = 0
+        while (ctNsi < ctScopeStack.length() - 1) {
+            ctNs = ctNs.push(ctScopeStack[ctNsi])
+            ctNsi = ctNsi + 1
+        }
+        ctScopeStack = ctNs
+        currentFunc = savedFunc
+        interpBreakFlag = savedBreak
+        interpContinueFlag = savedContinue
+        terminated = savedTerm
+
+        return ctVal(ctResult)
+    }
+
+    println(`[comptime] unknown function: ${name}`)
+    return ctVal(interpNewNull())
+}
+
+// Comptime NEW_EXPR: create interpreter object
+function genValCtNewExpr(id: int): int {
+    const className = nGetS1(id)
+    if (className == "Map") { return interpNewMap() }
+    if (interpClasses.has(className) != 1) {
+        println(`[comptime] unknown class: ${className}`)
+        return interpNewNull()
+    }
+    const objId = interpNewVal("object", className)
+    const allFields = interpCollectFields(className)
+    let ctFieldNames: Array<string> = []
+    if (allFields != "") {
+        const fieldParts = allFields.split(",")
+        let fi = 0
+        while (fi < fieldParts.length()) {
+            const fId = parseInt(fieldParts[fi])
+            const fName = nGetS1(fId)
+            ctFieldNames = ctFieldNames.push(fName)
+            const defaultId = nGetI1(fId)
+            if (defaultId > 0) {
+                const dv = genVal(defaultId)
+                interpSetField(objId, fName, isCt(dv) == 1 ? payload(dv) : interpNewNull())
+            } else {
+                interpSetField(objId, fName, interpNewNull())
+            }
+            fi = fi + 1
+        }
+    }
+    const argList = nGetList(id)
+    if (argList != "") {
+        const argIds = argList.split(",")
+        let posIdx = 0
+        let i = 0
+        while (i < argIds.length()) {
+            const argNodeId = parseInt(argIds[i])
+            if (nGetKind(argNodeId) == "NAMED_ARG") {
+                const nav = genVal(nGetI1(argNodeId))
+                interpSetField(objId, nGetS1(argNodeId), isCt(nav) == 1 ? payload(nav) : interpNewNull())
+            } else {
+                const av = genVal(argNodeId)
+                if (posIdx < ctFieldNames.length()) {
+                    interpSetField(objId, ctFieldNames[posIdx], isCt(av) == 1 ? payload(av) : interpNewNull())
+                }
+                posIdx = posIdx + 1
+            }
+            i = i + 1
+        }
+    }
+    return objId
+}
+
+// Comptime MEMBER_ACCESS: field access on comptime objects
+function genValCtMemberAccess(id: int): int {
+    const member = nGetS1(id)
+    const objNode = nGetI1(id)
+    // Enum value access
+    if (nGetKind(objNode) == "IDENT") {
+        const eName = nGetS1(objNode)
+        const enumKey = `${eName}.${member}`
+        if (interpEnumValues.has(enumKey) == 1) {
+            if (interpEnumTypes.has(eName) == 1) {
+                return ctVal(interpNewString(interpEnumValues.getString(enumKey)))
+            }
+            return ctVal(interpNewInt(parseInt(interpEnumValues.getString(enumKey))))
+        }
+        // Also check codegen-side enum values
+        if (enumReady == 1 && enumValues.has(enumKey) == 1) {
+            if (enumTypes.has(eName) == 1) {
+                return ctVal(interpNewString(enumValues.getString(enumKey)))
+            }
+            return ctVal(interpNewInt(parseInt(enumValues.getString(enumKey))))
+        }
+    }
+    const objVal = genVal(objNode)
+    if (isCt(objVal) == 1) {
+        const objPayload = payload(objVal)
+        if (interpType(objPayload) == "object") {
+            return ctVal(interpGetField(objPayload, member))
+        }
+        // String/array length
+        if (member == "length" && interpType(objPayload) == "string") {
+            return ctVal(interpNewInt(interpAsStr(objPayload).length()))
+        }
+        if (member == "length" && interpType(objPayload) == "array") {
+            const items = interpAsStr(objPayload)
+            if (items == "") { return ctVal(interpNewInt(0)) }
+            return ctVal(interpNewInt(items.split(",").length()))
+        }
+    }
+    println(`[comptime] cannot access field '${member}' on ${isCt(objVal) == 1 ? interpType(payload(objVal)) : "runtime"}`)
+    return ctVal(interpNewNull())
+}
+
+// Comptime METHOD_CALL: method calls on comptime values
+function genValCtMethodCall(id: int): int {
+    const methodName = nGetS1(id)
+    const objNode = nGetI1(id)
+
+    // Enum static methods
+    if (nGetKind(objNode) == "IDENT" && interpEnumNodes.has(nGetS1(objNode)) == 1) {
+        const eName = nGetS1(objNode)
+        if (methodName == "values") { return ctVal(ctEnumListMethod(eName, 0)) }
+        if (methodName == "names") { return ctVal(ctEnumListMethod(eName, 1)) }
+        if (methodName == "valueOf") { return ctVal(ctEnumValueOfMethod(eName, id)) }
+    }
+
+    const objVal = genVal(objNode)
+    if (isCt(objVal) == 0) {
+        println(`[comptime] cannot call method '${methodName}' on runtime value`)
+        return ctVal(interpNewNull())
+    }
+    const objPayload = payload(objVal)
+    const objType = interpType(objPayload)
+
+    // Built-in type methods (string, array, map)
+    if (objType == "string" || objType == "array" || objType == "map") {
+        const bArgList = nGetList(id)
+        let bArgs: Array<string> = []
+        if (bArgList != "") {
+            const bArgIds = bArgList.split(",")
+            let bi = 0
+            while (bi < bArgIds.length()) {
+                const bav = genVal(parseInt(bArgIds[bi]))
+                bArgs = bArgs.push(`${isCt(bav) == 1 ? payload(bav) : interpNewNull()}`)
+                bi = bi + 1
+            }
+        }
+        return ctVal(interpBuiltinMethod(objType, objPayload, methodName, bArgs))
+    }
+
+    if (objType != "object") {
+        println(`[comptime] cannot call method '${methodName}' on ${objType}`)
+        return ctVal(interpNewNull())
+    }
+    // User-defined method call on comptime object
+    const className = interpAsStr(objPayload)
+    const methodNode = interpFindMethod(className, methodName)
+    if (methodNode == 0) {
+        println(`[comptime] no method '${methodName}' on class ${className}`)
+        return ctVal(interpNewNull())
+    }
+    // Evaluate arguments
+    const mArgList = nGetList(id)
+    let mArgVals: Array<string> = []
+    let mNamedArgs = new Map()
+    let mHasNamed = 0
+    if (mArgList != "") {
+        const mArgIds = mArgList.split(",")
+        let mi = 0
+        while (mi < mArgIds.length()) {
+            const mArgNodeId = parseInt(mArgIds[mi])
+            if (nGetKind(mArgNodeId) == "NAMED_ARG") {
+                mHasNamed = 1
+                const mnv = genVal(nGetI1(mArgNodeId))
+                mNamedArgs.set(nGetS1(mArgNodeId), `${isCt(mnv) == 1 ? payload(mnv) : interpNewNull()}`)
+            } else {
+                const mav = genVal(mArgNodeId)
+                mArgVals = mArgVals.push(`${isCt(mav) == 1 ? payload(mav) : interpNewNull()}`)
+            }
+            mi = mi + 1
+        }
+    }
+    // Save state and set this
+    const savedThis = interpThisVal
+    const savedFunc = currentFunc
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    const savedTerm = terminated
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    terminated = 0
+    interpThisVal = objPayload
+    ctCallCounter = ctCallCounter + 1
+    currentFunc = `__ct_${className}_${methodName}_${ctCallCounter}`
+    ctScopeStack = ctScopeStack.push(currentFunc)
+    // Bind parameters
+    const mParamList = nGetList(methodNode)
+    if (mParamList != "") {
+        const mParams = mParamList.split(",")
+        let mPosIdx = 0
+        let mPi = 0
+        while (mPi < mParams.length()) {
+            const mPid = parseInt(mParams[mPi])
+            const mPname = nGetS1(mPid)
+            if (mHasNamed == 1 && mNamedArgs.has(mPname) == 1) {
+                ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(parseInt(mNamedArgs.getString(mPname)))}`)
+            } else if (mPosIdx < mArgVals.length()) {
+                ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(parseInt(mArgVals[mPosIdx]))}`)
+                mPosIdx = mPosIdx + 1
+            } else {
+                const mDefId = nGetI1(mPid)
+                if (mDefId > 0) {
+                    const mDefVal = genVal(mDefId)
+                    ctVars.set(`${currentFunc}:${mPname}`, `${isCt(mDefVal) == 1 ? mDefVal : ctVal(interpNewNull())}`)
+                } else {
+                    ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(interpNewNull())}`)
+                }
+            }
+            mPi = mPi + 1
+        }
+    }
+    // Execute body
+    const mBodyId = nGetI1(methodNode)
+    if (mBodyId > 0) { genBlock(mBodyId) }
+    let mResult = interpNewNull()
+    if (interpReturnFlag == 1) {
+        mResult = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+    // Pop scope
+    let mNs: Array<string> = []
+    let mNsi = 0
+    while (mNsi < ctScopeStack.length() - 1) {
+        mNs = mNs.push(ctScopeStack[mNsi])
+        mNsi = mNsi + 1
+    }
+    ctScopeStack = mNs
+    currentFunc = savedFunc
+    interpThisVal = savedThis
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+    terminated = savedTerm
+    return ctVal(mResult)
+}
+
+// Comptime TEMPLATE_LIT: string interpolation
+function genValCtTemplateLit(id: int): int {
+    const fragList = nGetList(id)
+    if (fragList == "") { return ctVal(interpNewString("")) }
+    let result = ""
+    const parts = fragList.split(",")
+    for (p in parts) {
+        const fragId = parseInt(p)
+        if (fragId > 0) {
+            const fk = nGetKind(fragId)
+            if (fk == "TMPL_FRAG_LIT") {
+                result = `${result}${nGetS1(fragId)}`
+            } else if (fk == "TMPL_FRAG_EXPR") {
+                const fv = genVal(nGetI1(fragId))
+                if (isCt(fv) == 1) {
+                    result = `${result}${interpToStr(payload(fv))}`
+                }
+            }
+        }
+    }
+    return ctVal(interpNewString(result))
+}
+
+// Comptime ARRAY_LIT: create interpreter array
+function genValCtArrayLit(id: int): int {
+    const elemList = nGetList(id)
+    const arr = interpNewArray("")
+    if (elemList != "") {
+        const parts = elemList.split(",")
+        for (p in parts) {
+            const elemId = parseInt(p)
+            if (elemId > 0) {
+                const ev = genVal(elemId)
+                interpArrayPush(arr, isCt(ev) == 1 ? payload(ev) : interpNewNull())
+            }
+        }
+    }
+    return ctVal(arr)
+}
+
+// Comptime INDEX_ACCESS: array/object indexing
+function genValCtIndexAccess(id: int): int {
+    const objVal = genVal(nGetI1(id))
+    const idxVal = genVal(nGetI2(id))
+    if (isCt(objVal) == 1 && isCt(idxVal) == 1) {
+        const objPayload = payload(objVal)
+        const ot = interpType(objPayload)
+        if (ot == "array") {
+            const items = interpAsStr(objPayload)
+            if (items == "") { return ctVal(interpNewNull()) }
+            const idx = interpAsInt(payload(idxVal))
+            const itemParts = items.split(",")
+            if (idx >= 0 && idx < itemParts.length()) {
+                return ctVal(parseInt(itemParts[idx]))
+            }
+            return ctVal(interpNewNull())
+        }
+        if (ot == "object") {
+            // obj["fieldName"] bracket notation
+            const fieldName = interpAsStr(payload(idxVal))
+            return ctVal(interpGetField(objPayload, fieldName))
+        }
+        if (ot == "string") {
+            // string[idx] → charAt
+            const s = interpAsStr(objPayload)
+            const idx = interpAsInt(payload(idxVal))
+            if (idx >= 0 && idx < s.length()) {
+                return ctVal(interpNewString(s.charAt(idx)))
+            }
+            return ctVal(interpNewString(""))
+        }
+    }
+    return ctVal(interpNewNull())
+}
+
+// Comptime enum helpers
+function ctEnumListMethod(eName: string, wantNames: int): int {
+    const enumId = parseInt(interpEnumNodes.getString(eName))
+    const vl = nGetList(enumId)
+    if (vl == "") { return interpNewArray("") }
+    const isString = interpEnumTypes.has(eName) == 1
+    const arr = interpNewArray("")
+    const parts = vl.split(",")
+    for (p in parts) {
+        const vid = parseInt(p)
+        if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
+            if (wantNames == 1) {
+                interpArrayPush(arr, interpNewString(nGetS1(vid)))
+            } else {
+                const val = interpEnumValues.getString(`${eName}.${nGetS1(vid)}`)
+                if (isString) { interpArrayPush(arr, interpNewString(val)) }
+                else { interpArrayPush(arr, interpNewInt(parseInt(val))) }
+            }
+        }
+    }
+    return arr
+}
+
+function ctEnumValueOfMethod(eName: string, nodeId: int): int {
+    const voArgList = nGetList(nodeId)
+    if (voArgList != "") {
+        const voArgId = parseInt(voArgList.split(",")[0])
+        const voVal = genVal(voArgId)
+        if (isCt(voVal) == 1) {
+            const voName = interpAsStr(payload(voVal))
+            const voKey = `${eName}.${voName}`
+            if (interpEnumValues.has(voKey) == 1) {
+                if (interpEnumTypes.has(eName) == 1) { return interpNewString(interpEnumValues.getString(voKey)) }
+                return interpNewInt(parseInt(interpEnumValues.getString(voKey)))
+            }
+        }
+    }
+    return interpNewNull()
 }
 
 function genExpr(id: int): string {

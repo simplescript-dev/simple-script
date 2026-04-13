@@ -265,17 +265,23 @@ if (comptimeDepth > 0) {
 - `ASSIGN`：更新 ctVars
 - `IF/WHILE/FOR`：comptime 条件在 `comptimeDepth > 0` 时直接求值
 - `RETURN/BREAK/CONTINUE`：`comptimeDepth > 0` 时设置 flag
-- **验证**：现有 comptime 测试用 genVal 路径通过。
+- `POSTFIX_INC/DEC`：`comptimeDepth > 0` 时更新 ctVars
+- **验证**：bootstrap 固定点通过，222 测试全通过。附带修复 Pow 运算符 comptime 折叠 bug。
 
-### Phase 4: 函数调用和类
+### Phase 4: 函数调用和类 ✅
 
-- `CALL`：comptime 块内调用用户函数 → 查 AST、绑参、genBlock
+- `CALL`：comptime 块内调用用户函数 → 查 ctFuncNodes、绑参、genBlock
 - `NEW_EXPR`：comptime 块内 → 创建 interp object
 - `MEMBER_ACCESS`：comptime 对象 → interpGetField
 - `METHOD_CALL`：comptime 对象 → interpFindMethod + genBlock
 - `MEMBER_ASSIGN`：comptime 对象 → interpSetField
-- 迁移 comptime intrinsic（println, emit, readFile 等）到 genCall
-- **验证**：comptime 块内 class 操作通过。
+- 迁移 comptime intrinsic（println, emit, readFile, comptimeAssert, getenv 等）到 genValCtCall
+- FUNC_DECL/CLASS_DECL/ENUM_DECL 在 comptime 块内注册到 ctFuncNodes/interpClasses/interpEnumNodes
+- COMPTIME_BLOCK 路由 `interpExecComptime` → `runComptimeBlockBody` + `genBlock`
+- class-level comptime 和 @derive 也改走 runComptimeBlockBody
+- ctVars 全用 tagged 值存储（参数绑定、for-in 循环变量、postfix），IDENT 查找一致
+- IDENT 查找 fallback 到 interpVars（OS/ARCH/DEBUG/COMPILER_VERSION 等预定义常量）
+- **验证**：bootstrap 固定点通过，223 测试全通过。
 
 ### Phase 5: 内置方法和剩余节点
 

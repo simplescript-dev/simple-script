@@ -395,6 +395,15 @@ function genVarDecl(id: int) {
         nSetS1(initId, typeAnn)
     }
 
+    // Comptime: evaluate and store in ctVars, no IR emission
+    if (comptimeDepth > 0) {
+        const ctInit = genVal(initId)
+        if (isCt(ctInit) == 1) {
+            ctVars.set(`${currentFunc}:${name}`, `${ctInit}`)
+        }
+        return
+    }
+
     // Infer type from init expression
     const initType = inferType(initId)
     const llType = ssTypeToLLVM(initType)
@@ -527,6 +536,18 @@ function genVarDecl(id: int) {
 // ── Return statement ────────────────────────────────────────
 
 function genReturn(id: int) {
+    // D089 Phase 3: comptime return → set flag + value
+    if (comptimeDepth > 0) {
+        const ctRetValId = nGetI1(id)
+        if (ctRetValId > 0) {
+            const ctRetTagged = genVal(ctRetValId)
+            if (isCt(ctRetTagged) == 1) {
+                interpReturnVal = payload(ctRetTagged)
+            }
+        }
+        interpReturnFlag = 1
+        return
+    }
     const valId = nGetI1(id)
     if (valId <= 0) {
         pirEmitReturnCleanup()

@@ -465,7 +465,7 @@ function genClassDecl(id: int) {
             for (ctmp in ctmParts) {
                 const ctmId = parseInt(ctmp)
                 if (ctmId <= 0 || nGetKind(ctmId) != "COMPTIME_BLOCK") { continue }
-                interpExecComptime(nGetI1(ctmId))
+                runComptimeBlockBody(nGetI1(ctmId))
                 flushComptimeIR()
                 emitClassComptimeMethods(name)
             }
@@ -489,7 +489,7 @@ function genClassDecl(id: int) {
                     const dRoot = parse(dTokens)
                     const dBlock = newNode("BLOCK")
                     nSetList(dBlock, nGetList(dRoot))
-                    interpExecComptime(dBlock)
+                    runComptimeBlockBody(dBlock)
                     flushComptimeIR()
                     emitClassComptimeMethods(name)
                 }

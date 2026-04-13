@@ -89,6 +89,22 @@ function genMemberAssign(id: int) {
     const op = nGetS2(id)
     const valExpr = nGetI2(id)
 
+    // D089 Phase 4: comptime member assign
+    if (comptimeDepth > 0) {
+        const ctObj = genVal(objExpr)
+        const ctNewVal = genVal(valExpr)
+        if (isCt(ctObj) == 1 && interpType(payload(ctObj)) == "object") {
+            if (op == "ASSIGN") {
+                interpSetField(payload(ctObj), fieldName, isCt(ctNewVal) == 1 ? payload(ctNewVal) : interpNewNull())
+            } else {
+                const ctOldField = interpGetField(payload(ctObj), fieldName)
+                const ctCompVal = interpCompoundOp(op, ctOldField, isCt(ctNewVal) == 1 ? payload(ctNewVal) : interpNewNull())
+                interpSetField(payload(ctObj), fieldName, ctCompVal)
+            }
+        }
+        return
+    }
+
     // D082: Ref<T>.value assignment
     if (fieldName == "value" && nGetKind(objExpr) == "IDENT") {
         const rvt = getVarType(nGetS1(objExpr))
@@ -211,6 +227,55 @@ function genAssign(id: int) {
     const name = nGetS1(id)
     const op = nGetS2(id)
     const valId = nGetI1(id)
+
+    // D089 Phase 3+4: comptime assign → update ctVars with scope chain lookup
+    if (comptimeDepth > 0) {
+        const ctAssignTagged = genVal(valId)
+        if (isCt(ctAssignTagged) == 1) {
+            // Find variable in scope chain and update there
+            let ctFoundKey = ""
+            if (ctScopeStack.length() > 0) {
+                let ctAsi = ctScopeStack.length() - 1
+                while (ctAsi >= 0) {
+                    const ctAkey = `${ctScopeStack[ctAsi]}:${name}`
+                    if (ctVars.has(ctAkey) == 1) { ctFoundKey = ctAkey; break }
+                    ctAsi = ctAsi - 1
+                }
+            }
+            if (ctFoundKey == "") { ctFoundKey = `${currentFunc}:${name}` }
+            ctVars.set(ctFoundKey, `${ctAssignTagged}`)
+            return
+        }
+        if (op != "ASSIGN") {
+            // Compound assignment in comptime (+=, -=, etc.)
+            let ctOldVal = ctVal(interpNewNull())
+            if (ctScopeStack.length() > 0) {
+                let ctAsi = ctScopeStack.length() - 1
+                while (ctAsi >= 0) {
+                    const ctAkey = `${ctScopeStack[ctAsi]}:${name}`
+                    if (ctVars.has(ctAkey) == 1) {
+                        ctOldVal = parseInt(ctVars.getString(ctAkey))
+                        break
+                    }
+                    ctAsi = ctAsi - 1
+                }
+            }
+            if (isCt(ctOldVal) == 1 && isCt(ctAssignTagged) == 1) {
+                const ctCompResult = interpCompoundOp(op, payload(ctOldVal), payload(ctAssignTagged))
+                let ctCompKey = `${currentFunc}:${name}`
+                if (ctScopeStack.length() > 0) {
+                    let ctCsi = ctScopeStack.length() - 1
+                    while (ctCsi >= 0) {
+                        const ctCk = `${ctScopeStack[ctCsi]}:${name}`
+                        if (ctVars.has(ctCk) == 1) { ctCompKey = ctCk; break }
+                        ctCsi = ctCsi - 1
+                    }
+                }
+                ctVars.set(ctCompKey, `${ctVal(ctCompResult)}`)
+                return
+            }
+        }
+    }
 
     const vType = getVarType(name)
     const llType = ssTypeToLLVM(vType)

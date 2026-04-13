@@ -320,14 +320,7 @@ function interpReset() {
     interpResetBuiltins()
 }
 
-function interpExecComptime(bodyId: int) {
-    interpBreakFlag = 0
-    interpContinueFlag = 0
-    interpReturnFlag = 0
-    interpReturnVal = 0
-    interpThrowFlag = 0
-    interpThrowVal = 0
-    // Ensure persistent root scope exists
+function interpEnsureComptimeRoot() {
     if (interpComptimeRootScope == 0) {
         interpScopeNext = interpScopeNext + 1
         interpComptimeRootScope = interpScopeNext
@@ -341,7 +334,19 @@ function interpExecComptime(bodyId: int) {
         interpSetVar("ARCH", interpNewString(targetArch))
         interpSetVar("DEBUG", interpNewInt(comptimeReleaseMode == 0 ? 1 : 0))
         interpSetVar("COMPILER_VERSION", interpNewString("0.1.0"))
+    } else {
+        interpScopes = [`${interpComptimeRootScope}`]
     }
+}
+
+function interpExecComptime(bodyId: int) {
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    interpReturnFlag = 0
+    interpReturnVal = 0
+    interpThrowFlag = 0
+    interpThrowVal = 0
+    interpEnsureComptimeRoot()
     interpScopes = [`${interpComptimeRootScope}`]
     // Execute body statements directly in root scope (skip BLOCK push/pop)
     if (nGetKind(bodyId) == "BLOCK") {
