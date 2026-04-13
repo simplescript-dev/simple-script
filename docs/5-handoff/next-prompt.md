@@ -1,4 +1,4 @@
-# Round 167
+# Round 168
 
 ## Role
 Senior technical architect. Project: SimpleScript (self-bootstrapping compiled language, ~18700 LOC).
@@ -8,47 +8,53 @@ Persistent files in English. Discussion in Chinese, terms in English inline.
 
 ## Read These Files
 - docs/3-decisions/D089-compiler-is-interpreter.md (CRITICAL: 统一架构设计，tagged int，迁移计划)
-- docs/3-decisions/D088-comptime-zig-route.md (Zig route context)
-- bootstrap/codegen.ss (nextReg, emitIR, regCount — Phase 0 改造目标)
-- bootstrap/gen_exprs.ss (genExpr — genVal 的基础)
+- bootstrap/codegen.ss (ctVal/isCt/payload/constVal/reg — Phase 0 已完成)
+- bootstrap/gen_exprs.ss (genExprOld/genVal/genExpr wrapper — Phase 0 已完成)
 
 ## Last Round (max 3 sentences)
-Implemented interpreter enum support (ENUM_DECL, variant access, values/names/valueOf methods). Then discussed the fundamental architecture gap: SS has "compiler + interpreter" (two implementations), not "compiler = interpreter" (one implementation). Designed D089: tagged int Value encoding (bit 30 = comptime flag), genVal replaces genExpr, Zig-style value-level comptime propagation, 7-phase migration plan.
+Implemented D089 Phase 0: tagged int infrastructure (ctVal, isCt, payload, constVal, reg) in codegen.ss, genVal/genExpr wrapper in gen_exprs.ss, regTable reset at all 11 function boundaries. genExpr is now `reg(genVal(id))` → `constVal(genExprOld(id))` round-trip, 111 callers unchanged. nextReg int conversion (363 call sites) deferred to next step per "一次只改一层" principle.
 
 ## Task
-**D089 Phase 0: 基础设施 — tagged int + 寄存器表 + genVal wrapper**
+**D089 Phase 0b: nextReg 返回 int + reg() 包装**
 
 ### What to do
-1. Add tagged int operations to codegen.ss: `ctVal()`, `isCt()`, `payload()`, `r()`
-2. Add register table: `regTable` array, modify `nextReg()` to return int and store name in table
-3. Add `constVal(s: string): int` for non-register constants
-4. Add `genVal(id: int): int` initial version: wraps old genExpr, returns `constVal(oldGenExpr(id))`
-5. Rename current `genExpr` → `genExprOld`, add new `genExpr` wrapper: `return r(genVal(id))`
-6. Update all callers: `nextReg()` returns int now, wrap with `r()` where used in emitIR
+1. Change `nextReg(): string` → `nextReg(): int` in codegen.ss
+   - Store `%N` string in regTable, return index (same as constVal pattern)
+2. Find all 363 `nextReg()` call sites across 15 files
+3. At each call site, wrap usages in template strings with `reg()`:
+   - Pattern: `${varName}` → `${reg(varName)}` where varName holds nextReg result
+   - Also wrap usages passed as function arguments expecting string
+4. Do NOT change any genExpr callers (those already go through wrapper)
 
-### Phase 0 验证
+### Phase 0b 验证
 - Bootstrap 固定点通过（stage2 == stage3）
 - `bin/ss test tests/` 全量通过（218 tests）
-- 行为完全不变，纯重构
+- 行为完全不变，纯机械替换
 
-### D089 Core Principle
-> **新增语言特性时改几处？1 处 → 在路线上。2 处 → 没改到位。**
-> Phase 0 不改变这个数字，只搭基础设施。Phase 1-6 逐步统一。
+### Risk Mitigation
+- 363 call sites × ~3 usages each ≈ 1000+ template edits
+- Work file-by-file, test after each major file
+- Most common pattern: `const r = nextReg(); emitIR(\`  ${r} = ...\`)` → `emitIR(\`  ${reg(r)} = ...\`)`
+- Watch for: nextReg results passed to helper functions (irLoad, irStore, etc.) — those need reg() at the call site OR inside the helper
+- Watch for: nextReg results returned from functions — return type changes from string to int
 
-### Migration Baseline (from research)
-- genExpr 调用点: 111（97% 赋值到变量）
-- nextReg 调用点: 363
-- emitIR 调用点: 1,857
-- 解释器待删除代码: 1,782 行
+### Alternative approach (safer)
+If 363 sites is too risky for one round, split by file:
+- Round 1: gen_exprs.ss (50 calls) + gen_builtins.ss (50 calls) — most self-contained
+- Round 2: gen_calls.ss (56 calls) + gen_methods.ss (45 calls)
+- Round 3: gen_stmts.ss (38 calls) + gen_assigns.ss (38 calls) + gen_decls.ss (13 calls)
+- Round 4: gen_class.ss (15 calls) + gen_arrows.ss (14 calls) + gen_type_ops.ss (29 calls) + remaining
 
 ## Project Status
 - **Bootstrap**: 48 files, ~18700 LOC, 218 tests (218 passing, 0 failures).
-- **Comptime**: D087 Phase 1-4, D088 Phase 5-7 complete. Interpreter enum just added.
-- **D089**: Phase 0 pending. Architecture designed, not yet implemented.
+- **D089 Phase 0**: Complete. Tagged int infra + genVal/genExpr wrapper in place.
+- **D089 Phase 0b**: nextReg int conversion pending (363 call sites).
+- **D089 Phase 1**: Literal comptime (INT_LIT → ctVal) — after Phase 0b.
 
 ## Watch Out For
-- **Phase 0 是纯重构**：行为不变，只搭基础设施。不要在这一步做 comptime 传播。
-- **nextReg 改造是最大风险**：363 个调用点从 string 变 int。用 `r()` wrapper 机械替换。
+- **Phase 0b 是纯机械替换**：行为不变，只改 nextReg 返回类型 + 包装调用点。
+- **irLoad/irStore/irAlloca 等 helper 函数**：它们接受 string 参数。如果 nextReg 结果传给这些 helper，需要在调用点用 reg() 包装。
+- **函数返回类型**：genThisExpr, genIdent 等返回 nextReg 结果的函数，返回类型从 string 不变（它们已通过 genExprOld 被 constVal 包装）。
 - **Bootstrap works**: After any source change, run `bin/ss test tests/` then verify bootstrap fixed-point.
 - **Runtime cache**: After changing gen_runtime.ss or gen_rt_*.ss, run `rm -f /tmp/ss_rt_cache.*` before testing.
 
