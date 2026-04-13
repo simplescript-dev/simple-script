@@ -144,12 +144,15 @@ function genVal(id: int): int {
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "BINARY") { return genValBinary(id) }
     if (kind == "UNARY") { return genValUnary(id) }
+    if (kind == "GROUPING") { return genVal(nGetI1(id)) }
+    if (kind == "TERNARY") { return genValTernary(id) }
     return constVal(genExprOld(id))
 }
 
 function genValBinary(id: int): int {
     const op = nGetS1(id)
-    if (op == "And" || op == "Or" || op == "NullCoalesce" || op == "Instanceof" || op == "As") {
+    if (op == "And" || op == "Or") { return genValShortCircuit(op, id) }
+    if (op == "NullCoalesce" || op == "Instanceof" || op == "As") {
         return constVal(genExprOld(id))
     }
     const blt = inferType(nGetI1(id))
@@ -193,6 +196,73 @@ function genValUnary(id: int): int {
     const r2 = nextReg()
     emitIR(`  ${r2} = zext i1 ${r} to i32`)
     return constVal(r2)
+}
+
+function genValTernary(id: int): int {
+    const cv = genVal(nGetI1(id))
+    if (isCt(cv) == 1) {
+        if (interpAsInt(payload(cv)) != 0) { return genVal(nGetI2(id)) }
+        return genVal(nGetI3(id))
+    }
+    // Runtime — condition already evaluated, emit branch directly
+    const condStr = reg(cv)
+    const vType = inferType(nGetI2(id))
+    const llType = ssTypeToLLVM(vType)
+    const resultAlloca = nextReg()
+    emitIR(`  ${resultAlloca} = alloca ${llType}, align 8`)
+    const cmp = nextReg()
+    emitIR(`  ${cmp} = icmp ne i32 ${condStr}, 0`)
+    const thenLabel = nextLabel("tern.then")
+    const elseLabel = nextLabel("tern.else")
+    const mergeLabel = nextLabel("tern.merge")
+    emitIR(`  br i1 ${cmp}, label %${thenLabel}, label %${elseLabel}`)
+    emitIR(`${thenLabel}:`)
+    const thenVal = genExpr(nGetI2(id))
+    emitIR(`  store ${llType} ${thenVal}, ptr ${resultAlloca}, align 8`)
+    emitIR(`  br label %${mergeLabel}`)
+    emitIR(`${elseLabel}:`)
+    const elseVal = genExpr(nGetI3(id))
+    emitIR(`  store ${llType} ${elseVal}, ptr ${resultAlloca}, align 8`)
+    emitIR(`  br label %${mergeLabel}`)
+    emitIR(`${mergeLabel}:`)
+    const result = nextReg()
+    emitIR(`  ${result} = load ${llType}, ptr ${resultAlloca}, align 8`)
+    return constVal(result)
+}
+
+function genValShortCircuit(op: string, id: int): int {
+    const lv = genVal(nGetI1(id))
+    if (isCt(lv) == 1) {
+        const leftVal = interpAsInt(payload(lv))
+        if (op == "And") {
+            if (leftVal == 0) { return ctVal(interpNewInt(0)) }
+            return genVal(nGetI2(id))
+        }
+        if (leftVal != 0) { return lv }
+        return genVal(nGetI2(id))
+    }
+    // Runtime left — inline short-circuit IR (left already evaluated)
+    const leftStr = reg(lv)
+    const scResult = nextReg()
+    emitIR(`  ${scResult} = alloca i32, align 4`)
+    emitIR(`  store i32 ${leftStr}, ptr ${scResult}, align 4`)
+    const scCmp = nextReg()
+    emitIR(`  ${scCmp} = icmp ne i32 ${leftStr}, 0`)
+    const scRhs = nextLabel("sc.rhs")
+    const scEnd = nextLabel("sc.end")
+    if (op == "And") {
+        emitIR(`  br i1 ${scCmp}, label %${scRhs}, label %${scEnd}`)
+    } else {
+        emitIR(`  br i1 ${scCmp}, label %${scEnd}, label %${scRhs}`)
+    }
+    emitIR(`${scRhs}:`)
+    const scRight = genExpr(nGetI2(id))
+    emitIR(`  store i32 ${scRight}, ptr ${scResult}, align 4`)
+    emitIR(`  br label %${scEnd}`)
+    emitIR(`${scEnd}:`)
+    const scRes = nextReg()
+    emitIR(`  ${scRes} = load i32, ptr ${scResult}, align 4`)
+    return constVal(scRes)
 }
 
 function genExpr(id: int): string {
