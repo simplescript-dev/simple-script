@@ -285,6 +285,29 @@ function interpCompoundOp(op: string, lv: int, rv: int): int {
 // Persistent comptime root scope — survives across comptime blocks
 let interpComptimeRootScope = 0
 
+function interpReset() {
+    interpVT = new Map()
+    interpVD = new Map()
+    interpVC = 0
+    interpScopes = []
+    interpScopeNext = 0
+    interpVars = new Map()
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    interpReturnFlag = 0
+    interpReturnVal = 0
+    interpThrowFlag = 0
+    interpThrowVal = 0
+    comptimeIR = ""
+    comptimeSS = ""
+    interpClasses = new Map()
+    interpClassParents = new Map()
+    interpObjFields = new Map()
+    interpThisVal = 0
+    interpComptimeRootScope = 0
+    interpResetBuiltins()
+}
+
 function interpExecComptime(bodyId: int) {
     interpBreakFlag = 0
     interpContinueFlag = 0

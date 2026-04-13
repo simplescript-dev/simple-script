@@ -101,37 +101,30 @@ comptime {
 
     // ── JSON serialization helpers ──
 
-    // Core: accessor is "obj" (standalone) or "this" (class method)
-    function ctJsonBody(className: string, accessor: string): string {
-        const info = getTypeInfo(className)
-        let body = ""
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            let line = "    r = r + "
-            if (i > 0) { line = line + "\",\" + " }
-            line = line + "q + \"" + f.name + "\" + q + \":\" + "
-            if (f.type == "string") {
-                line = line + "q + " + accessor + "." + f.name + " + q"
-            } else {
-                line = line + "\"\" + " + accessor + "." + f.name
-            }
-            body = body + line + "\n"
-            i = i + 1
-        }
-        return body
-    }
-
     function ctGenToJson(className: string, funcName: string): string {
-        const body = ctJsonBody(className, "obj")
-        return "function " + funcName + "(obj: " + className + "): string {\n    const q = \"\\\"\"\n    let r = \"{\"\n" + body + "    return r + \"}\"\n}"
+        let s = "function " + funcName + "(obj: " + className + "): string {\n"
+        s = s + "    let r = \"{\"\n"
+        s = s + "    for (name in obj.fields()) {\n"
+        s = s + "        if (r != \"{\") { r = r + \",\" }\n"
+        s = s + "        r = r + _ss_jsonValue(name) + \":\" + _ss_jsonValue(obj[name])\n"
+        s = s + "    }\n"
+        s = s + "    return r + \"}\"\n"
+        s = s + "}"
+        return s
     }
 
     // ── Method generators (for class-level comptime / @derive) ──
 
     function ctGenMethodToJson(className: string): string {
-        const body = ctJsonBody(className, "this")
-        return "function toJson(): string {\n    const q = \"\\\"\"\n    let r = \"{\"\n" + body + "    return r + \"}\"\n}"
+        let s = "function toJson(): string {\n"
+        s = s + "    let r = \"{\"\n"
+        s = s + "    for (name in this.fields()) {\n"
+        s = s + "        if (r != \"{\") { r = r + \",\" }\n"
+        s = s + "        r = r + _ss_jsonValue(name) + \":\" + _ss_jsonValue(this[name])\n"
+        s = s + "    }\n"
+        s = s + "    return r + \"}\"\n"
+        s = s + "}"
+        return s
     }
 
     function ctGenMethodToString(className: string): string {
@@ -357,21 +350,15 @@ comptime {
     // ── Hash derive: generates hashCode(): int ──
 
     function ctGenMethodHash(className: string): string {
-        const info = getTypeInfo(className)
-        let body = "    let h = 17\n"
-        let i = 0
-        while (i < info.fields.length()) {
-            const f = info.fields[i]
-            if (f.type == "int") {
-                body = body + "    h = h * 31 + this." + f.name + "\n"
-            } else if (f.type == "string") {
-                body = body + "    h = h * 31 + this." + f.name + ".length()\n"
-            }
-            i = i + 1
-        }
-        body = body + "    if (h < 0) { h = 0 - h }\n"
-        body = body + "    return h"
-        return "function hashCode(): int {\n" + body + "\n}"
+        let s = "function hashCode(): int {\n"
+        s = s + "    let h = 17\n"
+        s = s + "    for (name in this.fields()) {\n"
+        s = s + "        h = h * 31 + _ss_hashContrib(this[name])\n"
+        s = s + "    }\n"
+        s = s + "    if (h < 0) { h = 0 - h }\n"
+        s = s + "    return h\n"
+        s = s + "}"
+        return s
     }
 
     function ctDeriveHash(className: string) {

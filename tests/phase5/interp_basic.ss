@@ -1,4 +1,5 @@
 import { assertEqual } from "@/lib/test"
+import { classFields } from "@/bootstrap/interp_stubs"
 import { tokenize } from "@/bootstrap/lexer"
 import { parse, nGetList } from "@/bootstrap/parser"
 import { interpExec, interpReset, interpPushScope, interpType, interpAsInt, interpAsStr, interpAsDouble, interpAsBool, interpGetVar } from "@/bootstrap/interp"
