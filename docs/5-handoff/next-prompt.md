@@ -7,7 +7,7 @@
 - 顺带删除 2 个 dead 全局 + unreachable 分支：`interpThrowFlag`/`interpThrowVal`（只清零，从不置 1；`interpShouldStop()` 的 throw 分支 unreachable；`runComptimeBlockBody` 两行清零一并删除）
 - 清理 stale import：`./gen_reflect` 整行删除；`./parser` 只保留 `nGetS1/nGetI2/nGetList`
 - 头部 block comment 重写，精确列出五大职责（值堆 / 作用域 / 控制流 flag / IR+SS 缓冲 / class+enum+Map 注册表）
-- commit: `1781ddb`
+- commit: `ff9bcc2`
 
 Phase 6 整体收尾：旧解释器 4 文件 + 5 测试文件 + interp_reflect 迁移 + interp.ss 精简，全部完成。
 
