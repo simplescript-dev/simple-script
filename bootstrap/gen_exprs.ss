@@ -146,6 +146,7 @@ function genVal(id: int): int {
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") {
         if (comptimeDepth > 0) { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
+        return constVal(nGetS1(id))
     }
     if (kind == "BINARY") { return genValBinary(id) }
     if (kind == "UNARY") { return genValUnary(id) }
@@ -176,9 +177,32 @@ function genVal(id: int): int {
                 return ctVal(parseInt(interpVars.getString(ctInterpKey)))
             }
         }
+        return constVal(genIdent(id))
+    }
+    if (kind == "THIS" || kind == "SUPER") {
+        if (comptimeDepth > 0) {
+            if (interpThisVal > 0) { return ctVal(interpThisVal) }
+            return ctVal(interpNewNull())
+        }
+        return constVal(genThisExpr())
+    }
+    if (kind == "POSTFIX_INC") {
+        if (comptimeDepth > 0) {
+            println(`[comptime] unsupported expression: POSTFIX_INC`)
+            return ctVal(interpNewNull())
+        }
+        return constVal(genPostfixExpr(id))
+    }
+    if (kind == "COMPTIME_EXPR") {
+        if (comptimeDepth > 0) {
+            println(`[comptime] unsupported expression: COMPTIME_EXPR`)
+            return ctVal(interpNewNull())
+        }
+        const ceKey = `${id}`
+        if (comptimeExprType.has(ceKey) == 0) { inferType(id) }
+        return constVal(comptimeExprLiteral.getString(ceKey))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
-    // D089 Phase 4: comptime expression handlers
     if (comptimeDepth > 0) {
         if (kind == "CALL") { return genValCtCall(id) }
         if (kind == "NEW_EXPR") { return ctVal(genValCtNewExpr(id)) }
@@ -187,10 +211,6 @@ function genVal(id: int): int {
         if (kind == "TEMPLATE_LIT") { return genValCtTemplateLit(id) }
         if (kind == "ARRAY_LIT") { return genValCtArrayLit(id) }
         if (kind == "INDEX_ACCESS") { return genValCtIndexAccess(id) }
-        if (kind == "THIS") {
-            if (interpThisVal > 0) { return ctVal(interpThisVal) }
-            return ctVal(interpNewNull())
-        }
         if (kind == "ARROW_FUNC") { return ctVal(interpNewVal("fn", `${id}`)) }
         if (kind == "COMPTIME_EMIT") {
             const ctEmitVal = genVal(nGetI1(id))
