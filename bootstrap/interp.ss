@@ -5,7 +5,7 @@
 // statement execution, and reflection are in separate files.
 
 import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
-import { interpBuiltinMethod, interpNewMap, interpResetBuiltins } from "./interp_builtins"
+import { interpBuiltinMethod } from "./interp_builtins"
 import { interpEval } from "./interp_eval"
 import { interpCall, interpCallValue } from "./interp_calls"
 import { interpExec } from "./interp_exec"
@@ -289,6 +289,90 @@ function interpCompoundOp(op: string, lv: int, rv: int): int {
     return interpIntOp(binOp, interpAsInt(lv), interpAsInt(rv))
 }
 
+// ── Map Value Storage ────────────────────────────────────────
+// Shared by the comptime path (gen_exprs.ss) and the legacy interpreter (interp_builtins.ss).
+
+let interpMapEntries = new Map()
+let interpMapKeyIds = new Map()
+
+function interpNewMap(): int {
+    return interpNewVal("map", "")
+}
+
+function interpMapSet(mapId: int, keyStr: string, valId: int) {
+    const entryKey = `${mapId}:${keyStr}`
+    if (interpMapEntries.has(entryKey) != 1) {
+        const keyValId = interpNewString(keyStr)
+        const listKey = `${mapId}`
+        if (interpMapKeyIds.has(listKey) == 1) {
+            interpMapKeyIds.set(listKey, `${interpMapKeyIds.getString(listKey)},${keyValId}`)
+        } else {
+            interpMapKeyIds.set(listKey, `${keyValId}`)
+        }
+    }
+    interpMapEntries.set(entryKey, `${valId}`)
+}
+
+function interpMapGet(mapId: int, keyStr: string): int {
+    const entryKey = `${mapId}:${keyStr}`
+    if (interpMapEntries.has(entryKey) == 1) {
+        return parseInt(interpMapEntries.getString(entryKey))
+    }
+    return interpNewNull()
+}
+
+function interpMapHas(mapId: int, keyStr: string): int {
+    return interpMapEntries.has(`${mapId}:${keyStr}`)
+}
+
+function interpMapDelete(mapId: int, keyStr: string) {
+    const entryKey = `${mapId}:${keyStr}`
+    if (interpMapEntries.has(entryKey) != 1) { return }
+    interpMapEntries.delete(entryKey)
+    const listKey = `${mapId}`
+    if (interpMapKeyIds.has(listKey) != 1) { return }
+    const keyIds = interpMapKeyIds.getString(listKey)
+    if (keyIds == "") { return }
+    let newIds = ""
+    const parts = keyIds.split(",")
+    let i = 0
+    while (i < parts.length()) {
+        if (interpAsStr(parseInt(parts[i])) != keyStr) {
+            if (newIds != "") { newIds = `${newIds},` }
+            newIds = `${newIds}${parts[i]}`
+        }
+        i = i + 1
+    }
+    interpMapKeyIds.set(listKey, newIds)
+}
+
+function interpMapGetKeys(mapId: int): int {
+    const listKey = `${mapId}`
+    if (interpMapKeyIds.has(listKey) != 1) { return interpNewArray("") }
+    return interpNewArray(interpMapKeyIds.getString(listKey))
+}
+
+function interpMapGetSize(mapId: int): int {
+    const listKey = `${mapId}`
+    if (interpMapKeyIds.has(listKey) != 1) { return 0 }
+    const keyIds = interpMapKeyIds.getString(listKey)
+    if (keyIds == "") { return 0 }
+    return keyIds.split(",").length()
+}
+
+// ── Value Equality ───────────────────────────────────────────
+
+function interpValEquals(a: int, b: int): int {
+    const ta = interpType(a)
+    const tb = interpType(b)
+    if (ta != tb) { return 0 }
+    if (ta == "null") { return 1 }
+    if (ta == "object" || ta == "array" || ta == "map" || ta == "fn") {
+        return a == b ? 1 : 0
+    }
+    return interpAsStr(a) == interpAsStr(b) ? 1 : 0
+}
+
 // ── Reset ──────────────────────────────────────────────────────
 
 // Persistent comptime root scope — survives across comptime blocks
@@ -317,7 +401,8 @@ function interpReset() {
     interpEnumTypes = new Map()
     interpEnumNodes = new Map()
     interpComptimeRootScope = 0
-    interpResetBuiltins()
+    interpMapEntries = new Map()
+    interpMapKeyIds = new Map()
 }
 
 function interpEnsureComptimeRoot() {

@@ -3,8 +3,7 @@
 
 import { genCall, genTemplateLit, genArrowFunc, flushArrowDefs, genArrayLit } from "./gen_calls"
 import { genMethodCall, genOptionalMethodCall } from "./gen_methods"
-import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCheckLoopExit, interpCompoundOp } from "./interp"
-import { interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "./interp_builtins"
+import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "./interp"
 import { interpBuildTypeInfo } from "./interp_reflect"
 
 // ── Simple expression handlers ──────────────────────────────────

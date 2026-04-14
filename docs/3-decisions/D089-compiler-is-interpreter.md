@@ -303,8 +303,11 @@ if (comptimeDepth > 0) {
   - 提取 `registerEnumInto(id, valuesMap, typesMap, nodesMap)` helper，`registerEnum` 和 comptime 分支共用，消除 ~18 行重复，防止再次漂移
   - `runComptimeBlockBody` 入口补齐 `interpThrowFlag/interpThrowVal` 重置，与 `interpExecComptime` 行为一致
   - **验证**：bootstrap 固定点通过，224 测试全通过
-- **Step 2 TODO**：迁移 `interp_builtins.ss` 中新路径仍依赖的 helper（`interpValEquals`、`interpMap*`、`interpNewMap`、`interpResetBuiltins`）到 `interp.ss`（或新位置），解除对 interp_builtins.ss 的剩余依赖
-- **Step 3 TODO**：删除 `interp_eval.ss`（237 行）、`interp_exec.ss`（335 行）、`interp_calls.ss`（607 行）、`interp_builtins.ss`（331 行），并清理 gen_stmts.ss 里对 `interpExecComptime` 的遗留 import
+- **Step 2 ✅**：迁移 `interp_builtins.ss` 中新路径仍依赖的 helper（`interpValEquals`、`interpMap{Set,Get,Has,Delete,GetKeys,GetSize}`、`interpNewMap`）以及 `interpMapEntries`/`interpMapKeyIds` 全局到 `interp.ss`
+  - 顺带把 `interpResetBuiltins` 内联进 `interpReset`（独立函数已无意义，仅一处调用且现在同文件），interp_builtins.ss 头部注释收敛到"只描述当前职责"
+  - `gen_exprs.ss` 把两行 import（`./interp` + `./interp_builtins`）合并为一行 `./interp`，新路径 import 表面上彻底脱离 interp_builtins.ss
+  - **验证**：bootstrap 固定点通过，224 测试全通过
+- **Step 3 TODO**：删除 `interp_eval.ss`（237 行）、`interp_exec.ss`（335 行）、`interp_calls.ss`（607 行）、`interp_builtins.ss`（剩余 ~245 行），并清理 gen_stmts.ss 里对 `interpExecComptime` 的遗留 import
 - **Step 4 TODO**：`interp_reflect.ss` 迁入 `gen_types.ss` → 删除
 - **Step 5 TODO**：`interp.ss` 精简，只保留值系统、comptime 缓冲区、comptime 作用域
 

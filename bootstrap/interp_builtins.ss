@@ -1,94 +1,7 @@
-// interp_builtins.ss — Built-in type methods for the AST interpreter (D087 Phase 1e)
+// interp_builtins.ss — Built-in type methods for the legacy AST interpreter
 //
-// Handles methods on built-in types (string, Array, Map) and provides
-// Map value storage. Separated from interp.ss per D087 design doc to
-// keep file sizes manageable.
-//
-// All functions here reference interp.ss helpers (interpNewVal, interpAsStr,
-// etc.) as forward declarations — safe because registerAllDecls resolves them.
-
-// ── Map Value Storage ────────────────────────────────────────
-
-let interpMapEntries = new Map()
-let interpMapKeyIds = new Map()
-
-function interpNewMap(): int {
-    return interpNewVal("map", "")
-}
-
-function interpMapSet(mapId: int, keyStr: string, valId: int) {
-    const entryKey = `${mapId}:${keyStr}`
-    if (interpMapEntries.has(entryKey) != 1) {
-        const keyValId = interpNewString(keyStr)
-        const listKey = `${mapId}`
-        if (interpMapKeyIds.has(listKey) == 1) {
-            interpMapKeyIds.set(listKey, `${interpMapKeyIds.getString(listKey)},${keyValId}`)
-        } else {
-            interpMapKeyIds.set(listKey, `${keyValId}`)
-        }
-    }
-    interpMapEntries.set(entryKey, `${valId}`)
-}
-
-function interpMapGet(mapId: int, keyStr: string): int {
-    const entryKey = `${mapId}:${keyStr}`
-    if (interpMapEntries.has(entryKey) == 1) {
-        return parseInt(interpMapEntries.getString(entryKey))
-    }
-    return interpNewNull()
-}
-
-function interpMapHas(mapId: int, keyStr: string): int {
-    return interpMapEntries.has(`${mapId}:${keyStr}`)
-}
-
-function interpMapDelete(mapId: int, keyStr: string) {
-    const entryKey = `${mapId}:${keyStr}`
-    if (interpMapEntries.has(entryKey) != 1) { return }
-    interpMapEntries.delete(entryKey)
-    const listKey = `${mapId}`
-    if (interpMapKeyIds.has(listKey) != 1) { return }
-    const keyIds = interpMapKeyIds.getString(listKey)
-    if (keyIds == "") { return }
-    let newIds = ""
-    const parts = keyIds.split(",")
-    let i = 0
-    while (i < parts.length()) {
-        if (interpAsStr(parseInt(parts[i])) != keyStr) {
-            if (newIds != "") { newIds = `${newIds},` }
-            newIds = `${newIds}${parts[i]}`
-        }
-        i = i + 1
-    }
-    interpMapKeyIds.set(listKey, newIds)
-}
-
-function interpMapGetKeys(mapId: int): int {
-    const listKey = `${mapId}`
-    if (interpMapKeyIds.has(listKey) != 1) { return interpNewArray("") }
-    return interpNewArray(interpMapKeyIds.getString(listKey))
-}
-
-function interpMapGetSize(mapId: int): int {
-    const listKey = `${mapId}`
-    if (interpMapKeyIds.has(listKey) != 1) { return 0 }
-    const keyIds = interpMapKeyIds.getString(listKey)
-    if (keyIds == "") { return 0 }
-    return keyIds.split(",").length()
-}
-
-// ── Value Equality (for indexOf) ─────────────────────────────
-
-function interpValEquals(a: int, b: int): int {
-    const ta = interpType(a)
-    const tb = interpType(b)
-    if (ta != tb) { return 0 }
-    if (ta == "null") { return 1 }
-    if (ta == "object" || ta == "array" || ta == "map" || ta == "fn") {
-        return a == b ? 1 : 0
-    }
-    return interpAsStr(a) == interpAsStr(b) ? 1 : 0
-}
+// Dispatches string / Array / Map method calls on the legacy interpExec path.
+// Map storage and value equality live in interp.ss because the comptime path needs them too.
 
 // ── String Methods ───────────────────────────────────────────
 
@@ -321,11 +234,4 @@ function interpBuiltinMethod(objType: string, objVal: int, method: string, args:
     if (objType == "map") { return interpMapMethod(objVal, method, args) }
     println(`[interp] no built-in method '${method}' on ${objType}`)
     return interpNewNull()
-}
-
-// ── Reset ────────────────────────────────────────────────────
-
-function interpResetBuiltins() {
-    interpMapEntries = new Map()
-    interpMapKeyIds = new Map()
 }
