@@ -2,10 +2,10 @@
 //
 // Value storage, scope stack, class/object infrastructure, control flow flags,
 // and comptime buffers. Used by the comptime path in gen_exprs.ss / gen_stmts.ss.
-// Reflection helpers live in interp_reflect.ss.
+// Reflection helpers live in gen_reflect.ss.
 
 import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
-import { interpBuildTypeInfo, interpBuildAnnotationArray } from "./interp_reflect"
+import { interpBuildTypeInfo, interpBuildAnnotationArray } from "./gen_reflect"
 
 // ── Value Storage ──────────────────────────────────────────────
 // Each value has a unique int ID. Type and data stored in Maps.

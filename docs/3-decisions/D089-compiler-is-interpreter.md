@@ -312,7 +312,10 @@ if (comptimeDepth > 0) {
   - `gen_stmts.ss` 从 `./interp` import 行移除 `interpExecComptime`
   - 顺带把 `interpIntOp`/`interpDoubleOp`（原 interp_eval.ss）迁入 `interp.ss` —— 仍被 `interpCompoundOp` 和 `gen_exprs.ss` 的 comptime 常量折叠路径调用
   - **验证**：bootstrap 固定点通过，219 测试全通过（224 - 5 删除的 legacy 解释器测试）
-- **Step 4 TODO**：`interp_reflect.ss` 迁入 `gen_types.ss` → 删除
+- **Step 4 ✅**：`interp_reflect.ss`（272 行）整体迁移到新建的 `bootstrap/gen_reflect.ss`，5 个函数（`interpBuildMethodParams/AnnotationArray/TypeInfo/EnumInfo/InterfaceInfo`）函数体零改动
+  - 原计划迁入 `gen_types.ss`，但 gen_types.ss 已 699 行且职责是纯类型查询函数（无 interp value 构造），而反射函数全是 `interpNewVal/interpSetField/interpArrayPush` 的 value 构造——语义不同且合并后 971 行违反 CLAUDE.md "超过 500 行考虑拆分" 指引，改走 B 路线单独建文件
+  - `interp.ss` 和 `gen_exprs.ss` 的两个 `./interp_reflect` import 改为 `./gen_reflect`
+  - **验证**：bootstrap 固定点通过，219 测试全通过
 - **Step 5 TODO**：`interp.ss` 精简，只保留值系统、comptime 缓冲区、comptime 作用域
 
 ### Phase 7: 逐步迁移 genExpr → genVal
@@ -329,7 +332,7 @@ if (comptimeDepth > 0) {
 | interp.ss comptime 缓冲区 | ✅ | comptimeIR/comptimeSS/flush——comptime 输出通道 |
 | interp.ss 控制流 flag | ✅ | interpReturnFlag 等——comptime 控制流需要 |
 | interp.ss 作用域 | ✅ | interpPushScope 等——comptime 变量需要 |
-| interp_reflect.ss | 迁移 | 搬到 gen_types.ss，逻辑不变 |
+| gen_reflect.ss | ✅ | 反射逻辑从 interp_reflect.ss 迁入新建文件，逻辑不变（Step 4） |
 
 ## 删除什么
 
@@ -339,7 +342,7 @@ if (comptimeDepth > 0) {
 | interp_exec.ss | 335 | interpExec → genStmt comptime 分支吸收 |
 | interp_calls.ss | 607 | interpCall/interpMethodCall/interpNewExpr → genCall/genMethodCall/genNewExpr 吸收 |
 | interp_builtins.ss | 331 | → gen_builtins.ss comptime 分支吸收 |
-| interp_reflect.ss | 272 | → gen_types.ss 迁移 |
+| interp_reflect.ss | 272 | → gen_reflect.ss 迁移（Step 4 ✅） |
 | **合计** | **1,782** | |
 
 ## 根本验证

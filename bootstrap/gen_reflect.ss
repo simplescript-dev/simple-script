@@ -1,4 +1,4 @@
-// interp_reflect.ss — Compile-time reflection for the AST interpreter
+// gen_reflect.ss — Compile-time reflection for the AST interpreter
 //
 // Handles @typeInfo(T) and getTypeInfo(className): builds interpreter objects
 // representing class structure (fields, methods, annotations, params).
