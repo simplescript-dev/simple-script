@@ -202,12 +202,26 @@ function genVal(id: int): int {
         if (comptimeExprType.has(ceKey) == 0) { inferType(id) }
         return constVal(comptimeExprLiteral.getString(ceKey))
     }
+    if (kind == "CALL") {
+        if (comptimeDepth > 0) { return genValCtCall(id) }
+        return constVal(genCall(id))
+    }
+    if (kind == "NEW_EXPR") {
+        if (comptimeDepth > 0) { return ctVal(genValCtNewExpr(id)) }
+        return constVal(genNewExpr(id))
+    }
+    if (kind == "MEMBER_ACCESS") {
+        if (comptimeDepth > 0) { return genValCtMemberAccess(id) }
+        if (nGetI3(id) > 0) { return constVal(genOptionalMemberAccess(id)) }
+        return constVal(genMemberAccess(id))
+    }
+    if (kind == "METHOD_CALL") {
+        if (comptimeDepth > 0) { return genValCtMethodCall(id) }
+        if (nGetI3(id) > 0) { return constVal(genOptionalMethodCall(id)) }
+        return constVal(genMethodCall(id))
+    }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
     if (comptimeDepth > 0) {
-        if (kind == "CALL") { return genValCtCall(id) }
-        if (kind == "NEW_EXPR") { return ctVal(genValCtNewExpr(id)) }
-        if (kind == "MEMBER_ACCESS") { return genValCtMemberAccess(id) }
-        if (kind == "METHOD_CALL") { return genValCtMethodCall(id) }
         if (kind == "TEMPLATE_LIT") { return genValCtTemplateLit(id) }
         if (kind == "ARRAY_LIT") { return genValCtArrayLit(id) }
         if (kind == "INDEX_ACCESS") { return genValCtIndexAccess(id) }
