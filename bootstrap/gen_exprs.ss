@@ -220,12 +220,24 @@ function genVal(id: int): int {
         if (nGetI3(id) > 0) { return constVal(genOptionalMethodCall(id)) }
         return constVal(genMethodCall(id))
     }
+    if (kind == "TEMPLATE_LIT") {
+        if (comptimeDepth > 0) { return genValCtTemplateLit(id) }
+        return constVal(genTemplateLit(id))
+    }
+    if (kind == "ARRAY_LIT") {
+        if (comptimeDepth > 0) { return genValCtArrayLit(id) }
+        return constVal(genArrayLit(id))
+    }
+    if (kind == "ARROW_FUNC") {
+        if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }
+        return constVal(genArrowFunc(id))
+    }
+    if (kind == "INDEX_ACCESS") {
+        if (comptimeDepth > 0) { return genValCtIndexAccess(id) }
+        return constVal(genIndexAccess(id))
+    }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
     if (comptimeDepth > 0) {
-        if (kind == "TEMPLATE_LIT") { return genValCtTemplateLit(id) }
-        if (kind == "ARRAY_LIT") { return genValCtArrayLit(id) }
-        if (kind == "INDEX_ACCESS") { return genValCtIndexAccess(id) }
-        if (kind == "ARROW_FUNC") { return ctVal(interpNewVal("fn", `${id}`)) }
         if (kind == "COMPTIME_EMIT") {
             const ctEmitVal = genVal(nGetI1(id))
             if (isCt(ctEmitVal) == 1) {
