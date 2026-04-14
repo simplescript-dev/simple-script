@@ -193,7 +193,7 @@ function main() {
 
 | 缺失特性 | 编译器对应 | 影响 | 状态 |
 |----------|-----------|------|------|
-| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum | 待办 |
+| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum | ✅ ac76375 |
 | destructuring (array) | genDestructureArray | `let [a, b] = arr` 不能用 | ✅ e54bb4d |
 | destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | ✅ 本轮 |
 | spread | genSpread | `...arr` 不能用 | 待办 |
