@@ -1,11 +1,13 @@
-// interp.ss — SimpleScript comptime value system
+// interp.ss — comptime value/scope/buffer core
 //
-// Value storage, scope stack, class/object infrastructure, control flow flags,
-// and comptime buffers. Used by the comptime path in gen_exprs.ss / gen_stmts.ss.
-// Reflection helpers live in gen_reflect.ss.
+// Owns the comptime value heap, the comptime scope stack (with persistent root),
+// control-flow flags, and the IR / SS emit buffers. Also hosts the class, object,
+// enum and Map registries that the comptime execution path (gen_exprs.ss,
+// gen_stmts.ss, gen_decls.ss, gen_assigns.ss, gen_reflect.ss) reads and writes
+// directly. Pure value-layer primitives — no AST walking beyond field/method
+// lookup helpers. Reflection builders live in gen_reflect.ss.
 
-import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
-import { interpBuildTypeInfo, interpBuildAnnotationArray } from "./gen_reflect"
+import { nGetS1, nGetI2, nGetList } from "./parser"
 
 // ── Value Storage ──────────────────────────────────────────────
 // Each value has a unique int ID. Type and data stored in Maps.
@@ -51,10 +53,6 @@ function interpAsInt(id: int): int {
     return parseInt(interpVD.getString(`${id}`))
 }
 
-function interpAsDouble(id: int): double {
-    return parseDouble(interpVD.getString(`${id}`))
-}
-
 function interpAsStr(id: int): string {
     return interpVD.getString(`${id}`)
 }
@@ -89,21 +87,6 @@ let interpScopes: Array<string> = []
 let interpScopeNext = 0
 let interpVars = new Map()
 
-function interpPushScope() {
-    interpScopeNext = interpScopeNext + 1
-    interpScopes = interpScopes.push(`${interpScopeNext}`)
-}
-
-function interpPopScope() {
-    let ns: Array<string> = []
-    let i = 0
-    while (i < interpScopes.length() - 1) {
-        ns = ns.push(interpScopes[i])
-        i = i + 1
-    }
-    interpScopes = ns
-}
-
 function interpSetVar(name: string, valId: int) {
     const sid = interpScopes[interpScopes.length() - 1]
     interpVars.set(`${sid}:${name}`, `${valId}`)
@@ -119,21 +102,12 @@ function interpFindScopeKey(name: string): string {
     return ""
 }
 
-function interpGetVar(name: string): int {
-    const key = interpFindScopeKey(name)
-    if (key != "") { return parseInt(interpVars.getString(key)) }
-    println(`[interp] undefined variable: ${name}`)
-    return interpNewNull()
-}
-
 // ── Control Flow Flags ────────────────────────────────────────
 
 let interpBreakFlag = 0
 let interpContinueFlag = 0
 let interpReturnFlag = 0
 let interpReturnVal = 0
-let interpThrowFlag = 0
-let interpThrowVal = 0
 
 // ── Comptime IR Buffer (D087 Phase 3b) ──────────────────────
 // Accumulates LLVM IR emitted by comptime blocks via emit().
@@ -155,7 +129,7 @@ function interpGetComptimeSS(): string { return comptimeSS }
 function interpClearComptimeSS() { comptimeSS = "" }
 
 function interpShouldStop(): int {
-    return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1 || interpThrowFlag == 1) ? 1 : 0
+    return (interpBreakFlag == 1 || interpContinueFlag == 1 || interpReturnFlag == 1) ? 1 : 0
 }
 
 function interpGetReturnFlag(): int { return interpReturnFlag }
@@ -166,17 +140,6 @@ function interpCheckLoopExit(): int {
     if (interpBreakFlag == 1) { interpBreakFlag = 0; return 1 }
     interpContinueFlag = 0
     return 0
-}
-
-// ── Variable Update (reassignment) ───────────────────────────
-
-function interpUpdateVar(name: string, valId: int) {
-    const key = interpFindScopeKey(name)
-    if (key != "") {
-        interpVars.set(key, `${valId}`)
-    } else {
-        interpSetVar(name, valId)
-    }
 }
 
 // ── Array Values ──────────────────────────────────────────────
@@ -264,7 +227,6 @@ function interpFindMethod(className: string, methodName: string): int {
 }
 
 // ── Binary Op Helpers ────────────────────────────────────────
-// Used by interpCompoundOp here and by the comptime constant-folding path in gen_exprs.ss.
 
 function interpIntOp(op: string, a: int, b: int): int {
     if (op == "Add") { return interpNewInt(a + b) }
@@ -414,37 +376,10 @@ function interpValEquals(a: int, b: int): int {
     return interpAsStr(a) == interpAsStr(b) ? 1 : 0
 }
 
-// ── Reset ──────────────────────────────────────────────────────
+// ── Comptime Root Scope ───────────────────────────────────────
+// Persistent root scope survives across comptime blocks within one compilation.
 
-// Persistent comptime root scope — survives across comptime blocks
 let interpComptimeRootScope = 0
-
-function interpReset() {
-    interpVT = new Map()
-    interpVD = new Map()
-    interpVC = 0
-    interpScopes = []
-    interpScopeNext = 0
-    interpVars = new Map()
-    interpBreakFlag = 0
-    interpContinueFlag = 0
-    interpReturnFlag = 0
-    interpReturnVal = 0
-    interpThrowFlag = 0
-    interpThrowVal = 0
-    comptimeIR = ""
-    comptimeSS = ""
-    interpClasses = new Map()
-    interpClassParents = new Map()
-    interpObjFields = new Map()
-    interpThisVal = 0
-    interpEnumValues = new Map()
-    interpEnumTypes = new Map()
-    interpEnumNodes = new Map()
-    interpComptimeRootScope = 0
-    interpMapEntries = new Map()
-    interpMapKeyIds = new Map()
-}
 
 function interpEnsureComptimeRoot() {
     if (interpComptimeRootScope == 0) {

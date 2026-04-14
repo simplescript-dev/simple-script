@@ -316,7 +316,21 @@ if (comptimeDepth > 0) {
   - 原计划迁入 `gen_types.ss`，但 gen_types.ss 已 699 行且职责是纯类型查询函数（无 interp value 构造），而反射函数全是 `interpNewVal/interpSetField/interpArrayPush` 的 value 构造——语义不同且合并后 971 行违反 CLAUDE.md "超过 500 行考虑拆分" 指引，改走 B 路线单独建文件
   - `interp.ss` 和 `gen_exprs.ss` 的两个 `./interp_reflect` import 改为 `./gen_reflect`
   - **验证**：bootstrap 固定点通过，219 测试全通过
-- **Step 5 TODO**：`interp.ss` 精简，只保留值系统、comptime 缓冲区、comptime 作用域
+- **Step 5 ✅**：`interp.ss` 精简，删除死代码，更新头部注释精确反映职责
+  - 全量 cross-reference 46 个函数 + 18 个全局变量，甄别外部调用点（bootstrap/*.ss，不含 interp.ss 自身）
+  - 删除 6 个无调用点的 dead 函数：
+    - `interpAsDouble` — 零调用点（I009 已经改走 parseDouble 直读 interpVD）
+    - `interpPushScope`/`interpPopScope` — comptime 作用域统一走 `interpEnsureComptimeRoot` + ctVars，push/pop 栈语义在 Phase 4/5 迁移时已被淘汰
+    - `interpGetVar` — 新路径通过 `interpFindScopeKey` + `interpVars.getString` 直接查，没人再用封装
+    - `interpUpdateVar` — reassignment 由 `genAssign` 自己写 ctVars / interpVars，`interpUpdateVar` 只剩定义
+    - `interpReset` — 编译器单次调用，无需 reset；`gen_stmts.ss` 启动时只 inline 重置 break/continue/return 几个 flag
+  - 同步删除死全局状态 `interpThrowFlag`/`interpThrowVal`：两者只有清零路径（`runComptimeBlockBody` 入口），没有任何代码把它们置 1；`genThrow`（gen_stmts.ss:336）直接发射 `call void @ss_throw` 走 runtime setjmp/longjmp，不经过 interp flag。`interpShouldStop()` 的 `interpThrowFlag == 1` 分支是 unreachable dead branch，连同 `runComptimeBlockBody` 的两行清零一并删除
+  - 清理头部 stale import：`./gen_reflect` 的 `interpBuildTypeInfo/interpBuildAnnotationArray` 已无使用（Step 4 之后全部搬到 gen_reflect.ss 自己调），删除整行 import；`./parser` 只保留实际使用的 `nGetS1/nGetI2/nGetList`，移除 `nGetKind/nGetS2/nGetI1/nGetI3/nGetI4`
+  - 重写头部 block comment：原"AST Interpreter core"→"comptime value/scope/buffer core"，明确列出五大职责（值堆 / 作用域 / 控制流 flag / IR+SS 缓冲 / class+enum+Map 注册表）及与 gen_*.ss 的读写关系
+  - 重命名 `// ── Reset ──` 段为 `// ── Comptime Root Scope ──`，只留 `interpComptimeRootScope` 和 `interpEnsureComptimeRoot`
+  - **保留未迁移的对象/枚举/Map 基础设施**：`interpClasses`/`interpClassParents`/`interpObjFields`/`interpEnum{Values,Types,Nodes}`/`interpMap{Entries,KeyIds}` 仍被 `gen_stmts.ss`/`gen_exprs.ss`/`gen_assigns.ss`/`gen_decls.ss`/`gen_reflect.ss` 直接读写，本轮不搬（搬动需新增 helper 函数，违反"只做删除和注释整理"的任务边界）
+  - 行数与函数数：**467 行 → 402 行（-65，-13.9%）**，**46 函数 → 40 函数（-6）**
+  - **验证**：bootstrap 固定点通过，219 测试全通过
 
 ### Phase 7: 逐步迁移 genExpr → genVal
 
@@ -330,8 +344,9 @@ if (comptimeDepth > 0) {
 |------|------|------|
 | interp.ss 值系统 | ✅ | interpNewInt/interpType/interpAsStr 等——comptime 值的数据层 |
 | interp.ss comptime 缓冲区 | ✅ | comptimeIR/comptimeSS/flush——comptime 输出通道 |
-| interp.ss 控制流 flag | ✅ | interpReturnFlag 等——comptime 控制流需要 |
-| interp.ss 作用域 | ✅ | interpPushScope 等——comptime 变量需要 |
+| interp.ss 控制流 flag | ✅ | interpReturnFlag/interpBreakFlag/interpContinueFlag——comptime 控制流需要（Step 5 删除 interpThrowFlag/interpThrowVal，`genThrow` 直接发射 runtime `ss_throw` IR，comptime 路径没有 throw 语义） |
+| interp.ss 作用域 | ✅ | interpComptimeRootScope + interpSetVar/interpFindScopeKey——comptime 根作用域需要（Step 5 精简后只剩这两个 API） |
+| interp.ss class/enum/map 注册表 | ✅ | interpClasses/interpEnum*/interpMap* + 对应 helper——comptime 块内类/枚举/Map 操作需要 |
 | gen_reflect.ss | ✅ | 反射逻辑从 interp_reflect.ss 迁入新建文件，逻辑不变（Step 4） |
 
 ## 删除什么

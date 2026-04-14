@@ -429,8 +429,6 @@ function runComptimeBlockBody(bodyId: int) {
     interpReturnVal = 0
     interpBreakFlag = 0
     interpContinueFlag = 0
-    interpThrowFlag = 0
-    interpThrowVal = 0
     terminated = 0
     interpEnsureComptimeRoot()
     comptimeDepth = comptimeDepth + 1
