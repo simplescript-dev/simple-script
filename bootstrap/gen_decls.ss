@@ -270,6 +270,28 @@ function emitGlobalInits() {
 function genDestructureArray(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
+    if (comptimeDepth > 0) {
+        const ctArrV = genVal(initId)
+        if (isCt(ctArrV) != 1) { return }
+        const arrPayload = payload(ctArrV)
+        if (interpType(arrPayload) != "array") { return }
+        const items = interpAsStr(arrPayload)
+        const ctParts = items.split(",")
+        let ctIdx = 0
+        for (cn in names.split(",")) {
+            if (cn.startsWith("...") == 1) {
+                println("[comptime] rest element in array destructure not supported")
+                break
+            }
+            let ctElemValId = interpNewNull()
+            if (items != "" && ctIdx < ctParts.length()) {
+                ctElemValId = parseInt(ctParts[ctIdx])
+            }
+            ctVars.set(`${currentFunc}:${cn}`, `${ctVal(ctElemValId)}`)
+            ctIdx = ctIdx + 1
+        }
+        return
+    }
     const arrVal = genExpr(initId)
     // Detect tuple type from init expression
     let tupleType = ""
