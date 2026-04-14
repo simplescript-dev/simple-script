@@ -2,7 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
-import { interpExecComptime, interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpType, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
+import { interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpType, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 

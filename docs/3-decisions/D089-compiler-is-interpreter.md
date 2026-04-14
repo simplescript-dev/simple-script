@@ -307,7 +307,11 @@ if (comptimeDepth > 0) {
   - 顺带把 `interpResetBuiltins` 内联进 `interpReset`（独立函数已无意义，仅一处调用且现在同文件），interp_builtins.ss 头部注释收敛到"只描述当前职责"
   - `gen_exprs.ss` 把两行 import（`./interp` + `./interp_builtins`）合并为一行 `./interp`，新路径 import 表面上彻底脱离 interp_builtins.ss
   - **验证**：bootstrap 固定点通过，224 测试全通过
-- **Step 3 TODO**：删除 `interp_eval.ss`（237 行）、`interp_exec.ss`（335 行）、`interp_calls.ss`（607 行）、`interp_builtins.ss`（剩余 ~245 行），并清理 gen_stmts.ss 里对 `interpExecComptime` 的遗留 import
+- **Step 3 ✅**：删除 `interp_eval.ss`（237 行）、`interp_exec.ss`（335 行）、`interp_calls.ss`（607 行）、`interp_builtins.ss`（237 行）+ `interp_stubs.ss`（37 行）共 1453 行 bootstrap 代码；同步删除 `tests/phase5/interp_{basic,funcs,class,stmts,builtins}.ss` 5 个直接测试旧解释器的文件
+  - `interp.ss` 删除 4 个 import 行 + `interpExecComptime` 函数本体（27 行）；header 注释由"AST Interpreter core"改为"comptime value system"，反映新职责
+  - `gen_stmts.ss` 从 `./interp` import 行移除 `interpExecComptime`
+  - 顺带把 `interpIntOp`/`interpDoubleOp`（原 interp_eval.ss）迁入 `interp.ss` —— 仍被 `interpCompoundOp` 和 `gen_exprs.ss` 的 comptime 常量折叠路径调用
+  - **验证**：bootstrap 固定点通过，219 测试全通过（224 - 5 删除的 legacy 解释器测试）
 - **Step 4 TODO**：`interp_reflect.ss` 迁入 `gen_types.ss` → 删除
 - **Step 5 TODO**：`interp.ss` 精简，只保留值系统、comptime 缓冲区、comptime 作用域
 

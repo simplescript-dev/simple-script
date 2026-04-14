@@ -1,14 +1,10 @@
-// interp.ss — SimpleScript AST Interpreter core
+// interp.ss — SimpleScript comptime value system
 //
 // Value storage, scope stack, class/object infrastructure, control flow flags,
-// comptime buffers, and reset/entry points. Expression evaluation, function calls,
-// statement execution, and reflection are in separate files.
+// and comptime buffers. Used by the comptime path in gen_exprs.ss / gen_stmts.ss.
+// Reflection helpers live in interp_reflect.ss.
 
 import { nGetKind, nGetS1, nGetS2, nGetI1, nGetI2, nGetI3, nGetI4, nGetList } from "./parser"
-import { interpBuiltinMethod } from "./interp_builtins"
-import { interpEval } from "./interp_eval"
-import { interpCall, interpCallValue } from "./interp_calls"
-import { interpExec } from "./interp_exec"
 import { interpBuildTypeInfo, interpBuildAnnotationArray } from "./interp_reflect"
 
 // ── Value Storage ──────────────────────────────────────────────
@@ -267,6 +263,51 @@ function interpFindMethod(className: string, methodName: string): int {
     return 0
 }
 
+// ── Binary Op Helpers ────────────────────────────────────────
+// Used by interpCompoundOp here and by the comptime constant-folding path in gen_exprs.ss.
+
+function interpIntOp(op: string, a: int, b: int): int {
+    if (op == "Add") { return interpNewInt(a + b) }
+    if (op == "Sub") { return interpNewInt(a - b) }
+    if (op == "Mul") { return interpNewInt(a * b) }
+    if (op == "Div") {
+        if (b == 0) { println("[interp] division by zero"); return interpNewInt(0) }
+        return interpNewInt(a / b)
+    }
+    if (op == "Mod") { return interpNewInt(a % b) }
+    if (op == "Eq") { return interpNewBool(a == b ? 1 : 0) }
+    if (op == "Ne") { return interpNewBool(a != b ? 1 : 0) }
+    if (op == "Lt") { return interpNewBool(a < b ? 1 : 0) }
+    if (op == "Gt") { return interpNewBool(a > b ? 1 : 0) }
+    if (op == "Le") { return interpNewBool(a <= b ? 1 : 0) }
+    if (op == "Ge") { return interpNewBool(a >= b ? 1 : 0) }
+    if (op == "BitAnd") { return interpNewInt(a & b) }
+    if (op == "BitOr") { return interpNewInt(a | b) }
+    if (op == "BitXor") { return interpNewInt(a ^ b) }
+    if (op == "Shl") { return interpNewInt(a << b) }
+    if (op == "Shr") { return interpNewInt(a >> b) }
+    println(`[interp] unsupported int op: ${op}`)
+    return interpNewNull()
+}
+
+function interpDoubleOp(op: string, a: double, b: double): int {
+    if (op == "Add") { return interpNewDouble(a + b) }
+    if (op == "Sub") { return interpNewDouble(a - b) }
+    if (op == "Mul") { return interpNewDouble(a * b) }
+    if (op == "Div") {
+        if (b == 0.0) { println("[interp] division by zero"); return interpNewDouble(0.0) }
+        return interpNewDouble(a / b)
+    }
+    if (op == "Eq") { return interpNewBool(a == b ? 1 : 0) }
+    if (op == "Ne") { return interpNewBool(a != b ? 1 : 0) }
+    if (op == "Lt") { return interpNewBool(a < b ? 1 : 0) }
+    if (op == "Gt") { return interpNewBool(a > b ? 1 : 0) }
+    if (op == "Le") { return interpNewBool(a <= b ? 1 : 0) }
+    if (op == "Ge") { return interpNewBool(a >= b ? 1 : 0) }
+    println(`[interp] unsupported double op: ${op}`)
+    return interpNewNull()
+}
+
 // ── Compound Assignment ───────────────────────────────────────
 
 function interpCompoundOp(op: string, lv: int, rv: int): int {
@@ -290,7 +331,7 @@ function interpCompoundOp(op: string, lv: int, rv: int): int {
 }
 
 // ── Map Value Storage ────────────────────────────────────────
-// Shared by the comptime path (gen_exprs.ss) and the legacy interpreter (interp_builtins.ss).
+// Used by the comptime path (gen_exprs.ss) for Map literals and method calls.
 
 let interpMapEntries = new Map()
 let interpMapKeyIds = new Map()
@@ -424,30 +465,3 @@ function interpEnsureComptimeRoot() {
     }
 }
 
-function interpExecComptime(bodyId: int) {
-    interpBreakFlag = 0
-    interpContinueFlag = 0
-    interpReturnFlag = 0
-    interpReturnVal = 0
-    interpThrowFlag = 0
-    interpThrowVal = 0
-    interpEnsureComptimeRoot()
-    interpScopes = [`${interpComptimeRootScope}`]
-    // Execute body statements directly in root scope (skip BLOCK push/pop)
-    if (nGetKind(bodyId) == "BLOCK") {
-        const list = nGetList(bodyId)
-        if (list != "") {
-            const stmts = list.split(",")
-            let i = 0
-            while (i < stmts.length()) {
-                interpExec(parseInt(stmts[i]))
-                if (interpShouldStop() == 1) { break }
-                i = i + 1
-            }
-        }
-    } else {
-        interpExec(bodyId)
-    }
-    // Root scope persists for next comptime block
-    interpScopes = [`${interpComptimeRootScope}`]
-}
