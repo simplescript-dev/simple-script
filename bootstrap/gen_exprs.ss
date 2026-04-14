@@ -445,6 +445,21 @@ function genValCtCall(id: int): int {
                     ctHasNamed = 1
                     const nav = genVal(nGetI1(argId))
                     ctNamedArgs.set(nGetS1(argId), `${isCt(nav) == 1 ? payload(nav) : interpNewNull()}`)
+                } else if (nGetKind(argId) == "SPREAD_ELEM") {
+                    const srcVal = genVal(nGetI1(argId))
+                    const srcPayload = payload(srcVal)
+                    if (isCt(srcVal) != 1 || interpType(srcPayload) != "array") {
+                        println(`error: [comptime] cannot spread non-array value at line ${nGetLine(argId)}:${nGetCol(argId)}`)
+                        exit(1)
+                    }
+                    const srcItems = interpAsStr(srcPayload)
+                    if (srcItems != "") {
+                        const srcParts = srcItems.split(",")
+                        for (sp in srcParts) {
+                            const srcElemId = parseInt(sp)
+                            if (srcElemId > 0) { ctArgVals = ctArgVals.push(`${srcElemId}`) }
+                        }
+                    }
                 } else {
                     const av = genVal(argId)
                     ctArgVals = ctArgVals.push(`${isCt(av) == 1 ? payload(av) : interpNewNull()}`)
