@@ -156,16 +156,15 @@ function genVal(id: int): int {
             println(`[comptime] unsupported expression: COMPTIME_EXPR`)
             return ctVal(interpNewNull())
         }
-        const ceKey = `${id}`
-        if (comptimeExprType.has(ceKey) == 0) { inferType(id) }
-        return constVal(comptimeExprLiteral.getString(ceKey))
+        inferType(id)
+        return constVal(comptimeExprLiteral.getString(`${id}`))
     }
     if (kind == "CALL") {
         if (comptimeDepth > 0) { return genValCtCall(id) }
         return constVal(genCall(id))
     }
     if (kind == "NEW_EXPR") {
-        if (comptimeDepth > 0) { return ctVal(genValCtNewExpr(id)) }
+        if (comptimeDepth > 0) { return genValCtNewExpr(id) }
         return constVal(genNewExpr(id))
     }
     if (kind == "MEMBER_ACCESS") {
@@ -424,7 +423,7 @@ function genValStringCompare(op: string, id: int): int {
     return constVal(r)
 }
 
-// ── D089 Phase 4: Comptime expression helpers ──────────────────
+// ── Comptime expression helpers ─────────────────────────────────
 
 // Comptime CALL: intrinsics + user-defined functions
 function genValCtCall(id: int): int {
@@ -720,10 +719,10 @@ function genValCtCall(id: int): int {
 // Comptime NEW_EXPR: create interpreter object
 function genValCtNewExpr(id: int): int {
     const className = nGetS1(id)
-    if (className == "Map") { return interpNewMap() }
+    if (className == "Map") { return ctVal(interpNewMap()) }
     if (interpClasses.has(className) != 1) {
         println(`[comptime] unknown class: ${className}`)
-        return interpNewNull()
+        return ctVal(interpNewNull())
     }
     const objId = interpNewVal("object", className)
     const allFields = interpCollectFields(className)
@@ -765,7 +764,7 @@ function genValCtNewExpr(id: int): int {
             i = i + 1
         }
     }
-    return objId
+    return ctVal(objId)
 }
 
 // Comptime MEMBER_ACCESS: field access on comptime objects
@@ -1051,7 +1050,7 @@ function ctEnumValueOfMethod(eName: string, nodeId: int): int {
     return interpNewNull()
 }
 
-// ── Comptime built-in method dispatch (D089 Phase 5) ────────────
+// ── Comptime built-in method dispatch ───────────────────────────
 
 function ctCallValue(fnValId: int, argVals: Array<string>): int {
     if (interpType(fnValId) != "fn") {
