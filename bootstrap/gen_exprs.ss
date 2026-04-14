@@ -203,8 +203,10 @@ function genVal(id: int): int {
             return ctVal(interpNewNull())
         }
         if (kind == "TYPEINFO_EXPR") { return ctVal(interpBuildTypeInfo(nGetS1(id))) }
-        // Unsupported comptime expression — warn and return null
-        println(`[comptime] unsupported expression: ${kind}`)
+        // Unsupported comptime expression — abort instead of silently returning null,
+        // otherwise downstream code keeps running on a fake value and the failure is invisible.
+        println(`error: [comptime] unsupported expression: ${kind} at line ${nGetLine(id)}:${nGetCol(id)}`)
+        exit(1)
         return ctVal(interpNewNull())
     }
     println(`[genVal] unknown kind: ${kind}`)
@@ -967,8 +969,24 @@ function genValCtArrayLit(id: int): int {
         for (p in parts) {
             const elemId = parseInt(p)
             if (elemId > 0) {
-                const ev = genVal(elemId)
-                interpArrayPush(arr, isCt(ev) == 1 ? payload(ev) : interpNewNull())
+                if (nGetKind(elemId) == "SPREAD_ELEM") {
+                    const srcVal = genVal(nGetI1(elemId))
+                    if (isCt(srcVal) != 1 || interpType(payload(srcVal)) != "array") {
+                        println(`error: [comptime] cannot spread non-array value at line ${nGetLine(elemId)}:${nGetCol(elemId)}`)
+                        exit(1)
+                    }
+                    const srcItems = interpAsStr(payload(srcVal))
+                    if (srcItems != "") {
+                        const srcParts = srcItems.split(",")
+                        for (sp in srcParts) {
+                            const srcElemId = parseInt(sp)
+                            if (srcElemId > 0) { interpArrayPush(arr, srcElemId) }
+                        }
+                    }
+                } else {
+                    const ev = genVal(elemId)
+                    interpArrayPush(arr, isCt(ev) == 1 ? payload(ev) : interpNewNull())
+                }
             }
         }
     }

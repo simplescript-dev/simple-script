@@ -195,10 +195,14 @@ function main() {
 |----------|-----------|------|------|
 | ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum | ✅ ac76375 |
 | destructuring (array) | genDestructureArray | `let [a, b] = arr` 不能用 | ✅ e54bb4d |
-| destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | ✅ 本轮 |
-| spread | genSpread | `...arr` 不能用 | 待办 |
+| destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | ✅ 9d43bd6 |
+| spread (array literal) | genValCtArrayLit | `[...a, x]` 在 comptime 里不能用 | ✅ 本轮 |
+| spread (call args) | genValCtCall | `f(...a)` 在 comptime 里不能用 | 待办 |
 | super | genSuperCall | 继承方法调用不能用 | 待办 |
-| 位运算赋值 | genAssign compound | `&=` `\|=` `^=` 等不能用 | 待办 |
+
+> **未知 expression 不再静默断流（本轮）**：原先 `genVal` 遇到未实现的 comptime expression 会 `println` 后返回 `null` 续跑，导致编译"成功"但生成的二进制行为错误。改为 `exit(1)` + 行列号，强制暴露缺口。
+>
+> **位运算赋值不属于本清单**：经核查，`&=` `|=` `^=` `<<=` `>>=` 在 lexer / parser 阶段就不存在（bootstrap 全代码库无引用），不是解释器缺口，不在 Phase 8 范围。补它要从 lexer 加 token 起，单独立项。
 
 **验证方法：** 每轮完成后，写一段使用该特性的 SS 代码放进 `comptime {}`，确认能跑。
 
@@ -229,6 +233,7 @@ comptime {
 | comptime try-catch/闭包 | ❌ | | | ✅ | |
 | comptime enum | ❌ | | | | ✅ |
 | comptime destructuring | ❌ | | | | ✅ |
+| comptime spread (array lit) | ❌ | | | | ✅ |
 | comptime super | ❌ | | | | ✅ |
 | comptime 块 | ✅ | | | | |
 | comptime 表达式 | ✅ | | | | |
