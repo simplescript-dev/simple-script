@@ -300,13 +300,14 @@ PIR 是 AST 与 LLVM IR 之间的中间层，专用于 class 实例的 RC 分析
 ### 优先级
 
 - **先修后加**：`docs/4-issues/1-open/` 中的 open issues 优先于新功能和 stdlib 模块。不在已知问题（静默产出错误代码、崩溃、强制 workaround）未修复时添加新功能
-- **每轮开始先审 open issues**：读 handoff 后先检查 `docs/4-issues/1-open/`，优先处理未被语言能力阻塞的 issue
-- **单上下文单任务**：每个对话上下文只处理一个任务（一个 issue fix、一个 feature、一个 refactor）。完成或上下文不足时，更新 handoff 并停止。外部自动化会 clear + `/next` 接力下一轮
+- **每轮开始先审 open issues**：检查 `docs/4-issues/1-open/`，优先处理未被语言能力阻塞的 issue
+- **单上下文单任务**：每个对话上下文只处理一个任务（一个 issue fix、一个 feature、一个 refactor）。完成或上下文不足时，停止并把下一轮的提示词直接输出到对话，由用户审核后手动触发
 
 ### 决策记录与上下文管理
 
 - **设计讨论产出决策 → 立即创建 D 文档**：每个确认的设计决策写入 `docs/3-decisions/D0XX-*.md`，一个决策一个文件。不等到实现完成再补
-- **handoff 随时可用**：每完成一个里程碑立即更新 `docs/5-handoff/next-prompt.md`，确保任何时刻被中断都能无缝续接
+- **禁止 handoff 文件**：不要创建或更新 `docs/5-handoff/`、`next-prompt.md`、`handoff.md` 或任何形式的"自动传递任务"文档。每轮结束把下一轮提示词直接输出到对话（而不是写进文件），由用户决定是否执行。进度靠回读 D 文档（含 Phase 状态标记）和 `git log`，不靠 handoff 摘要
+- **多阶段计划的进度只写在 D 文档里**：Phase 标记（✅/TODO）必须保存在 `docs/3-decisions/D0XX-*.md`，每轮开始回读该文档确认状态
 
 ### 代码质量
 
