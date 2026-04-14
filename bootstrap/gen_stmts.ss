@@ -46,6 +46,12 @@ function genTryCatch(id: int) {
     const finallyBody = nGetI3(id)
     const catchList = nGetList(id)
 
+    if (comptimeDepth > 0) {
+        if (tryBody > 0) { genBlock(tryBody) }
+        if (finallyBody > 0) { genBlock(finallyBody) }
+        return
+    }
+
     const tryLabel = nextLabel("try")
     const catchLabel = nextLabel("catch")
     const endLabel = nextLabel("try.end")
@@ -450,13 +456,7 @@ function runComptimeBlockBody(bodyId: int) {
     genBlock(bodyId)
     comptimeDepth = comptimeDepth - 1
     terminated = savedTerminated
-    let ctNewStack: Array<string> = []
-    let ctSi = 0
-    while (ctSi < ctScopeStack.length() - 1) {
-        ctNewStack = ctNewStack.push(ctScopeStack[ctSi])
-        ctSi = ctSi + 1
-    }
-    ctScopeStack = ctNewStack
+    ctPopScope()
     currentFunc = savedFunc
 }
 
@@ -806,6 +806,20 @@ function genWhile(id: int) {
 function genDoWhile(id: int) {
     const bodyId = nGetI1(id)
     const condId = nGetI2(id)
+
+    if (comptimeDepth > 0) {
+        let ctDoLimit = 10000
+        while (ctDoLimit > 0) {
+            genBlock(bodyId)
+            if (interpCheckLoopExit() == 1) { break }
+            const dwCondTagged = genVal(condId)
+            if (isCt(dwCondTagged) == 0 || interpTruthy(payload(dwCondTagged)) == 0) { break }
+            ctDoLimit = ctDoLimit - 1
+        }
+        if (ctDoLimit == 0) { println("[comptime] do-while loop exceeded 10000 iterations") }
+        return
+    }
+
     const bodyLabel = nextLabel("dowhile.body")
     const condLabel = nextLabel("dowhile.cond")
     const afterLabel = nextLabel("dowhile.after")
@@ -835,6 +849,54 @@ function genSwitch(id: int) {
     const subjectId = nGetI1(id)
     const defaultId = nGetI2(id)
     const caseList = nGetList(id)
+
+    if (comptimeDepth > 0) {
+        const subjTagged = genVal(subjectId)
+        if (isCt(subjTagged) == 1) {
+            const subjPayload = payload(subjTagged)
+            const subjKind = interpType(subjPayload)
+            const subjStr = interpAsStr(subjPayload)
+            const subjInt = subjKind == "int" ? interpAsInt(subjPayload) : 0
+            let matched = 0
+            if (caseList != "") {
+                const ctCases = caseList.split(",")
+                for (cc in ctCases) {
+                    const ctCaseId = parseInt(cc)
+                    if (ctCaseId <= 0) { continue }
+                    const ctPatId = nGetI1(ctCaseId)
+                    const ctBodyId = nGetI2(ctCaseId)
+                    const ctPatType = nGetS1(ctPatId)
+                    const ctPatVal = nGetS2(ctPatId)
+                    let hit = 0
+                    if (ctPatType == "STRING") {
+                        if (subjStr == ctPatVal) { hit = 1 }
+                    } else if (ctPatType == "INT") {
+                        if (subjInt == parseInt(ctPatVal)) { hit = 1 }
+                    } else if (ctPatType == "BOOL") {
+                        if (interpTruthy(subjPayload) == parseInt(ctPatVal)) { hit = 1 }
+                    } else if (ctPatType == "ENUM") {
+                        if (interpEnumValues.has(ctPatVal) == 1) {
+                            const ctResolved = interpEnumValues.getString(ctPatVal)
+                            if (subjKind == "string") {
+                                if (subjStr == ctResolved) { hit = 1 }
+                            } else {
+                                if (subjInt == parseInt(ctResolved)) { hit = 1 }
+                            }
+                        }
+                    }
+                    if (hit == 1) {
+                        genBlock(ctBodyId)
+                        matched = 1
+                        break
+                    }
+                }
+            }
+            if (matched == 0 && defaultId > 0) { genBlock(defaultId) }
+            if (interpBreakFlag == 1) { interpBreakFlag = 0 }
+        }
+        return
+    }
+
     const subjectVal = genExpr(subjectId)
     const subjectType = inferType(subjectId)
     const afterLabel = nextLabel("switch.end")

@@ -283,13 +283,18 @@ if (comptimeDepth > 0) {
 - IDENT 查找 fallback 到 interpVars（OS/ARCH/DEBUG/COMPILER_VERSION 等预定义常量）
 - **验证**：bootstrap 固定点通过，223 测试全通过。
 
-### Phase 5: 内置方法和剩余节点
+### Phase 5: 内置方法和剩余节点 ✅
 
-- 字符串方法（split, indexOf, replace 等）：comptime 字符串 → 直接计算
-- 数组方法（push, map, filter 等）：comptime 数组 → 直接计算
-- Map 方法
-- ENUM_DECL, SWITCH, TRY/CATCH, INDEX_ACCESS, TEMPLATE_LIT 等
-- **验证**：所有 comptime 测试通过。
+- 新增 `ctStringMethod`/`ctArrayMethod`/`ctMapMethod`/`ctBuiltinMethod` 在 `gen_exprs.ss` — 自包含，不依赖 `interpBuiltinMethod`
+- 字符串方法：length/trim/toUpperCase/toLowerCase/split/indexOf/substring/replace/startsWith/endsWith/charAt/includes/repeat
+- 数组方法：length/push/join/indexOf/slice/map/filter/forEach/reduce（高阶回调通过 `ctCallValue` 走 `genBlock`，不再经 `interpExec`）
+- Map 方法：set/get/getString/has/delete/keys/size（复用 `interpMap*` helpers）
+- 新增 `ctCallValue(fnValId, argVals)`：通过 `genBlock` 调用 comptime 函数值（arrow 或 function），正确保存/恢复 currentFunc、interpBreakFlag、interpContinueFlag、terminated 状态，并清理 ctVars 条目
+- `genTryCatch` comptime 分支：执行 body + finally（comptime 无异常传播语义）
+- `genDoWhile` comptime 分支：10000 iter 上限 + `interpCheckLoopExit` + `genVal` 求条件
+- `genSwitch` comptime 分支：支持 STRING/INT/BOOL/ENUM pattern，default fallback，switch break 清理
+- 提取 `ctPopScope()` helper 到 codegen.ss，统一 4 处重复的 scope 弹栈逻辑
+- **验证**：bootstrap 固定点通过，`bin/ss test tests/` 224 测试全通过，新增 `tests/phase5/comptime_control_flow.ss` 7 子测试全通过。
 
 ### Phase 6: 切换入口 + 删除旧解释器
 

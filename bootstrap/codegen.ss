@@ -534,6 +534,16 @@ function resetCodegen() {
     globalInitIds = ""
 }
 
+function ctPopScope() {
+    let ns: Array<string> = []
+    let i = 0
+    while (i < ctScopeStack.length() - 1) {
+        ns = ns.push(ctScopeStack[i])
+        i = i + 1
+    }
+    ctScopeStack = ns
+}
+
 function generate(rootId: int): string {
     resetCodegen()
     emitRuntimeDefs()
