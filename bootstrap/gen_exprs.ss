@@ -94,48 +94,6 @@ function genPostfixExpr(id: int): string {
 
 // ── Expression dispatcher ───────────────────────────────────────
 
-function genExprOld(id: int): string {
-    if (id <= 0) { return "0" }
-    const kind = nGetKind(id)
-
-    if (kind == "INT_LIT") { return nGetS1(id) }
-    if (kind == "DOUBLE_LIT") { return nGetS1(id) }
-    if (kind == "STRING_LIT") { return addStringConst(nGetS1(id)) }
-    if (kind == "TRUE_LIT") { return "1" }
-    if (kind == "FALSE_LIT") { return "0" }
-    if (kind == "NULL_LIT") { return "null" }
-    if (kind == "THIS") { return genThisExpr() }
-    if (kind == "SUPER") { return genThisExpr() }
-    if (kind == "IDENT") { return genIdent(id) }
-    if (kind == "BINARY") { return genBinary(id) }
-    if (kind == "UNARY") { return genUnary(id) }
-    if (kind == "CALL") { return genCall(id) }
-    if (kind == "METHOD_CALL") {
-        if (nGetI3(id) > 0) { return genOptionalMethodCall(id) }
-        return genMethodCall(id)
-    }
-    if (kind == "MEMBER_ACCESS") {
-        if (nGetI3(id) > 0) { return genOptionalMemberAccess(id) }
-        return genMemberAccess(id)
-    }
-    if (kind == "NEW_EXPR") { return genNewExpr(id) }
-    if (kind == "GROUPING") { return genExprOld(nGetI1(id)) }
-    if (kind == "TERNARY") { return genTernary(id) }
-    if (kind == "TEMPLATE_LIT") { return genTemplateLit(id) }
-    if (kind == "ARRAY_LIT") { return genArrayLit(id) }
-    if (kind == "ARROW_FUNC") { return genArrowFunc(id) }
-    if (kind == "INDEX_ACCESS") { return genIndexAccess(id) }
-    if (kind == "POSTFIX_INC") { return genPostfixExpr(id) }
-    if (kind == "NAMED_ARG") { return genExprOld(nGetI1(id)) }
-    if (kind == "COMPTIME_EXPR") {
-        const ceKey = `${id}`
-        // Ensure evaluated (inferType caches result)
-        if (comptimeExprType.has(ceKey) == 0) { inferType(id) }
-        return comptimeExprLiteral.getString(ceKey)
-    }
-    return "0"
-}
-
 function genVal(id: int): int {
     if (id <= 0) { return constVal("0") }
     const kind = nGetKind(id)
@@ -250,7 +208,8 @@ function genVal(id: int): int {
         println(`[comptime] unsupported expression: ${kind}`)
         return ctVal(interpNewNull())
     }
-    return constVal(genExprOld(id))
+    println(`[genVal] unknown kind: ${kind}`)
+    return constVal("0")
 }
 
 function genValBinary(id: int): int {
@@ -292,7 +251,7 @@ function genValBinary(id: int): int {
         return ctVal(interpIntOp(op, interpAsInt(ctBlp), interpAsInt(ctBrp)))
     }
     if (op == "NullCoalesce" || op == "Instanceof" || op == "As" || op == "Pow") {
-        return constVal(genExprOld(id))
+        return constVal(genBinary(id))
     }
     const blt = inferType(nGetI1(id))
     const brt = inferType(nGetI2(id))
@@ -301,7 +260,7 @@ function genValBinary(id: int): int {
         return genValStringCompare(op, id)
     }
     if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
-        return constVal(genExprOld(id))
+        return constVal(genBinary(id))
     }
     const lv = genVal(nGetI1(id))
     const rv = genVal(nGetI2(id))
@@ -329,7 +288,7 @@ function genValUnary(id: int): int {
     }
     const uType = inferType(nGetI1(id))
     if (uType != "int" && uType != "bool") {
-        return constVal(genExprOld(id))
+        return constVal(genUnary(id))
     }
     const ov = genVal(nGetI1(id))
     const op = nGetS1(id)
@@ -1607,41 +1566,6 @@ function genBinary(id: int): string {
         return pcR2
     }
     return genIntBinary(op, left, right)
-}
-
-// ── Ternary expression ──────────────────────────────────────────
-
-function genTernary(id: int): string {
-    const vType = inferType(nGetI2(id))
-    const llType = ssTypeToLLVM(vType)
-
-    // Use alloca+store+load instead of phi to handle nested ternaries
-    const resultAlloca = nextReg()
-    emitIR(`  ${resultAlloca} = alloca ${llType}, align 8`)
-
-    const condVal = genExpr(nGetI1(id))
-    const thenLabel = nextLabel("tern.then")
-    const elseLabel = nextLabel("tern.else")
-    const mergeLabel = nextLabel("tern.merge")
-
-    const cmp = nextReg()
-    emitIR(`  ${cmp} = icmp ne i32 ${condVal}, 0`)
-    emitIR(`  br i1 ${cmp}, label %${thenLabel}, label %${elseLabel}`)
-
-    emitIR(`${thenLabel}:`)
-    const thenVal = genExpr(nGetI2(id))
-    emitIR(`  store ${llType} ${thenVal}, ptr ${resultAlloca}, align 8`)
-    emitIR(`  br label %${mergeLabel}`)
-
-    emitIR(`${elseLabel}:`)
-    const elseVal = genExpr(nGetI3(id))
-    emitIR(`  store ${llType} ${elseVal}, ptr ${resultAlloca}, align 8`)
-    emitIR(`  br label %${mergeLabel}`)
-
-    emitIR(`${mergeLabel}:`)
-    const result = nextReg()
-    emitIR(`  ${result} = load ${llType}, ptr ${resultAlloca}, align 8`)
-    return result
 }
 
 // ── Expression to string conversion ─────────────────────────────
