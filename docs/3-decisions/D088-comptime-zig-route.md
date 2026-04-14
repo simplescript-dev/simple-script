@@ -197,8 +197,8 @@ function main() {
 | destructuring (array) | genDestructureArray | `let [a, b] = arr` 不能用 | ✅ e54bb4d |
 | destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | ✅ 9d43bd6 |
 | spread (array literal) | genValCtArrayLit | `[...a, x]` 在 comptime 里不能用 | ✅ 690f3f8 |
-| spread (call args) | genValCtCall | `f(...a)` 在 comptime 里不能用 | ✅ 本轮 |
-| super | genSuperCall | 继承方法调用不能用 | 待办 |
+| spread (call args) | genValCtCall | `f(...a)` 在 comptime 里不能用 | ✅ 6e73ae8 |
+| super | genSuperCall | 继承方法调用不能用 | ✅ 本轮 |
 
 > **未知 expression 不再静默断流（本轮）**：原先 `genVal` 遇到未实现的 comptime expression 会 `println` 后返回 `null` 续跑，导致编译"成功"但生成的二进制行为错误。改为 `exit(1)` + 行列号，强制暴露缺口。
 >

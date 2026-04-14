@@ -869,11 +869,20 @@ function genValCtMethodCall(id: int): int {
     }
     // User-defined method call on comptime object
     const className = interpAsStr(objPayload)
-    const methodNode = interpFindMethod(className, methodName)
+    let lookupStart = className
+    if (nGetKind(objNode) == "SUPER") {
+        if (interpCurrentMethodClass == "" || interpClassParents.has(interpCurrentMethodClass) != 1) {
+            println(`[comptime] 'super' invalid in '${interpCurrentMethodClass}' at line ${nGetLine(id)}:${nGetCol(id)}`)
+            return ctVal(interpNewNull())
+        }
+        lookupStart = interpClassParents.getString(interpCurrentMethodClass)
+    }
+    const methodNode = interpFindMethod(lookupStart, methodName)
     if (methodNode == 0) {
-        println(`[comptime] no method '${methodName}' on class ${className}`)
+        println(`[comptime] no method '${methodName}' on class ${lookupStart}`)
         return ctVal(interpNewNull())
     }
+    const ownerClass = interpLastFoundMethodClass
     // Evaluate arguments
     const mArgList = nGetList(id)
     let mArgVals: Array<string> = []
@@ -901,12 +910,14 @@ function genValCtMethodCall(id: int): int {
     const savedBreak = interpBreakFlag
     const savedContinue = interpContinueFlag
     const savedTerm = terminated
+    const savedMethodClass = interpCurrentMethodClass
     interpBreakFlag = 0
     interpContinueFlag = 0
     terminated = 0
     interpThisVal = objPayload
+    interpCurrentMethodClass = ownerClass
     ctCallCounter = ctCallCounter + 1
-    currentFunc = `__ct_${className}_${methodName}_${ctCallCounter}`
+    currentFunc = `__ct_${ownerClass}_${methodName}_${ctCallCounter}`
     ctScopeStack = ctScopeStack.push(currentFunc)
     // Bind parameters
     const mParamList = nGetList(methodNode)
@@ -946,6 +957,7 @@ function genValCtMethodCall(id: int): int {
     ctPopScope()
     currentFunc = savedFunc
     interpThisVal = savedThis
+    interpCurrentMethodClass = savedMethodClass
     interpBreakFlag = savedBreak
     interpContinueFlag = savedContinue
     terminated = savedTerm

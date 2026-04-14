@@ -164,6 +164,12 @@ let interpClasses = new Map()
 let interpClassParents = new Map()
 let interpObjFields = new Map()
 let interpThisVal = 0
+// super.method() walks from parent(interpCurrentMethodClass), not the
+// instance class — otherwise the override lookup infinite-recurses.
+let interpCurrentMethodClass = ""
+// Set by interpFindMethod as a side channel so callers get both the method
+// node and its owning class in a single chain walk.
+let interpLastFoundMethodClass = ""
 
 // ── Enum Support ─────────────────────────────────────────────
 // interpEnumValues: "EnumName.VariantName" → value string
@@ -215,7 +221,10 @@ function interpFindMethod(className: string, methodName: string): int {
             let i = 0
             while (i < methods.length()) {
                 const mId = parseInt(methods[i])
-                if (nGetS1(mId) == methodName) { return mId }
+                if (nGetS1(mId) == methodName) {
+                    interpLastFoundMethodClass = className
+                    return mId
+                }
                 i = i + 1
             }
         }
