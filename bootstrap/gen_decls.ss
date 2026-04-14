@@ -362,6 +362,24 @@ function genDestructureArray(id: int) {
 function genDestructureObject(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
+    if (comptimeDepth > 0) {
+        const ctObjV = genVal(initId)
+        if (isCt(ctObjV) != 1) { return }
+        const ctObjPayload = payload(ctObjV)
+        if (interpType(ctObjPayload) != "object") { return }
+        for (cn in names.split(",")) {
+            let ctFieldName = cn
+            let ctVarName = cn
+            const ctColonIdx = cn.indexOf(":")
+            if (ctColonIdx >= 0) {
+                ctFieldName = cn.substring(0, ctColonIdx)
+                ctVarName = cn.substring(ctColonIdx + 1, cn.length() - ctColonIdx - 1)
+            }
+            const ctFieldValId = interpGetField(ctObjPayload, ctFieldName)
+            ctVars.set(`${currentFunc}:${ctVarName}`, `${ctVal(ctFieldValId)}`)
+        }
+        return
+    }
     const objVal = genExpr(initId)
     // Resolve class name
     let className = resolveObjClass(initId)

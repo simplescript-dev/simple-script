@@ -191,13 +191,14 @@ function main() {
 
 **当前解释器缺失清单：**
 
-| 缺失特性 | 编译器对应 | 影响 |
-|----------|-----------|------|
-| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum |
-| destructuring | genDestructureArray/Object | `let [a, b] = arr` 不能用 |
-| spread | genSpread | `...arr` 不能用 |
-| super | genSuperCall | 继承方法调用不能用 |
-| 位运算赋值 | genAssign compound | `&=` `\|=` `^=` 等不能用 |
+| 缺失特性 | 编译器对应 | 影响 | 状态 |
+|----------|-----------|------|------|
+| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum | 待办 |
+| destructuring (array) | genDestructureArray | `let [a, b] = arr` 不能用 | ✅ e54bb4d |
+| destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | ✅ 本轮 |
+| spread | genSpread | `...arr` 不能用 | 待办 |
+| super | genSuperCall | 继承方法调用不能用 | 待办 |
+| 位运算赋值 | genAssign compound | `&=` `\|=` `^=` 等不能用 | 待办 |
 
 **验证方法：** 每轮完成后，写一段使用该特性的 SS 代码放进 `comptime {}`，确认能跑。
 
