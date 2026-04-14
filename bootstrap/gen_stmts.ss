@@ -190,12 +190,14 @@ function genCatchClauses(catchList: string, convergeLabel: string, finallyBody: 
     emitRethrow(finallyBody)
 }
 
-function registerEnum(id: int) {
-    if (enumReady == 0) { enumValues = Map(); enumTypes = Map(); enumDeclNodes = Map(); enumReady = 1 }
+// Populate enum name→value, type marker, and node lookup from an ENUM_DECL AST node.
+// Shared by runtime registerEnum and the comptime ENUM_DECL handler — kept in sync by passing
+// the target maps explicitly rather than duplicating the ENUM_VARIANT decode.
+function registerEnumInto(id: int, valuesMap: Map, typesMap: Map, nodesMap: Map) {
     const eName = nGetS1(id)
     const isStringEnum = nGetI1(id)
-    if (isStringEnum == 1) { enumTypes.set(eName, "1") }
-    enumDeclNodes.set(eName, `${id}`)
+    if (isStringEnum == 1) { typesMap.set(eName, "1") }
+    nodesMap.set(eName, `${id}`)
     const vl = nGetList(id)
     if (vl == "") { return }
     const parts = vl.split(",")
@@ -204,13 +206,17 @@ function registerEnum(id: int) {
         if (vid > 0 && nGetKind(vid) == "ENUM_VARIANT") {
             const vName = nGetS1(vid)
             if (isStringEnum == 1) {
-                enumValues.set(`${eName}.${vName}`, nGetS2(vid))
+                valuesMap.set(`${eName}.${vName}`, nGetS2(vid))
             } else {
-                const vVal = nGetI1(vid)
-                enumValues.set(`${eName}.${vName}`, `${vVal}`)
+                valuesMap.set(`${eName}.${vName}`, `${nGetI1(vid)}`)
             }
         }
     }
+}
+
+function registerEnum(id: int) {
+    if (enumReady == 0) { enumValues = Map(); enumTypes = Map(); enumDeclNodes = Map(); enumReady = 1 }
+    registerEnumInto(id, enumValues, enumTypes, enumDeclNodes)
 }
 
 // ── Statement handlers ──────────────────────────────────────
@@ -396,34 +402,7 @@ function genStmt(id: int) {
     }
     if (kind == "ENUM_DECL") {
         if (comptimeDepth > 0) {
-            // Register enum values for comptime access
-            const ctEnumName = nGetS1(id)
-            interpEnumNodes.set(ctEnumName, `${id}`)
-            const ctVarList = nGetList(id)
-            if (ctVarList != "") {
-                let ctEnumVal = 0
-                let ctIsStr = 0
-                const ctEnumParts = ctVarList.split(",")
-                for (ctEp in ctEnumParts) {
-                    const ctVid = parseInt(ctEp)
-                    if (ctVid > 0 && nGetKind(ctVid) == "ENUM_VARIANT") {
-                        const ctVname = nGetS1(ctVid)
-                        const ctExplicit = nGetI1(ctVid)
-                        if (ctExplicit > 0 && nGetKind(ctExplicit) == "STRING_LIT") {
-                            ctIsStr = 1
-                            interpEnumValues.set(`${ctEnumName}.${ctVname}`, nGetS1(ctExplicit))
-                        } else if (ctExplicit > 0 && nGetKind(ctExplicit) == "INT_LIT") {
-                            ctEnumVal = parseInt(nGetS1(ctExplicit))
-                            interpEnumValues.set(`${ctEnumName}.${ctVname}`, `${ctEnumVal}`)
-                            ctEnumVal = ctEnumVal + 1
-                        } else {
-                            interpEnumValues.set(`${ctEnumName}.${ctVname}`, `${ctEnumVal}`)
-                            ctEnumVal = ctEnumVal + 1
-                        }
-                    }
-                }
-                if (ctIsStr == 1) { interpEnumTypes.set(ctEnumName, "1") }
-            }
+            registerEnumInto(id, interpEnumValues, interpEnumTypes, interpEnumNodes)
             return
         }
         registerEnum(id)
@@ -450,6 +429,8 @@ function runComptimeBlockBody(bodyId: int) {
     interpReturnVal = 0
     interpBreakFlag = 0
     interpContinueFlag = 0
+    interpThrowFlag = 0
+    interpThrowVal = 0
     terminated = 0
     interpEnsureComptimeRoot()
     comptimeDepth = comptimeDepth + 1

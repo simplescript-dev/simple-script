@@ -218,7 +218,7 @@ function inferType(id: int): string {
     if (kind == "COMPTIME_EXPR") {
         const ceKey = `${id}`
         if (comptimeExprType.has(ceKey) == 1) { return comptimeExprType.getString(ceKey) }
-        interpExecComptime(nGetI1(id))
+        runComptimeBlockBody(nGetI1(id))
         const ceRetFlag = interpGetReturnFlag()
         const ceRetVal = interpGetReturnVal()
         flushComptimeSS()
