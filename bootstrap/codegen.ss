@@ -147,6 +147,80 @@ function materialize(interpValId: int): string {
     return "0"
 }
 
+// ── TypedValue Storage (D092 Phase 0) ────────────────────────
+
+let nextTvId = 1
+let tvKind = ""
+let tvI1: Array<int> = []
+let tvI2: Array<int> = []
+let tvI3: Array<int> = []
+let tvS1 = ""
+let tvS2 = ""
+let tvD1 = ""
+let tvList = ""
+let tvMap = ""
+let tvReady = 0
+
+function initTypedValue() {
+    if (tvReady == 1) { return }
+    tvKind = new Map()
+    tvS1 = new Map()
+    tvS2 = new Map()
+    tvD1 = new Map()
+    tvList = new Map()
+    tvMap = new Map()
+    // index 0 is unused (tv IDs start at 1)
+    tvI1.push(0)
+    tvI2.push(0)
+    tvI3.push(0)
+    tvReady = 1
+}
+
+function allocTv(kind: string): int {
+    initTypedValue()
+    const id = nextTvId
+    nextTvId = nextTvId + 1
+    tvKind.set(id + "", kind)
+    tvI1.push(0)
+    tvI2.push(0)
+    tvI3.push(0)
+    return id
+}
+
+function newTvInt(n: int): int {
+    const id = allocTv("int")
+    tvI1[id] = n
+    return id
+}
+
+function newTvString(s: string): int {
+    const id = allocTv("string")
+    tvS1.set(id + "", s)
+    return id
+}
+
+function newTvBool(b: int): int {
+    const id = allocTv("bool")
+    tvI1[id] = b
+    return id
+}
+
+function newTvNull(): int {
+    return allocTv("null")
+}
+
+function newTvArray(): int {
+    const id = allocTv("array")
+    tvList.set(id + "", "")
+    return id
+}
+
+function newTvObject(classAstId: int): int {
+    const id = allocTv("object")
+    tvI1[id] = classAstId
+    return id
+}
+
 // ── IR Builder Helpers ───────────────────────────────────────
 
 function irLabel(name: string) {
