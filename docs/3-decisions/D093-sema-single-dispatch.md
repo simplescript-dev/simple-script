@@ -12,6 +12,17 @@
 
 消除双轨不是风格偏好,是防假装 bug 的唯一机制。
 
+## 历史语境(2026-04-15)
+
+D093 替代 D092 "半 SEMA + 填洞即合并" 路径,来源于本轮对话的以下发现:
+
+1. **D092 既有代码不可靠** —— 单轮对话中 4 次架构判断反转(全盘否定 → 仅节奏缺陷 → 另起炉灶 → 骨架正确 / interp* 必要),每次新读都被下一次读推翻。根因: D092 实现层是"双轨 + 手工同步",代码在"装修双轨 vs 合并架构"两种意图之间漂移,无一致架构承诺。详见 `docs/3-decisions/D092-sema-architecture.md` §不可靠性声明
+2. **dev 分支是废墟** —— `d1816ab` 清零了 `interp.ss` / `gen_reflect.ss` / `gen_annotations.ss` 等文件,但保留了 `gen_assigns.ss` / `gen_exprs.ss` 里 **448 处** undefined function 调用。不是 clean slate,是半拆房 + 引用悬空。任何"reset 到 dev 重做"的提议都会落入比当前更糟的状态,已在 `feedback_verify_reset_target.md` 锚定
+3. **Phase 8 commit `25e5760` 是双轨装修** —— `interpIntOp` 分支顺序调整 + `UShr` 补丁 + Q1 最小测试,全部在双轨系统一侧补洞,不动消除双轨的结构。符合 D088 §反模式 "给 interp.ss 抄 handler 加深双轨制"
+4. **方法论教训** —— "读代码决定架构" 在假装期代码上必然产生反转,因为前提(代码一致性)不成立。设计阶段必须**从原理出发**,不从代码出发。已在 `feedback_design_no_code_authority.md` 锚定
+
+D093 的 §决策 和 §差距清单 不引用 D092 代码作为架构依据——Zig 原理段完全出自 `src/Sema.zig` / `src/Value.zig` / `src/InternPool.zig`,§差距清单 的 40 / 7 数字只作为**现状快照**(要消除的目标),不作为**设计依据**。
+
 ## 决策
 
 **走 Zig SEMA 的单函数 dispatch 路径**:一个 `evalExpr` 函数对任意 AST 节点返回「已知值 / 未知」二元结果,`genExpr` 据此决定 fold 常量还是发射 runtime 指令。comptime 块只是对 `evalExpr` 返回值的强约束 flag,不是独立求值器。

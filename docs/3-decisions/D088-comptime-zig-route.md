@@ -195,6 +195,10 @@ function main() {
 > **Zig 路线的本质是：编译器即解释器，解释器 = 完整语言。**
 > 任何 SS 代码都能在 `comptime {}` 里跑。每补一个解释器缺口，comptime 就能做更多事。
 
+> **2026-04-15 实现路径修正(D093)**: 上述"补解释器缺口"在实现层的具体做法,经 D092 "半 SEMA + 填洞即合并" 尝试后证明不可达—— D092 实现层退化为"双轨 dispatch + 手工同步",详见 `docs/3-decisions/D092-sema-architecture.md` §不可靠性声明。实现路径修正为 D093 "SEMA 单函数 dispatch":一个 `evalExpr` 函数 + `?Value`(SS 里 `MaybeVal`)二元返回,comptime 与 runtime 共享同一求值路径,comptime 块只是 `comptimeMustBeKnown` flag。
+>
+> **Phase 8 的目标(新语法在 comptime 跑)保持有效**,但实现路径由 D093 承接;下方表格中的特性(ENUM_DECL / destructuring / spread / super)在 D093 骨架就位后按**新路径**补回,不按 D092 的 `interp*` 家族路径。
+
 **目标：** 补齐解释器缺失的 SS 语言特性，使 `comptime {}` 能执行任意 SS 代码。
 
 **当前解释器缺失清单：**
@@ -288,6 +292,13 @@ comptime {
 > - 本轮检验：(a) 产出的代码是否消费或产生 TypedValue？(b) 同一 eval 路径是否同时服务 comptime 和 codegen？(c) 有没有写任何"comptime 专用"的独立分支 / 独立文件 / 独立注册表？
 > - 任何"comptime 专用"独立路径 → 即使不叫 interp.ss，也是**新名字的第二份执行器**，禁止纳入本轮清单。
 > - 和问 2 配套：问 2 防"继续给 interp.ss 补 handler"，问 3 防"换个名字另起炉灶写独立 eval 路径"。两个入口堵死，才能逼出真正的 SEMA 合并架构。
+>
+> **2026-04-15 现状注记(按 P19 回写)**: Q3 的定义"不存在独立 interp / compile-time eval engine / typeInfo API"是**目标状态**,不是**当前状态**。2026-04-15 对 `bootstrap/` grep 发现:
+> - **40 处** `if (comptimeDepth > 0)` 分岔横跨 5 文件(gen_exprs.ss:18 / gen_stmts.ss:15 / gen_decls.ss:4 / gen_assigns.ss:2 / codegen.ss:1)
+> - **7 个** `genValCt*` 函数(`genValCtCall` / `NewExpr` / `MemberAccess` / `MethodCall` / `TemplateLit` / `ArrayLit` / `IndexAccess`)是独立的第二份 dispatch 表
+> - **`TypedValue` storage**(`tvKind` / `tvI1` / `tvS1` / `tvD1` / `tvList` / `tvMap`)是 Kind-tagged Value 混存层,未达成 Zig Value 的无类型语义
+>
+> 即 Q3 断言与代码现状**相反**。Q3 的 (a)(b)(c) 三问在代码现状下答案全为"否",作为 **[ ] Planned** 目标保留。路径修正见 `docs/3-decisions/D093-sema-single-dispatch.md` "SEMA 单函数 dispatch — Zig 本质一样路径"。
 
 这三条规则能过滤掉所有偏离：打磨 @derive 过不了 (1)（没让新语法在 comptime 工作），
 抄 Zig 语法特性也过不了 (1)（添加的是编译期语法，不是解释器覆盖度）；

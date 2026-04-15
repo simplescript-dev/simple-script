@@ -1,8 +1,52 @@
 # D092: SEMA 架构 — TypedValue + 共享 eval pipeline
 
-**Status:** Accepted（架构层，实现留待后续 phase）
+**Status:** Superseded by D093（2026-04-15）— "半 SEMA + 填洞即合并" 路径被证明不可达,见 §不可靠性声明
 **Depends on:** D088（Zig 路线）
 **Date:** 2026-04-15
+
+## 不可靠性声明(2026-04-15 D093 决策后回写)
+
+**D092 的既有实现(sub-a→sub-e + Phase 8 commit `25e5760`)不可靠,禁止作为未来架构判断的权威依据。**
+
+### 证据 — 4 轮架构判断反转
+
+2026-04-15 单轮对话中,仅凭对 D092 代码的连续 grep / 阅读,架构性质判断经历 4 次反转:
+
+1. **全盘否定** — "整个 D092 都是假装"
+2. **仅节奏缺陷** — "sub-a→sub-e 是必要地基,只是没接测试"
+3. **另起炉灶** — "必要但架构错误的双轨,需要 reset 重做"
+4. **骨架正确** — "D092 架构方向对,interp* 家族必要"
+
+每一次新读都发现上一次判断被新证据推翻。根因**不是**"我读得不够细"——是**前提错了**:D092 代码是"装修双轨 vs 合并架构"两种意图之间漂移的产物,本身无一致架构承诺,把它当权威源数据做推断,输出必然矛盾。真相通过对照 Zig `Sema.zig` 原理才稳定下来——原理是不变量,代码是流沙。
+
+### 机制原因
+
+§决策 的五条硬约束同时要求"单一 dispatcher"(条 4)和"按 `comptimeDepth` 选子路径"(条 4 后半),这两条在工程上是**无机械同步机制的双路径**——写一侧漏另一侧是必然。"半 SEMA"承诺在实现层退化为"双轨 + 手工同步"。
+
+### 具体不可靠点
+
+- **40 处** `if (comptimeDepth > 0)` 分岔横跨 5 文件(gen_exprs.ss:18 / gen_stmts.ss:15 / gen_decls.ss:4 / gen_assigns.ss:2 / codegen.ss:1),两侧独立演进
+- **7 个** `genValCt*` 函数(`genValCtCall` / `NewExpr` / `MemberAccess` / `MethodCall` / `TemplateLit` / `ArrayLit` / `IndexAccess`)是与 `genExpr` runtime 分支完全独立的第二份 dispatch 表
+- **`TypedValue` storage**(`tvKind` / `tvI1` / `tvS1` / `tvD1` / `tvList` / `tvMap`)把 Kind 和 Value 混存,名义 TypedValue 实则 Kind-tagged Value,未达成 Zig Value 的无类型语义
+- **Phase 8 commit `25e5760`** 的 `interpIntOp` 分支顺序调整 + `UShr` 补丁 + Q1 最小测试,**是双轨系统内装修**——补了双轨一侧的 op 表,不动消除双轨的结构,符合 D088 §反模式 "给 interp.ss 抄 handler 加深双轨制"
+
+### 禁止行为
+
+1. **禁止**读 D092 sub-a~e 或 Phase 8 的代码 / commit 来决定"SS 的 SEMA 应该长什么样"——它的形态是假装期产物
+2. **禁止**把 §决策 的五条硬约束当作 D093 的约束——它们描述的是"半 SEMA + 填洞即合并"路径,已证不可达
+3. **禁止**把 `d1816ab` (dev 分支头)当"干净起点" —— `d1816ab` 删了 `interp.ss` 定义但保留了 `gen_assigns.ss` / `gen_exprs.ss` 里 **448 处** undefined function 调用,是废墟而非 clean slate(这条经验已在 `feedback_verify_reset_target.md` 锚定)
+
+### 正确使用 D092 的方式
+
+仅作**反面标本**(negative reference)——看"双轨 + 手工同步"如何失败,以及"半 SEMA + 填洞"为什么不等于"一份 eval 函数"。不作为架构实现的参考。
+
+### Supersession 关系
+
+- **架构目标**(服务 D088 §第一性需求)由 D093 承接
+- **实现路径**(TypedValue / `comptimeDepth` mode flag / `genValCt*` 家族)全部作废,由 D093 的 `evalExpr` / `MaybeVal` 骨架替代
+- **§决策 以下的内容**(TypedValue 结构 / 五条硬约束 / sub-phase 计划)作为历史记录保留,**不再作为行动依据**
+
+---
 
 ## 背景
 
