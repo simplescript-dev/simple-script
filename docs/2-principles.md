@@ -27,7 +27,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 
 ## Priority
 
-- **P17: Fix before add.** Open issues (`docs/4-issues/1-open/`) take priority over new features or stdlib modules. Do not add new functionality while known issues silently produce wrong code, crash, or force workarounds. ← V3, P4
+- **P17: Fix before add.** Unfinished decisions in `docs/3-decisions/` (marked `[ ] Planned` / `[-] Blocked` per P19) take priority over new features or stdlib modules. Do not add new functionality while known issues silently produce wrong code, crash, or force workarounds. ← V3, P4
 - **P18: One task per context.** Each conversation context handles exactly one task (one issue fix, one feature, one refactor). When done or context runs low, update handoff and stop. External automation handles clear + `/next` for the next round. ← V6
 
 ## Workflow
@@ -35,7 +35,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **P14: Atomic task execution.** Sequential steps of the same task (analyze → verify → commit) execute in one go. Handoff splits only at genuinely independent task boundaries. ← V6
 - **P15: Simplify after verify.** After implementation is manually verified correct, review changed code for reuse, quality, and efficiency (`/simplify`). Run tests + bootstrap again after simplification. ← V5, V6
 - **P16: Record decisions immediately.** Every design discussion that produces a confirmed decision → create a D-numbered doc in `docs/3-decisions/` before moving on. One decision per doc. Include: status, depends-on, decision text, reasoning, rejected alternatives, interfaces, tensions. ← V3, V5
-- **P19: D 文档状态标注强制分离。** D 文档(`docs/3-decisions/D*.md`、`docs/4-issues/` 等)每项 phase / 过渡策略 / 需求 / 待办**必须**形式标注状态:`[ ] Planned` / `[x] Done at <file:line>` / `[-] Blocked at <blocker>`。**禁止**在同一段落同时写未来时("需要实现 / 将 / 可改用 / 计划")和过去时("已实现 / 已达成")而不带状态标注。代码达成某项描述时,**必须**同步更新 D 文档状态标注(`[ ]` → `[x] Done at <file:line>`),不得只改代码不回写。P19 是 §PFV 流程 §字段 1 D 文档 grep 对照的配套——`[x] Done at <file:line>` 里的 file:line 直接给出 grep 目标,降低对照成本,但**不**绕过对照(`[x]` 也可能过时、代码已移动)。**不要求一次性回写所有历史 D 文档**,新写 / 修改的段落必须遵守,历史段落在被 §字段 1 对照命令触发引用时按结果逐步升级(不一致 → 回写)。← V3, V5, P4 (derived from 2026-04-15 D088 §过渡策略漂移根治)
+- **P19: D 文档状态标注强制分离。** D 文档(`docs/3-decisions/D*.md`)每项 phase / 过渡策略 / 需求 / 待办**必须**形式标注状态:`[ ] Planned` / `[x] Done at <file:line>` / `[-] Blocked at <blocker>`。**禁止**在同一段落同时写未来时("需要实现 / 将 / 可改用 / 计划")和过去时("已实现 / 已达成")而不带状态标注。代码达成某项描述时,**必须**同步更新 D 文档状态标注(`[ ]` → `[x] Done at <file:line>`),不得只改代码不回写。P19 是 §PFV 流程 §字段 1 D 文档 grep 对照的配套——`[x] Done at <file:line>` 里的 file:line 直接给出 grep 目标,降低对照成本,但**不**绕过对照(`[x]` 也可能过时、代码已移动)。**不要求一次性回写所有历史 D 文档**,新写 / 修改的段落必须遵守,历史段落在被 §字段 1 对照命令触发引用时按结果逐步升级(不一致 → 回写)。← V3, V5, P4 (derived from 2026-04-15 D088 §过渡策略漂移根治)
 
 ---
 

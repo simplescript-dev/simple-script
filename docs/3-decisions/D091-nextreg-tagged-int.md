@@ -58,7 +58,7 @@
 
 - ❌ 顺手改 `emitIR` API（独立成 D092 候选）
 - ❌ 顺手改 `genExpr` wrapper 行为
-- ❌ 扫 `docs/4-issues/` 找别的活
+- ❌ 扫 `docs/3-decisions/` 找未完成决策找别的活
 
 ---
 

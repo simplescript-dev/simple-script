@@ -70,7 +70,7 @@
 
 ### 禁止的 Context 操作
 
-- ❌ 扫描 `docs/4-issues/` 自己挑活儿（违反 CLAUDE.md "交互式单文档"）
+- ❌ 扫描 `docs/3-decisions/` 找未完成决策自己挑活儿（违反 CLAUDE.md "交互式单文档"）
 - ❌ 读取 `docs/5-handoff/`（已删除，commit `278f34c`）
 - ❌ 顺带修无关文件
 - ❌ 改 `CLAUDE.md` / `docs/1-axioms.md` / `docs/2-principles.md`（D089 范围外）
