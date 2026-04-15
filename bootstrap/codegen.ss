@@ -221,6 +221,47 @@ function newTvObject(classAstId: int): int {
     return id
 }
 
+// ── TypedValue Accessor Primitive (D092 Phase 1 最小子集) ────
+// 仅含 Phase 2 sub-a 的 4 个 delegate 所需 scalar accessor。
+// tvField* / tvArray* / tvKeys / tvSize 留给 Phase 3-5 消费者
+// 按需添加，避免 API 设计基于猜测。
+
+function tvKindOf(id: int): string {
+    initTypedValue()
+    return tvKind.getString(id + "")
+}
+
+function tvIntOf(id: int): int {
+    initTypedValue()
+    return tvI1[id]
+}
+
+function tvStringOf(id: int): string {
+    initTypedValue()
+    return tvS1.getString(id + "")
+}
+
+// ── interp* delegate (D092 Phase 2 sub-a) ────────────────────
+// 保留 interp* 前缀让现有 callsite 自动 resolve，定义搬到 codegen.ss
+// 内部，底层改走 Phase 1 的 TypedValue accessor。参数是 ctVal payload，
+// clean slate 后语义迁移为 TypedValue id。
+
+function interpType(id: int): string {
+    return tvKindOf(id)
+}
+
+function interpAsInt(id: int): int {
+    return tvIntOf(id)
+}
+
+function interpAsStr(id: int): string {
+    return tvStringOf(id)
+}
+
+function interpAsBool(id: int): int {
+    return tvIntOf(id)
+}
+
 // ── IR Builder Helpers ───────────────────────────────────────
 
 function irLabel(name: string) {
