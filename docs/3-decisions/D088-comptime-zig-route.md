@@ -128,15 +128,23 @@ SS 当前是"独立解释器 + 字符串 mixin"：
 
 ### Phase 5: `obj.fields()` + `obj[name]` + 编译期循环展开
 
+**Status:** [x] Done — 三件事均落地，验证方法代码块可直接编译运行。
+
 **目标：** 解决第一性需求。运行时函数内可遍历对象字段并按名访问值。
 
 **需要实现的三件事：**
 
 1. **`obj.fields()`** — 编译器为每个 class 自动生成 `fields()` 内置方法，返回字段名数组（编译期常量）
+   - **[x] Done at** `bootstrap/gen_methods.ss:467`（runtime emit）/ `bootstrap/gen_types.ss:359`（inferType 返回 `Array<string>`）/ `bootstrap/gen_exprs.ss:872`（METHOD_CALL 分发）/ `bootstrap/check_stmts.ss:482`（checker 合法化）
+   - commits：`5a11642`（初次落地）/ `a5f434e`（comptime p.fields() 对称 + method-not-found 强化）
 
 2. **`obj[name]` bracket notation** — 当 `name` 是编译期常量字符串时，`obj["x"]` 在 codegen 阶段解析为 `obj.x` 的 GEP 指令（零运行时开销）
+   - **[x] Done at** `bootstrap/gen_exprs.ss:55`（INDEX_ACCESS codegen 折叠）/ `bootstrap/gen_stmts.ss:280`（INDEX_WRITE codegen 折叠）/ `bootstrap/gen_types.ss:441`（inferType）/ `bootstrap/check_stmts.ss:832`（checker 拦截 class 实例非编译期常量字段名）/ `bootstrap/codegen.ss:79`（`comptimeConsts` 常量绑定表）
+   - commits：`5a11642`（初次落地）/ `f6dad10`（checker 拦截动态字段名）
 
 3. **for-in 编译期展开** — 当 for-in 的迭代目标是编译期常量数组时，编译器展开循环，每次迭代的循环变量替换为常量
+   - **[x] Done at** `bootstrap/gen_stmts.ss:586`（`genForInUnrolled` 展开核心）/ `bootstrap/gen_stmts.ss:666`（`obj.fields()` 展开入口）/ `bootstrap/gen_stmts.ss:677`（字符串字面量数组展开入口）
+   - commits：`5a11642`（初次落地 `obj.fields()` 入口）/ `02f745d`（泛化到字符串字面量数组）
 
 **验证方法：**
 ```ss
