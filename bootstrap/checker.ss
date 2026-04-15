@@ -27,6 +27,7 @@ let checkerClassParents = "" // "ClassName" -> parent class name
 let methodParamMin = ""      // "ClassName.method" -> min method args
 let methodParamMax = ""      // "ClassName.method" -> max method args
 let currentCheckerClass = "" // current class context (for this.method() resolution)
+let checkerFieldsForInVars = ""
 let constFields = ""         // "ClassName.fieldName" -> "1" if const field
 let checkerFieldTypes = ""   // "ClassName.fieldName" -> type string
 let checkerClassFields = ""  // "ClassName" -> "field1,field2,..." (ordered field list)

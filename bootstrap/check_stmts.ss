@@ -450,7 +450,18 @@ function checkStmt(id: int) {
         pushScope()
         checkExpr(nGetI1(id))
         defineVar(nGetS1(id), "auto", 0)
+        const savedFFV = checkerFieldsForInVars
+        const iterId = nGetI1(id)
+        if (iterId > 0 && nGetKind(iterId) == "METHOD_CALL" && nGetS1(iterId) == "fields") {
+            const recvCls = inferCheckerClass(nGetI1(iterId))
+            if (recvCls != "" && checkerClassFields.has(recvCls) == 1) {
+                const itemName = nGetS1(id)
+                if (savedFFV == "") { checkerFieldsForInVars = itemName }
+                else { checkerFieldsForInVars = `${savedFFV},${itemName}` }
+            }
+        }
         checkBlock(nGetI2(id))
+        checkerFieldsForInVars = savedFFV
         popScope()
         return
     }
@@ -775,6 +786,20 @@ function checkExpr(id: int) {
     if (kind == "INDEX_ACCESS") {
         checkExpr(nGetI1(id))
         checkExpr(nGetI2(id))
+        const idxNode = nGetI2(id)
+        if (idxNode > 0 && nGetKind(idxNode) != "STRING_LIT") {
+            const objCls = inferCheckerClass(nGetI1(id))
+            if (objCls != "" && checkerClassFields.has(objCls) == 1) {
+                let allowed = 0
+                if (nGetKind(idxNode) == "IDENT" && checkerFieldsForInVars != "") {
+                    const probe = `,${checkerFieldsForInVars},`
+                    if (probe.indexOf(`,${nGetS1(idxNode)},`) >= 0) { allowed = 1 }
+                }
+                if (allowed == 0) {
+                    checkerError(`dynamic field name on class '${objCls}'; use obj["x"] or for (n in obj.fields())`, nGetLine(id), nGetCol(id))
+                }
+            }
+        }
         return
     }
     if (kind == "NEW_EXPR") {
