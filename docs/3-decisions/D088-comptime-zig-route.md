@@ -269,7 +269,7 @@ comptime {
 
 ## 验证标准（每轮必检）
 
-### 核心验证（最重要的两条）
+### 核心验证（最重要的三条）
 
 > **(1) 这轮完成后，有新的 SS 语法能在 `comptime {}` 里跑了吗？**
 > - 是 → 在路线上。
@@ -280,10 +280,17 @@ comptime {
 > - 两问任一为"是" → **表面解决。** 禁止纳入本轮清单，必须先给出非补丁路径（共享层抽取 / 统一 SEMA / 合并 pipeline）再启动。
 > - 两问都为"否" → 根路径，继续。
 > - Zig 路线的本质是"编译器即解释器，一份实现"。每给 interp.ss 抄一个 codegen 已有的 handler，都是在加深双轨制，而不是在走向 Zig。"逐步补解释器覆盖度"必须同时回答"怎么走向合并"，否则就是假装走 Zig。
+>
+> **(3) 这轮是 Zig 式 SEMA 架构吗？**
+> - "Zig 式 SEMA" 定义：**一份 eval 函数**同时做 comptime 执行 + 类型检查 + codegen 前端。pipeline 是 **AST → TypedValue → LLVM IR**，TypedValue 既是 comptime 值也是 codegen 输入，**不存在独立的 interp / compile-time eval engine / typeInfo API / 字符串 mixin**。
+> - 本轮检验：(a) 产出的代码是否消费或产生 TypedValue？(b) 同一 eval 路径是否同时服务 comptime 和 codegen？(c) 有没有写任何"comptime 专用"的独立分支 / 独立文件 / 独立注册表？
+> - 任何"comptime 专用"独立路径 → 即使不叫 interp.ss，也是**新名字的第二份执行器**，禁止纳入本轮清单。
+> - 和问 2 配套：问 2 防"继续给 interp.ss 补 handler"，问 3 防"换个名字另起炉灶写独立 eval 路径"。两个入口堵死，才能逼出真正的 SEMA 合并架构。
 
-这两条规则能过滤掉所有偏离：打磨 @derive 过不了 (1)（没让新语法在 comptime 工作），
+这三条规则能过滤掉所有偏离：打磨 @derive 过不了 (1)（没让新语法在 comptime 工作），
 抄 Zig 语法特性也过不了 (1)（添加的是编译期语法，不是解释器覆盖度）；
-给 interp.ss 直接补 class / enum / method handler 过不了 (2)（维持双轨制，是表面 — 必须先设计共享层）。
+给 interp.ss 直接补 class / enum / method handler 过不了 (2)（维持双轨制，是表面 — 必须先设计共享层）；
+另起炉灶写一个 compile-time eval engine / 独立的 const-folder 也过不了 (3)（新名字的双轨制，架构不是 SEMA）。
 
 ### 方向性检查（开始前）
 
