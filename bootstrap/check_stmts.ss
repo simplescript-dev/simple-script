@@ -3,6 +3,32 @@
 
 import { editDistance, collectVisibleNames, findSuggestion } from "./check_suggest"
 
+// Single source of truth for compile-time string-literal array detection.
+// Returns csv of element string values; "" means reject (not ARRAY_LIT, empty,
+// non-STRING_LIT element, or value containing ',' which would collide with the
+// csv encoding reused from classFields). Checker tests emptiness to decide
+// whether dynamic field names are allowed; codegen consumes the csv directly.
+// One function means both passes can't drift out of sync.
+function stringLitArrayCsv(id: int): string {
+    if (nGetKind(id) != "ARRAY_LIT") { return "" }
+    const elemList = nGetList(id)
+    if (elemList == "") { return "" }
+    const parts = elemList.split(",")
+    let result = ""
+    let i = 0
+    while (i < parts.length()) {
+        const eid = parseInt(parts[i])
+        if (eid <= 0) { return "" }
+        if (nGetKind(eid) != "STRING_LIT") { return "" }
+        const sv = nGetS1(eid)
+        if (sv.indexOf(",") >= 0) { return "" }
+        if (result == "") { result = sv }
+        else { result = `${result},${sv}` }
+        i = i + 1
+    }
+    return result
+}
+
 // ── Return path analysis ─────────────────────────────────────
 
 function blockAlwaysReturns(blockId: int): int {
@@ -452,13 +478,20 @@ function checkStmt(id: int) {
         defineVar(nGetS1(id), "auto", 0)
         const savedFFV = checkerFieldsForInVars
         const iterId = nGetI1(id)
+        let allowDynFieldName = 0
         if (iterId > 0 && nGetKind(iterId) == "METHOD_CALL" && nGetS1(iterId) == "fields") {
             const recvCls = inferCheckerClass(nGetI1(iterId))
             if (recvCls != "" && checkerClassFields.has(recvCls) == 1) {
-                const itemName = nGetS1(id)
-                if (savedFFV == "") { checkerFieldsForInVars = itemName }
-                else { checkerFieldsForInVars = `${savedFFV},${itemName}` }
+                allowDynFieldName = 1
             }
+        }
+        if (allowDynFieldName == 0 && iterId > 0 && stringLitArrayCsv(iterId) != "") {
+            allowDynFieldName = 1
+        }
+        if (allowDynFieldName == 1) {
+            const itemName = nGetS1(id)
+            if (savedFFV == "") { checkerFieldsForInVars = itemName }
+            else { checkerFieldsForInVars = `${savedFFV},${itemName}` }
         }
         checkBlock(nGetI2(id))
         checkerFieldsForInVars = savedFFV

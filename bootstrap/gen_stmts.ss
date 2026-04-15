@@ -580,21 +580,21 @@ function genFor(id: int) {
     loopBlockStackSaved = savedLoopStack
 }
 
-// D088 Phase 5: compile-time for-in unrolling for obj.fields()
-function genForInUnrolled(id: int, className: string) {
+// Compile-time for-in unroll. itemCsv is a comma-separated list of the values
+// the loop variable takes on each iteration — from classFields when iterating
+// obj.fields(), or from stringLitArrayCsv when iterating a string-literal array.
+function genForInUnrolled(id: int, itemCsv: string) {
     const itemName = nGetS1(id)
     const bodyId = nGetI2(id)
-    const fieldStr = classFields.getString(className)
 
     const itemLLName = allocVarName(itemName)
     emitIR(`  %${itemLLName} = alloca ptr, align 8`)
     setVarType(itemName, "string")
 
-    // No fields → skip entirely
-    if (fieldStr == "") { return }
+    if (itemCsv == "") { return }
 
-    const fields = fieldStr.split(",")
-    const fieldCount = fields.length()
+    const items = itemCsv.split(",")
+    const fieldCount = items.length()
     const afterLabel = nextLabel("forin.unroll.after")
 
     // Save/set break/continue
@@ -605,10 +605,10 @@ function genForInUnrolled(id: int, className: string) {
     loopBlockStackSaved = blockPtrVarStack
 
     let i = 0
-    for (fieldName in fields) {
-        comptimeConsts.set(itemName, fieldName)
+    for (itemVal in items) {
+        comptimeConsts.set(itemName, itemVal)
 
-        const strConst = addStringConst(fieldName)
+        const strConst = addStringConst(itemVal)
         emitIR(`  store ptr ${strConst}, ptr %${itemLLName}, align 8`)
 
         let nextIterLabel = afterLabel
@@ -668,7 +668,16 @@ function genForIn(id: int) {
         const fieldsObjId = nGetI1(iterableId)
         const fieldsClass = resolveObjClass(fieldsObjId)
         if (fieldsClass != "" && classFields.has(fieldsClass) == 1) {
-            genForInUnrolled(id, fieldsClass)
+            const fsStr = classFields.getString(fieldsClass)
+            genForInUnrolled(id, fsStr)
+            return
+        }
+    }
+
+    if (nGetKind(iterableId) == "ARRAY_LIT") {
+        const litCsv = stringLitArrayCsv(iterableId)
+        if (litCsv != "") {
+            genForInUnrolled(id, litCsv)
             return
         }
     }
