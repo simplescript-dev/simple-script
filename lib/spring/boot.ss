@@ -63,28 +63,35 @@ annotationMapping("PutMapping", springAnnotationHandler)
 annotationMapping("DeleteMapping", springAnnotationHandler)
 annotationMapping("PatchMapping", springAnnotationHandler)
 
-// ── Comptime: generate singleton factory functions for beans (D087 Phase 4a) ──
-// Replaces hardcoded LLVM IR factory generation in gen_annotations.ss.
-// Uses @typeInfo reflection + emit() to generate the same factory pattern:
-//   @__ann_cache_ClassName (global ptr null) + @__ann_factory_ClassName()
+// ── Comptime: generate singleton factories + method wrappers ──
+// Uses @comptimeEmit to generate pure SS source code (no LLVM IR).
+// Two-pass compilation: pass 1 registers all functions, pass 2 generates code.
 
 comptime {
-    // Collect all bean classes across DI annotations
     let beanSet = new Map()
     let beanNames: Array<string> = []
 
     function collectBeans(annName: string) {
-        const classes = getAnnotatedClasses(annName)
-        let j = 0
-        while (j < classes.length()) {
-            const cn = classes[j]
+        for (cn in getAnnotatedClasses(annName)) {
             if (beanSet.has(cn) == 0) {
                 beanSet.set(cn, "1")
                 beanNames = beanNames.push(cn)
             }
-            j = j + 1
         }
     }
+
+    function defaultVal(t: string): string {
+        if (t == "int" || t == "bool") { return "0" }
+        if (t == "double") { return "0.0" }
+        if (t == "string") { return "\"\"" }
+        return "null"
+    }
+
+    // Annotation→request method mapping for parameter extraction
+    let paramMethodMap = new Map()
+    paramMethodMap.set("PathVariable", "getPathVariable")
+    paramMethodMap.set("RequestParam", "getParameter")
+    paramMethodMap.set("RequestHeader", "getHeader")
 
     collectBeans("Component")
     collectBeans("Service")
@@ -92,104 +99,86 @@ comptime {
     collectBeans("RestController")
     collectBeans("SpringBootApplication")
 
-    // Generate singleton factory + method wrappers for each bean class
     let wrappersDone = new Map()
-    let bi = 0
-    while (bi < beanNames.length()) {
-        const className = beanNames[bi]
+
+    for (className in beanNames) {
         const info = getTypeInfo(className)
 
-        // ── Factory: cached singleton @__ann_factory_ClassName ──
-        emit(`@__ann_cache_${className} = internal global ptr null\n`)
-        let body = `define ptr @__ann_factory_${className}() {\nentry:\n`
-        body = body + `  %cached = load ptr, ptr @__ann_cache_${className}\n`
-        body = body + `  %isNull = icmp eq ptr %cached, null\n`
-        body = body + `  br i1 %isNull, label %create, label %done\n`
-        body = body + `create:\n`
-
-        const fields = info.fields
-        let callArgs = ""
-        let fi = 0
-        while (fi < fields.length()) {
-            const f = fields[fi]
-            const fType = f.type
-            let argVal = ""
-            if (beanSet.has(fType) == 1) {
-                body = body + `  %dep.${fi} = call ptr @__ann_factory_${fType}()\n`
-                argVal = `ptr %dep.${fi}`
+        // ── Factory: cached singleton ──
+        let ctorArgs = ""
+        for (f in info.fields) {
+            if (ctorArgs != "") { ctorArgs = ctorArgs + ", " }
+            if (beanSet.has(f.type) == 1) {
+                ctorArgs = ctorArgs + `__ann_factory_${f.type}()`
             } else {
-                if (fType == "int" || fType == "bool") {
-                    argVal = "i32 0"
-                } else if (fType == "double") {
-                    argVal = "double 0.0"
-                } else {
-                    argVal = "ptr null"
+                ctorArgs = ctorArgs + defaultVal(f.type)
+            }
+        }
+
+        @comptimeEmit(`
+let __ann_cache_${className}: ${className}? = null
+function __ann_factory_${className}(): ${className} {
+    if (__ann_cache_${className} == null) {
+        __ann_cache_${className} = new ${className}(${ctorArgs})
+    }
+    return __ann_cache_${className}
+}
+`)
+
+        // ── Method wrappers: parameter bridging ──
+        for (wm in info.methods) {
+            if (wm.annotations.length() == 0) { continue }
+            const wrapName = `__ann_wrapper_${className}_${wm.name}`
+            if (wrappersDone.has(wrapName) == 1) { continue }
+            wrappersDone.set(wrapName, "1")
+
+            // Detect lifecycle vs route annotation
+            let isLifecycle = 0
+            for (a in wm.annotations) {
+                if (a.name == "PostConstruct") { isLifecycle = 1; break }
+            }
+
+            if (isLifecycle == 1) {
+                @comptimeEmit(`
+function ${wrapName}(request: HttpServletRequest, response: HttpServletResponse): HttpServletResponse {
+    const __inst = __ann_factory_${className}()
+    __inst.${wm.name}()
+    return null
+}
+`)
+                continue
+            }
+
+            // Route handler — build parameter extraction + call args
+            let paramDecls = ""
+            let callArgs = ""
+            for (wp in wm.params) {
+                if (paramMethodMap.has(wp.annotation) == 1) {
+                    // @PathVariable, @RequestParam, @RequestHeader → request.getXxx("name")
+                    const method = paramMethodMap.getString(wp.annotation)
+                    paramDecls = paramDecls + `    const __p_${wp.name} = request.${method}("${wp.name}")\n`
+                    if (callArgs != "") { callArgs = callArgs + ", " }
+                    callArgs = callArgs + `__p_${wp.name}`
+                } else if (wp.annotation == "RequestBody") {
+                    paramDecls = paramDecls + `    const __p_body = request.getInputStream()\n`
+                    if (callArgs != "") { callArgs = callArgs + ", " }
+                    callArgs = callArgs + "__p_body"
+                } else if (wp.type == "HttpServletRequest") {
+                    if (callArgs != "") { callArgs = callArgs + ", " }
+                    callArgs = callArgs + "request"
+                } else if (wp.type == "HttpServletResponse") {
+                    if (callArgs != "") { callArgs = callArgs + ", " }
+                    callArgs = callArgs + "response"
                 }
             }
-            if (callArgs == "") {
-                callArgs = argVal
-            } else {
-                callArgs = callArgs + ", " + argVal
-            }
-            fi = fi + 1
+
+            @comptimeEmit(`
+function ${wrapName}(request: HttpServletRequest, response: HttpServletResponse): HttpServletResponse {
+${paramDecls}    const __inst = __ann_factory_${className}()
+    return __inst.${wm.name}(${callArgs})
+}
+`)
         }
-
-        if (callArgs == "") {
-            body = body + `  %inst = call ptr @${className}_new()\n`
-        } else {
-            body = body + `  %inst = call ptr @${className}_new(${callArgs})\n`
-        }
-        body = body + `  store ptr %inst, ptr @__ann_cache_${className}\n`
-        body = body + `  br label %done\n`
-        body = body + `done:\n`
-        body = body + `  %result = load ptr, ptr @__ann_cache_${className}\n`
-        body = body + `  ret ptr %result\n}\n\n`
-
-        emit(body)
-        registerFunction(`__ann_factory_${className}`, className, 0)
-
-        // ── Method wrappers: parameter bridging for annotated methods ──
-        // Framework knowledge (HttpServletRequest/Response/PathVariable) lives here, not in compiler
-        const methods = info.methods
-        let wmi = 0
-        while (wmi < methods.length()) {
-            const wm = methods[wmi]
-            if (wm.annotations.length() > 0) {
-                const wrapName = `__ann_wrapper_${className}_${wm.name}`
-                if (wrappersDone.has(wrapName) == 0) {
-                    wrappersDone.set(wrapName, "1")
-                    let wBody = `define ptr @${wrapName}(ptr %request, ptr %response) {\nentry:\n`
-                    wBody = wBody + `  %inst = call ptr @__ann_factory_${className}()\n`
-                    let wCallArgs = "ptr %inst"
-                    let pvIdx = 0
-                    const wParams = wm.params
-                    let wpi = 0
-                    while (wpi < wParams.length()) {
-                        const wp = wParams[wpi]
-                        if (wp.annotation != "") {
-                            const pvRef = addStringConst(wp.name)
-                            wBody = wBody + `  %pv.${pvIdx} = call ptr @HttpServletRequest_getPathVariable(ptr %request, ptr ${pvRef})\n`
-                            wCallArgs = wCallArgs + `, ptr %pv.${pvIdx}`
-                            pvIdx = pvIdx + 1
-                        } else if (wp.type == "HttpServletRequest") {
-                            wCallArgs = wCallArgs + ", ptr %request"
-                        } else if (wp.type == "HttpServletResponse") {
-                            wCallArgs = wCallArgs + ", ptr %response"
-                        } else {
-                            wCallArgs = wCallArgs + ", ptr null"
-                        }
-                        wpi = wpi + 1
-                    }
-                    wBody = wBody + `  %r = call ptr @${className}_${wm.name}(${wCallArgs})\n`
-                    wBody = wBody + `  ret ptr %r\n}\n\n`
-                    emit(wBody)
-                    registerFunction(wrapName, "string", 2)
-                }
-            }
-            wmi = wmi + 1
-        }
-
-        bi = bi + 1
     }
 }
 
