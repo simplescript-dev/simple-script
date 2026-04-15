@@ -568,6 +568,19 @@ function interpFindMethod(className: string, methodName: string): int {
     return 0
 }
 
+// framework annotation handling 留给 Phase 3 eval core；sub-e 只承接符号
+let annClassNodeIds: Array<string> = []
+let annClassAnnNames: Array<string> = []
+
+function registerAnnotation(annName: string, handlerFuncName: string) {
+}
+
+function collectClassAnnotations(classId: int) {
+}
+
+function emitAnnotationInits() {
+}
+
 // ── IR Builder Helpers ───────────────────────────────────────
 
 function irLabel(name: string) {
@@ -931,7 +944,8 @@ function resetCodegen() {
     enumTypes = ""
     enumDeclNodes = ""
     enumReady = 0
-    resetAnnotationState()
+    annClassNodeIds = []
+    annClassAnnNames = []
     // Arrow functions (gen_exprs.ss)
     arrowCount = 0
     arrowDefs = ""
