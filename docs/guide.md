@@ -27,6 +27,8 @@ ss test [dir]                    Run .ss test files
 ss fmt <file>                    Format code
 ss repl                          Interactive REPL
 ss clean                         Remove build cache
+ss add <pkg> [--path <path>]     Add dependency to ss.json
+ss publish                       Publish package to ~/.ss/packages/
 ```
 
 ### Project Structure
@@ -111,36 +113,52 @@ const log = (msg: string): void => { println(msg) }
 ### Classes
 
 ```typescript
-// Constructor params become fields
-class Player(name: string, health: int) {
+// Fields declared in body (TypeScript style)
+class Player {
+    name: string
+    health: int
+
     function isAlive(): int { return this.health > 0 ? 1 : 0 }
     function damage(amount: int) { this.health -= amount }
 }
 const p = new Player("Alice", 100)
 println(p.name)
 
-// Field-level const
-class Config(const host: string, port: int) {}
+// Field-level const — immutable after construction
+class Config {
+    const host: string
+    port: int
+}
 // config.host = "x"  // compile error: const field
 
-// Additional fields in body
-class Counter(name: string) {
+// Default field values
+class Counter {
+    name: string
     count: int = 0
+
     function increment() { this.count += 1 }
 }
 
 // Named parameters
 const p = new Player(name: "Bob", health: 50)
+
+// Object literal — constructor sugar (requires type annotation)
+const point: Point = { x: 10, y: 20 }
+// equivalent to: new Point(x: 10, y: 20)
 ```
 
 ### Inheritance
 
 ```typescript
-class Animal(name: string) {
+class Animal {
+    name: string
+
     function speak(): string { return this.name }
 }
 
-class Dog extends Animal(breed: string) {
+class Dog extends Animal {
+    breed: string
+
     override function speak(): string {
         return `${super.speak()} (${this.breed})`
     }
@@ -157,7 +175,9 @@ abstract class Shape {
     abstract function area(): double
 }
 
-class Circle extends Shape(radius: double) {
+class Circle extends Shape {
+    radius: double
+
     override function area(): double {
         return 3.14159 * this.radius * this.radius
     }
@@ -184,13 +204,18 @@ function save(s: Serializable) { writeFile("out.json", s.toJson()) }
 ### Access Modifiers
 
 ```typescript
-class Account(const name: string, private balance: int) {
+class Account {
+    const name: string
+    private balance: int
+
     function getBalance(): int { return this.balance }
     private function log(msg: string) { /* internal */ }
 }
 
-class Base(protected secret: int) {}
-class Child extends Base() {
+class Base {
+    protected secret: int
+}
+class Child extends Base {
     function reveal(): int { return this.secret }  // OK
 }
 ```
@@ -222,7 +247,9 @@ identity("hello")
 identity<int>(42)     // explicit type arg
 
 // Generic class
-class Box<T>(value: T) {
+class Box<T> {
+    value: T
+
     function get(): T { return this.value }
 }
 const b = new Box(42)
@@ -290,7 +317,9 @@ function find(id: int): User? {
 throw("something went wrong")
 
 // throw Error object
-class IOError extends Error(path: string) {}
+class IOError extends Error {
+    path: string
+}
 throw(new IOError("file not found", "/data.txt"))
 
 // try/catch/finally
@@ -452,13 +481,38 @@ import { add, multiply } from "./math"
 // Project root import (@/ = project root with ss.json)
 import { parse } from "@/lib/json"
 
+// Package import (declared in ss.json dependencies)
+import { Router } from "@mylib/router"
+
 // Multi-file project: only main.ss needs function main()
 ```
+
+**ss.json dependencies:**
+
+```json
+{
+  "name": "myapp",
+  "version": "0.1.0",
+  "main": "src/main.ss",
+  "dependencies": {
+    "@mylib/router": "../router",
+    "@utils/logger": "0.1.0"
+  }
+}
+```
+
+- Path value (`"../router"`) → resolves as relative path
+- Version value (`"0.1.0"`) → loads from `~/.ss/packages/<name>/<version>/`
+- `ss add <pkg> --path ../pkg` adds a local path dependency
+- `ss publish` copies package to `~/.ss/packages/<name>/<version>/`
 
 ### toString Auto-dispatch
 
 ```typescript
-class Point(x: int, y: int) {
+class Point {
+    x: int
+    y: int
+
     override function toString(): string {
         return `(${this.x}, ${this.y})`
     }
@@ -476,6 +530,51 @@ println(new Point(3, 4))          // (3, 4)
 parseInt("42")                    // string → int
 parseDouble("3.14")               // string → double
 ```
+
+### Concurrency
+
+```typescript
+// Reactive refs — thread-safe shared state (Vue 3 style)
+const count = ref(0)              // Ref<int>
+count.value += 1                  // atomic read/write via .value
+println(count.value)              // 1
+
+const name = ref("alice")         // Ref<string>
+name.value = "bob"
+
+// Watch — callback fires on value change
+watch(count, (newVal: int, oldVal: int) => {
+    println(`count changed: ${newVal}`)
+})
+count.value = 42                  // triggers watch callback
+
+// Virtual threads — M:N scheduling, lightweight
+const t = Thread.start(() => {
+    return fetchData()
+})
+const result = t.join()           // blocks until thread completes
+
+// Fire-and-forget
+Thread.start(() => { doBackgroundWork() })
+
+// Channel — blocking FIFO queue for thread communication
+const ch = new Channel<int>()     // unbounded
+const bounded = new Channel<int>(10)  // bounded (send blocks when full)
+
+ch.send(42)
+const val = ch.receive()          // blocks until value available
+ch.close()                        // wakes all waiting senders/receivers
+```
+
+**Thread closure capture rules:**
+
+| Captured type | Behavior | Reason |
+|---------------|----------|--------|
+| `int/double/bool` | copy | value type |
+| `string` | share | immutable |
+| `Ref<T>` | share | internally thread-safe |
+| class instance | auto clone | thread isolation |
+| `let` variable | compile error | must be effectively final |
 
 ---
 
@@ -550,6 +649,19 @@ parseDouble("3.14")               // string → double
 | `tcpRead(fd, maxlen)` | string | Read from socket |
 | `tcpWrite(fd, data)` | int | Write to socket |
 | `tcpClose(fd)` | void | Close socket |
+
+**Concurrency**
+| Function / Type | Return | Description |
+|-----------------|--------|-------------|
+| `ref(value)` | `Ref<T>` | Create thread-safe reactive reference |
+| `watch(ref, fn)` | void | Register callback for value changes |
+| `Thread.start(fn)` | `Thread<T>` | Spawn virtual thread |
+| `thread.join()` | T | Block until thread completes, return result |
+| `new Channel<T>()` | `Channel<T>` | Create unbounded channel |
+| `new Channel<T>(cap)` | `Channel<T>` | Create bounded channel |
+| `ch.send(value)` | void | Send value (blocks if bounded & full) |
+| `ch.receive()` | T | Receive value (blocks until available) |
+| `ch.close()` | void | Close channel, wake all waiters |
 
 **Testing**
 | Function | Return | Description |
@@ -1086,6 +1198,206 @@ base64decode("aGVsbG8=")          // "hello"
 import { sha256pure } from "@/lib/sha256"
 
 sha256pure("hello")               // hex string
+```
+
+### spring/boot — Spring Boot Web Framework
+
+**Annotation-driven (recommended, 1:1 Spring Boot style):**
+
+```typescript
+import { SpringApplication } from "@/lib/spring/boot"
+import { HttpServletRequest, HttpServletResponse } from "@/lib/jakarta/servlet"
+
+@Service
+class GreetingService {
+    function greet(name: string): string {
+        return `Hello, ${name}!`
+    }
+}
+
+@RestController
+@RequestMapping("/api")
+class GreetingController {
+    greetingService: GreetingService       // auto-injected by DI
+
+    @GetMapping("/greet/{name}")
+    function greet(@PathVariable name: string,
+                   request: HttpServletRequest,
+                   response: HttpServletResponse): HttpServletResponse {
+        const msg = this.greetingService.greet(name)
+        return response.write(`{"message":"${msg}"}`)
+    }
+}
+
+@SpringBootApplication
+class Application {}
+
+function main() {
+    const app = new SpringApplication()
+    app.run(8080)
+}
+```
+
+**Annotations:**
+
+| Annotation | Target | Description |
+|-----------|--------|-------------|
+| `@SpringBootApplication` | class | Application entry point marker |
+| `@Component` | class | Register as managed bean (DI singleton) |
+| `@Service` | class | Specialization of @Component (service layer) |
+| `@Repository` | class | Specialization of @Component (data layer) |
+| `@RestController` | class | HTTP controller (auto-registers routes) |
+| `@RequestMapping("/path")` | class | Base path prefix for all routes |
+| `@GetMapping("/path")` | method | HTTP GET endpoint |
+| `@PostMapping("/path")` | method | HTTP POST endpoint |
+| `@PutMapping("/path")` | method | HTTP PUT endpoint |
+| `@DeleteMapping("/path")` | method | HTTP DELETE endpoint |
+| `@PatchMapping("/path")` | method | HTTP PATCH endpoint |
+| `@PathVariable` | param | Extract value from URL path segment |
+| `@PostConstruct` | method | Called after bean creation + DI injection |
+
+**Dependency Injection:**
+
+```typescript
+@Service
+class UserRepository {
+    function findById(id: string): string { return `{"id":"${id}"}` }
+}
+
+@Service
+class UserService {
+    private const userRepository: UserRepository   // auto-injected
+
+    function getUser(id: string): string {
+        return this.userRepository.findById(id)
+    }
+}
+
+@RestController
+class UserController {
+    private const userService: UserService          // auto-injected (chain)
+
+    @GetMapping("/users/{id}")
+    function getUser(@PathVariable id: string,
+                     request: HttpServletRequest,
+                     response: HttpServletResponse): HttpServletResponse {
+        return response.write(this.userService.getUser(id))
+    }
+}
+```
+
+- `private const` recommended for injected fields (immutable after construction, like Java's `private final`)
+- Fields whose type matches a `@Component`/`@Service`/`@Repository` class are auto-injected
+- Beans are topologically sorted by dependency and instantiated as singletons
+- `@RestController` classes also receive bean injection
+- All DI is resolved at compile time (zero startup overhead)
+
+**@PostConstruct — lifecycle callback:**
+
+```typescript
+@Service
+class ConfigService {
+    status: string = "uninitialized"
+
+    @PostConstruct
+    function init() {
+        this.status = "ready"       // called after construction + DI
+    }
+}
+```
+
+- Method runs once after bean creation and dependency injection completes
+- At most one `@PostConstruct` per class, no parameters, void return
+- Applies to `@Component`/`@Service`/`@Repository` beans and `@RestController` classes
+
+**Manual route registration (alternative):**
+
+```typescript
+import { SpringApplication, Get, Post } from "@/lib/spring/boot"
+
+Get("/api/hello", (request: HttpServletRequest, response: HttpServletResponse): HttpServletResponse => {
+    return response.write('{"message":"hello"}')
+})
+```
+
+**Route patterns (PathPatternParser 4.0):**
+- `/api/users` — literal match
+- `/api/users/{id}` — capture one path segment
+- `/api/{*path}` — capture remaining segments as `path`
+- `/static/*` — wildcard, matches one segment
+- `/static/**` — wildcard, matches remaining segments
+
+### spring/http — Response Builder
+
+```typescript
+import { ResponseEntity, HttpStatus } from "@/lib/spring/http"
+
+const resp = ResponseEntity.ok('{"name":"Alice"}')
+const created = ResponseEntity.status(HttpStatus.CREATED).body('{"id":1}')
+const notFound = ResponseEntity.notFound()
+```
+
+### spring/data — JPA Repository (SQLite)
+
+```typescript
+import { JpaRepositoryFactory } from "@/lib/spring/data"
+
+const repo = JpaRepositoryFactory.create("users")
+repo.save("1", '{"name":"Alice"}')
+const user = repo.findById("1")       // JSON string
+const all = repo.findAll()             // Array<string>
+repo.deleteById("1")
+repo.count()
+```
+
+### spring/jdbc — JDBC Template (SQLite)
+
+```typescript
+import { JdbcTemplate, withTransaction } from "@/lib/spring/jdbc"
+
+const db = new JdbcTemplate("app.db")
+db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+db.update("INSERT INTO users VALUES (1, 'Alice')")
+const rows = db.queryForList("SELECT * FROM users")
+const name = db.queryForString("SELECT name FROM users WHERE id = 1")
+
+// Transaction with auto-rollback on error
+withTransaction(db, (tx: JdbcTemplate): int => {
+    tx.update("INSERT INTO users VALUES (2, 'Bob')")
+    tx.update("INSERT INTO users VALUES (3, 'Carol')")
+    return 1
+})
+```
+
+### jakarta/servlet — Servlet API
+
+```typescript
+import { HttpServletRequest, HttpServletResponse, createServletRequest, createServletResponse } from "@/lib/jakarta/servlet"
+
+// Request methods
+request.getMethod()                    // "GET", "POST", etc.
+request.getRequestURI()                // "/api/users"
+request.getParameter("name")           // query string parameter
+request.getHeader("content-type")      // request header
+request.getPathVariable("id")          // path variable from route
+request.getInputStream()               // request body
+
+// Response methods
+response.setStatus(200)
+response.setContentType("application/json")
+response.write('{"ok":true}')
+response.sendError(404, "Not Found")
+response.sendRedirect("/login")
+response.flushBuffer()                 // serialize to HTTP response string
+```
+
+### tomcat/embed — Embedded Tomcat
+
+```typescript
+import { createTomcat } from "@/lib/tomcat/embed"
+
+const tomcat = createTomcat().setPort(8080)
+tomcat.start(handler)                  // handler: (req, resp) => resp
 ```
 
 ---

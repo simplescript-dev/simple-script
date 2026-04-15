@@ -64,6 +64,7 @@ class Counter(private count: int) {
 enum Color { Red = 1, Green = 2, Blue = 3 }
 enum Direction { Up = "up", Down = "down", Left = "left", Right = "right" }
 const names = Direction.names()   // ["Up", "Down", "Left", "Right"]
+const c = Color.valueOf("Red")   // 1 (reverse lookup, throws on invalid)
 
 // Generics with constraints
 function max<T extends Comparable>(a: T, b: T): T {
@@ -134,6 +135,21 @@ println(2 ** 10)               // 1024
 println(0xFF & 0x0F)           // 15
 println(sqrt(144))             // 12
 
+// Concurrency — virtual threads + reactive refs + channels
+const counter = ref(0)                   // thread-safe Ref<int>
+watch(counter, (n: int, o: int) => { println(`changed: ${n}`) })
+
+const t = Thread.start(() => {
+    counter.value += 1                   // atomic update
+    return 42
+})
+const result = t.join()                  // 42
+
+const ch = new Channel<string>(10)       // bounded channel
+ch.send("hello")
+const msg = ch.receive()                 // "hello"
+ch.close()
+
 // File I/O
 writeFile("data.txt", "hello")
 const content = readFile("data.txt")
@@ -176,7 +192,7 @@ import { add } from "./math"
 ## Testing
 
 ```bash
-ss test tests/                  # run all 168 tests
+ss test tests/                  # run all 176 tests
 ss test tests/phase5/           # run specific phase
 ```
 
