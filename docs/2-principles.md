@@ -35,6 +35,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **P14: Atomic task execution.** Sequential steps of the same task (analyze → verify → commit) execute in one go. Handoff splits only at genuinely independent task boundaries. ← V6
 - **P15: Simplify after verify.** After implementation is manually verified correct, review changed code for reuse, quality, and efficiency (`/simplify`). Run tests + bootstrap again after simplification. ← V5, V6
 - **P16: Record decisions immediately.** Every design discussion that produces a confirmed decision → create a D-numbered doc in `docs/3-decisions/` before moving on. One decision per doc. Include: status, depends-on, decision text, reasoning, rejected alternatives, interfaces, tensions. ← V3, V5
+- **P19: D 文档状态标注强制分离。** D 文档(`docs/3-decisions/D*.md`、`docs/4-issues/` 等)每项 phase / 过渡策略 / 需求 / 待办**必须**形式标注状态:`[ ] Planned` / `[x] Done at <file:line>` / `[-] Blocked at <blocker>`。**禁止**在同一段落同时写未来时("需要实现 / 将 / 可改用 / 计划")和过去时("已实现 / 已达成")而不带状态标注。代码达成某项描述时,**必须**同步更新 D 文档状态标注(`[ ]` → `[x] Done at <file:line>`),不得只改代码不回写。P19 是 §PFV 流程 §字段 1 D 文档 grep 对照的配套——`[x] Done at <file:line>` 里的 file:line 直接给出 grep 目标,降低对照成本,但**不**绕过对照(`[x]` 也可能过时、代码已移动)。**不要求一次性回写所有历史 D 文档**,新写 / 修改的段落必须遵守,历史段落在被 §字段 1 对照命令触发引用时按结果逐步升级(不一致 → 回写)。← V3, V5, P4 (derived from 2026-04-15 D088 §过渡策略漂移根治)
 
 ---
 
@@ -54,6 +55,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - 字段 1 引用不到 D088 在路线上的具体段落 → 任务不在 Zig 路线上 → 拒绝
 - 字段 1 必须先引用 §第一性需求 段落再引用任何子表（§Phase X / §下一批 / §待办清单），不允许跳过 §第一性需求 直接接子表
 - 字段 1 引用的清单里若有「状态」/「待办」/「✅」等标记，**该标记不权威**。必须用字段 3 的 RED 命令亲自验证，不得直接信任
+- 字段 1 引用的**每一条** D 文档段落,**必须同时**附一条 grep / test / ls 命令(贴命令 + 输出),证明该段落描述的代码现状是 `[已达成 / 未达成 / 部分达成]`。不跑对照 → D 文档应然被当实然传进 PSM,**任务拒绝**。对照结果与 D 文档描述不一致(语态矛盾 / 标注过时 / 代码已移动) → **先回写 D 文档状态标注(参照 P19 `[x] Done at <file:line>`),再填 PSM 开工**。这是防漂移**跨轮传播**的入口 gate——即使上一轮交接文本脑补出假任务,字段 1 对照命令在本轮开工瞬间暴露漂移,不给任务走到字段 3 RED 才被截住的机会
 - 字段 2（第一性需求）的 Why 链 < 2 层 → 字段不算填齐，回去补深度
 - 字段 8（对照实验）答 no → 本轮任务降级为 backlog，不做（除非用户授权偏离）
 - 字段 9（Plan vs Execute）若是 Plan，必须在字段 7 的 VCM 填充里把 ④ 边界 替换为「替代方案对比 + 隐藏假设挑战」
@@ -101,6 +103,9 @@ VCM 通过 ≠ 回合结束。宣告"完成"到实际 stop 之间还有三步必
 1. **代码审查**：`/simplify` 对本轮新增 / 修改的代码做质量审查，修复发现的问题。改动纯文档 / 纯配置可跳过并显式说明
 2. **提交**：`git status` 有未提交改动 → commit（`/commit` 或手工），消息遵循 conventional commits。commit 必须落在同一轮对话里，不许跨轮补
 3. **下一步提示词**：最后一条回复**直接输出**下一步简短提示词（1-3 句、单段、命令式、模仿用户原始风格）。**禁止**写任何 handoff / next-prompt / session-notes 文件
+   - **Execute 型**(动词形态 "改 X / 重写 X / 去掉 Y / 修复 Z / 实现 W")**必须**附**本轮已跑过**的 **RED 命令 + 输出**作为凭据,证明 X 尚未达成。RED 无效(已 GREEN / 命令不成立 / 代码已是目标形态) → **不许写 Execute 型**,改为: (a) 宣告 "本轮已覆盖 X + 证据",终止本线路, 或 (b) 降级为 **Plan 型** "验证 / 巡检 X 现状,若发现 Y 再推进",把诊断权交回下一轮
+   - **Plan 型**(动词形态 "验证 / 调研 / 巡检 / 对照 X")不要求 RED 凭据,但提示词里**不得**带 "改 / 重写 / 去掉 / 修复 / 实现" 等变更动词,避免退化为未经验证的 Execute 型
+   - 这是防漂移**跨轮传播**的出口 gate——与 §开工 gate §字段 1 D 文档 grep 对照构成两道闸:上一轮关闭出口,下一轮关闭入口
 
 例外：用户明说"不 simplify" / "不 commit" / "不要下一步" → 按用户要求跳过。没说就必须做。
 
