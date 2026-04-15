@@ -307,6 +307,116 @@ function interpCompoundOp(op: string, lid: int, rid: int): int {
     return newTvNull()
 }
 
+// ── interp* state (D092 Phase 2 sub-c) ───────────────────────
+// tvI3[id] 锁定为 object/map 的 field/entry 个数（Phase 0 第二次锁定）。
+
+let interpReturnFlag = 0
+let interpReturnVal = 0
+let interpBreakFlag = 0
+let interpContinueFlag = 0
+let interpCurrentMethodClass = ""
+let interpClasses = new Map()
+let interpClassParents = new Map()
+let interpEnumValues = new Map()
+let interpEnumTypes = new Map()
+let interpEnumNodes = new Map()
+
+function interpShouldStop(): int {
+    if (interpReturnFlag == 1) { return 1 }
+    if (interpBreakFlag == 1) { return 1 }
+    if (interpContinueFlag == 1) { return 1 }
+    return 0
+}
+
+// continue 由循环体自行消费，不向循环外层冒泡，因此不计入 exit 判据
+function interpCheckLoopExit(): int {
+    if (interpReturnFlag == 1) { return 1 }
+    if (interpBreakFlag == 1) { return 1 }
+    return 0
+}
+
+// ── interp* field / collection delegate (D092 Phase 2 sub-c) ─
+// object 和 map 共享 tvList[id] = CSV of keys、tvMap[id|key] = child tvId、
+// tvI3[id] = entry count 的存储契约。array 用 tvList[id] = CSV of tvIds、
+// tvI2[id] = length，由 sub-b 锁定。
+
+function interpGetField(objId: int, name: string): int {
+    const key = objId + "|" + name
+    if (tvMap.has(key) == 0) { return newTvNull() }
+    return parseInt(tvMap.getString(key))
+}
+
+function interpSetField(objId: int, name: string, valTvId: int) {
+    const key = objId + "|" + name
+    if (tvMap.has(key) == 0) {
+        const idStr = objId + ""
+        tvList.set(idStr, listAppendStr(tvList.getString(idStr), name))
+        tvI3[objId] = tvI3[objId] + 1
+    }
+    tvMap.set(key, valTvId + "")
+}
+
+function interpArrayPush(arrId: int, valTvId: int): int {
+    const idStr = arrId + ""
+    tvList.set(idStr, listAppend(tvList.getString(idStr), valTvId))
+    tvI2[arrId] = tvI2[arrId] + 1
+    return arrId
+}
+
+function interpNewMap(): int {
+    const id = allocTv("map")
+    tvList.set(id + "", "")
+    return id
+}
+
+function interpMapSet(mapId: int, key: string, valTvId: int) {
+    interpSetField(mapId, key, valTvId)
+}
+
+function interpMapGet(mapId: int, key: string): int {
+    return interpGetField(mapId, key)
+}
+
+function interpMapHas(mapId: int, key: string): int {
+    return tvMap.has(mapId + "|" + key)
+}
+
+function interpMapDelete(mapId: int, key: string) {
+    const fullKey = mapId + "|" + key
+    if (tvMap.has(fullKey) == 0) { return }
+    const cur = tvList.getString(mapId + "")
+    const parts = cur.split(",")
+    let newCsv = ""
+    let i = 0
+    while (i < parts.length()) {
+        if (parts[i] != key) {
+            if (newCsv == "") { newCsv = parts[i] }
+            else { newCsv = newCsv + "," + parts[i] }
+        }
+        i = i + 1
+    }
+    tvList.set(mapId + "", newCsv)
+    tvMap.delete(fullKey)
+    tvI3[mapId] = tvI3[mapId] - 1
+}
+
+function interpMapGetKeys(mapId: int): int {
+    const arrId = newTvArray("")
+    const cur = tvList.getString(mapId + "")
+    if (cur == "") { return arrId }
+    const parts = cur.split(",")
+    let i = 0
+    while (i < parts.length()) {
+        interpArrayPush(arrId, newTvString(parts[i]))
+        i = i + 1
+    }
+    return arrId
+}
+
+function interpMapGetSize(mapId: int): int {
+    return tvI3[mapId]
+}
+
 // ── IR Builder Helpers ───────────────────────────────────────
 
 function irLabel(name: string) {
