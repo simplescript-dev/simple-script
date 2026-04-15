@@ -218,12 +218,6 @@ function newTvArray(initCsv: string): int {
     return id
 }
 
-function newTvObject(classAstId: int): int {
-    const id = allocTv("object")
-    tvI1[id] = classAstId
-    return id
-}
-
 // ── TypedValue Accessor Primitive (D092 Phase 1 最小子集) ────
 // 仅含 Phase 2 sub-a 的 4 个 delegate 所需 scalar accessor。
 // tvField* / tvArray* / tvKeys / tvSize 留给 Phase 3-5 消费者
@@ -415,6 +409,163 @@ function interpMapGetKeys(mapId: int): int {
 
 function interpMapGetSize(mapId: int): int {
     return tvI3[mapId]
+}
+
+// ── interp* comptime buffer + value coercion (D092 Phase 2 sub-d) ─
+// gen_exprs.ss 在 comptimeDepth > 0 时往 comptimeIR/SS 积累代码，
+// @comptime 块结束由 interpGet*Comptime* 读出后清空。
+
+let comptimeIR = ""
+let comptimeSS = ""
+
+function interpGetComptimeIR(): string {
+    return comptimeIR
+}
+
+function interpGetComptimeSS(): string {
+    return comptimeSS
+}
+
+function interpClearComptimeIR() {
+    comptimeIR = ""
+}
+
+function interpClearComptimeSS() {
+    comptimeSS = ""
+}
+
+// Phase 3 建立 scope stack 根帧；sub-d 阶段 interpVars 作为 flat scope 够用
+function interpEnsureComptimeRoot() {
+}
+
+function interpTruthy(id: int): int {
+    const k = tvKindOf(id)
+    if (k == "null") { return 0 }
+    if (k == "bool") { return tvIntOf(id) }
+    if (k == "int") { return tvIntOf(id) != 0 ? 1 : 0 }
+    if (k == "string") { return tvStringOf(id) != "" ? 1 : 0 }
+    if (k == "array") { return tvI2[id] > 0 ? 1 : 0 }
+    if (k == "map") { return tvI3[id] > 0 ? 1 : 0 }
+    return 1
+}
+
+function interpNewDouble(d: double): int {
+    const id = allocTv("double")
+    tvD1.set(id + "", `${d}`)
+    return id
+}
+
+// interpVars 是 comptime 变量的全局 scope store；scope stack 留给 Phase 3
+let interpVars = new Map()
+let interpThisVal = 0
+let interpLastFoundMethodClass = ""
+let comptimeReleaseMode = 0
+
+function interpFindScopeKey(name: string): string {
+    if (interpVars.has(name) == 1) { return name }
+    return ""
+}
+
+function interpNewVal(kind: string, payload: string): int {
+    if (kind == "object") {
+        const id = allocTv("object")
+        tvS1.set(id + "", payload)
+        tvList.set(id + "", "")
+        return id
+    }
+    if (kind == "fn") {
+        const id = allocTv("fn")
+        tvI1[id] = parseInt(payload)
+        return id
+    }
+    return newTvNull()
+}
+
+function interpToStr(id: int): string {
+    const k = tvKindOf(id)
+    if (k == "int") { return `${tvIntOf(id)}` }
+    if (k == "string") { return tvStringOf(id) }
+    if (k == "bool") { return tvIntOf(id) == 1 ? "true" : "false" }
+    if (k == "null") { return "null" }
+    if (k == "double") { return tvD1.getString(id + "") }
+    return ""
+}
+
+// interpIntOp / interpDoubleOp 接受 raw int/double（不是 tvId），
+// 由调用方从 TypedValue 里提取后传入，这是常量折叠路径的专用 API
+// —— 区别于 sub-b 的 interpCompoundOp (tvId → tvId)。
+
+function interpIntOp(op: string, a: int, b: int): int {
+    if (op == "Plus") { return newTvInt(a + b) }
+    if (op == "Minus") { return newTvInt(a - b) }
+    if (op == "Mul") { return newTvInt(a * b) }
+    if (op == "Div") { return newTvInt(a / b) }
+    if (op == "Mod") { return newTvInt(a % b) }
+    if (op == "BitAnd") { return newTvInt(a & b) }
+    if (op == "BitOr") { return newTvInt(a | b) }
+    if (op == "BitXor") { return newTvInt(a ^ b) }
+    if (op == "Shl") { return newTvInt(a << b) }
+    if (op == "Shr") { return newTvInt(a >> b) }
+    if (op == "Eq") { return newTvBool(a == b ? 1 : 0) }
+    if (op == "Ne") { return newTvBool(a != b ? 1 : 0) }
+    if (op == "Lt") { return newTvBool(a < b ? 1 : 0) }
+    if (op == "Gt") { return newTvBool(a > b ? 1 : 0) }
+    if (op == "Le") { return newTvBool(a <= b ? 1 : 0) }
+    if (op == "Ge") { return newTvBool(a >= b ? 1 : 0) }
+    return newTvNull()
+}
+
+function interpDoubleOp(op: string, a: double, b: double): int {
+    if (op == "Plus") { return interpNewDouble(a + b) }
+    if (op == "Minus") { return interpNewDouble(a - b) }
+    if (op == "Mul") { return interpNewDouble(a * b) }
+    if (op == "Div") { return interpNewDouble(a / b) }
+    if (op == "Eq") { return newTvBool(a == b ? 1 : 0) }
+    if (op == "Ne") { return newTvBool(a != b ? 1 : 0) }
+    if (op == "Lt") { return newTvBool(a < b ? 1 : 0) }
+    if (op == "Gt") { return newTvBool(a > b ? 1 : 0) }
+    if (op == "Le") { return newTvBool(a <= b ? 1 : 0) }
+    if (op == "Ge") { return newTvBool(a >= b ? 1 : 0) }
+    return newTvNull()
+}
+
+// TypeInfo 注册表由 Phase 3 建立；sub-d 阶段返回 null 占位
+function interpBuildTypeInfo(typeName: string): int {
+    return newTvNull()
+}
+
+function interpGetReturnFlag(): int {
+    return interpReturnFlag
+}
+
+function interpGetReturnVal(): int {
+    return interpReturnVal
+}
+
+function interpValEquals(lid: int, rid: int): int {
+    const lk = tvKindOf(lid)
+    const rk = tvKindOf(rid)
+    if (lk != rk) { return 0 }
+    if (lk == "int" || lk == "bool") { return tvIntOf(lid) == tvIntOf(rid) ? 1 : 0 }
+    if (lk == "string") { return tvStringOf(lid) == tvStringOf(rid) ? 1 : 0 }
+    if (lk == "null") { return 1 }
+    if (lk == "double") { return tvD1.getString(lid + "") == tvD1.getString(rid + "") ? 1 : 0 }
+    return lid == rid ? 1 : 0
+}
+
+// class 反射 stub：真正的注册表查询留给 Phase 3 (eval core)，
+// sub-d 只保证符号 resolve，调用路径走 fallback (println 错误)。
+
+function interpCollectFields(className: string): string {
+    return ""
+}
+
+function interpCtFieldsArray(className: string): int {
+    return newTvArray("")
+}
+
+function interpFindMethod(className: string, methodName: string): int {
+    return 0
 }
 
 // ── IR Builder Helpers ───────────────────────────────────────
