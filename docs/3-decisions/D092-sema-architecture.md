@@ -137,11 +137,12 @@ ls bootstrap/sema*.ss bootstrap/const_eval*.ss bootstrap/interp*.ss 2>&1
 - `genValCtNewExpr(id)` 改造：分配新 tvId，`tvKind="object"`，`tvI1=classAstNodeId`，`tvMap` 初始化字段值
 - `genValCtMemberAccess(id)` 改造：通过 `classAstNodeId` 查 `classFields` 注册表拿字段定义，通过 `tvMap[name]` 拿字段值
 - `genValCtMethodCall(id)` 改造：通过 `classAstNodeId` 查 `classMethods` 拿方法 AST 节点 ID，递归 `genStmt(methodBody)` 在 comptime 模式下求值
+- method resolution state 通过新增 `comptimeMethodClassStack: Array<string>` 承载：super 调用时 push 父类名入栈，方法调用返回后 pop（替代被删的 `interpCurrentMethodClass` / `interpLastFoundMethodClass`）
 - 验证：`comptime { class Foo { x: int }; const f = new Foo(x: 42); return f.x }` → 42
 
 ### Phase 7：enum / try / 闭包 在 SEMA 中 eval
 
-- `ENUM_DECL` 进 dispatcher case：comptime 模式下注册到 checker **已有**的 `enumValues` 表（共享，不自建 enum 注册表）
+- `ENUM_DECL` 进 dispatcher case：comptime 模式下注册到 checker **已有**的 `enumValues` / `enumTypes` 表（共享，不自建 enum 值表）。**注意**：`enumNodes` 注册表在 clean slate 后缺失于 `codegen.ss` 和 `gen_class.ss`（`codegen.ss:68-69` 只有 `enumValues` / `enumTypes`），下一轮 Execute 必须先新建 `let enumNodes = ""` 注册表（存储 enum AST 节点 ID 列表），然后 dispatcher case 才能通过 `enumAstNodeId` 访问 enum 定义
 - `TRY` / `THROW` 进 dispatcher case：comptime 模式下用 codegen.ss 内部的 mode flag 控制异常传播（原 `interpShouldStop` 的变量定义位置从 `interp.ss` 迁到 `codegen.ss`）
 - 闭包：`tvKind="fn"`，`tvI1=fnAstId`，`tvMap=捕获的 comptimeConsts 快照`
 
@@ -163,15 +164,18 @@ ls bootstrap/sema*.ss bootstrap/const_eval*.ss bootstrap/interp*.ss 2>&1
 | `interpAsInt/Str/Bool(id)` | `tvI1/tvS1.getXxx(id + "")` |
 | `interpGetField/SetField(id, name, val)` | 读写 `tvMap.get(id + "").{get/set}(name, ...)` |
 | `interpCollectFields` / `interpCtFieldsArray` | 通过 `classAstNodeId` 查 checker `classFields` 注册表 |
-| `interpClasses` / `interpClassParents` / `interpEnumValues` / `interpEnumTypes` / `interpEnumNodes` | **删除**，直接读 checker 的 `classFields` / `classParents` / `enumValues` / `enumTypes` / `enumNodes`（消除双轨制根因） |
+| `interpClasses` / `interpClassParents` / `interpEnumValues` / `interpEnumTypes` / `interpEnumNodes` | **删除**，直接读 checker 的 `classFields` / `classParents` / `enumValues` / `enumTypes` / `enumNodes`（消除双轨制根因）。**`enumNodes` 例外**：clean slate 后 `codegen.ss:68-69` 只有 `enumValues` / `enumTypes`，无 `enumNodes`，下一轮 Execute 必须先在 `codegen.ss` 或 `gen_class.ss` 新建 `let enumNodes = ""` 注册表（存储 enum AST 节点 ID 列表），然后才能替换 `interpEnumNodes` |
 | `interpFindMethod` | 通过 `classAstNodeId` 查 `classMethods` 注册表 |
 | `interpCompoundOp` / `interpDoubleOp` / `interpIntOp` | `codegen.ss` 内部纯函数（无 state） |
 | `interpValEquals` / `interpTruthy` / `interpToStr` | 同上 |
 | `interpShouldStop` / `interpBreakFlag` / `interpContinueFlag` | `codegen.ss` 的 comptime mode flag（变量定义位置迁移） |
 | `interpGetComptimeIR` / `interpClearComptimeIR` / `interpGetComptimeSS` / `interpClearComptimeSS` | 接口名保留（@comptimeEmit 是 D088 §过渡策略"保留但冻结"），实现搬到 `codegen.ss`，不扩展新语义 |
-| `interpVars` | `comptimeConsts` 已存在，扩展覆盖 |
+| `interpVars` / `interpFindScopeKey` / `interpEnsureComptimeRoot` | `comptimeConsts` 承载 top-level 常量；comptime 执行栈的局部变量用新增 `comptimeScopeStack: Array<Map>` 承载；`interpFindScopeKey` 的作用域查找走栈顶向下；`interpEnsureComptimeRoot` 对应栈初始化 |
+| `interpReturnFlag` / `interpReturnVal` / `interpCheckLoopExit` | `codegen.ss` 的 `comptimeReturnFlag` / `comptimeReturnVal` / `comptimeLoopExitFlag`，和 `comptimeDepth` 同层定义，控制 comptime 中 return / 循环早退传播 |
 | `interpThisVal` | `codegen.ss` 的 comptime this 栈 |
+| `interpCurrentMethodClass` / `interpLastFoundMethodClass` | `codegen.ss` 的 `comptimeMethodClassStack: Array<string>`，super 调用时 push 父类名入栈，方法调用返回后 pop |
 | `interpBuildTypeInfo` | 通过 AST 节点 ID 查 checker 类型元数据，返回 `tvKind="type"` 的 TypedValue |
+| `interpMapSet` / `interpMapGet` / `interpMapHas` / `interpMapDelete` / `interpMapGetKeys` / `interpMapGetSize` | 在 `genValCtMethodCall` 当 `tvKind="object"` 且 `classId` 对应 Map 时 dispatch 到 `tvMap` 读写，返回 `tvKind="array"`（keys）/ `"int"`（size）/ `"bool"`（has）的新 TypedValue |
 
 ### 填洞顺序（下一轮决定，不在本 D092 锁死）
 
