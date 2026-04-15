@@ -209,9 +209,12 @@ function newTvNull(): int {
     return allocTv("null")
 }
 
-function newTvArray(): int {
+function newTvArray(initCsv: string): int {
     const id = allocTv("array")
-    tvList.set(id + "", "")
+    tvList.set(id + "", initCsv)
+    if (initCsv != "") {
+        tvI2[id] = initCsv.split(",").length()
+    }
     return id
 }
 
@@ -260,6 +263,48 @@ function interpAsStr(id: int): string {
 
 function interpAsBool(id: int): int {
     return tvIntOf(id)
+}
+
+// ── interp* value/compound delegate (D092 Phase 2 sub-b) ─────
+// 保留 interp* 前缀让 gen_exprs.ss / gen_assigns.ss / gen_stmts.ss
+// 的调用点自动 resolve，底层走 Phase 0/1 的 TypedValue 存储层。
+
+function interpNewInt(n: int): int {
+    return newTvInt(n)
+}
+
+function interpNewString(s: string): int {
+    return newTvString(s)
+}
+
+function interpNewBool(b: int): int {
+    return newTvBool(b)
+}
+
+function interpNewNull(): int {
+    return newTvNull()
+}
+
+function interpNewArray(init: string): int {
+    return newTvArray(init)
+}
+
+function interpCompoundOp(op: string, lid: int, rid: int): int {
+    if (tvKindOf(lid) == "int" && tvKindOf(rid) == "int") {
+        const a = tvIntOf(lid)
+        const b = tvIntOf(rid)
+        if (op == "Plus") { return newTvInt(a + b) }
+        if (op == "Minus") { return newTvInt(a - b) }
+        if (op == "Mul") { return newTvInt(a * b) }
+        if (op == "Div") { return newTvInt(a / b) }
+        if (op == "Mod") { return newTvInt(a % b) }
+        if (op == "BitAnd") { return newTvInt(a & b) }
+        if (op == "BitOr") { return newTvInt(a | b) }
+        if (op == "BitXor") { return newTvInt(a ^ b) }
+        if (op == "Shl") { return newTvInt(a << b) }
+        if (op == "Shr") { return newTvInt(a >> b) }
+    }
+    return newTvNull()
 }
 
 // ── IR Builder Helpers ───────────────────────────────────────
