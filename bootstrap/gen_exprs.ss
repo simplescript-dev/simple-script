@@ -3,7 +3,7 @@
 
 import { genCall, genTemplateLit, genArrowFunc, flushArrowDefs, genArrayLit } from "./gen_calls"
 import { genMethodCall, genOptionalMethodCall } from "./gen_methods"
-import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "./interp"
+import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCtFieldsArray, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "./interp"
 import { interpBuildTypeInfo } from "./gen_reflect"
 
 // ── Simple expression handlers ──────────────────────────────────
@@ -869,17 +869,22 @@ function genValCtMethodCall(id: int): int {
     }
     // User-defined method call on comptime object
     const className = interpAsStr(objPayload)
+    if (methodName == "fields") {
+        return ctVal(interpCtFieldsArray(className))
+    }
     let lookupStart = className
     if (nGetKind(objNode) == "SUPER") {
         if (interpCurrentMethodClass == "" || interpClassParents.has(interpCurrentMethodClass) != 1) {
-            println(`[comptime] 'super' invalid in '${interpCurrentMethodClass}' at line ${nGetLine(id)}:${nGetCol(id)}`)
+            println(`error: [comptime] 'super' invalid in '${interpCurrentMethodClass}' at line ${nGetLine(id)}:${nGetCol(id)}`)
+            exit(1)
             return ctVal(interpNewNull())
         }
         lookupStart = interpClassParents.getString(interpCurrentMethodClass)
     }
     const methodNode = interpFindMethod(lookupStart, methodName)
     if (methodNode == 0) {
-        println(`[comptime] no method '${methodName}' on class ${lookupStart}`)
+        println(`error: [comptime] no method '${methodName}' on class ${lookupStart} at line ${nGetLine(id)}:${nGetCol(id)}`)
+        exit(1)
         return ctVal(interpNewNull())
     }
     const ownerClass = interpLastFoundMethodClass

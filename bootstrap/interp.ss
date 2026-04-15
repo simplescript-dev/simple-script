@@ -235,6 +235,17 @@ function interpFindMethod(className: string, methodName: string): int {
     return 0
 }
 
+// Synthetic fields() for comptime objects — mirrors gen_methods.ss runtime path.
+function interpCtFieldsArray(className: string): int {
+    const arr = interpNewArray("")
+    const fieldIds = interpCollectFields(className)
+    if (fieldIds == "") { return arr }
+    for (p in fieldIds.split(",")) {
+        interpArrayPush(arr, interpNewString(nGetS1(parseInt(p))))
+    }
+    return arr
+}
+
 // ── Binary Op Helpers ────────────────────────────────────────
 
 function interpIntOp(op: string, a: int, b: int): int {
