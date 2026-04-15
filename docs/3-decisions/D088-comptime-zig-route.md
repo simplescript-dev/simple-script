@@ -201,12 +201,14 @@ function main() {
 
 | 缺失特性 | 编译器对应 | 影响 | 状态 |
 |----------|-----------|------|------|
-| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum | ✅ ac76375 |
-| destructuring (array) | genDestructureArray | `let [a, b] = arr` 不能用 | ✅ e54bb4d |
-| destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | ✅ 9d43bd6 |
-| spread (array literal) | genValCtArrayLit | `[...a, x]` 在 comptime 里不能用 | ✅ 690f3f8 |
-| spread (call args) | genValCtCall | `f(...a)` 在 comptime 里不能用 | ✅ 6e73ae8 |
-| super | genSuperCall | 继承方法调用不能用 | ✅ 本轮 |
+| ENUM_DECL | gen_stmts.ss registerEnum | comptime 里不能定义/使用 enum | [-] Blocked at d1816ab, superseded by D092 |
+| destructuring (array) | genDestructureArray | `let [a, b] = arr` 不能用 | [-] Blocked at d1816ab, superseded by D092 |
+| destructuring (object) | genDestructureObject | `let {x, y} = obj` 不能用 | [-] Blocked at d1816ab, superseded by D092 |
+| spread (array literal) | genValCtArrayLit | `[...a, x]` 在 comptime 里不能用 | [-] Blocked at d1816ab, superseded by D092 |
+| spread (call args) | genValCtCall | `f(...a)` 在 comptime 里不能用 | [-] Blocked at d1816ab, superseded by D092 |
+| super | genSuperCall | 继承方法调用不能用 | [-] Blocked at d1816ab, superseded by D092 |
+
+> **状态回写说明（D092 本轮）**：上述 ✅ 标签对应的实现位于 d1816ab 已删的 `bootstrap/interp.ss` / `bootstrap/gen_reflect.ss` / `bootstrap/gen_annotations.ss`，D 文档标签与代码现状漂移。按 `docs/2-principles.md` §P19 + §PFV 字段 1 D 文档 grep 对照规则，回写为 Blocked。语言特性（ENUM_DECL / destructuring / spread / super）本身仍是 Phase 8 待办，但实现位置从 `interp.ss` 迁到 `genExpr` dispatcher 的 comptime case，详见 `docs/3-decisions/D092-sema-architecture.md`。
 
 > **未知 expression 不再静默断流（本轮）**：原先 `genVal` 遇到未实现的 comptime expression 会 `println` 后返回 `null` 续跑，导致编译"成功"但生成的二进制行为错误。改为 `exit(1)` + 行列号，强制暴露缺口。
 >
