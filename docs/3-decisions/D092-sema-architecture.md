@@ -177,11 +177,86 @@ ls bootstrap/sema*.ss bootstrap/const_eval*.ss bootstrap/interp*.ss 2>&1
 | `interpBuildTypeInfo` | 通过 AST 节点 ID 查 checker 类型元数据，返回 `tvKind="type"` 的 TypedValue |
 | `interpMapSet` / `interpMapGet` / `interpMapHas` / `interpMapDelete` / `interpMapGetKeys` / `interpMapGetSize` | 在 `genValCtMethodCall` 当 `tvKind="object"` 且 `classId` 对应 Map 时 dispatch 到 `tvMap` 读写，返回 `tvKind="array"`（keys）/ `"int"`（size）/ `"bool"`（has）的新 TypedValue |
 
-### 填洞顺序（下一轮决定，不在本 D092 锁死）
+### 填洞顺序
+
+高阶大纲。详细 Phase 清单 + LOC 估算 + bootstrap 可验证状态见下 `## Q1 跨线路径`。
 
 1. 在 `codegen.ss` 新增 TypedValue Map 体系（`tvKind` / `tvI1..3` / `tvS1..2` / `tvD1` / `tvList` / `tvMap` / `nextTvId`）+ `newTvXxx` 构造 primitive
 2. 逐文件替换 `interpXxx` 调用（建议顺序：`codegen.ss` → `gen_exprs.ss` → `gen_stmts.ss` → `gen_decls.ss` → `gen_assigns.ss` → `gen_types.ss`），每批次后 `./build.sh bootstrap` 固定点验证
 3. Phase 6 验证例子跑通 → Phase 7 → Phase 8 case 完备性巡检
+
+## Q1 跨线路径
+
+D088 §核心验证 Q1（"有新 SS 语法能在 comptime 里跑了吗"）对应的具体 Phase 清单与 LOC 估算。`feat/d092-sema-q1` 分支多 commit PR 的完整时间线：整体跨 Q1 前不合并 `dev`，Phase 之间每个 commit 独立过 PFV。
+
+### 基线数据（2026-04-15 feat HEAD 90133f2 采样）
+
+- **56 个独立 interp\* 函数名**散落在 `bootstrap/` 7 文件（`grep -roE "interp[A-Z][A-Za-z]+" bootstrap/ | sort -u`）
+- **492 次 interp\* 调用点**（同 grep，不去重）
+- bootstrap baseline = `aborting due to 448 errors` "undefined function"（d1816ab clean slate 遗产）
+- D092 `§死引用洞的填回策略` 表覆盖 **51 函数** → **缺 5 个未覆盖**：`interpArrayPush` / `interpGetReturnFlag` / `interpGetReturnVal` / `interpId` / `interpValId`（Phase 7 或 Phase 2 合并补表）
+
+### Phase 清单
+
+| # | Phase | 内容概要 | LOC 估算 | bootstrap 状态 | 跨 Q1 |
+|---|---|---|---|---|---|
+| **0** | TypedValue 存储层 | 11 全局 + `initTypedValue` + `allocTv` + 6 构造 primitive | ~74（**已落** 90133f2） | ❌ baseline 448 RED | ❌ |
+| 1 | TypedValue getter/accessor primitive | `tvKindOf` / `tvIntOf` / `tvStringOf` / `tvBoolOf` / `tvFieldGet` / `tvFieldSet` / `tvArrayPush` / `tvArrayAt` / `tvArrayLen` / `tvKeys` / `tvHas` / `tvSize` | ~80 | ❌ baseline 仍 RED（accessor 不接 callers） | ❌ |
+| 2 | 填洞批 A（纯函数 + 控制 flag） | `interpType` / `AsInt` / `AsStr` / `AsBool` / `Truthy` / `ToStr` / `ValEquals` / `IntOp` / `DoubleOp` / `CompoundOp` + `Break` / `Continue` / `Return` / `CheckLoopExit` / `ShouldStop` flag → codegen.ss 内部函数/全局 + 跨文件 callsite 替换 | ~120 迁移 + ~200 callsite | ❓ 部分文件 GREEN（按 `codegen.ss → gen_exprs.ss → gen_stmts.ss → gen_decls.ss → gen_assigns.ss → gen_types.ss` 批次验证，看错误总数是否下降） | ❌ |
+| 3 | 填洞批 B（value 构造/读写） | `interpNewInt` / `Double` / `String` / `Bool` / `Null` / `Val` / `Array` / `Map` + `interpGetField` / `SetField` → 直接转到 Phase 0+1 primitive | ~300 callsite | ❓ | ❌ |
+| 4 | 填洞批 C（checker 注册表直读） | `interpClasses` / `ClassParents` / `EnumValues` / `EnumTypes` / `EnumNodes` / `CollectFields` / `CtFieldsArray` / `FindMethod` → 改读 `classFields` / `classParents` / `enumValues` / `enumTypes` / `classMethods`；**新建 `enumNodes` 注册表** | ~80 新 `enumNodes` + ~150 callsite | ❓ | ❌ |
+| 5 | 填洞批 D（作用域/栈/this） | `interpVars` / `FindScopeKey` / `EnsureComptimeRoot` → `comptimeScopeStack`；`interpThisVal` → comptime this 栈；`interpCurrentMethodClass` / `LastFoundMethodClass` → `comptimeMethodClassStack` | ~100 + ~120 callsite | ❓ | ❌ |
+| 6 | 填洞批 E（@comptimeEmit + Map builtin） | `interpGetComptimeIR` / `ClearComptimeIR` / `GetComptimeSS` / `ClearComptimeSS` → codegen.ss 函数（接口冻结）；Map builtin dispatch 在 `genValCtMethodCall` | ~60 + ~60 callsite | ❓ | ❌ |
+| 7 | 未覆盖 5 函数补填 | `interpArrayPush` / `GetReturnFlag` / `GetReturnVal` / `Id` / `ValId` 补填洞策略表 + callsite 替换 | ~40 + ~40 callsite | ❓ | ❌ |
+| 8 | `genExpr` / `genStmt` comptime dispatcher case 完备化 | LIT / IDENT / BINOP / UNOP / CALL / FIELD_GET / FIELD_SET / NEW / ARRAY / IF / WHILE / FOR / BLOCK / RETURN 各加 comptime case 分支，确保 `tvKind=*` 可正确产出 | ~200（分布到 `genExpr` / `genStmt`） | ✅ **baseline GREEN**（填洞完成 + dispatcher 到位，首次跑完整 `./build.sh bootstrap` 固定点） | ❌ |
+| 9 | Q1 最小例子 + 测试 | `tests/comptime/hello.ss`：`@comptime const x = 1 + 2; print(x)` + 断言 + 可能少量 dispatcher bug 修复 | ~30 测试 + ~50 修 bug | ✅ 固定点 GREEN + test pass | ✅ **跨 Q1** |
+
+**总增量估算**：~1600 行代码修改（~950 新代码 + ~650 callsite 替换）+ ~30 行测试。
+
+### 设计原则
+
+1. **每 Phase 一个 commit**，独立过 PFV（开工 PSM + 收工 VCM + simplify），commit 信息标明 `feat: D092 Phase N — ...`
+2. **Phase 0-7 允许 baseline RED**（填洞未完，bootstrap 无法 GREEN），仅用 grep 间接证据：
+   - "零新错误"（Phase 增量符号不出现在 error 输出）
+   - "错误总数单调下降"（每 Phase 完成后 `aborting due to N errors` 的 N 必须严格小于上一 Phase）
+3. **Phase 8 是 GREEN 转折点**：dispatcher case 完成后 baseline 必须 GREEN，首次跑完整 bootstrap 固定点验证
+4. **Phase 9 是 Q1 跨线**：包含最小 comptime 测试例，测试 pass = Q1 通过 = feat 分支 merge `dev`
+5. **偏差处理**：某 Phase 实际 LOC 超估算 50% 以上 → 停下回 `## Q1 跨线路径` 章节校准，不硬推
+6. **错误总数单调下降保证**：若某 Phase 结束 `grep "aborting due to"` 的数字未下降，视为 Phase 失败，回滚 commit
+
+### 前置假设
+
+- 56 独立函数 / 492 refs 是 2026-04-15 feat HEAD 90133f2 的采样值，实施时需在 PSM 字段 3 RED 重新采样
+- `§死引用洞的填回策略` 表需 Phase 7 补 5 个未覆盖函数映射（或在 Phase 2 合并补入相应批次）
+- Phase 2-7 的 "bootstrap 部分 GREEN" 取决于 callsite 替换的文件粒度——每完成一个文件跑一次 bootstrap，看错误数下降
+- Phase 8 dispatcher case 完备化可能触发 checker 注册表不一致 bug（如 `tvKind="fn"` 需 `funcParams` / `funcRetTypes` 但 checker 未锁 fn AST ID）——若发现，回 Plan 插入 Phase 8.5
+- 若 Phase 5（作用域栈）与 Phase 6（@comptimeEmit）涉及已删除的控制流不变量（`interpShouldStop` → `comptimeDepth` 联动），实施时需回 D088 §过渡策略核对
+
+### Q1 定义锚定
+
+D088 §核心验证 Q1 原文："有新 SS 语法能在 comptime 里跑了吗"。本 Plan 的"最小例子"取：
+
+```ss
+@comptime const x = 1 + 2
+function main() {
+    print(x)
+}
+```
+
+覆盖维度：
+- comptime 常量折叠（`1 + 2`）→ TypedValue `tvKind="int"` + `tvIntOf` 读取
+- comptime 结果写入 codegen 全局常量（`x`）→ CT value 降级为 LLVM i32 字面量 `3`
+- 运行期无计算 → 二进制 printf 输出 `3\n`
+
+**通过条件**：编译成功 + 运行 exit 0 + stdout 匹配 `3\n` + `./build.sh bootstrap` 固定点通过。
+
+### 与 D088 §核心验证的对应
+
+| D088 问 | Q1 跨线后答案 |
+|---|---|
+| Q1 "有新 SS 语法能在 comptime 里跑了吗" | **是**（Phase 9 最小例子通过） |
+| Q2 "根 vs 表面" | **根**（TypedValue 是 Zig Sema `Value` 的同构物，不是 shim） |
+| Q3 "是 Zig 式 SEMA 架构吗" | **是**（单一 `genExpr`/`genStmt` + TypedValue + checker 共享注册表，由 Phase 8 的 dispatcher case 统一落实） |
 
 ## 拒绝方案对比
 
