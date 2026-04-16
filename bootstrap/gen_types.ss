@@ -1,6 +1,11 @@
 // Type inference, type helpers, and method overloading for bootstrap codegen
 // Extracted from gen_exprs.ss — pure query functions (no IR emission)
 
+function getMethodName(exprId: int): string {
+    if (nGetKind(exprId) != "METHOD_CALL") { return "" }
+    return nGetS1(exprId)
+}
+
 // ── Tuple type helpers ────────────────────────────────────────
 
 function isTupleType(t: string): int {

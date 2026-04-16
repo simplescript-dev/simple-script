@@ -298,7 +298,7 @@ function genAssign(id: int) {
         // Skip if RHS is a method call on the same variable (e.g., x = x.push(v))
         // because the method may realloc the pointer, invalidating the old value
         let skipRelease = 0
-        if (nGetKind(valId) == "METHOD_CALL" && nGetKind(nGetI1(valId)) == "IDENT") {
+        if (getMethodName(valId) != "" && nGetKind(nGetI1(valId)) == "IDENT") {
             if (nGetS1(nGetI1(valId)) == name) { skipRelease = 1 }
         }
         const assignLLName = llVarName(name)

@@ -497,30 +497,22 @@ function genVarDecl(id: int) {
             setObjClass(name, newClassName)
         }
     }
-    if (nGetKind(initId) == "CALL") {
-        const callRet = funcRetTypes.getString(nGetS1(initId)) ?? ""
-        if (callRet != "" && classFields.has(callRet) == 1) {
-            setObjClass(name, callRet)
-        }
-    }
-    // Infer class from method call chain (e.g., createFoo().setBar())
-    if (nGetKind(initId) == "METHOD_CALL") {
-        const mRetType = inferType(initId)
-        if (mRetType != "" && classFields.has(mRetType) == 1) {
-            setObjClass(name, mRetType)
-        }
-    }
     // Propagate class from IDENT (let b = a where a is a class instance)
     if (nGetKind(initId) == "IDENT") {
         const srcClass = getObjClass(nGetS1(initId))
         if (srcClass != "") {
             setObjClass(name, srcClass)
         } else {
-            // Also check varTypes for class type
             const srcType = getVarType(nGetS1(initId))
             if (srcType != "" && classFields.has(srcType) == 1) {
                 setObjClass(name, srcType)
             }
+        }
+    }
+    if (getObjClass(name) == "") {
+        const retType = inferType(initId)
+        if (retType != "" && classFields.has(retType) == 1) {
+            setObjClass(name, retType)
         }
     }
     // Interface type annotation: override objClass so dispatch uses interface

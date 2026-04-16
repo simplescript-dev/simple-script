@@ -664,7 +664,7 @@ function genForIn(id: int) {
     }
 
     // D088: detect obj.fields() → compile-time unroll
-    if (nGetKind(iterableId) == "METHOD_CALL" && nGetS1(iterableId) == "fields") {
+    if (getMethodName(iterableId) == "fields") {
         const fieldsObjId = nGetI1(iterableId)
         const fieldsClass = resolveObjClass(fieldsObjId)
         if (fieldsClass != "" && classFields.has(fieldsClass) == 1) {
