@@ -166,6 +166,7 @@ function genVal(id: int): int {
         return constVal(genMemberAccess(id))
     }
     if (kind == "METHOD_CALL") {
+        pendingSuperParent = resolveSuperParent(nGetI1(id), id)
         if (comptimeDepth > 0) { return genValCtMethodCall(id) }
         if (nGetI3(id) > 0) { return constVal(genOptionalMethodCall(id)) }
         return constVal(genMethodCall(id))
@@ -866,9 +867,8 @@ function genValCtMethodCall(id: int): int {
         return ctVal(interpCtFieldsArray(className))
     }
     let lookupStart = className
-    const superParent = resolveSuperParent(objNode, id)
-    if (superParent != "") {
-        lookupStart = superParent
+    if (pendingSuperParent != "") {
+        lookupStart = pendingSuperParent
     }
     const methodNode = interpFindMethod(lookupStart, methodName)
     if (methodNode == 0) {

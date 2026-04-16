@@ -249,6 +249,8 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
 
 // ── Super method call (direct static dispatch to parent) ───────
 
+let pendingSuperParent = ""
+
 function resolveSuperParent(objNodeId: int, callNodeId: int): string {
     if (nGetKind(objNodeId) != "SUPER") { return "" }
     if (comptimeDepth > 0) {
@@ -263,7 +265,7 @@ function resolveSuperParent(objNodeId: int, callNodeId: int): string {
 }
 
 function genSuperMethodCall(method: string, argList: string): string {
-    const parentClass = classParents.getString(currentClassName)
+    const parentClass = pendingSuperParent
     // Walk from parent to find method definition
     let methodClass = parentClass
     while (methodClass != "") {
@@ -444,7 +446,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
     }
 
     // Super method call: super.method() → direct static dispatch to parent method
-    if (preObj == "" && resolveSuperParent(objId, id) != "") {
+    if (preObj == "" && pendingSuperParent != "") {
         return genSuperMethodCall(method, argList)
     }
 
