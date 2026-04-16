@@ -38,6 +38,12 @@ let gvBranchIsCtBranch = new Map()
 let gvBranchRegBridge = new Map()
 let gvBranchSharedEvals = new Map()
 
+let gsBranchList = ""
+let gsBranchCtGuard = new Map()
+let gsBranchDelegate = new Map()
+let gsBranchHasIsCt = new Map()
+let funcHasIsCt = new Map()
+
 // ── Phase classification ─────────────────────────────────────
 
 function filePhase(file: string): string {
@@ -141,6 +147,10 @@ function visitNode(nodeId: int, funcName: string, file: string) {
 
     if (kind == "CALL" || kind == "METHOD_CALL") {
         addEndCall(`${file}|${funcName}`, nGetS1(nodeId))
+    }
+
+    if (kind == "CALL" && nGetS1(nodeId) == "isCt") {
+        funcHasIsCt.set(`${file}|${funcName}`, "1")
     }
 
     if (kind == "IDENT" && nGetS1(nodeId) == "comptimeDepth") {
@@ -247,6 +257,25 @@ function subtreeHasCall(nid: int, fname: string): int {
     return 0
 }
 
+function collectKindsFromCond(condId: int, result: string): string {
+    if (condId <= 0) { return result }
+    if (nGetKind(condId) != "BINARY") { return result }
+    const op = nGetS1(condId)
+    if (op == "Eq") {
+        const li = nGetI1(condId)
+        const ri = nGetI2(condId)
+        if (li > 0 && ri > 0 && nGetKind(li) == "IDENT" && nGetS1(li) == "kind" && nGetKind(ri) == "STRING_LIT") {
+            const kn = nGetS1(ri)
+            if (result == "") { return kn }
+            return `${result};${kn}`
+        }
+        return result
+    }
+    let r = collectKindsFromCond(nGetI1(condId), result)
+    r = collectKindsFromCond(nGetI2(condId), r)
+    return r
+}
+
 function analyzeKindBody(kindName: string, thenId: int) {
     if (thenId <= 0) { return }
     let stmts = ""
@@ -299,6 +328,60 @@ function analyzeGenValBranches(bodyId: int) {
     }
 }
 
+// ── genStmt branch analysis ─────────────────────────────────
+
+function analyzeStmtKindBody(kindName: string, thenId: int) {
+    if (thenId <= 0) { return }
+    let stmts = ""
+    if (nGetKind(thenId) == "BLOCK") { stmts = nGetList(thenId) }
+    else { stmts = `${thenId}` }
+    if (stmts == "") { return }
+    const parts = stmts.split(",")
+    for (sp in parts) {
+        const sid = parseInt(sp)
+        if (sid <= 0) { continue }
+        if (nGetKind(sid) == "IF" && subtreeHasIdent(nGetI1(sid), "comptimeDepth") == 1) {
+            gsBranchCtGuard.set(kindName, "1")
+        }
+        if (subtreeHasCall(sid, "isCt") == 1) {
+            gsBranchHasIsCt.set(kindName, "1")
+        }
+        if (nGetKind(sid) == "EXPR_STMT") {
+            const esId = nGetI1(sid)
+            if (esId > 0 && nGetKind(esId) == "CALL") {
+                const cn = nGetS1(esId)
+                if (cn.startsWith("gen") == 1 || cn.startsWith("run") == 1 || cn.startsWith("register") == 1) {
+                    if (gsBranchDelegate.has(kindName) != 1) {
+                        gsBranchDelegate.set(kindName, cn)
+                    }
+                }
+            }
+        }
+    }
+}
+
+function analyzeGenStmtBranches(bodyId: int) {
+    if (bodyId <= 0 || nGetKind(bodyId) != "BLOCK") { return }
+    const stmtList = nGetList(bodyId)
+    if (stmtList == "") { return }
+    const stmts = stmtList.split(",")
+    for (s in stmts) {
+        const sid = parseInt(s)
+        if (sid <= 0 || nGetKind(sid) != "IF") { continue }
+        const condId = nGetI1(sid)
+        if (condId <= 0) { continue }
+        const kindNames = collectKindsFromCond(condId, "")
+        if (kindNames == "") { continue }
+        const knParts = kindNames.split(";")
+        for (kn in knParts) {
+            if (kn == "") { continue }
+            if (gsBranchList == "") { gsBranchList = kn }
+            else if ((`${gsBranchList};`).contains(`${kn};`) != 1) { gsBranchList = `${gsBranchList};${kn}` }
+            analyzeStmtKindBody(kn, nGetI2(sid))
+        }
+    }
+}
+
 // ── File scanning ────────────────────────────────────────────
 
 let fileList = ""
@@ -339,6 +422,9 @@ function processFile(path: string) {
             const body = nGetI1(stmtId)
             if (fname == "genVal" && path.contains("gen_exprs") == 1) {
                 analyzeGenValBranches(body)
+            }
+            if (fname == "genStmt" && path.contains("gen_stmts") == 1) {
+                analyzeGenStmtBranches(body)
             }
             if (body > 0) { visitNode(body, fname, path) }
         }
@@ -860,6 +946,83 @@ function printOperandDrivenAudit() {
     }
 }
 
+// ── genStmt handler audit ───────────────────────────────────
+
+function classifyStmtKind(kindName: string): string {
+    const hasGuard = gsBranchCtGuard.has(kindName) == 1 ? 1 : 0
+    const hasIsCt = gsBranchHasIsCt.has(kindName) == 1 ? 1 : 0
+    let delReachEmit = 0
+    let delCtDepth = 0
+    let delIsCt = 0
+    if (gsBranchDelegate.has(kindName) == 1) {
+        const delName = gsBranchDelegate.getString(kindName)
+        if (funcNameToKey.has(delName) == 1) {
+            const delKey = funcNameToKey.getString(delName)
+            delReachEmit = funcReachEmit.has(delKey) == 1 ? 1 : 0
+            delCtDepth = funcCtDepthRefs.has(delKey) == 1 ? parseInt(funcCtDepthRefs.getString(delKey)) : 0
+            delIsCt = funcHasIsCt.has(delKey) == 1 ? 1 : 0
+        }
+    }
+    if (hasIsCt == 1 || delIsCt == 1) { return "zig" }
+    if (hasGuard == 1 || delCtDepth > 0) { return "dual" }
+    if (delReachEmit == 1) { return "missing" }
+    return "simple"
+}
+
+function printStmtHandlerAudit() {
+    if (gsBranchList == "") { return }
+    println("")
+    println("=== Zig SEMA 语句处理审计 (genStmt 逐 kind) ===")
+    println("(物理指标: emitIR 可达性, interp* 可达性, comptimeDepth 引用, isCt 调用)")
+    println("(指标不可被函数重命名或嵌套深度规避)")
+    println("")
+    const branches = gsBranchList.split(";")
+    let missingCount = 0
+    let dualCount = 0
+    let zigCount = 0
+    let simpleCount = 0
+    let missingKinds = ""
+    for (b in branches) {
+        if (b == "") { continue }
+        const cls = classifyStmtKind(b)
+        const hasGuard = gsBranchCtGuard.has(b) == 1 ? "ctDepth" : "-"
+        const hasIsCt = gsBranchHasIsCt.has(b) == 1 ? "Y" : "-"
+        let delInfo = "-"
+        if (gsBranchDelegate.has(b) == 1) {
+            const delName = gsBranchDelegate.getString(b)
+            let delClass = "?"
+            let delCtD = 0
+            let delIsCtStr = "-"
+            if (funcNameToKey.has(delName) == 1) {
+                const delKey = funcNameToKey.getString(delName)
+                delClass = getFuncClass(delKey)
+                delCtD = funcCtDepthRefs.has(delKey) == 1 ? parseInt(funcCtDepthRefs.getString(delKey)) : 0
+                delIsCtStr = funcHasIsCt.has(delKey) == 1 ? "Y" : "-"
+            }
+            delInfo = `${delName}[${delClass},ctD:${delCtD},isCt:${delIsCtStr}]`
+        }
+        if (cls == "missing") {
+            missingCount = missingCount + 1
+            if (missingKinds == "") { missingKinds = b } else { missingKinds = `${missingKinds} ${b}` }
+        } else if (cls == "dual") {
+            dualCount = dualCount + 1
+        } else if (cls == "zig") {
+            zigCount = zigCount + 1
+        } else {
+            simpleCount = simpleCount + 1
+        }
+        println(`  ${padRight(b, 22)} 守卫:${padRight(hasGuard, 8)} isCt:${hasIsCt}  委托:${padRight(delInfo, 45)} → ${cls}`)
+    }
+    println("")
+    println(`  missing (无 comptime 路径): ${missingCount}   ← 需要实现`)
+    println(`  dual (comptimeDepth 驱动):  ${dualCount}`)
+    println(`  zig (isCt 驱动):            ${zigCount}   ← 正模式`)
+    println(`  simple (无 RT 效果):         ${simpleCount}`)
+    if (missingKinds != "") {
+        println(`  missing kinds: ${missingKinds}`)
+    }
+}
+
 function main() {
     collectSSFiles("bootstrap")
     println(`Scanning ${fileCount} bootstrap files...`)
@@ -876,4 +1039,5 @@ function main() {
     printZigConformance()
     printUnfakeableMetrics()
     printOperandDrivenAudit()
+    printStmtHandlerAudit()
 }
