@@ -320,9 +320,78 @@ function genVal(id: int): int {
     }
     if (kind == "METHOD_CALL") {
         pendingSuperParent = resolveSuperParent(nGetI1(id), id)
-        if (comptimeDepth > 0) { return genValCtMethodCall(id) }
-        if (nGetI3(id) > 0) { return constVal(genOptionalMethodCall(id)) }
-        return constVal(genMethodCall(id))
+        const mcMethod = nGetS1(id)
+        const mcObjNode = nGetI1(id)
+        if (nGetKind(mcObjNode) == "IDENT") {
+            const mcObjName = nGetS1(mcObjNode)
+            if (comptimeDepth > 0 && interpEnumNodes.has(mcObjName) == 1) {
+                if (mcMethod == "values") { return ctVal(ctEnumListMethod(mcObjName, 0)) }
+                if (mcMethod == "names") { return ctVal(ctEnumListMethod(mcObjName, 1)) }
+                if (mcMethod == "valueOf") { return ctVal(ctEnumValueOfMethod(mcObjName, id)) }
+            }
+            if (comptimeDepth == 0 && enumReady == 1 && enumDeclNodes.has(mcObjName) == 1) {
+                if (mcMethod == "values") { return constVal(genEnumValues(mcObjName)) }
+                if (mcMethod == "names") { return constVal(genEnumNames(mcObjName)) }
+                if (mcMethod == "valueOf") { return constVal(genEnumValueOf(mcObjName, nGetList(id))) }
+            }
+            if (comptimeDepth == 0) {
+                if (mcObjName == "Thread" && mcMethod == "start") { return constVal(genMethodCall(id)) }
+                if (getVarType(mcObjName) == "" && classFields.has(mcObjName) == 1) { return constVal(genMethodCall(id)) }
+            }
+        }
+        if (comptimeDepth == 0 && pendingSuperParent != "") { return constVal(genMethodCall(id)) }
+        const mcObj = genVal(mcObjNode)
+        let mcObjReg = ""
+        if (isCt(mcObj) == 0) { mcObjReg = reg(mcObj) }
+        const mcArgList = nGetList(id)
+        const mcSavedCPR = callPreRegs
+        callPreRegs = new Map()
+        let mcCtArgs: Array<string> = []
+        let mcCtNamed = new Map()
+        let mcHasNamed = 0
+        if (mcArgList != "") {
+            const mcArgParts = mcArgList.split(",")
+            for (mcap in mcArgParts) {
+                const mcArgId = parseInt(mcap)
+                if (mcArgId > 0) {
+                    if (nGetKind(mcArgId) == "NAMED_ARG") {
+                        mcHasNamed = 1
+                        const mcnv = genVal(nGetI1(mcArgId))
+                        if (isCt(mcnv) == 1) {
+                            mcCtNamed.set(nGetS1(mcArgId), `${payload(mcnv)}`)
+                        } else {
+                            mcCtNamed.set(nGetS1(mcArgId), `${interpNewNull()}`)
+                            callPreRegs.set(`${mcArgId}`, reg(mcnv))
+                        }
+                    } else {
+                        const mcav = genVal(mcArgId)
+                        if (isCt(mcav) == 1) {
+                            mcCtArgs = mcCtArgs.push(`${payload(mcav)}`)
+                        } else {
+                            mcCtArgs = mcCtArgs.push(`${interpNewNull()}`)
+                            callPreRegs.set(`${mcArgId}`, reg(mcav))
+                        }
+                    }
+                }
+            }
+        }
+        if (comptimeDepth > 0) {
+            callPreRegs = mcSavedCPR
+            if (isCt(mcObj) == 0) {
+                println(`[comptime] cannot call method '${mcMethod}' on runtime value`)
+                return ctVal(interpNewNull())
+            }
+            return ctMethodCallDispatch(id, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
+        }
+        if (nGetI3(id) > 0) {
+            callPreRegs.set(`${mcObjNode}`, mcObjReg)
+            const mcOptResult = genOptionalMethodCall(id)
+            callPreRegs = mcSavedCPR
+            return constVal(mcOptResult)
+        }
+        const mcResult = genMethodCall(id, mcObjReg)
+        callPreRegs = mcSavedCPR
+        return constVal(mcResult)
     }
     if (kind == "TEMPLATE_LIT") {
         const fragList = nGetList(id)
@@ -1010,48 +1079,15 @@ function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedA
     return ctVal(objId)
 }
 
-// Comptime METHOD_CALL: method calls on comptime values
-function genValCtMethodCall(id: int): int {
-    const methodName = nGetS1(id)
-    const objNode = nGetI1(id)
-
-    // Enum static methods
-    if (nGetKind(objNode) == "IDENT" && interpEnumNodes.has(nGetS1(objNode)) == 1) {
-        const eName = nGetS1(objNode)
-        if (methodName == "values") { return ctVal(ctEnumListMethod(eName, 0)) }
-        if (methodName == "names") { return ctVal(ctEnumListMethod(eName, 1)) }
-        if (methodName == "valueOf") { return ctVal(ctEnumValueOfMethod(eName, id)) }
-    }
-
-    const objVal = genVal(objNode)
-    if (isCt(objVal) == 0) {
-        println(`[comptime] cannot call method '${methodName}' on runtime value`)
-        return ctVal(interpNewNull())
-    }
-    const objPayload = payload(objVal)
+function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctArgVals: Array<string>, ctNamedArgs: Map, ctHasNamed: int): int {
     const objType = interpType(objPayload)
-
-    // Built-in type methods (string, array, map)
     if (objType == "string" || objType == "array" || objType == "map") {
-        const bArgList = nGetList(id)
-        let bArgs: Array<string> = []
-        if (bArgList != "") {
-            const bArgIds = bArgList.split(",")
-            let bi = 0
-            while (bi < bArgIds.length()) {
-                const bav = genVal(parseInt(bArgIds[bi]))
-                bArgs = bArgs.push(`${isCt(bav) == 1 ? payload(bav) : interpNewNull()}`)
-                bi = bi + 1
-            }
-        }
-        return ctVal(ctBuiltinMethod(objPayload, methodName, bArgs))
+        return ctVal(ctBuiltinMethod(objPayload, methodName, ctArgVals))
     }
-
     if (objType != "object") {
         println(`[comptime] cannot call method '${methodName}' on ${objType}`)
         return ctVal(interpNewNull())
     }
-    // User-defined method call on comptime object
     const className = interpAsStr(objPayload)
     if (methodName == "fields") {
         return ctVal(interpCtFieldsArray(className))
@@ -1067,28 +1103,6 @@ function genValCtMethodCall(id: int): int {
         return ctVal(interpNewNull())
     }
     const ownerClass = interpLastFoundMethodClass
-    // Evaluate arguments
-    const mArgList = nGetList(id)
-    let mArgVals: Array<string> = []
-    let mNamedArgs = new Map()
-    let mHasNamed = 0
-    if (mArgList != "") {
-        const mArgIds = mArgList.split(",")
-        let mi = 0
-        while (mi < mArgIds.length()) {
-            const mArgNodeId = parseInt(mArgIds[mi])
-            if (nGetKind(mArgNodeId) == "NAMED_ARG") {
-                mHasNamed = 1
-                const mnv = genVal(nGetI1(mArgNodeId))
-                mNamedArgs.set(nGetS1(mArgNodeId), `${isCt(mnv) == 1 ? payload(mnv) : interpNewNull()}`)
-            } else {
-                const mav = genVal(mArgNodeId)
-                mArgVals = mArgVals.push(`${isCt(mav) == 1 ? payload(mav) : interpNewNull()}`)
-            }
-            mi = mi + 1
-        }
-    }
-    // Save state and set this
     const savedThis = interpThisVal
     const savedFunc = currentFunc
     const savedBreak = interpBreakFlag
@@ -1103,7 +1117,6 @@ function genValCtMethodCall(id: int): int {
     ctCallCounter = ctCallCounter + 1
     currentFunc = `__ct_${ownerClass}_${methodName}_${ctCallCounter}`
     ctScopeStack = ctScopeStack.push(currentFunc)
-    // Bind parameters
     const mParamList = nGetList(methodNode)
     if (mParamList != "") {
         const mParams = mParamList.split(",")
@@ -1112,10 +1125,10 @@ function genValCtMethodCall(id: int): int {
         while (mPi < mParams.length()) {
             const mPid = parseInt(mParams[mPi])
             const mPname = nGetS1(mPid)
-            if (mHasNamed == 1 && mNamedArgs.has(mPname) == 1) {
-                ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(parseInt(mNamedArgs.getString(mPname)))}`)
-            } else if (mPosIdx < mArgVals.length()) {
-                ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(parseInt(mArgVals[mPosIdx]))}`)
+            if (ctHasNamed == 1 && ctNamedArgs.has(mPname) == 1) {
+                ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(parseInt(ctNamedArgs.getString(mPname)))}`)
+            } else if (mPosIdx < ctArgVals.length()) {
+                ctVars.set(`${currentFunc}:${mPname}`, `${ctVal(parseInt(ctArgVals[mPosIdx]))}`)
                 mPosIdx = mPosIdx + 1
             } else {
                 const mDefId = nGetI1(mPid)
@@ -1129,7 +1142,6 @@ function genValCtMethodCall(id: int): int {
             mPi = mPi + 1
         }
     }
-    // Execute body
     const mBodyId = nGetI1(methodNode)
     if (mBodyId > 0) { genBlock(mBodyId) }
     let mResult = interpNewNull()
