@@ -702,10 +702,10 @@ function emitFieldLoad(className: string, objReg: string, field: string): string
 }
 
 // obj?.field — if obj is null, return default; otherwise access normally
-function genOptionalMemberAccess(id: int): string {
+function genOptionalMemberAccess(id: int, preObj: string = ""): string {
     const objId = nGetI1(id)
     const member = nGetS1(id)
-    const objVal = genExpr(objId)
+    const objVal = preObj != "" ? preObj : genExpr(objId)
     const retType = inferType(id)
     const llRetType = ssTypeToLLVM(retType)
 
@@ -741,7 +741,7 @@ function genOptionalMemberAccess(id: int): string {
     return finalR
 }
 
-function genMemberAccess(id: int): string {
+function genMemberAccess(id: int, preObj: string = ""): string {
     const member = nGetS1(id)
     const objId = nGetI1(id)
     const objKind = nGetKind(objId)
@@ -777,11 +777,11 @@ function genMemberAccess(id: int): string {
     if (member == "value" && objKind == "IDENT") {
         const rvt = getVarType(nGetS1(objId))
         if (rvt.startsWith("Ref<") == 1) {
-            const refObj = genExpr(objId)
+            const refObj = preObj != "" ? preObj : genExpr(objId)
             return emitRefValueRead(refObj, refElemType(rvt))
         }
     }
-    const objVal = genExpr(objId)
+    const objVal = preObj != "" ? preObj : genExpr(objId)
     // D082: Ref<T>.value read (non-IDENT object, e.g., method call result)
     if (member == "value") {
         const roc = resolveObjClass(objId)

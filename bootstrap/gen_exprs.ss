@@ -159,9 +159,45 @@ function genVal(id: int): int {
         return constVal(genNewExpr(id))
     }
     if (kind == "MEMBER_ACCESS") {
-        if (comptimeDepth > 0) { return genValCtMemberAccess(id) }
-        if (nGetI3(id) > 0) { return constVal(genOptionalMemberAccess(id)) }
-        return constVal(genMemberAccess(id))
+        const member = nGetS1(id)
+        const objNode = nGetI1(id)
+        if (nGetKind(objNode) == "IDENT") {
+            const eName = nGetS1(objNode)
+            const enumKey = `${eName}.${member}`
+            if (interpEnumValues.has(enumKey) == 1) {
+                if (interpEnumTypes.has(eName) == 1) {
+                    return ctVal(interpNewString(interpEnumValues.getString(enumKey)))
+                }
+                return ctVal(interpNewInt(parseInt(interpEnumValues.getString(enumKey))))
+            }
+            if (enumReady == 1 && enumValues.has(enumKey) == 1) {
+                if (enumTypes.has(eName) == 1) {
+                    return ctVal(interpNewString(enumValues.getString(enumKey)))
+                }
+                return ctVal(interpNewInt(parseInt(enumValues.getString(enumKey))))
+            }
+        }
+        const obj = genVal(objNode)
+        if (isCt(obj) == 1) {
+            const objPayload = payload(obj)
+            if (interpType(objPayload) == "object") {
+                return ctVal(interpGetField(objPayload, member))
+            }
+            if (member == "length" && interpType(objPayload) == "string") {
+                return ctVal(interpNewInt(interpAsStr(objPayload).length()))
+            }
+            if (member == "length" && interpType(objPayload) == "array") {
+                const items = interpAsStr(objPayload)
+                if (items == "") { return ctVal(interpNewInt(0)) }
+                return ctVal(interpNewInt(items.split(",").length()))
+            }
+        }
+        if (comptimeDepth > 0) {
+            println(`[comptime] cannot access field '${member}' on ${isCt(obj) == 1 ? interpType(payload(obj)) : "runtime"}`)
+            return ctVal(interpNewNull())
+        }
+        if (nGetI3(id) > 0) { return constVal(genOptionalMemberAccess(id, reg(obj))) }
+        return constVal(genMemberAccess(id, reg(obj)))
     }
     if (kind == "METHOD_CALL") {
         pendingSuperParent = resolveSuperParent(nGetI1(id), id)
@@ -903,48 +939,6 @@ function genValCtNewExpr(id: int): int {
         }
     }
     return ctVal(objId)
-}
-
-// Comptime MEMBER_ACCESS: field access on comptime objects
-function genValCtMemberAccess(id: int): int {
-    const member = nGetS1(id)
-    const objNode = nGetI1(id)
-    // Enum value access
-    if (nGetKind(objNode) == "IDENT") {
-        const eName = nGetS1(objNode)
-        const enumKey = `${eName}.${member}`
-        if (interpEnumValues.has(enumKey) == 1) {
-            if (interpEnumTypes.has(eName) == 1) {
-                return ctVal(interpNewString(interpEnumValues.getString(enumKey)))
-            }
-            return ctVal(interpNewInt(parseInt(interpEnumValues.getString(enumKey))))
-        }
-        // Also check codegen-side enum values
-        if (enumReady == 1 && enumValues.has(enumKey) == 1) {
-            if (enumTypes.has(eName) == 1) {
-                return ctVal(interpNewString(enumValues.getString(enumKey)))
-            }
-            return ctVal(interpNewInt(parseInt(enumValues.getString(enumKey))))
-        }
-    }
-    const objVal = genVal(objNode)
-    if (isCt(objVal) == 1) {
-        const objPayload = payload(objVal)
-        if (interpType(objPayload) == "object") {
-            return ctVal(interpGetField(objPayload, member))
-        }
-        // String/array length
-        if (member == "length" && interpType(objPayload) == "string") {
-            return ctVal(interpNewInt(interpAsStr(objPayload).length()))
-        }
-        if (member == "length" && interpType(objPayload) == "array") {
-            const items = interpAsStr(objPayload)
-            if (items == "") { return ctVal(interpNewInt(0)) }
-            return ctVal(interpNewInt(items.split(",").length()))
-        }
-    }
-    println(`[comptime] cannot access field '${member}' on ${isCt(objVal) == 1 ? interpType(payload(objVal)) : "runtime"}`)
-    return ctVal(interpNewNull())
 }
 
 // Comptime METHOD_CALL: method calls on comptime values
