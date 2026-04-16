@@ -204,7 +204,37 @@ function genVal(id: int): int {
         return constVal(genArrowFunc(id))
     }
     if (kind == "INDEX_ACCESS") {
-        if (comptimeDepth > 0) { return genValCtIndexAccess(id) }
+        if (comptimeDepth > 0) {
+            const ctObj = genVal(nGetI1(id))
+            const ctIdx = genVal(nGetI2(id))
+            if (isCt(ctObj) == 1 && isCt(ctIdx) == 1) {
+                const objP = payload(ctObj)
+                const ot = interpType(objP)
+                if (ot == "array") {
+                    const items = interpAsStr(objP)
+                    if (items == "") { return ctVal(interpNewNull()) }
+                    const idx = interpAsInt(payload(ctIdx))
+                    const itemParts = items.split(",")
+                    if (idx >= 0 && idx < itemParts.length()) {
+                        return ctVal(parseInt(itemParts[idx]))
+                    }
+                    return ctVal(interpNewNull())
+                }
+                if (ot == "object") {
+                    const fieldName = interpAsStr(payload(ctIdx))
+                    return ctVal(interpGetField(objP, fieldName))
+                }
+                if (ot == "string") {
+                    const s = interpAsStr(objP)
+                    const idx = interpAsInt(payload(ctIdx))
+                    if (idx >= 0 && idx < s.length()) {
+                        return ctVal(interpNewString(s.charAt(idx)))
+                    }
+                    return ctVal(interpNewString(""))
+                }
+            }
+            return ctVal(interpNewNull())
+        }
         return constVal(genIndexAccess(id))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
@@ -1009,41 +1039,6 @@ function genValCtArrayLit(id: int): int {
         }
     }
     return ctVal(arr)
-}
-
-// Comptime INDEX_ACCESS: array/object indexing
-function genValCtIndexAccess(id: int): int {
-    const objVal = genVal(nGetI1(id))
-    const idxVal = genVal(nGetI2(id))
-    if (isCt(objVal) == 1 && isCt(idxVal) == 1) {
-        const objPayload = payload(objVal)
-        const ot = interpType(objPayload)
-        if (ot == "array") {
-            const items = interpAsStr(objPayload)
-            if (items == "") { return ctVal(interpNewNull()) }
-            const idx = interpAsInt(payload(idxVal))
-            const itemParts = items.split(",")
-            if (idx >= 0 && idx < itemParts.length()) {
-                return ctVal(parseInt(itemParts[idx]))
-            }
-            return ctVal(interpNewNull())
-        }
-        if (ot == "object") {
-            // obj["fieldName"] bracket notation
-            const fieldName = interpAsStr(payload(idxVal))
-            return ctVal(interpGetField(objPayload, fieldName))
-        }
-        if (ot == "string") {
-            // string[idx] → charAt
-            const s = interpAsStr(objPayload)
-            const idx = interpAsInt(payload(idxVal))
-            if (idx >= 0 && idx < s.length()) {
-                return ctVal(interpNewString(s.charAt(idx)))
-            }
-            return ctVal(interpNewString(""))
-        }
-    }
-    return ctVal(interpNewNull())
 }
 
 // Comptime enum helpers
