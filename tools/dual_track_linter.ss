@@ -1,7 +1,7 @@
 // tools/dual_track_linter.ss
 //
 // D093 双轨代码检测器 —— 守护 "一份求值逻辑" 第一性需求。
-// 不可伪造指标:同一 AST kind 在 codegen 阶段被几个独立函数 dispatch = 双轨数。
+// 不可伪造指标:调用图可达性——单 kind helper 传播给 caller，提取 helper 不改变双轨数。
 //
 // 用法: bin/ss run tools/dual_track_linter.ss
 
@@ -19,6 +19,9 @@ let comptimeBranchCount = new Map()
 let kindList = ""
 let totalComptimeBranches = 0
 let currentPhase = ""
+let funcKindSet = new Map()
+let funcCallKeyList = ""
+let funcCallers = new Map()
 
 // ── Phase classification ─────────────────────────────────────
 
@@ -50,6 +53,14 @@ function addHandler(kind: string, funcName: string, file: string, line: int) {
     } else {
         kindHandlers.set(kind, entry)
     }
+    const fk = `${file}|${funcName}`
+    if (funcKindSet.has(fk) == 1) {
+        if (setContainsExact(funcKindSet.getString(fk), kind) != 1) {
+            funcKindSet.set(fk, `${funcKindSet.getString(fk)},${kind}`)
+        }
+    } else {
+        funcKindSet.set(fk, kind)
+    }
 }
 
 function addEndCall(funcKey: string, callName: string) {
@@ -59,6 +70,7 @@ function addEndCall(funcKey: string, callName: string) {
         funcEndCalls.set(funcKey, `${prev},${callName}`)
     } else {
         funcEndCalls.set(funcKey, callName)
+        if (funcCallKeyList == "") { funcCallKeyList = funcKey } else { funcCallKeyList = `${funcCallKeyList}\n${funcKey}` }
     }
 }
 
@@ -84,7 +96,7 @@ function visitNode(nodeId: int, funcName: string, file: string) {
     if (nodeId <= 0) { return }
     const kind = nGetKind(nodeId)
 
-    if (kind == "BINARY" && nGetS1(nodeId) == "Eq") {
+    if (kind == "BINARY" && (nGetS1(nodeId) == "Eq" || nGetS1(nodeId) == "Ne")) {
         const leftId = nGetI1(nodeId)
         const rightId = nGetI2(nodeId)
         if (rightId > 0 && nGetKind(rightId) == "STRING_LIT") {
@@ -242,6 +254,7 @@ function filterByPhase(entries: string, phase: string): string {
 
 function formatEntry(entry: string): string {
     const segs = entry.split("|")
+    if (segs[2] == "0") { return `${segs[0]}@${segs[1]}(propagated)` }
     return `${segs[0]}@${segs[1]}:${segs[2]}`
 }
 
@@ -281,6 +294,99 @@ function checkEndTrackSplit(entries: string): int {
         if (setContainsPrefix(calls, "interp") == 1) { anyInterp = 1 }
     }
     return (anyEmit == 1 && anyInterp == 1) ? 1 : 0
+}
+
+function entryListHasFunc(entries: string, funcName: string, file: string): int {
+    const parts = entries.split(";")
+    for (p in parts) {
+        if (p == "") { continue }
+        const segs = p.split("|")
+        if (segs[0] == funcName && segs[1] == file) { return 1 }
+    }
+    return 0
+}
+
+function buildCallerGraph() {
+    if (funcCallKeyList == "") { return }
+    const keys = funcCallKeyList.split("\n")
+    for (key in keys) {
+        if (key == "") { continue }
+        const kParts = key.split("|")
+        const callerFile = kParts[0]
+        const callerFunc = kParts[1]
+        const calls = funcEndCalls.getString(key)
+        const callParts = calls.split(",")
+        for (callName in callParts) {
+            if (callName == "") { continue }
+            const callerEntry = `${callerFunc}|${callerFile}`
+            if (funcCallers.has(callName) == 1) {
+                const prev = funcCallers.getString(callName)
+                if ((`${prev}\n`).contains(`${callerEntry}\n`) != 1) {
+                    funcCallers.set(callName, `${prev}\n${callerEntry}`)
+                }
+            } else {
+                funcCallers.set(callName, callerEntry)
+            }
+        }
+    }
+}
+
+function propagateHandlers() {
+    buildCallerGraph()
+    const kinds = kindList.split(",")
+    for (k in kinds) {
+        if (k == "") { continue }
+        if (kindHandlers.has(k) != 1) { continue }
+        let entries = kindHandlers.getString(k)
+        let propagated = ""
+        let changed = 1
+        let iters = 0
+        while (changed == 1 && iters < 10) {
+            changed = 0
+            iters = iters + 1
+            let newEntries = ""
+            const parts = entries.split(";")
+            for (p in parts) {
+                if (p == "") { continue }
+                const segs = p.split("|")
+                const funcName = segs[0]
+                const file = segs[1]
+                const fk = `${file}|${funcName}`
+                let isSingle = 0
+                if (propagated == "" || (`\n${propagated}\n`).contains(`\n${fk}\n`) != 1) {
+                    if (funcKindSet.has(fk) == 1) {
+                        const kindSetStr = funcKindSet.getString(fk)
+                        if (kindSetStr.contains(",") != 1 && kindSetStr == k) {
+                            isSingle = 1
+                        }
+                    }
+                }
+                if (isSingle == 1 && funcCallers.has(funcName) == 1) {
+                    changed = 1
+                    if (propagated == "") { propagated = fk } else { propagated = `${propagated}\n${fk}` }
+                    const callers = funcCallers.getString(funcName)
+                    const callerParts = callers.split("\n")
+                    for (cp in callerParts) {
+                        if (cp == "") { continue }
+                        const cSegs = cp.split("|")
+                        const callerFunc = cSegs[0]
+                        const callerFile = cSegs[1]
+                        const callerPhase = filePhase(callerFile)
+                        const callerEntry = `${callerFunc}|${callerFile}|0|${callerPhase}`
+                        if (newEntries == "") {
+                            newEntries = callerEntry
+                        } else if (entryListHasFunc(newEntries, callerFunc, callerFile) != 1) {
+                            newEntries = `${newEntries};${callerEntry}`
+                        }
+                    }
+                } else {
+                    if (newEntries == "") { newEntries = p } else { newEntries = `${newEntries};${p}` }
+                }
+            }
+            entries = newEntries
+        }
+        kindHandlers.set(k, entries)
+    }
 }
 
 function printHeatmap() {
@@ -337,5 +443,6 @@ function main() {
         processFile(f)
     }
     println("")
+    propagateHandlers()
     printHeatmap()
 }
