@@ -215,7 +215,67 @@ function genVal(id: int): int {
         return constVal(genTemplateLit(id))
     }
     if (kind == "ARRAY_LIT") {
-        if (comptimeDepth > 0) { return genValCtArrayLit(id) }
+        const elemList = nGetList(id)
+        if (elemList == "") {
+            if (comptimeDepth > 0) { return ctVal(interpNewArray("")) }
+            return constVal(genArrayLit(id))
+        }
+        let allCt = 1
+        const arrParts = elemList.split(",")
+        let elemVals = new Map()
+        for (ap in arrParts) {
+            const elemId = parseInt(ap)
+            if (elemId > 0) {
+                if (nGetKind(elemId) == "SPREAD_ELEM") {
+                    const sv = genVal(nGetI1(elemId))
+                    elemVals.set(`${elemId}`, `${sv}`)
+                    if (isCt(sv) != 1) { allCt = 0 }
+                } else {
+                    const ev = genVal(elemId)
+                    elemVals.set(`${elemId}`, `${ev}`)
+                    if (isCt(ev) != 1) { allCt = 0 }
+                }
+            }
+        }
+        if (comptimeDepth > 0) {
+            const arr = interpNewArray("")
+            for (ap in arrParts) {
+                const elemId = parseInt(ap)
+                if (elemId > 0) {
+                    const ev = parseInt(elemVals.getString(`${elemId}`))
+                    if (nGetKind(elemId) == "SPREAD_ELEM") {
+                        if (isCt(ev) == 1 && interpType(payload(ev)) == "array") {
+                            const srcItems = interpAsStr(payload(ev))
+                            if (srcItems != "") {
+                                const srcParts = srcItems.split(",")
+                                for (sp in srcParts) {
+                                    const srcElemId = parseInt(sp)
+                                    if (srcElemId > 0) { interpArrayPush(arr, srcElemId) }
+                                }
+                            }
+                        } else {
+                            println(`error: [comptime] cannot spread non-array value at line ${nGetLine(elemId)}:${nGetCol(elemId)}`)
+                            exit(1)
+                        }
+                    } else {
+                        interpArrayPush(arr, isCt(ev) == 1 ? payload(ev) : interpNewNull())
+                    }
+                }
+            }
+            return ctVal(arr)
+        }
+        arrPreRegs = new Map()
+        for (ap in arrParts) {
+            const elemId = parseInt(ap)
+            if (elemId > 0) {
+                const ev = parseInt(elemVals.getString(`${elemId}`))
+                if (nGetKind(elemId) == "SPREAD_ELEM") {
+                    arrPreRegs.set(`${nGetI1(elemId)}`, reg(ev))
+                } else {
+                    arrPreRegs.set(`${elemId}`, reg(ev))
+                }
+            }
+        }
         return constVal(genArrayLit(id))
     }
     if (kind == "ARROW_FUNC") {
@@ -1023,39 +1083,6 @@ function genValCtMethodCall(id: int): int {
     interpContinueFlag = savedContinue
     terminated = savedTerm
     return ctVal(mResult)
-}
-
-// Comptime ARRAY_LIT: create interpreter array
-function genValCtArrayLit(id: int): int {
-    const elemList = nGetList(id)
-    const arr = interpNewArray("")
-    if (elemList != "") {
-        const parts = elemList.split(",")
-        for (p in parts) {
-            const elemId = parseInt(p)
-            if (elemId > 0) {
-                if (nGetKind(elemId) == "SPREAD_ELEM") {
-                    const srcVal = genVal(nGetI1(elemId))
-                    if (isCt(srcVal) != 1 || interpType(payload(srcVal)) != "array") {
-                        println(`error: [comptime] cannot spread non-array value at line ${nGetLine(elemId)}:${nGetCol(elemId)}`)
-                        exit(1)
-                    }
-                    const srcItems = interpAsStr(payload(srcVal))
-                    if (srcItems != "") {
-                        const srcParts = srcItems.split(",")
-                        for (sp in srcParts) {
-                            const srcElemId = parseInt(sp)
-                            if (srcElemId > 0) { interpArrayPush(arr, srcElemId) }
-                        }
-                    }
-                } else {
-                    const ev = genVal(elemId)
-                    interpArrayPush(arr, isCt(ev) == 1 ? payload(ev) : interpNewNull())
-                }
-            }
-        }
-    }
-    return ctVal(arr)
 }
 
 // Comptime enum helpers

@@ -4,6 +4,7 @@
 import { genArrowFunc, flushArrowDefs } from "./gen_arrows"
 
 let tmplPreRegs = new Map()
+let arrPreRegs = new Map()
 
 // ── Print call ──────────────────────────────────────────────────
 
@@ -639,16 +640,16 @@ function genArrayLit(id: int): string {
                 const elemId = parseInt(p)
                 if (elemId > 0) {
                     if (nGetKind(elemId) == "SPREAD_ELEM") {
-                        // Spread: concat arrays
-                        const spreadArr = genExpr(nGetI1(elemId))
+                        const spreadKey = `${nGetI1(elemId)}`
+                        const spreadArr = arrPreRegs.has(spreadKey) == 1 ? arrPreRegs.getString(spreadKey) : genExpr(nGetI1(elemId))
                         const curArr = nextReg()
                         emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
                         const merged = nextReg()
                         emitIR(`  ${merged} = call ptr @ss_arrayConcat(ptr ${curArr}, ptr ${spreadArr})`)
                         emitIR(`  store ptr ${merged}, ptr ${arrAlloca}, align 8`)
                     } else {
-                        // Normal element: push
-                        const val = genExpr(elemId)
+                        const elemKey = `${elemId}`
+                        const val = arrPreRegs.has(elemKey) == 1 ? arrPreRegs.getString(elemKey) : genExpr(elemId)
                         const val64 = emitValueToI64(val, inferType(elemId))
                         const curArr = nextReg()
                         emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
@@ -681,7 +682,8 @@ function genArrayLit(id: int): string {
         for (p in parts) {
             const elemId = parseInt(p)
             if (elemId > 0) {
-                const val = genExpr(elemId)
+                const elemKey = `${elemId}`
+                const val = arrPreRegs.has(elemKey) == 1 ? arrPreRegs.getString(elemKey) : genExpr(elemId)
                 const val64 = emitValueToI64(val, inferType(elemId))
                 emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${val64})`)
                 idx = idx + 1
