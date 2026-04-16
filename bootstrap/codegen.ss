@@ -588,7 +588,19 @@ function interpValEquals(lid: int, rid: int): int {
 // sub-d 只保证符号 resolve，调用路径走 fallback (println 错误)。
 
 function interpCollectFields(className: string): string {
-    return ""
+    if (interpClasses.has(className) != 1) { return "" }
+    let fields = ""
+    let cur = className
+    while (cur != "") {
+        const cid = parseInt(interpClasses.getString(cur))
+        const paramList = nGetList(cid)
+        if (paramList != "") {
+            if (fields == "") { fields = paramList }
+            else { fields = `${paramList},${fields}` }
+        }
+        cur = interpClassParents.has(cur) == 1 ? interpClassParents.getString(cur) : ""
+    }
+    return fields
 }
 
 function interpCtFieldsArray(className: string): int {

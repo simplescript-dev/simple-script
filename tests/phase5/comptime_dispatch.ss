@@ -37,14 +37,13 @@ function main() {
     const greeting = `hello ${name}`
     checkStr(greeting, "hello world", "case4: template fold")
 
-    // Case 5: Comptime block with member access on object
+    // Case 5: Comptime block with class instantiation
     const c5 = comptime {
-        let obj = new Map()
-        obj["x"] = 3
-        obj["y"] = 4
-        return obj["x"] + obj["y"]
+        class Point { x: int; y: int }
+        const p = new Point(3, 4)
+        return p.x + p.y
     }
-    check(c5, 7, "case5: comptime obj fields")
+    check(c5, 7, "case5: comptime class fields")
 
     // Case 6: Comptime throw not triggered on success path
     const c6 = comptime {
