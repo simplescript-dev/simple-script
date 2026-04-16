@@ -46,6 +46,7 @@ let funcHasIsCt = new Map()
 
 let ctDepthRefList = ""
 let ctDepthRefCount = 0
+let funcCtDepthStructural = new Map()
 
 // ── Phase classification ─────────────────────────────────────
 
@@ -154,6 +155,13 @@ function visitNode(nodeId: int, funcName: string, file: string) {
 
     if (kind == "CALL" && nGetS1(nodeId) == "isCt") {
         funcHasIsCt.set(`${file}|${funcName}`, "1")
+    }
+    if (kind == "CALL" && nGetS1(nodeId) == "interpShouldStop") {
+        funcCtDepthStructural.set(`${file}|${funcName}`, "1")
+    }
+
+    if (kind == "ASSIGN" && nGetS1(nodeId) == "comptimeDepth") {
+        funcCtDepthStructural.set(`${file}|${funcName}`, "1")
     }
 
     if (kind == "IDENT" && nGetS1(nodeId) == "comptimeDepth") {
@@ -1055,11 +1063,12 @@ function printCtDepthRefAudit() {
         const hasIsCt = funcHasIsCt.has(rKey) == 1
         const reachEmit = funcReachEmit.has(rKey) == 1
         const reachInterp = funcReachInterp.has(rKey) == 1
+        const isWriter = funcCtDepthStructural.has(rKey) == 1
         let cls = ""
         if (hasIsCt) {
             cls = "coexist"
             coexistCount = coexistCount + 1
-        } else if (reachEmit == false || reachInterp == false) {
+        } else if (isWriter || reachEmit == false || reachInterp == false) {
             cls = "structural"
             structuralCount = structuralCount + 1
         } else {
