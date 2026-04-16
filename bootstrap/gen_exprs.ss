@@ -99,25 +99,23 @@ function genVal(id: int): int {
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "TERNARY") { return genValTernary(id) }
     if (kind == "IDENT") {
-        // Scope chain lookup for comptime
-        if (comptimeDepth > 0) {
-            const ctIdName = nGetS1(id)
-            if (ctScopeStack.length() > 0) {
-                let ctSi = ctScopeStack.length() - 1
-                while (ctSi >= 0) {
-                    const ctScopeKey = `${ctScopeStack[ctSi]}:${ctIdName}`
-                    if (ctVars.has(ctScopeKey) == 1) {
-                        return parseInt(ctVars.getString(ctScopeKey))
-                    }
-                    ctSi = ctSi - 1
+        const ctIdName = nGetS1(id)
+        if (comptimeDepth > 0 && ctScopeStack.length() > 0) {
+            let ctSi = ctScopeStack.length() - 1
+            while (ctSi >= 0) {
+                const ctScopeKey = `${ctScopeStack[ctSi]}:${ctIdName}`
+                if (ctVars.has(ctScopeKey) == 1) {
+                    return parseInt(ctVars.getString(ctScopeKey))
                 }
-            } else {
-                const ctKey = `${currentFunc}:${ctIdName}`
-                if (ctVars.has(ctKey) == 1) {
-                    return parseInt(ctVars.getString(ctKey))
-                }
+                ctSi = ctSi - 1
             }
-            // Fall back to interpreter's scope (for OS/ARCH/DEBUG/COMPILER_VERSION and similar)
+        }
+        const ctKey = `${currentFunc}:${ctIdName}`
+        if (ctVars.has(ctKey) == 1 && ctInvalidated.has(ctKey) == 0) {
+            const ctIdVal = parseInt(ctVars.getString(ctKey))
+            if (isCt(ctIdVal) == 1) { return ctIdVal }
+        }
+        if (comptimeDepth > 0) {
             const ctInterpKey = interpFindScopeKey(ctIdName)
             if (ctInterpKey != "") {
                 return ctVal(parseInt(interpVars.getString(ctInterpKey)))

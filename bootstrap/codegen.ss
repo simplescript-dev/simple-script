@@ -15,6 +15,7 @@ let strOutFile = ""
 let regCount = 0
 let regTable: Array<string> = []
 let ctVars = new Map()
+let ctInvalidated = new Map()
 let ctFuncNodes = new Map()
 let ctScopeStack: Array<string> = []
 let ctCallCounter = 0

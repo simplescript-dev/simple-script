@@ -265,6 +265,7 @@ function genPostfixStmt(id: int) {
             return
         }
     }
+    ctInvalidated.set(`${currentFunc}:${nGetS1(id)}`, "1")
     const kind = nGetKind(id)
     const pRef = varRef(nGetS1(id))
     const r1 = nextReg(); emitIR(`  ${r1} = load i32, ptr ${pRef}, align 4`)

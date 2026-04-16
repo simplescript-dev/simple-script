@@ -277,6 +277,8 @@ function genAssign(id: int) {
         }
     }
 
+    ctInvalidated.set(`${currentFunc}:${name}`, "1")
+
     const vType = getVarType(name)
     const llType = ssTypeToLLVM(vType)
 
