@@ -32,6 +32,11 @@ let funcReachEmit = new Map()
 let funcReachInterp = new Map()
 let funcNameToKey = new Map()
 let funcDirectBridge = new Map()
+let gvBranchList = ""
+let gvBranchCtGuard = new Map()
+let gvBranchIsCtBranch = new Map()
+let gvBranchRegBridge = new Map()
+let gvBranchSharedEvals = new Map()
 
 // ── Phase classification ─────────────────────────────────────
 
@@ -200,6 +205,100 @@ function visitChildren(nodeId: int, kind: string, funcName: string, file: string
     if (i3 > 0) { visitNode(i3, funcName, file) }
 }
 
+// ── Subtree search helpers (for operand-driven audit) ───────
+
+function subtreeHasIdent(nid: int, name: string): int {
+    if (nid <= 0) { return 0 }
+    const k = nGetKind(nid)
+    if (k == "IDENT" && nGetS1(nid) == name) { return 1 }
+    if (k == "STRING_LIT" || k == "INT_LIT" || k == "DOUBLE_LIT") { return 0 }
+    if (k == "TRUE_LIT" || k == "FALSE_LIT" || k == "NULL_LIT") { return 0 }
+    if (nGetI1(nid) > 0 && subtreeHasIdent(nGetI1(nid), name) == 1) { return 1 }
+    if (nGetI2(nid) > 0 && subtreeHasIdent(nGetI2(nid), name) == 1) { return 1 }
+    if (nGetI3(nid) > 0 && subtreeHasIdent(nGetI3(nid), name) == 1) { return 1 }
+    const lst = nGetList(nid)
+    if (lst != "") {
+        const lParts = lst.split(",")
+        for (lp in lParts) {
+            const lid = parseInt(lp)
+            if (lid > 0 && subtreeHasIdent(lid, name) == 1) { return 1 }
+        }
+    }
+    return 0
+}
+
+function subtreeHasCall(nid: int, fname: string): int {
+    if (nid <= 0) { return 0 }
+    const k = nGetKind(nid)
+    if (k == "CALL" && nGetS1(nid) == fname) { return 1 }
+    if (k == "STRING_LIT" || k == "INT_LIT" || k == "DOUBLE_LIT" || k == "IDENT") { return 0 }
+    if (k == "TRUE_LIT" || k == "FALSE_LIT" || k == "NULL_LIT") { return 0 }
+    if (nGetI1(nid) > 0 && subtreeHasCall(nGetI1(nid), fname) == 1) { return 1 }
+    if (nGetI2(nid) > 0 && subtreeHasCall(nGetI2(nid), fname) == 1) { return 1 }
+    if (nGetI3(nid) > 0 && subtreeHasCall(nGetI3(nid), fname) == 1) { return 1 }
+    const lst = nGetList(nid)
+    if (lst != "") {
+        const lParts = lst.split(",")
+        for (lp in lParts) {
+            const lid = parseInt(lp)
+            if (lid > 0 && subtreeHasCall(lid, fname) == 1) { return 1 }
+        }
+    }
+    return 0
+}
+
+function analyzeKindBody(kindName: string, thenId: int) {
+    if (thenId <= 0) { return }
+    let stmts = ""
+    if (nGetKind(thenId) == "BLOCK") { stmts = nGetList(thenId) }
+    else { stmts = `${thenId}` }
+    if (stmts == "") { return }
+    const parts = stmts.split(",")
+    let seenCtGuard = 0
+    let sharedCount = 0
+    for (sp in parts) {
+        const sid = parseInt(sp)
+        if (sid <= 0) { continue }
+        if (nGetKind(sid) == "IF" && subtreeHasIdent(nGetI1(sid), "comptimeDepth") == 1) {
+            gvBranchCtGuard.set(kindName, "1")
+            seenCtGuard = 1
+            continue
+        }
+        if (nGetKind(sid) == "IF" && subtreeHasCall(nGetI1(sid), "isCt") == 1) {
+            gvBranchIsCtBranch.set(kindName, "1")
+        }
+        if (seenCtGuard == 0 && (subtreeHasCall(sid, "genVal") == 1 || subtreeHasCall(sid, "genExpr") == 1)) {
+            sharedCount = sharedCount + 1
+        }
+        if (subtreeHasCall(sid, "reg") == 1) {
+            gvBranchRegBridge.set(kindName, "1")
+        }
+    }
+    gvBranchSharedEvals.set(kindName, `${sharedCount}`)
+}
+
+function analyzeGenValBranches(bodyId: int) {
+    if (bodyId <= 0 || nGetKind(bodyId) != "BLOCK") { return }
+    const stmtList = nGetList(bodyId)
+    if (stmtList == "") { return }
+    const stmts = stmtList.split(",")
+    for (s in stmts) {
+        const sid = parseInt(s)
+        if (sid <= 0 || nGetKind(sid) != "IF") { continue }
+        const condId = nGetI1(sid)
+        if (condId <= 0 || nGetKind(condId) != "BINARY" || nGetS1(condId) != "Eq") { continue }
+        const leftId = nGetI1(condId)
+        const rightId = nGetI2(condId)
+        if (leftId <= 0 || rightId <= 0) { continue }
+        if (nGetKind(leftId) != "IDENT" || nGetS1(leftId) != "kind") { continue }
+        if (nGetKind(rightId) != "STRING_LIT") { continue }
+        const kindName = nGetS1(rightId)
+        if (gvBranchList == "") { gvBranchList = kindName }
+        else { gvBranchList = `${gvBranchList};${kindName}` }
+        analyzeKindBody(kindName, nGetI2(sid))
+    }
+}
+
 // ── File scanning ────────────────────────────────────────────
 
 let fileList = ""
@@ -238,6 +337,9 @@ function processFile(path: string) {
                 if (dualEntryList == "") { dualEntryList = deEntry } else { dualEntryList = `${dualEntryList};${deEntry}` }
             }
             const body = nGetI1(stmtId)
+            if (fname == "genVal" && path.contains("gen_exprs") == 1) {
+                analyzeGenValBranches(body)
+            }
             if (body > 0) { visitNode(body, fname, path) }
         }
     }
@@ -705,6 +807,59 @@ function printUnfakeableMetrics() {
     }
 }
 
+function printOperandDrivenAudit() {
+    if (gvBranchList == "") { return }
+    println("")
+    println("=== Zig SEMA 操作数驱动审计 (genVal 逐 kind) ===")
+    println("(不可伪造: genVal/genExpr 求值位置 vs comptimeDepth 守卫位置)")
+    println("(共享求值=守卫前调 genVal; isCt=操作数驱动分叉; reg=ct→rt 桥接)")
+    println("")
+    const branches = gvBranchList.split(";")
+    let dualCount = 0
+    let zigCount = 0
+    let simpleCount = 0
+    let dualKinds = ""
+    let zigKinds = ""
+    for (b in branches) {
+        if (b == "") { continue }
+        const hasGuard = gvBranchCtGuard.has(b) == 1 ? 1 : 0
+        const hasIsCt = gvBranchIsCtBranch.has(b) == 1 ? 1 : 0
+        const hasReg = gvBranchRegBridge.has(b) == 1 ? 1 : 0
+        let shared = 0
+        if (gvBranchSharedEvals.has(b) == 1) { shared = parseInt(gvBranchSharedEvals.getString(b)) }
+        let cls = "simple"
+        if (hasGuard == 1 && hasIsCt == 0) { cls = "dual" }
+        else if (hasIsCt == 1 || hasReg == 1) { cls = "zig" }
+        else if (hasGuard == 1) { cls = "dual" }
+        let guardStr = "-"
+        if (hasGuard == 1) { guardStr = "ctDepth" }
+        let isCtStr = "-"
+        if (hasIsCt == 1) { isCtStr = "Y" }
+        let regStr = "-"
+        if (hasReg == 1) { regStr = "Y" }
+        if (cls == "dual") {
+            dualCount = dualCount + 1
+            if (dualKinds == "") { dualKinds = b } else { dualKinds = `${dualKinds} ${b}` }
+            println(`  ${padRight(b, 20)} 守卫:${padRight(guardStr, 8)} 共享:${shared}  isCt:${isCtStr}  reg:${regStr}  → ${cls}`)
+        } else if (cls == "zig") {
+            zigCount = zigCount + 1
+            if (zigKinds == "") { zigKinds = b } else { zigKinds = `${zigKinds} ${b}` }
+            println(`  ${padRight(b, 20)} 守卫:${padRight(guardStr, 8)} 共享:${shared}  isCt:${isCtStr}  reg:${regStr}  → ${cls}`)
+        } else {
+            simpleCount = simpleCount + 1
+        }
+    }
+    println("")
+    println(`  dual (comptimeDepth 驱动): ${dualCount}   ← 反模式, 目标: 0`)
+    println(`  zig (isCt + reg 驱动):     ${zigCount}   ← 正模式`)
+    println(`  simple (无 ct 处理):        ${simpleCount}`)
+    if (dualCount + zigCount > 0) {
+        const total = dualCount + zigCount
+        const pct = zigCount * 100 / total
+        println(`  转化率: ${pct}% (${zigCount}/${total})`)
+    }
+}
+
 function main() {
     collectSSFiles("bootstrap")
     println(`Scanning ${fileCount} bootstrap files...`)
@@ -720,4 +875,5 @@ function main() {
     printHeatmap()
     printZigConformance()
     printUnfakeableMetrics()
+    printOperandDrivenAudit()
 }
