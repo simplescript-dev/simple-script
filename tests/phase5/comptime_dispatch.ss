@@ -16,13 +16,11 @@ function main() {
     const c1 = 1 + 2
     check(c1, 3, "case1: pure expr fold")
 
-    // Case 2: Function defined + called inside comptime block
+    // Case 2: Call external function from comptime block
     const c2 = comptime {
-        function add2(a: int, b: int): int { return a + b }
-        const x = add2(10, 20)
-        return x
+        return add(10, 20)
     }
-    check(c2, 30, "case2: comptime local call fold")
+    check(c2, 30, "case2: comptime external call")
 
     // Case 3: Array index assign + read in comptime
     const c3 = comptime {

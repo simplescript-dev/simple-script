@@ -155,16 +155,16 @@ kind 级转换已穷尽。剩余 10 个 dual kind（genVal 2 + genStmt 8）全�
 |------|-----|-----|------|
 | 纯表达式块外自动折叠 | ✅ | ✅ | 一致 |
 | comptime 块内本地函数调用 | ✅ | ✅ | 一致 |
-| comptime 块内调用**外部函数** | ❌ ctFuncNodes 仅含块内定义 | ✅ 可调任意纯函数 | **差距 — SS 解释器不能遍历外部 AST** |
+| comptime 块内调用**外部函数** | ✅ (registerFuncDeclNode 修复后) | ✅ 可调任意纯函数 | 一致 |
 | comptime class new + BINARY | ✅ (interpCollectFields 修复后) | ✅ | 一致 |
 | comptime Map index assign/read | ✅ | ✅ | 一致 |
 | comptime throw 条件跳过 | ✅ | ✅ | 一致 |
 | comptime postfix++ | ✅ | ✅ | 一致 |
 | comptime enum | ✅ | ✅ | 一致 |
 
-Zig Sema 用 `comptime_reason`（optional tagged union，含错误来源信息）标记 comptime 上下文。SS 用 `comptimeDepth`（int 计数器）。功能等价（判断是否在 comptime 块内），但 SS 缺一个能力：外部函数可达性（ctFuncNodes 仅含 comptime 块内定义）。comptime 错误溯源（Zig 的 ComptimeReason）是可改进点。
+Zig Sema 用 `comptime_reason`（optional tagged union，含错误来源信息）标记 comptime 上下文。SS 用 `comptimeDepth`（int 计数器）。功能等价（判断是否在 comptime 块内）。外部函数可达性已修复（registerFuncDeclNode 阶段注册所有顶层 FUNC_DECL 到 ctFuncNodes）。剩余可改进点：comptime 错误溯源（Zig 的 ComptimeReason 含来源位置信息）。
 
-**终态判定：** D094 kind 级转换到顶。comptimeDepth 作为 comptime 上下文标记不可消除，是正确架构。剩余差距（外部函数调用）是 comptime 解释器能力问题，不属于 D094 scope。
+**终态判定：** D094 kind 级转换到顶。comptimeDepth 作为 comptime 上下文标记不可消除，是正确架构。8/8 Zig Sema 语义验证通过，无剩余差距。
 
 ## Rejected Alternatives
 

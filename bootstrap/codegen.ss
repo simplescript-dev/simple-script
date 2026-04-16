@@ -762,6 +762,7 @@ function addStringConst(value: string): string {
 // Used by registerAllDecls and comptime @comptimeEmit processing.
 function registerFuncDeclNode(sid: int) {
     const fname = nGetS1(sid)
+    ctFuncNodes.set(fname, `${sid}`)
     let fret = stripNullableCG(nGetS2(sid))
     if (fret == "") { fret = "void" }
     funcRetTypes.set(fname, fret)
