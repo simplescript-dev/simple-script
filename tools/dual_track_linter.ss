@@ -26,6 +26,12 @@ let currentPhase = ""
 let funcKindSet = new Map()
 let funcCallKeyList = ""
 let funcCallers = new Map()
+let dualEntryList = ""
+let funcCtDepthRefs = new Map()
+let funcReachEmit = new Map()
+let funcReachInterp = new Map()
+let funcNameToKey = new Map()
+let funcDirectBridge = new Map()
 
 // ── Phase classification ─────────────────────────────────────
 
@@ -84,6 +90,12 @@ function bumpComptime(file: string) {
     totalComptimeBranches = totalComptimeBranches + 1
 }
 
+function bumpFuncCtDepth(file: string, funcName: string) {
+    const key = `${file}|${funcName}`
+    const prev = funcCtDepthRefs.has(key) == 1 ? parseInt(funcCtDepthRefs.getString(key)) : 0
+    funcCtDepthRefs.set(key, `${prev + 1}`)
+}
+
 // ── AST visitor ──────────────────────────────────────────────
 
 function visitList(listStr: string, funcName: string, file: string) {
@@ -128,6 +140,7 @@ function visitNode(nodeId: int, funcName: string, file: string) {
 
     if (kind == "IDENT" && nGetS1(nodeId) == "comptimeDepth") {
         bumpComptime(file)
+        bumpFuncCtDepth(file, funcName)
     }
 
     visitChildren(nodeId, kind, funcName, file)
@@ -220,6 +233,10 @@ function processFile(path: string) {
         if (stmtId <= 0) { continue }
         if (nGetKind(stmtId) == "FUNC_DECL") {
             const fname = nGetS1(stmtId)
+            if (fname.startsWith("genValCt") == 1) {
+                const deEntry = `${fname}|${path}`
+                if (dualEntryList == "") { dualEntryList = deEntry } else { dualEntryList = `${dualEntryList};${deEntry}` }
+            }
             const body = nGetI1(stmtId)
             if (body > 0) { visitNode(body, fname, path) }
         }
@@ -438,6 +455,256 @@ function printHeatmap() {
     }
 }
 
+function printZigConformance() {
+    println("")
+    println("=== Zig SEMA Conformance — genVal Single-Entry Audit ===")
+    println("(genValCt* ↔ gen* 配对: 不可伪造分类确认分裂,目标合并为 direct bridge)")
+    println("")
+    if (dualEntryList == "") {
+        println("  无 genValCt* 函数 —— genVal 完全 Zig 合规!")
+        println("")
+        return
+    }
+    const entries = dualEntryList.split(";")
+    let count = 0
+    for (e in entries) {
+        if (e == "") { continue }
+        count = count + 1
+        const segs = e.split("|")
+        const fname = segs[0]
+        const file = segs[1]
+        const ctKey = `${file}|${fname}`
+        const ctClass = getFuncClass(ctKey)
+        const suffix = fname.substring(8, fname.length() - 8)
+        const rtName = `gen${suffix}`
+        let rtClass = "?"
+        if (funcNameToKey.has(rtName) == 1) {
+            rtClass = getFuncClass(funcNameToKey.getString(rtName))
+        }
+        println(`  ${padRight(fname, 24)} [${ctClass}] ↔ ${padRight(rtName, 20)} [${rtClass}]`)
+    }
+    const genValKey = "bootstrap/gen_exprs.ss|genVal"
+    let genValClass = "?"
+    if (funcNameToKey.has("genVal") == 1) {
+        genValClass = getFuncClass(funcNameToKey.getString("genVal"))
+    }
+    let genValCtRefs = 0
+    if (funcCtDepthRefs.has(genValKey) == 1) {
+        genValCtRefs = parseInt(funcCtDepthRefs.getString(genValKey))
+    }
+    const inlineCount = genValCtRefs - count
+    println("")
+    println(`  genVal dispatcher: [${genValClass}]  ctDepth×${genValCtRefs} (内联:${inlineCount} 分发:${count})`)
+    println(`  待合并配对: ${count} (Zig 目标: 0)`)
+}
+
+// ── Unfakeable Metrics — Call Graph Topology ──────────────────
+
+function buildNameToKeyMap() {
+    if (funcCallKeyList == "") { return }
+    const keys = funcCallKeyList.split("\n")
+    for (nk in keys) {
+        if (nk == "") { continue }
+        const kp = nk.split("|")
+        if (funcNameToKey.has(kp[1]) != 1) {
+            funcNameToKey.set(kp[1], nk)
+        }
+    }
+}
+
+function computeReachability() {
+    if (funcCallKeyList == "") { return }
+    const allKeys = funcCallKeyList.split("\n")
+    for (fk in allKeys) {
+        if (fk == "") { continue }
+        const kp = fk.split("|")
+        if (kp[1] == "emitIR") { funcReachEmit.set(fk, "1") }
+        if (kp[1].startsWith("interp") == 1) { funcReachInterp.set(fk, "1") }
+        if (funcEndCalls.has(fk) != 1) { continue }
+        const calls = funcEndCalls.getString(fk)
+        if (setContainsExact(calls, "emitIR") == 1) { funcReachEmit.set(fk, "1") }
+        if (setContainsPrefix(calls, "interp") == 1) { funcReachInterp.set(fk, "1") }
+        if (setContainsExact(calls, "emitIR") == 1 && setContainsPrefix(calls, "interp") == 1) {
+            funcDirectBridge.set(fk, "1")
+        }
+    }
+    let changed = 1
+    let iters = 0
+    while (changed == 1 && iters < 30) {
+        changed = 0
+        iters = iters + 1
+        for (fk in allKeys) {
+            if (fk == "") { continue }
+            if (funcEndCalls.has(fk) != 1) { continue }
+            const calls = funcEndCalls.getString(fk)
+            const cParts = calls.split(",")
+            for (cn in cParts) {
+                if (cn == "") { continue }
+                if (funcNameToKey.has(cn) != 1) { continue }
+                const ck = funcNameToKey.getString(cn)
+                if (funcReachEmit.has(ck) == 1 && funcReachEmit.has(fk) != 1) {
+                    funcReachEmit.set(fk, "1")
+                    changed = 1
+                }
+                if (funcReachInterp.has(ck) == 1 && funcReachInterp.has(fk) != 1) {
+                    funcReachInterp.set(fk, "1")
+                    changed = 1
+                }
+            }
+        }
+    }
+}
+
+function getFuncClass(key: string): string {
+    const re = funcReachEmit.has(key) == 1 ? 1 : 0
+    const ri = funcReachInterp.has(key) == 1 ? 1 : 0
+    if (re == 1 && ri == 1) {
+        if (funcDirectBridge.has(key) == 1) { return "direct" }
+        return "bridge"
+    }
+    if (re == 1) { return "emit" }
+    if (ri == 1) { return "interp" }
+    return "none"
+}
+
+function collectUnionCgCallees(startKeys: string): string {
+    if (startKeys == "") { return "" }
+    let result = ""
+    let rMap = new Map()
+    let visited = new Map()
+    let frontier = startKeys
+    const sParts = startKeys.split("\n")
+    for (sp in sParts) { if (sp != "") { visited.set(sp, "1") } }
+    while (frontier != "") {
+        let nextFrontier = ""
+        const fParts = frontier.split("\n")
+        for (fk in fParts) {
+            if (fk == "") { continue }
+            if (funcEndCalls.has(fk) != 1) { continue }
+            const calls = funcEndCalls.getString(fk)
+            const cParts = calls.split(",")
+            for (cn in cParts) {
+                if (cn == "") { continue }
+                if (funcNameToKey.has(cn) != 1) { continue }
+                const nk = funcNameToKey.getString(cn)
+                if (filePhase(nk) == "codegen" && rMap.has(cn) != 1) {
+                    rMap.set(cn, "1")
+                    if (result == "") { result = cn } else { result = `${result},${cn}` }
+                }
+                if (visited.has(nk) != 1) {
+                    visited.set(nk, "1")
+                    if (nextFrontier == "") { nextFrontier = nk } else { nextFrontier = `${nextFrontier}\n${nk}` }
+                }
+            }
+        }
+        frontier = nextFrontier
+    }
+    return result
+}
+
+function setIntersect(a: string, b: string): string {
+    if (a == "" || b == "") { return "" }
+    let result = ""
+    const parts = a.split(",")
+    for (p in parts) {
+        if (p == "") { continue }
+        if (setContainsExact(b, p) == 1) {
+            if (result == "") { result = p } else { result = `${result},${p}` }
+        }
+    }
+    return result
+}
+
+function setSize(s: string): int {
+    if (s == "") { return 0 }
+    let c = 0
+    const parts = s.split(",")
+    for (p in parts) { if (p != "") { c = c + 1 } }
+    return c
+}
+
+function printUnfakeableMetrics() {
+    println("")
+    println("=== Unfakeable Metrics — Call Graph Topology ===")
+    println("(基于 emitIR/interp* 传递闭包,不依赖命名约定)")
+    println("")
+    let totalCg = 0
+    let directCount = 0
+    let transitiveCount = 0
+    let emitOnlyCount = 0
+    let interpOnlyCount = 0
+    let noneCount = 0
+    let directList = ""
+    const allKeys = funcCallKeyList.split("\n")
+    for (fk in allKeys) {
+        if (fk == "") { continue }
+        if (filePhase(fk) != "codegen") { continue }
+        totalCg = totalCg + 1
+        const cls = getFuncClass(fk)
+        if (cls == "direct") {
+            directCount = directCount + 1
+            const dkp = fk.split("|")
+            if (directList == "") { directList = dkp[1] } else { directList = `${directList},${dkp[1]}` }
+        }
+        else if (cls == "bridge") { transitiveCount = transitiveCount + 1 }
+        else if (cls == "emit") { emitOnlyCount = emitOnlyCount + 1 }
+        else if (cls == "interp") { interpOnlyCount = interpOnlyCount + 1 }
+        else { noneCount = noneCount + 1 }
+    }
+    println("Metric 1: Terminal Reachability (codegen 函数)")
+    println(`  direct bridge:             ${directCount}   (body 直接含 emitIR + interp*)`)
+    println(`  transitive bridge:         ${transitiveCount}   (仅通过调用链到达两端)`)
+    println(`  runtime-only (emitIR):     ${emitOnlyCount}`)
+    println(`  comptime-only (interp*):   ${interpOnlyCount}`)
+    println(`  neutral:                   ${noneCount}`)
+    println(`  total:                     ${totalCg}`)
+    if (directList != "") {
+        println(`  direct bridge 函数: ${directList}`)
+    }
+    println("")
+    println("Metric 2+3: Per-Kind Fork Depth + Path Intersection (END-SPLIT kinds)")
+    println("")
+    const kinds = kindList.split(",")
+    for (k in kinds) {
+        if (k == "") { continue }
+        if (kindHandlers.has(k) != 1) { continue }
+        const cgEntries = filterByPhase(kindHandlers.getString(k), "codegen")
+        if (cgEntries == "" || countEntries(cgEntries) < 2) { continue }
+        if (checkEndTrackSplit(cgEntries) != 1) { continue }
+        let eKeys = ""
+        let iKeys = ""
+        let dCount = 0
+        let tCount = 0
+        const hParts = cgEntries.split(";")
+        for (hp in hParts) {
+            if (hp == "") { continue }
+            const segs = hp.split("|")
+            const hKey = `${segs[1]}|${segs[0]}`
+            const cls = getFuncClass(hKey)
+            if (cls == "direct") { dCount = dCount + 1 }
+            else if (cls == "bridge") { tCount = tCount + 1 }
+            else if (cls == "emit") { if (eKeys == "") { eKeys = hKey } else { eKeys = `${eKeys}\n${hKey}` } }
+            else if (cls == "interp") { if (iKeys == "") { iKeys = hKey } else { iKeys = `${iKeys}\n${hKey}` } }
+        }
+        const eReach = collectUnionCgCallees(eKeys)
+        const iReach = collectUnionCgCallees(iKeys)
+        const inter = setIntersect(eReach, iReach)
+        const iSize = setSize(inter)
+        let iNames = ""
+        if (iSize > 0) {
+            const iParts = inter.split(",")
+            let shown = 0
+            for (ip in iParts) {
+                if (ip == "" || shown >= 5) { continue }
+                if (iNames == "") { iNames = ip } else { iNames = `${iNames},${ip}` }
+                shown = shown + 1
+            }
+            if (iSize > 5) { iNames = `${iNames},...` }
+        }
+        println(`  ${padRight(k, 18)} direct:${dCount} trans:${tCount}  共享:|${iSize}|  {${iNames}}`)
+    }
+}
+
 function main() {
     collectSSFiles("bootstrap")
     println(`Scanning ${fileCount} bootstrap files...`)
@@ -448,5 +715,9 @@ function main() {
     }
     println("")
     propagateHandlers()
+    buildNameToKeyMap()
+    computeReachability()
     printHeatmap()
+    printZigConformance()
+    printUnfakeableMetrics()
 }
