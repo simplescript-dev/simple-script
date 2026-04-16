@@ -142,7 +142,11 @@ function materialize(interpValId: int): string {
     if (t == "int") { return `${interpAsInt(interpValId)}` }
     if (t == "string") { return addStringConst(interpAsStr(interpValId)) }
     if (t == "bool") { return interpAsBool(interpValId) == 1 ? "1" : "0" }
-    if (t == "double") { return interpAsStr(interpValId) }
+    if (t == "double") {
+        const dStr = tvD1.getString(interpValId + "")
+        if (dStr.indexOf(".") < 0) { return `${dStr}.0` }
+        return dStr
+    }
     if (t == "null") { return "null" }
     return "0"
 }

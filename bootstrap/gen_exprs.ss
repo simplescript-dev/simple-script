@@ -93,10 +93,7 @@ function genVal(id: int): int {
     if (kind == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
-    if (kind == "DOUBLE_LIT") {
-        if (comptimeDepth > 0) { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-        return constVal(nGetS1(id))
-    }
+    if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
     if (kind == "BINARY") { return genValBinary(id) }
     if (kind == "UNARY") { return genValUnary(id) }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
