@@ -132,7 +132,28 @@ function genVal(id: int): int {
     }
     if (kind == "POSTFIX_INC") {
         if (comptimeDepth > 0) {
-            println(`[comptime] unsupported expression: POSTFIX_INC`)
+            const piName = nGetS1(id)
+            let piKey = ""
+            if (ctScopeStack.length() > 0) {
+                let piSi = ctScopeStack.length() - 1
+                while (piSi >= 0) {
+                    const piSk = `${ctScopeStack[piSi]}:${piName}`
+                    if (ctVars.has(piSk) == 1) { piKey = piSk; break }
+                    piSi = piSi - 1
+                }
+            }
+            if (piKey == "") {
+                const piFk = `${currentFunc}:${piName}`
+                if (ctVars.has(piFk) == 1) { piKey = piFk }
+            }
+            if (piKey != "") {
+                const piTagged = parseInt(ctVars.getString(piKey))
+                if (isCt(piTagged) == 1) {
+                    const piOld = payload(piTagged)
+                    ctVars.set(piKey, `${ctVal(interpNewInt(interpAsInt(piOld) + 1))}`)
+                    return ctVal(piOld)
+                }
+            }
             return ctVal(interpNewNull())
         }
         return constVal(genPostfixExpr(id))

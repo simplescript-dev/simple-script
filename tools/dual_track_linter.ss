@@ -44,6 +44,9 @@ let gsBranchDelegate = new Map()
 let gsBranchHasIsCt = new Map()
 let funcHasIsCt = new Map()
 
+let ctDepthRefList = ""
+let ctDepthRefCount = 0
+
 // ── Phase classification ─────────────────────────────────────
 
 function filePhase(file: string): string {
@@ -156,6 +159,11 @@ function visitNode(nodeId: int, funcName: string, file: string) {
     if (kind == "IDENT" && nGetS1(nodeId) == "comptimeDepth") {
         bumpComptime(file)
         bumpFuncCtDepth(file, funcName)
+        const ctdLine = nGetLine(nodeId)
+        const ctdEntry = `${file}|${funcName}|${ctdLine}`
+        if (ctDepthRefList == "") { ctDepthRefList = ctdEntry }
+        else { ctDepthRefList = `${ctDepthRefList}\n${ctdEntry}` }
+        ctDepthRefCount = ctDepthRefCount + 1
     }
 
     visitChildren(nodeId, kind, funcName, file)
@@ -291,6 +299,9 @@ function analyzeKindBody(kindName: string, thenId: int) {
         if (nGetKind(sid) == "IF" && subtreeHasIdent(nGetI1(sid), "comptimeDepth") == 1) {
             gvBranchCtGuard.set(kindName, "1")
             seenCtGuard = 1
+            if (subtreeHasCall(sid, "isCt") == 1) {
+                gvBranchIsCtBranch.set(kindName, "1")
+            }
             continue
         }
         if (subtreeHasCall(sid, "isCt") == 1) {
@@ -1023,6 +1034,48 @@ function printStmtHandlerAudit() {
     }
 }
 
+function printCtDepthRefAudit() {
+    println("")
+    println("=== comptimeDepth 逐条引用审计 ===")
+    println("(分类: coexist=函数内已有 isCt 共存, structural=声明/模式入口, replaceable=可替换为 isCt)")
+    println("")
+    if (ctDepthRefList == "") { println("  (无引用)"); return }
+    const refs = ctDepthRefList.split("\n")
+    let coexistCount = 0
+    let structuralCount = 0
+    let replaceableCount = 0
+    for (r in refs) {
+        if (r == "") { continue }
+        const rParts = r.split("|")
+        if (rParts.length() < 3) { continue }
+        const rFile = rParts[0]
+        const rFunc = rParts[1]
+        const rLine = rParts[2]
+        const rKey = `${rFile}|${rFunc}`
+        const hasIsCt = funcHasIsCt.has(rKey) == 1
+        const reachEmit = funcReachEmit.has(rKey) == 1
+        const reachInterp = funcReachInterp.has(rKey) == 1
+        let cls = ""
+        if (hasIsCt) {
+            cls = "coexist"
+            coexistCount = coexistCount + 1
+        } else if (reachEmit == false || reachInterp == false) {
+            cls = "structural"
+            structuralCount = structuralCount + 1
+        } else {
+            cls = "replaceable"
+            replaceableCount = replaceableCount + 1
+        }
+        const shortFile = rFile.contains("/") == 1 ? rFile.split("/")[rFile.split("/").length() - 1] : rFile
+        println(`  ${padRight(shortFile, 20)} ${padRight(rFunc, 28)} L${padRight(rLine, 5)} → ${cls}`)
+    }
+    println("")
+    println(`  coexist (isCt 共存):    ${coexistCount}   ← 已是 zig 内部守卫`)
+    println(`  structural (声明/入口): ${structuralCount}   ← comptimeDepth 正确`)
+    println(`  replaceable (可替换):   ${replaceableCount}   ← 下一步工作目标`)
+    println(`  total:                  ${ctDepthRefCount}`)
+}
+
 function main() {
     collectSSFiles("bootstrap")
     println(`Scanning ${fileCount} bootstrap files...`)
@@ -1040,4 +1093,5 @@ function main() {
     printUnfakeableMetrics()
     printOperandDrivenAudit()
     printStmtHandlerAudit()
+    printCtDepthRefAudit()
 }
