@@ -172,7 +172,27 @@ function genVal(id: int): int {
         return constVal(genMethodCall(id))
     }
     if (kind == "TEMPLATE_LIT") {
-        if (comptimeDepth > 0) { return genValCtTemplateLit(id) }
+        if (comptimeDepth > 0) {
+            const fragList = nGetList(id)
+            if (fragList == "") { return ctVal(interpNewString("")) }
+            let ctResult = ""
+            const ctParts = fragList.split(",")
+            for (cp in ctParts) {
+                const fragId = parseInt(cp)
+                if (fragId > 0) {
+                    const fk = nGetKind(fragId)
+                    if (fk == "TMPL_FRAG_LIT") {
+                        ctResult = `${ctResult}${nGetS1(fragId)}`
+                    } else if (fk == "TMPL_FRAG_EXPR") {
+                        const fv = genVal(nGetI1(fragId))
+                        if (isCt(fv) == 1) {
+                            ctResult = `${ctResult}${interpToStr(payload(fv))}`
+                        }
+                    }
+                }
+            }
+            return ctVal(interpNewString(ctResult))
+        }
         return constVal(genTemplateLit(id))
     }
     if (kind == "ARRAY_LIT") {
@@ -956,29 +976,6 @@ function genValCtMethodCall(id: int): int {
     interpContinueFlag = savedContinue
     terminated = savedTerm
     return ctVal(mResult)
-}
-
-// Comptime TEMPLATE_LIT: string interpolation
-function genValCtTemplateLit(id: int): int {
-    const fragList = nGetList(id)
-    if (fragList == "") { return ctVal(interpNewString("")) }
-    let result = ""
-    const parts = fragList.split(",")
-    for (p in parts) {
-        const fragId = parseInt(p)
-        if (fragId > 0) {
-            const fk = nGetKind(fragId)
-            if (fk == "TMPL_FRAG_LIT") {
-                result = `${result}${nGetS1(fragId)}`
-            } else if (fk == "TMPL_FRAG_EXPR") {
-                const fv = genVal(nGetI1(fragId))
-                if (isCt(fv) == 1) {
-                    result = `${result}${interpToStr(payload(fv))}`
-                }
-            }
-        }
-    }
-    return ctVal(interpNewString(result))
 }
 
 // Comptime ARRAY_LIT: create interpreter array
