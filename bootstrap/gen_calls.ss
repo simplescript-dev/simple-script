@@ -5,6 +5,7 @@ import { genArrowFunc, flushArrowDefs } from "./gen_arrows"
 
 let tmplPreRegs = new Map()
 let arrPreRegs = new Map()
+let callPreRegs = new Map()
 
 // ── Print call ──────────────────────────────────────────────────
 

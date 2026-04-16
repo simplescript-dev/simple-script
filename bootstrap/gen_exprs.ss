@@ -151,8 +151,80 @@ function genVal(id: int): int {
         return constVal(comptimeExprLiteral.getString(`${id}`))
     }
     if (kind == "CALL") {
-        if (comptimeDepth > 0) { return genValCtCall(id) }
-        return constVal(genCall(id))
+        const callName = nGetS1(id)
+        const callArgList = nGetList(id)
+        if (genericFuncNodes.has(callName) == 1) {
+            if (comptimeDepth > 0) {
+                println(`[comptime] cannot call generic function: ${callName}`)
+                return ctVal(interpNewNull())
+            }
+            return constVal(genGenericCall(id, callName, callArgList))
+        }
+        const savedCallPreRegs = callPreRegs
+        callPreRegs = new Map()
+        let callCtArgVals: Array<string> = []
+        let callCtNamedArgs = new Map()
+        let callCtHasNamed = 0
+        if (callArgList != "") {
+            const callArgParts = callArgList.split(",")
+            for (cap in callArgParts) {
+                const callArgId = parseInt(cap)
+                if (callArgId > 0) {
+                    if (nGetKind(callArgId) == "NAMED_ARG") {
+                        callCtHasNamed = 1
+                        const nav = genVal(nGetI1(callArgId))
+                        if (isCt(nav) == 1) {
+                            callCtNamedArgs.set(nGetS1(callArgId), `${payload(nav)}`)
+                        } else {
+                            callCtNamedArgs.set(nGetS1(callArgId), `${interpNewNull()}`)
+                            callPreRegs.set(`${callArgId}`, reg(nav))
+                        }
+                    } else if (nGetKind(callArgId) == "SPREAD_ELEM") {
+                        const srcVal = genVal(nGetI1(callArgId))
+                        if (isCt(srcVal) == 1) {
+                            const srcPayload = payload(srcVal)
+                            if (interpType(srcPayload) != "array") {
+                                if (comptimeDepth > 0) {
+                                    println(`error: [comptime] cannot spread non-array value at line ${nGetLine(callArgId)}:${nGetCol(callArgId)}`)
+                                    exit(1)
+                                }
+                                callPreRegs.set(`${nGetI1(callArgId)}`, reg(srcVal))
+                            } else {
+                                const srcItems = interpAsStr(srcPayload)
+                                if (srcItems != "") {
+                                    const srcParts = srcItems.split(",")
+                                    for (sp in srcParts) {
+                                        const srcElemId = parseInt(sp)
+                                        if (srcElemId > 0) { callCtArgVals = callCtArgVals.push(`${srcElemId}`) }
+                                    }
+                                }
+                            }
+                        } else {
+                            if (comptimeDepth > 0) {
+                                println(`error: [comptime] cannot spread runtime value at line ${nGetLine(callArgId)}:${nGetCol(callArgId)}`)
+                                exit(1)
+                            }
+                            callPreRegs.set(`${nGetI1(callArgId)}`, reg(srcVal))
+                        }
+                    } else {
+                        const av = genVal(callArgId)
+                        if (isCt(av) == 1) {
+                            callCtArgVals = callCtArgVals.push(`${payload(av)}`)
+                        } else {
+                            callCtArgVals = callCtArgVals.push(`${interpNewNull()}`)
+                            callPreRegs.set(`${callArgId}`, reg(av))
+                        }
+                    }
+                }
+            }
+        }
+        if (comptimeDepth > 0) {
+            callPreRegs = savedCallPreRegs
+            return ctCallDispatch(id, callName, callCtArgVals, callCtNamedArgs, callCtHasNamed)
+        }
+        const callResult = constVal(genCall(id))
+        callPreRegs = savedCallPreRegs
+        return callResult
     }
     if (kind == "NEW_EXPR") {
         if (comptimeDepth > 0) { return genValCtNewExpr(id) }
@@ -584,47 +656,7 @@ function genValStringCompare(op: string, id: int): int {
 
 // ── Comptime expression helpers ─────────────────────────────────
 
-// Comptime CALL: intrinsics + user-defined functions
-function genValCtCall(id: int): int {
-    const name = nGetS1(id)
-    const argList = nGetList(id)
-
-    // Evaluate all args
-    let ctArgVals: Array<string> = []
-    let ctNamedArgs = new Map()
-    let ctHasNamed = 0
-    if (argList != "") {
-        const argParts = argList.split(",")
-        for (ap in argParts) {
-            const argId = parseInt(ap)
-            if (argId > 0) {
-                if (nGetKind(argId) == "NAMED_ARG") {
-                    ctHasNamed = 1
-                    const nav = genVal(nGetI1(argId))
-                    ctNamedArgs.set(nGetS1(argId), `${isCt(nav) == 1 ? payload(nav) : interpNewNull()}`)
-                } else if (nGetKind(argId) == "SPREAD_ELEM") {
-                    const srcVal = genVal(nGetI1(argId))
-                    const srcPayload = payload(srcVal)
-                    if (isCt(srcVal) != 1 || interpType(srcPayload) != "array") {
-                        println(`error: [comptime] cannot spread non-array value at line ${nGetLine(argId)}:${nGetCol(argId)}`)
-                        exit(1)
-                    }
-                    const srcItems = interpAsStr(srcPayload)
-                    if (srcItems != "") {
-                        const srcParts = srcItems.split(",")
-                        for (sp in srcParts) {
-                            const srcElemId = parseInt(sp)
-                            if (srcElemId > 0) { ctArgVals = ctArgVals.push(`${srcElemId}`) }
-                        }
-                    }
-                } else {
-                    const av = genVal(argId)
-                    ctArgVals = ctArgVals.push(`${isCt(av) == 1 ? payload(av) : interpNewNull()}`)
-                }
-            }
-        }
-    }
-
+function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamedArgs: Map, ctHasNamed: int): int {
     // ── Intrinsics ──
     if (name == "println") {
         if (ctArgVals.length() > 0) { println(interpToStr(parseInt(ctArgVals[0]))) }
@@ -1371,6 +1403,12 @@ function ctBuiltinMethod(objPayload: int, methodName: string, argVals: Array<str
 }
 
 function genExpr(id: int): string {
+    const cpKey = `${id}`
+    if (callPreRegs.has(cpKey) == 1) {
+        const pre = callPreRegs.getString(cpKey)
+        callPreRegs.delete(cpKey)
+        return pre
+    }
     return reg(genVal(id))
 }
 
