@@ -785,10 +785,7 @@ function flushComptimeSS() {
         // Pass 0: VAR_DECL → global vars
         const fssSavedFunc = currentFunc
         currentFunc = ""
-        for (fp in fssParts) {
-            const fsSid = parseInt(fp)
-            if (fsSid > 0 && nGetKind(fsSid) == "VAR_DECL") { genGlobalVar(fsSid) }
-        }
+        emitGlobalVars(fssList)
         currentFunc = fssSavedFunc
         // Pass 1: CLASS_DECL/ENUM_DECL/INTERFACE_DECL → register before codegen
         for (fp in fssParts) {
@@ -889,7 +886,7 @@ function emitGlobalsAndCode(rootId: int) {
     const sl = nGetList(rootId)
     if (sl == "") { return }
     const parts = sl.split(",")
-    for (x1 in parts) { const s1 = parseInt(x1); if (s1 > 0 && nGetKind(s1) == "VAR_DECL") { genGlobalVar(s1) } }
+    emitGlobalVars(sl)
     emitIR("")
     for (x2 in parts) {
         const s2 = parseInt(x2)

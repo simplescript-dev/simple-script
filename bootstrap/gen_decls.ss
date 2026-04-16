@@ -256,6 +256,14 @@ function genGlobalVar(id: int) {
     globalAliases.set(name, `@${name}`)
 }
 
+function emitGlobalVars(stmtList: string) {
+    const parts = stmtList.split(",")
+    for (p in parts) {
+        const sid = parseInt(p)
+        if (sid > 0 && nGetKind(sid) == "VAR_DECL") { genGlobalVar(sid) }
+    }
+}
+
 // Called at the start of main() to init global vars with runtime expressions
 function emitGlobalInits() {
     if (globalInitIds != "") {

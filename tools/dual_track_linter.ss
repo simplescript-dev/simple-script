@@ -3,6 +3,10 @@
 // D093 双轨代码检测器 —— 守护 "一份求值逻辑" 第一性需求。
 // 不可伪造指标:调用图可达性——单 kind helper 传播给 caller，提取 helper 不改变双轨数。
 //
+// 判断标准:comptime/runtime 双入口(如 genMethodCall vs genValCtMethodCall)
+// 本身就是双轨——不是可接受的架构,是 Zig SEMA 要消灭的目标。
+// 最终形态:单入口 + comptimeDepth 内部状态,所有 kind 双轨数→0。
+//
 // 用法: bin/ss run tools/dual_track_linter.ss
 
 import { tokenize } from "@/bootstrap/lexer"
