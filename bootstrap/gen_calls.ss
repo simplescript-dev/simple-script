@@ -3,6 +3,8 @@
 
 import { genArrowFunc, flushArrowDefs } from "./gen_arrows"
 
+let tmplPreRegs = new Map()
+
 // ── Print call ──────────────────────────────────────────────────
 
 function genPrintCall(callee: string, argList: string): string {
@@ -567,7 +569,12 @@ function genTemplateLit(id: int): string {
             if (fk == "TMPL_FRAG_LIT") {
                 fragStr = addStringConst(nGetS1(fragId))
             } else if (fk == "TMPL_FRAG_EXPR") {
-                fragStr = genExprAsString(nGetI1(fragId))
+                const preKey = `${fragId}`
+                if (tmplPreRegs.has(preKey) == 1) {
+                    fragStr = genExprAsString(nGetI1(fragId), tmplPreRegs.getString(preKey))
+                } else {
+                    fragStr = genExprAsString(nGetI1(fragId))
+                }
                 fragOwned = lastExprStringOwned
             }
             if (result == "") {

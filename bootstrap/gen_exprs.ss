@@ -170,19 +170,32 @@ function genVal(id: int): int {
         return constVal(genMethodCall(id))
     }
     if (kind == "TEMPLATE_LIT") {
+        const fragList = nGetList(id)
+        if (fragList == "") {
+            if (comptimeDepth > 0) { return ctVal(interpNewString("")) }
+            return constVal(addStringConst(""))
+        }
+        let allCt = 1
+        const tmplParts = fragList.split(",")
+        let fragVals = new Map()
+        for (tp in tmplParts) {
+            const fragId = parseInt(tp)
+            if (fragId > 0 && nGetKind(fragId) == "TMPL_FRAG_EXPR") {
+                const fv = genVal(nGetI1(fragId))
+                fragVals.set(`${fragId}`, `${fv}`)
+                if (isCt(fv) != 1) { allCt = 0 }
+            }
+        }
         if (comptimeDepth > 0) {
-            const fragList = nGetList(id)
-            if (fragList == "") { return ctVal(interpNewString("")) }
             let ctResult = ""
-            const ctParts = fragList.split(",")
-            for (cp in ctParts) {
-                const fragId = parseInt(cp)
+            for (tp in tmplParts) {
+                const fragId = parseInt(tp)
                 if (fragId > 0) {
                     const fk = nGetKind(fragId)
                     if (fk == "TMPL_FRAG_LIT") {
                         ctResult = `${ctResult}${nGetS1(fragId)}`
-                    } else if (fk == "TMPL_FRAG_EXPR") {
-                        const fv = genVal(nGetI1(fragId))
+                    } else if (fk == "TMPL_FRAG_EXPR" && fragVals.has(`${fragId}`) == 1) {
+                        const fv = parseInt(fragVals.getString(`${fragId}`))
                         if (isCt(fv) == 1) {
                             ctResult = `${ctResult}${interpToStr(payload(fv))}`
                         }
@@ -190,6 +203,14 @@ function genVal(id: int): int {
                 }
             }
             return ctVal(interpNewString(ctResult))
+        }
+        tmplPreRegs = new Map()
+        for (tp in tmplParts) {
+            const fragId = parseInt(tp)
+            if (fragId > 0 && nGetKind(fragId) == "TMPL_FRAG_EXPR") {
+                const fv = parseInt(fragVals.getString(`${fragId}`))
+                tmplPreRegs.set(`${fragId}`, reg(fv))
+            }
         }
         return constVal(genTemplateLit(id))
     }
@@ -1598,13 +1619,11 @@ function genBinary(id: int): string {
 
 // Convert any expression to string for println
 // Sets lastExprStringOwned: 1 if result is newly allocated (conversion), 0 if borrowed
-function genExprAsString(id: int): string {
+function genExprAsString(id: int, preReg: string = ""): string {
     const vType = inferType(id)
     const llType = ssTypeToLLVM(vType)
-    // String or class instance (exclude generic types like Array<string>)
     if (vType == "string" || (llType == "ptr" && vType != "ptr" && vType.contains("<") == 0)) {
-        const sVal = genExpr(id)
-        // If the actual LLVM value is i64 (e.g., from untyped array), inttoptr
+        const sVal = preReg != "" ? preReg : genExpr(id)
         const sNodeKind = nGetKind(id)
         if (sNodeKind == "IDENT" && getVarType(nGetS1(id)) == "i64") {
             const castR = nextReg()
@@ -1615,7 +1634,7 @@ function genExprAsString(id: int): string {
         lastExprStringOwned = 0
         return sVal
     }
-    const val = genExpr(id)
+    const val = preReg != "" ? preReg : genExpr(id)
     if (vType == "double") {
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_double_to_string(double ${val})`)
         lastExprStringOwned = 1

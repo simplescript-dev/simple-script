@@ -264,7 +264,7 @@ function analyzeKindBody(kindName: string, thenId: int) {
             seenCtGuard = 1
             continue
         }
-        if (nGetKind(sid) == "IF" && subtreeHasCall(nGetI1(sid), "isCt") == 1) {
+        if (subtreeHasCall(sid, "isCt") == 1) {
             gvBranchIsCtBranch.set(kindName, "1")
         }
         if (seenCtGuard == 0 && (subtreeHasCall(sid, "genVal") == 1 || subtreeHasCall(sid, "genExpr") == 1)) {
