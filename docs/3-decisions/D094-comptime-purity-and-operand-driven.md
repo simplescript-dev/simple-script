@@ -1,6 +1,6 @@
 # D094: Comptime Purity + Operand-Driven Folding
 
-**Status:** Q2 收敛 — kind 级到顶 (genVal 81%, genStmt missing=0, replaceable≈0)，下一步 coexist 守卫消除
+**Status:** Done — 自然终态 (genVal 81%, genStmt missing=0, coexist 守卫不可消除=正确架构)
 **Depends on:** D093(SEMA 单函数 dispatch), Q1 成果(配对=0, zig=7)
 **Date:** 2026-04-16
 
@@ -145,7 +145,9 @@ ARRAY_LIT 因 materialize 不支持数组类型无法在 runtime 自动折叠。
 
 kind 级转换已穷尽。剩余 10 个 dual kind（genVal 2 + genStmt 8）全部是结构性的：要么是模式切换入口（COMPTIME_BLOCK/COMPTIME_EXPR），要么是声明注册（FUNC_DECL/CLASS_DECL/ENUM_DECL），要么是无操作数控制流（BREAK/CONTINUE），要么是纯桥接（EXPR_STMT/TRY/ARROW_FUNC）。
 
-**下一阶段方向：** 44 个 coexist 引用中的 comptimeDepth 守卫消除。这些守卫存在于已有 isCt 的函数内部（如 genVal 的各 kind 分支），消除它们需要将"comptime 块内强制全求值"语义从 comptimeDepth 守卫改为操作数全部 ct 的隐式推导——这是更深层的架构变革，等价于让解释器路径不再需要显式 comptime 模式标记。
+**coexist 守卫分析：不可消除，是正确架构。** 44 个 coexist 引用中的 comptimeDepth 承担两个不可分离的职责：(1) 分派选择 — CALL/METHOD_CALL/NEW_EXPR 即使参数全 ct，comptime 块外也不走解释器（D094 规则 2）；(2) 安全网 — comptime 块内 isCt 失败时阻止 fall through 到 emitIR。这两个职责都需要"当前是否在 comptime 块内"的信息，operand ct-ness 无法替代。Zig Sema 也用 `comptime_reason` 标记 comptime 上下文。
+
+**终态判定：** D094 已达自然终态。operand-driven 路径优先（isCt 在 comptimeDepth 守卫之前），comptimeDepth 只做安全网和分派 — 这就是 Zig SEMA 的正确形态。
 
 ## Rejected Alternatives
 
