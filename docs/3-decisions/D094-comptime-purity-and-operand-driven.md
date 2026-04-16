@@ -1,6 +1,6 @@
 # D094: Comptime Purity + Operand-Driven Folding
 
-**Status:** Proposed → P2-a In Progress
+**Status:** P2 Done — 剩余 3 dual (POSTFIX_INC/COMPTIME_EXPR/ARROW_FUNC) 等待架构演进
 **Depends on:** D093(SEMA 单函数 dispatch), Q1 成果(配对=0, zig=7)
 **Date:** 2026-04-16
 
