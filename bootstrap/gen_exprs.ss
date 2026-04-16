@@ -3,7 +3,7 @@
 
 import { genCall, genTemplateLit, genArrowFunc, flushArrowDefs, genArrayLit } from "./gen_calls"
 import { genMethodCall, genOptionalMethodCall, resolveSuperParent } from "./gen_methods"
-import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCtFieldsArray, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "./interp"
+import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpArrayGet, interpNewMap, interpType, interpAsInt, interpAsStr, interpAsBool, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCtFieldsArray, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "./interp"
 import { interpBuildTypeInfo } from "./gen_reflect"
 
 // ── Simple expression handlers ──────────────────────────────────
@@ -509,16 +509,10 @@ function genVal(id: int): int {
             const objP = payload(obj)
             const ot = interpType(objP)
             if (ot == "array") {
-                const items = interpAsStr(objP)
-                if (items == "") { return ctVal(interpNewNull()) }
                 const i = interpAsInt(payload(idx))
-                const itemParts = items.split(",")
-                if (i >= 0 && i < itemParts.length()) {
-                    return ctVal(parseInt(itemParts[i]))
-                }
-                return ctVal(interpNewNull())
+                return ctVal(interpArrayGet(objP, i))
             }
-            if (ot == "object") {
+            if (ot == "object" || ot == "map") {
                 const fieldName = interpAsStr(payload(idx))
                 return ctVal(interpGetField(objP, fieldName))
             }

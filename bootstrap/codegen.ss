@@ -359,6 +359,31 @@ function interpArrayPush(arrId: int, valTvId: int): int {
     return arrId
 }
 
+function interpArraySet(arrId: int, idx: int, valTvId: int) {
+    const idStr = arrId + ""
+    const items = tvList.getString(idStr)
+    if (items == "") { return }
+    const parts = items.split(",")
+    if (idx < 0 || idx >= parts.length()) { return }
+    let result = ""
+    let i = 0
+    while (i < parts.length()) {
+        const elem = i == idx ? `${valTvId}` : parts[i]
+        if (result == "") { result = elem }
+        else { result = `${result},${elem}` }
+        i = i + 1
+    }
+    tvList.set(idStr, result)
+}
+
+function interpArrayGet(arrId: int, idx: int): int {
+    const items = tvList.getString(arrId + "")
+    if (items == "") { return newTvNull() }
+    const parts = items.split(",")
+    if (idx < 0 || idx >= parts.length()) { return newTvNull() }
+    return parseInt(parts[idx])
+}
+
 function interpNewMap(): int {
     const id = allocTv("map")
     tvList.set(id + "", "")

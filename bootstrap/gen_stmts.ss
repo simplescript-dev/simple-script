@@ -2,7 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
-import { interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpType, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
+import { interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpType, interpSetField, interpArraySet, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 
@@ -275,6 +275,42 @@ function genPostfixStmt(id: int) {
 }
 
 function genIndexAssign(id: int) {
+    if (comptimeDepth > 0) {
+        const iaVarName = nGetS1(id)
+        const iaIdxVal = genVal(nGetI1(id))
+        const iaValVal = genVal(nGetI2(id))
+        let iaObjTagged = -1
+        if (ctScopeStack.length() > 0) {
+            let iaSi = ctScopeStack.length() - 1
+            while (iaSi >= 0) {
+                const iaSk = `${ctScopeStack[iaSi]}:${iaVarName}`
+                if (ctVars.has(iaSk) == 1) {
+                    iaObjTagged = parseInt(ctVars.getString(iaSk))
+                    break
+                }
+                iaSi = iaSi - 1
+            }
+        }
+        if (iaObjTagged == -1) {
+            const iaCk = `${currentFunc}:${iaVarName}`
+            if (ctVars.has(iaCk) == 1) {
+                iaObjTagged = parseInt(ctVars.getString(iaCk))
+            }
+        }
+        if (isCt(iaObjTagged) == 1 && isCt(iaIdxVal) == 1 && isCt(iaValVal) == 1) {
+            const iaObjP = payload(iaObjTagged)
+            const iaObjType = interpType(iaObjP)
+            if (iaObjType == "array") {
+                interpArraySet(iaObjP, interpAsInt(payload(iaIdxVal)), payload(iaValVal))
+                return
+            }
+            if (iaObjType == "object" || iaObjType == "map") {
+                interpSetField(iaObjP, interpAsStr(payload(iaIdxVal)), payload(iaValVal))
+                return
+            }
+        }
+        return
+    }
     // D088: compile-time field name → direct GEP+store; otherwise fall through to ss_arraySet
     const iaIdxNode = nGetI1(id)
     const iaIdxKind = nGetKind(iaIdxNode)
