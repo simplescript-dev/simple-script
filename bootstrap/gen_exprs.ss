@@ -47,28 +47,26 @@ function genUnary(id: int): string {
     return r
 }
 
-function genIndexAccess(id: int): string {
-    // D088: obj[name] bracket notation for class field access
-    // Only attempt resolveObjClass when index could be a field name (string lit or comptime const)
+function genIndexAccess(id: int, preObj: string = "", preIdx: string = ""): string {
     const idxId = nGetI2(id)
     const idxKind = nGetKind(idxId)
     if (idxKind == "STRING_LIT" || (idxKind == "IDENT" && comptimeConsts.has(nGetS1(idxId)) == 1)) {
         const objClass = resolveObjClass(nGetI1(id))
         if (objClass != "" && classFields.has(objClass) == 1) {
             const fieldName = idxKind == "STRING_LIT" ? nGetS1(idxId) : comptimeConsts.getString(nGetS1(idxId))
-            const objVal = genExpr(nGetI1(id))
+            const objVal = preObj != "" ? preObj : genExpr(nGetI1(id))
             return emitFieldLoad(objClass, objVal, fieldName)
         }
     }
 
-    let arrVal = genExpr(nGetI1(id))
+    let arrVal = preObj != "" ? preObj : genExpr(nGetI1(id))
     const arrType = inferType(nGetI1(id))
     if (arrType == "i64") {
         const cvtR = nextReg()
         emitIR(`  ${cvtR} = inttoptr i64 ${arrVal} to ptr`)
         arrVal = cvtR
     }
-    const idxVal = genExpr(idxId)
+    const idxVal = preIdx != "" ? preIdx : genExpr(idxId)
     const rawR = nextReg(); emitIR(`  ${rawR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idxVal})`)
     let idxElem = inferTupleIndexType(id)
     if (idxElem == "") { idxElem = inferArrayElemType(nGetI1(id)) }
@@ -204,38 +202,36 @@ function genVal(id: int): int {
         return constVal(genArrowFunc(id))
     }
     if (kind == "INDEX_ACCESS") {
-        if (comptimeDepth > 0) {
-            const ctObj = genVal(nGetI1(id))
-            const ctIdx = genVal(nGetI2(id))
-            if (isCt(ctObj) == 1 && isCt(ctIdx) == 1) {
-                const objP = payload(ctObj)
-                const ot = interpType(objP)
-                if (ot == "array") {
-                    const items = interpAsStr(objP)
-                    if (items == "") { return ctVal(interpNewNull()) }
-                    const idx = interpAsInt(payload(ctIdx))
-                    const itemParts = items.split(",")
-                    if (idx >= 0 && idx < itemParts.length()) {
-                        return ctVal(parseInt(itemParts[idx]))
-                    }
-                    return ctVal(interpNewNull())
+        const obj = genVal(nGetI1(id))
+        const idx = genVal(nGetI2(id))
+        if (isCt(obj) == 1 && isCt(idx) == 1) {
+            const objP = payload(obj)
+            const ot = interpType(objP)
+            if (ot == "array") {
+                const items = interpAsStr(objP)
+                if (items == "") { return ctVal(interpNewNull()) }
+                const i = interpAsInt(payload(idx))
+                const itemParts = items.split(",")
+                if (i >= 0 && i < itemParts.length()) {
+                    return ctVal(parseInt(itemParts[i]))
                 }
-                if (ot == "object") {
-                    const fieldName = interpAsStr(payload(ctIdx))
-                    return ctVal(interpGetField(objP, fieldName))
-                }
-                if (ot == "string") {
-                    const s = interpAsStr(objP)
-                    const idx = interpAsInt(payload(ctIdx))
-                    if (idx >= 0 && idx < s.length()) {
-                        return ctVal(interpNewString(s.charAt(idx)))
-                    }
-                    return ctVal(interpNewString(""))
-                }
+                return ctVal(interpNewNull())
             }
-            return ctVal(interpNewNull())
+            if (ot == "object") {
+                const fieldName = interpAsStr(payload(idx))
+                return ctVal(interpGetField(objP, fieldName))
+            }
+            if (ot == "string") {
+                const s = interpAsStr(objP)
+                const i = interpAsInt(payload(idx))
+                if (i >= 0 && i < s.length()) {
+                    return ctVal(interpNewString(s.charAt(i)))
+                }
+                return ctVal(interpNewString(""))
+            }
         }
-        return constVal(genIndexAccess(id))
+        if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+        return constVal(genIndexAccess(id, reg(obj), reg(idx)))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
     if (comptimeDepth > 0) {
