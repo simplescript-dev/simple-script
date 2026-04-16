@@ -259,9 +259,12 @@ function genPostfixStmt(id: int) {
             if (ctVars.has(pfFk) == 1) { pfKey = pfFk }
         }
         if (pfKey != "") {
-            const pfOld = payload(parseInt(ctVars.getString(pfKey)))
-            const pfDelta = nGetKind(id) == "POSTFIX_INC" ? 1 : -1
-            ctVars.set(pfKey, `${ctVal(interpNewInt(interpAsInt(pfOld) + pfDelta))}`)
+            const pfTagged = parseInt(ctVars.getString(pfKey))
+            if (isCt(pfTagged) == 1) {
+                const pfOld = payload(pfTagged)
+                const pfDelta = nGetKind(id) == "POSTFIX_INC" ? 1 : -1
+                ctVars.set(pfKey, `${ctVal(interpNewInt(interpAsInt(pfOld) + pfDelta))}`)
+            }
             return
         }
     }
