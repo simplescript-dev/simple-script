@@ -566,9 +566,11 @@ function genFor(id: int) {
             if (isCt(fCondTagged) == 0 || interpTruthy(payload(fCondTagged)) == 0) { break }
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
+            interpContinueFlag = 0
             genStmt(updateId)
             ctForLimit = ctForLimit - 1
         }
+        interpBreakFlag = 0
         if (ctForLimit == 0) { println("[comptime] for loop exceeded 10000 iterations") }
         return
     }
@@ -785,8 +787,10 @@ function genWhile(id: int) {
             if (isCt(wCondTagged) == 0 || interpTruthy(payload(wCondTagged)) == 0) { break }
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
+            interpContinueFlag = 0
             ctWhileLimit = ctWhileLimit - 1
         }
+        interpBreakFlag = 0
         if (ctWhileLimit == 0) { println("[comptime] while loop exceeded 10000 iterations") }
         return
     }
@@ -830,10 +834,12 @@ function genDoWhile(id: int) {
         while (ctDoLimit > 0) {
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
+            interpContinueFlag = 0
             const dwCondTagged = genVal(condId)
             if (isCt(dwCondTagged) == 0 || interpTruthy(payload(dwCondTagged)) == 0) { break }
             ctDoLimit = ctDoLimit - 1
         }
+        interpBreakFlag = 0
         if (ctDoLimit == 0) { println("[comptime] do-while loop exceeded 10000 iterations") }
         return
     }

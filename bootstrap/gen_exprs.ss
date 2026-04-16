@@ -1331,7 +1331,7 @@ function ctStringMethod(objVal: int, method: string, argVals: Array<string>): in
 
 function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int {
     if (method == "push") { return interpArrayPush(objVal, parseInt(argVals[0])) }
-    const items = interpAsStr(objVal)
+    const items = tvList.getString(objVal + "")
     let parts: Array<string> = []
     if (items != "") { parts = items.split(",") }
     const len = parts.length()
