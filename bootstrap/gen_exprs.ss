@@ -290,6 +290,9 @@ function genVal(id: int): int {
                 }
                 return ctVal(interpNewInt(parseInt(enumValues.getString(enumKey))))
             }
+            if (comptimeDepth == 0 && getVarType(eName) == "" && classFields.has(eName) == 1) {
+                return constVal(genMemberAccess(id))
+            }
         }
         const obj = genVal(objNode)
         if (isCt(obj) == 1) {
