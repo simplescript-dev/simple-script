@@ -145,9 +145,26 @@ ARRAY_LIT 因 materialize 不支持数组类型无法在 runtime 自动折叠。
 
 kind 级转换已穷尽。剩余 10 个 dual kind（genVal 2 + genStmt 8）全部是结构性的：要么是模式切换入口（COMPTIME_BLOCK/COMPTIME_EXPR），要么是声明注册（FUNC_DECL/CLASS_DECL/ENUM_DECL），要么是无操作数控制流（BREAK/CONTINUE），要么是纯桥接（EXPR_STMT/TRY/ARROW_FUNC）。
 
-**coexist 守卫分析：不可消除，是正确架构。** 44 个 coexist 引用中的 comptimeDepth 承担两个不可分离的职责：(1) 分派选择 — CALL/METHOD_CALL/NEW_EXPR 即使参数全 ct，comptime 块外也不走解释器（D094 规则 2）；(2) 安全网 — comptime 块内 isCt 失败时阻止 fall through 到 emitIR。这两个职责都需要"当前是否在 comptime 块内"的信息，operand ct-ness 无法替代。Zig Sema 也用 `comptime_reason` 标记 comptime 上下文。
+**coexist 守卫分析：不可消除，是正确架构。** 44 个 coexist 引用中的 comptimeDepth 承担两个不可分离的职责：(1) 分派选择 — CALL/METHOD_CALL/NEW_EXPR 即使参数全 ct，comptime 块外也不走解释器（D094 规则 2）；(2) 安全网 — comptime 块内 isCt 失败时阻止 fall through 到 emitIR。这两个职责都需要"当前是否在 comptime 块内"的信息，operand ct-ness 无法替代。
 
-**终态判定：** D094 已达自然终态。operand-driven 路径优先（isCt 在 comptimeDepth 守卫之前），comptimeDepth 只做安全网和分派 — 这就是 Zig SEMA 的正确形态。
+#### 实证验证（tests/phase5/comptime_dispatch.ss）
+
+10 个边界测试验证 comptimeDepth 语义。与 Zig Sema 对比：
+
+| 行为 | SS | Zig | 评估 |
+|------|-----|-----|------|
+| 纯表达式块外自动折叠 | ✅ | ✅ | 一致 |
+| comptime 块内本地函数调用 | ✅ | ✅ | 一致 |
+| comptime 块内调用**外部函数** | ❌ ctFuncNodes 仅含块内定义 | ✅ 可调任意纯函数 | **差距 — SS 解释器不能遍历外部 AST** |
+| comptime class new + BINARY | ❌ field 读取后算术返回 0 | ✅ | **差距 — interp 对象 field BINARY 折叠链断裂** |
+| comptime Map index assign/read | ✅ | ✅ | 一致 |
+| comptime throw 条件跳过 | ✅ | ✅ | 一致 |
+| comptime postfix++ | ✅ | ✅ | 一致 |
+| comptime enum | ✅ | ✅ | 一致 |
+
+Zig Sema 用 `comptime_reason`（optional tagged union，含错误来源信息）标记 comptime 上下文。SS 用 `comptimeDepth`（int 计数器）。功能等价（判断是否在 comptime 块内），但 SS 缺两个能力：外部函数可达性、comptime 错误溯源。
+
+**终态判定：** D094 kind 级转换到顶。comptimeDepth 作为 comptime 上下文标记不可消除，是正确架构。两个差距（外部函数调用 / class BINARY 折叠）是 comptime 解释器能力问题，不属于 D094 scope，记为后续工作。
 
 ## Rejected Alternatives
 
