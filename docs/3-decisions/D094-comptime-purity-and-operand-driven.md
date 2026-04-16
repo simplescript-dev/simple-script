@@ -103,9 +103,13 @@ SS 解释器已天然满足，无需加代码限制。本规则是设计承诺�
 
 | 指标 | Q1 后 | P2-a 后 | P2-b 后 |
 |---|---|---|---|
-| dual kinds | 4 | 3 | ≤1 |
-| comptimeDepth 命中 | 53 | ~50 | ~35 |
-| 自动折叠覆盖 | 0 kind | 0 kind | 4+ kind |
+| dual kinds | 4 | **3** | **3** |
+| comptimeDepth 命中 | 53 | 53 | **52** |
+| 自动折叠覆盖 | 0 kind | 0 kind | **1 kind** (TEMPLATE_LIT) |
+
+P2-b 实际影响比预期小：MEMBER_ACCESS/INDEX_ACCESS 主折叠路径 Q1 已是 isCt 驱动，
+ARRAY_LIT 因 materialize 不支持数组类型无法在 runtime 自动折叠。
+仅 TEMPLATE_LIT 有实质改动（comptimeDepth→allCt 守卫替换）。
 
 ## Rejected Alternatives
 

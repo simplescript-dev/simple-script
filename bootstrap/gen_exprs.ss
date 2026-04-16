@@ -390,10 +390,7 @@ function genVal(id: int): int {
     }
     if (kind == "TEMPLATE_LIT") {
         const fragList = nGetList(id)
-        if (fragList == "") {
-            if (comptimeDepth > 0) { return ctVal(interpNewString("")) }
-            return constVal(addStringConst(""))
-        }
+        if (fragList == "") { return ctVal(interpNewString("")) }
         let allCt = 1
         const tmplParts = fragList.split(",")
         let fragVals = new Map()
@@ -405,7 +402,7 @@ function genVal(id: int): int {
                 if (isCt(fv) != 1) { allCt = 0 }
             }
         }
-        if (comptimeDepth > 0) {
+        if (allCt == 1) {
             let ctResult = ""
             for (tp in tmplParts) {
                 const fragId = parseInt(tp)
@@ -423,6 +420,7 @@ function genVal(id: int): int {
             }
             return ctVal(interpNewString(ctResult))
         }
+        if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
         tmplPreRegs = new Map()
         for (tp in tmplParts) {
             const fragId = parseInt(tp)
