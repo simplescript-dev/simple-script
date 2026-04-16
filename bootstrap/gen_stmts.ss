@@ -2,7 +2,7 @@
 // Declaration/assignment/function codegen in gen_decls.ss.
 
 import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "./gen_decls"
-import { interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpType, interpSetField, interpArraySet, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
+import { interpGetComptimeIR, interpClearComptimeIR, interpGetComptimeSS, interpClearComptimeSS, interpTruthy, interpShouldStop, interpCheckLoopExit, interpAsInt, interpAsStr, interpToStr, interpNewInt, interpNewString, interpType, interpSetField, interpArraySet, interpClasses, interpClassParents, interpEnumValues, interpEnumTypes, interpEnumNodes } from "./interp"
 
 // ── Statement helpers ────────────────────────────────────────
 
@@ -371,6 +371,16 @@ function genIndexAssign(id: int) {
 }
 
 function genThrow(id: int) {
+    if (comptimeDepth > 0) {
+        const throwVal = genVal(nGetI1(id))
+        if (isCt(throwVal) == 1) {
+            const throwMsg = interpToStr(payload(throwVal))
+            println(`comptime error: ${throwMsg}`)
+        } else {
+            println(`comptime error: throw value is not compile-time constant at line ${nGetLine(nGetI1(id))}`)
+        }
+        exit(1)
+    }
     const exprId = nGetI1(id)
     const exprVal = genExpr(exprId)
     const exprType = inferType(exprId)
