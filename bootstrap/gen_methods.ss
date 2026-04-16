@@ -249,6 +249,19 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
 
 // ── Super method call (direct static dispatch to parent) ───────
 
+function resolveSuperParent(objNodeId: int, callNodeId: int): string {
+    if (nGetKind(objNodeId) != "SUPER") { return "" }
+    if (comptimeDepth > 0) {
+        if (interpCurrentMethodClass == "" || interpClassParents.has(interpCurrentMethodClass) != 1) {
+            println(`error: [comptime] 'super' invalid in '${interpCurrentMethodClass}' at line ${nGetLine(callNodeId)}:${nGetCol(callNodeId)}`)
+            exit(1)
+            return ""
+        }
+        return interpClassParents.getString(interpCurrentMethodClass)
+    }
+    return classParents.getString(currentClassName)
+}
+
 function genSuperMethodCall(method: string, argList: string): string {
     const parentClass = classParents.getString(currentClassName)
     // Walk from parent to find method definition
@@ -431,7 +444,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
     }
 
     // Super method call: super.method() → direct static dispatch to parent method
-    if (preObj == "" && nGetKind(objId) == "SUPER") {
+    if (preObj == "" && resolveSuperParent(objId, id) != "") {
         return genSuperMethodCall(method, argList)
     }
 
