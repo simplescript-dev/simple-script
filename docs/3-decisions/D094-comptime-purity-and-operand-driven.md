@@ -1,6 +1,6 @@
 # D094: Comptime Purity + Operand-Driven Folding
 
-**Status:** P2 Done — 剩余 3 dual (POSTFIX_INC/COMPTIME_EXPR/ARROW_FUNC) 等待架构演进
+**Status:** Q2 收敛 — kind 级到顶 (genVal 81%, genStmt missing=0, replaceable≈0)，下一步 coexist 守卫消除
 **Depends on:** D093(SEMA 单函数 dispatch), Q1 成果(配对=0, zig=7)
 **Date:** 2026-04-16
 
@@ -110,6 +110,42 @@ SS 解释器已天然满足，无需加代码限制。本规则是设计承诺�
 P2-b 实际影响比预期小：MEMBER_ACCESS/INDEX_ACCESS 主折叠路径 Q1 已是 isCt 驱动，
 ARRAY_LIT 因 materialize 不支持数组类型无法在 runtime 自动折叠。
 仅 TEMPLATE_LIT 有实质改动（comptimeDepth→allCt 守卫替换）。
+
+### Q2 收尾：kind 级转换到顶
+
+**Status:** kind 级 + 引用级转换收敛，replaceable ≈ 0
+
+#### genVal 操作数驱动审计
+
+| 分类 | 数量 | kind |
+|---|---|---|
+| zig (isCt 驱动) | 9 | IDENT, CALL, NEW_EXPR, MEMBER_ACCESS, METHOD_CALL, TEMPLATE_LIT, ARRAY_LIT, INDEX_ACCESS, POSTFIX_INC |
+| dual (结构性) | 2 | COMPTIME_EXPR (模式入口), ARROW_FUNC (类型级) |
+| simple | 11 | 字面量等无 ct 处理 |
+| **转化率** | **81%** (9/11) | |
+
+#### genStmt 语句处理审计
+
+| 分类 | 数量 |
+|---|---|
+| zig (isCt 驱动) | 17 |
+| dual (结构性) | 8 — FUNC_DECL/CLASS_DECL/ENUM_DECL(声明)、BREAK/CONTINUE(控制流)、EXPR_STMT(桥接)、TRY、COMPTIME_BLOCK(入口) |
+| missing | **0** |
+| simple | 1 |
+
+#### comptimeDepth 55 条引用分类
+
+| 分类 | 数量 | 说明 |
+|---|---|---|
+| coexist | 44 | 函数内已有 isCt 共存，comptimeDepth 是辅助守卫 |
+| structural | 7 | 赋值方(runComptimeBlockBody)、循环控制(genBlock)、无操作数声明(registerEnum/genBreak/genContinueStmt/resolveSuperParent) |
+| boundary | 4 | genFuncDeclStmt/genClassDecl/genStmt(EXPR_STMT)/genTryCatch — 形式上可替换但无操作数可 isCt，实为声明级模式守卫 |
+
+#### 天花板分析
+
+kind 级转换已穷尽。剩余 10 个 dual kind（genVal 2 + genStmt 8）全部是结构性的：要么是模式切换入口（COMPTIME_BLOCK/COMPTIME_EXPR），要么是声明注册（FUNC_DECL/CLASS_DECL/ENUM_DECL），要么是无操作数控制流（BREAK/CONTINUE），要么是纯桥接（EXPR_STMT/TRY/ARROW_FUNC）。
+
+**下一阶段方向：** 44 个 coexist 引用中的 comptimeDepth 守卫消除。这些守卫存在于已有 isCt 的函数内部（如 genVal 的各 kind 分支），消除它们需要将"comptime 块内强制全求值"语义从 comptimeDepth 守卫改为操作数全部 ct 的隐式推导——这是更深层的架构变革，等价于让解释器路径不再需要显式 comptime 模式标记。
 
 ## Rejected Alternatives
 
