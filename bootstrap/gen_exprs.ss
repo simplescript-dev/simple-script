@@ -227,8 +227,55 @@ function genVal(id: int): int {
         return callResult
     }
     if (kind == "NEW_EXPR") {
-        if (comptimeDepth > 0) { return genValCtNewExpr(id) }
-        return constVal(genNewExpr(id))
+        const newClassName = nGetS1(id)
+        if (genericClassNodes.has(newClassName) == 1) {
+            if (comptimeDepth > 0) {
+                println(`[comptime] cannot instantiate generic class: ${newClassName}`)
+                return ctVal(interpNewNull())
+            }
+            return constVal(genGenericNewExpr(id, newClassName))
+        }
+        if (newClassName == "Map" || newClassName == "Set") {
+            if (comptimeDepth > 0) { return ctVal(interpNewMap()) }
+            return constVal(genNewExpr(id))
+        }
+        const savedNewPreRegs = callPreRegs
+        callPreRegs = new Map()
+        let newCtArgVals: Array<string> = []
+        let newCtNamedArgs = new Map()
+        const newArgList = nGetList(id)
+        if (newArgList != "") {
+            const newArgParts = newArgList.split(",")
+            for (nap in newArgParts) {
+                const newArgId = parseInt(nap)
+                if (newArgId > 0) {
+                    if (nGetKind(newArgId) == "NAMED_ARG") {
+                        const nav = genVal(nGetI1(newArgId))
+                        if (isCt(nav) == 1) {
+                            newCtNamedArgs.set(nGetS1(newArgId), `${payload(nav)}`)
+                        } else {
+                            newCtNamedArgs.set(nGetS1(newArgId), `${interpNewNull()}`)
+                            callPreRegs.set(`${nGetI1(newArgId)}`, reg(nav))
+                        }
+                    } else {
+                        const av = genVal(newArgId)
+                        if (isCt(av) == 1) {
+                            newCtArgVals = newCtArgVals.push(`${payload(av)}`)
+                        } else {
+                            newCtArgVals = newCtArgVals.push(`${interpNewNull()}`)
+                            callPreRegs.set(`${newArgId}`, reg(av))
+                        }
+                    }
+                }
+            }
+        }
+        if (comptimeDepth > 0) {
+            callPreRegs = savedNewPreRegs
+            return ctNewExprDispatch(newClassName, newCtArgVals, newCtNamedArgs)
+        }
+        const newResult = constVal(genNewExpr(id))
+        callPreRegs = savedNewPreRegs
+        return newResult
     }
     if (kind == "MEMBER_ACCESS") {
         const member = nGetS1(id)
@@ -922,10 +969,7 @@ function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamed
     return ctVal(interpNewNull())
 }
 
-// Comptime NEW_EXPR: create interpreter object
-function genValCtNewExpr(id: int): int {
-    const className = nGetS1(id)
-    if (className == "Map") { return ctVal(interpNewMap()) }
+function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedArgs: Map): int {
     if (interpClasses.has(className) != 1) {
         println(`[comptime] unknown class: ${className}`)
         return ctVal(interpNewNull())
@@ -950,24 +994,17 @@ function genValCtNewExpr(id: int): int {
             fi = fi + 1
         }
     }
-    const argList = nGetList(id)
-    if (argList != "") {
-        const argIds = argList.split(",")
-        let posIdx = 0
-        let i = 0
-        while (i < argIds.length()) {
-            const argNodeId = parseInt(argIds[i])
-            if (nGetKind(argNodeId) == "NAMED_ARG") {
-                const nav = genVal(nGetI1(argNodeId))
-                interpSetField(objId, nGetS1(argNodeId), isCt(nav) == 1 ? payload(nav) : interpNewNull())
-            } else {
-                const av = genVal(argNodeId)
-                if (posIdx < ctFieldNames.length()) {
-                    interpSetField(objId, ctFieldNames[posIdx], isCt(av) == 1 ? payload(av) : interpNewNull())
-                }
-                posIdx = posIdx + 1
-            }
-            i = i + 1
+    let posIdx = 0
+    while (posIdx < ctArgVals.length()) {
+        if (posIdx < ctFieldNames.length()) {
+            interpSetField(objId, ctFieldNames[posIdx], parseInt(ctArgVals[posIdx]))
+        }
+        posIdx = posIdx + 1
+    }
+    const namedKeys = ctNamedArgs.keys()
+    for (nk in namedKeys) {
+        if (nk != "") {
+            interpSetField(objId, nk, parseInt(ctNamedArgs.getString(nk)))
         }
     }
     return ctVal(objId)
