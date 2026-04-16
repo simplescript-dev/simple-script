@@ -32,6 +32,7 @@ function emitParamAllocas(paramList: string, useVarAlias: int) {
 }
 
 function genFuncDeclStmt(id: int) {
+    if (comptimeDepth > 0) { ctFuncNodes.set(nGetS1(id), `${id}`); return }
     // Generic functions are emitted on-demand at call sites (monomorphization)
     if (nGetS3(id) != "") { return }
     const fname = nGetS1(id)

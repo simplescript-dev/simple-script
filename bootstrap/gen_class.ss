@@ -418,6 +418,13 @@ function emitClassComptimeMethods(className: string) {
 }
 
 function genClassDecl(id: int) {
+    if (comptimeDepth > 0) {
+        const ctClassName = nGetS1(id)
+        interpClasses.set(ctClassName, `${id}`)
+        const ctParent = nGetS2(id)
+        if (ctParent != "") { interpClassParents.set(ctClassName, ctParent) }
+        return
+    }
     const name = specClassName != "" ? specClassName : classNodeName(id)
     const fieldStr = classFields.getString(name)
     const hasVtable = classNeedsVtable.has(name) == 1 ? 1 : 0

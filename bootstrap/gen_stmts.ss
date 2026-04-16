@@ -215,6 +215,10 @@ function registerEnumInto(id: int, valuesMap: Map, typesMap: Map, nodesMap: Map)
 }
 
 function registerEnum(id: int) {
+    if (comptimeDepth > 0) {
+        registerEnumInto(id, interpEnumValues, interpEnumTypes, interpEnumNodes)
+        return
+    }
     if (enumReady == 0) { enumValues = Map(); enumTypes = Map(); enumDeclNodes = Map(); enumReady = 1 }
     registerEnumInto(id, enumValues, enumTypes, enumDeclNodes)
 }
@@ -405,14 +409,7 @@ function genThrow(id: int) {
 
 function genStmt(id: int) {
     const kind = nGetKind(id)
-    if (kind == "FUNC_DECL") {
-        if (comptimeDepth > 0) {
-            ctFuncNodes.set(nGetS1(id), `${id}`)
-            return
-        }
-        genFuncDeclStmt(id)
-        return
-    }
+    if (kind == "FUNC_DECL") { genFuncDeclStmt(id); return }
     if (kind == "VAR_DECL") { genVarDecl(id); return }
     if (kind == "DESTRUCTURE_ARRAY") { genDestructureArray(id); return }
     if (kind == "DESTRUCTURE_OBJECT") { genDestructureObject(id); return }
@@ -439,25 +436,8 @@ function genStmt(id: int) {
     if (kind == "SWITCH") { genSwitch(id); return }
     if (kind == "INDEX_ASSIGN") { genIndexAssign(id); return }
     if (kind == "MEMBER_ASSIGN") { genMemberAssign(id); return }
-    if (kind == "CLASS_DECL") {
-        if (comptimeDepth > 0) {
-            const ctClassName = nGetS1(id)
-            interpClasses.set(ctClassName, `${id}`)
-            const ctParent = nGetS2(id)
-            if (ctParent != "") { interpClassParents.set(ctClassName, ctParent) }
-            return
-        }
-        genClassDecl(id)
-        return
-    }
-    if (kind == "ENUM_DECL") {
-        if (comptimeDepth > 0) {
-            registerEnumInto(id, interpEnumValues, interpEnumTypes, interpEnumNodes)
-            return
-        }
-        registerEnum(id)
-        return
-    }
+    if (kind == "CLASS_DECL") { genClassDecl(id); return }
+    if (kind == "ENUM_DECL") { registerEnum(id); return }
     if (kind == "INTERFACE_DECL") { return }
     if (kind == "TRY") { genTryCatch(id); return }
     if (kind == "THROW") { genThrow(id); return }
