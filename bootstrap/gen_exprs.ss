@@ -70,14 +70,7 @@ function genIndexAccess(id: int): string {
     }
     const idxVal = genExpr(idxId)
     const rawR = nextReg(); emitIR(`  ${rawR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idxVal})`)
-    // Tuple type: use positional element type
-    let idxElem = ""
-    if (nGetKind(nGetI1(id)) == "IDENT") {
-        const tvt = getVarType(nGetS1(nGetI1(id)))
-        if (isTupleType(tvt) == 1 && nGetKind(idxId) == "INT_LIT") {
-            idxElem = tupleElemTypeAtIndex(tvt, parseInt(nGetS1(idxId)))
-        }
-    }
+    let idxElem = inferTupleIndexType(id)
     if (idxElem == "") { idxElem = inferArrayElemType(nGetI1(id)) }
     return emitI64ToValue(rawR, idxElem)
 }

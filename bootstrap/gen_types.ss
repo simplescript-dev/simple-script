@@ -31,6 +31,14 @@ function tupleElemTypeAtIndex(tupleType: string, idx: int): string {
     return ""
 }
 
+function inferTupleIndexType(indexAccessId: int): string {
+    if (nGetKind(nGetI1(indexAccessId)) != "IDENT") { return "" }
+    const varType = getVarType(nGetS1(nGetI1(indexAccessId)))
+    if (isTupleType(varType) != 1) { return "" }
+    if (nGetKind(nGetI2(indexAccessId)) != "INT_LIT") { return "" }
+    return tupleElemTypeAtIndex(varType, parseInt(nGetS1(nGetI2(indexAccessId))))
+}
+
 // ── Ref type helper (D082) ────────────────────────────────────
 
 // Extract element type from "Ref<int>" → "int", "Ref<string>" → "string"
@@ -447,15 +455,8 @@ function inferType(id: int): string {
                 }
             }
         }
-        // Tuple type: positional element type inference
-        if (nGetKind(nGetI1(id)) == "IDENT") {
-            const iaVarType = getVarType(nGetS1(nGetI1(id)))
-            if (isTupleType(iaVarType) == 1 && nGetKind(nGetI2(id)) == "INT_LIT") {
-                const tIdx = parseInt(nGetS1(nGetI2(id)))
-                const tElem = tupleElemTypeAtIndex(iaVarType, tIdx)
-                if (tElem != "") { return tElem }
-            }
-        }
+        const tElem = inferTupleIndexType(id)
+        if (tElem != "") { return tElem }
         const iaElem = inferArrayElemType(nGetI1(id))
         if (iaElem != "") { return iaElem }
         return "i64"
