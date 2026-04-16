@@ -177,34 +177,51 @@ function flushGenericSpecDefs() {
 // Track global vars needing runtime init (new Map(), function calls, etc.)
 let globalInitIds = ""
 
+function emitLiteralGlobalInit(globalRef: string, initId: int): string {
+    const ik = nGetKind(initId)
+    if (ik == "INT_LIT") {
+        emitIR(`${globalRef} = global i32 ${nGetS1(initId)}, align 4`)
+        return "int"
+    }
+    if (ik == "DOUBLE_LIT") {
+        emitIR(`${globalRef} = global double ${nGetS1(initId)}, align 8`)
+        return "double"
+    }
+    if (ik == "STRING_LIT") {
+        emitIR(`${globalRef} = global ptr ${addStringConst(nGetS1(initId))}, align 8`)
+        return "string"
+    }
+    if (ik == "TRUE_LIT") {
+        emitIR(`${globalRef} = global i32 1, align 4`)
+        return "int"
+    }
+    if (ik == "FALSE_LIT") {
+        emitIR(`${globalRef} = global i32 0, align 4`)
+        return "int"
+    }
+    if (ik == "UNARY" && nGetS1(initId) == "Neg") {
+        const innerKind = nGetKind(nGetI1(initId))
+        if (innerKind == "INT_LIT") {
+            emitIR(`${globalRef} = global i32 -${nGetS1(nGetI1(initId))}, align 4`)
+            return "int"
+        }
+        if (innerKind == "DOUBLE_LIT") {
+            emitIR(`${globalRef} = global double -${nGetS1(nGetI1(initId))}, align 8`)
+            return "double"
+        }
+    }
+    return ""
+}
+
 function genGlobalVar(id: int) {
     const name = nGetS1(id)
     if (globalAliases.has(name) == 1) { return }
     const initId = nGetI1(id)
-    const ik = nGetKind(initId)
     let gType = "ptr"
-    if (ik == "INT_LIT") {
-        emitIR(`@${name} = global i32 ${nGetS1(initId)}, align 4`)
-        gType = "int"
-    } else if (ik == "DOUBLE_LIT") {
-        emitIR(`@${name} = global double ${nGetS1(initId)}, align 8`)
-        gType = "double"
-    } else if (ik == "STRING_LIT") {
-        emitIR(`@${name} = global ptr ${addStringConst(nGetS1(initId))}, align 8`)
-        gType = "string"
-    } else if (ik == "TRUE_LIT") {
-        emitIR(`@${name} = global i32 1, align 4`)
-        gType = "int"
-    } else if (ik == "FALSE_LIT") {
-        emitIR(`@${name} = global i32 0, align 4`)
-        gType = "int"
-    } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "INT_LIT") {
-        emitIR(`@${name} = global i32 -${nGetS1(nGetI1(initId))}, align 4`)
-        gType = "int"
-    } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "DOUBLE_LIT") {
-        emitIR(`@${name} = global double -${nGetS1(nGetI1(initId))}, align 8`)
-        gType = "double"
-    } else if (ik == "COMPTIME_EXPR") {
+    const litType = emitLiteralGlobalInit(`@${name}`, initId)
+    if (litType != "") {
+        gType = litType
+    } else if (nGetKind(initId) == "COMPTIME_EXPR") {
         const ceType = inferType(initId)
         const ceLit = comptimeExprLiteral.getString(`${initId}`)
         if (ceType == "int") {

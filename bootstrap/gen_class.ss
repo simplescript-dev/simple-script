@@ -141,23 +141,8 @@ function registerStaticField(className: string, fieldName: string, fieldType: st
     staticFieldTypes.set(key, fieldType)
     const llType = ssTypeToLLVM(fieldType)
     if (initId > 0) {
-        const ik = nGetKind(initId)
-        if (ik == "INT_LIT") {
-            emitIR(`${globalName} = global i32 ${nGetS1(initId)}, align 4`)
-        } else if (ik == "DOUBLE_LIT") {
-            emitIR(`${globalName} = global double ${nGetS1(initId)}, align 8`)
-        } else if (ik == "TRUE_LIT") {
-            emitIR(`${globalName} = global i32 1, align 4`)
-        } else if (ik == "FALSE_LIT") {
-            emitIR(`${globalName} = global i32 0, align 4`)
-        } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "INT_LIT") {
-            emitIR(`${globalName} = global i32 -${nGetS1(nGetI1(initId))}, align 4`)
-        } else if (ik == "UNARY" && nGetS1(initId) == "Neg" && nGetKind(nGetI1(initId)) == "DOUBLE_LIT") {
-            emitIR(`${globalName} = global double -${nGetS1(nGetI1(initId))}, align 8`)
-        } else if (ik == "STRING_LIT") {
-            const strConst = addStringConst(nGetS1(initId))
-            emitIR(`${globalName} = global ptr ${strConst}, align 8`)
-        } else {
+        const litType = emitLiteralGlobalInit(globalName, initId)
+        if (litType == "") {
             let zeroVal = "0"
             if (llType == "double") { zeroVal = "0.0" }
             if (llType == "ptr") { zeroVal = "null" }
