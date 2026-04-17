@@ -335,6 +335,18 @@ function genVal(id: int): int {
                 if (items == "") { return ctVal(interpNewInt(0)) }
                 return ctVal(interpNewInt(items.split(",").length()))
             }
+            if (member == "fields" && interpType(objPayload) == "string") {
+                const clsName = interpAsStr(objPayload)
+                if (classFields.has(clsName) == 1) {
+                    const fArr = interpNewArray("")
+                    const fStr = classFields.getString(clsName)
+                    if (fStr != "") {
+                        const fParts = fStr.split(",")
+                        for (fp in fParts) { interpArrayPush(fArr, interpNewString(fp)) }
+                    }
+                    return ctVal(fArr)
+                }
+            }
         }
         if (comptimeDepth > 0) {
             return comptimeError(`cannot access field '${member}' on ${isCt(obj) == 1 ? interpType(payload(obj)) : "runtime"} value`, id)
