@@ -397,26 +397,79 @@ function pendingMethodTake(className: string): string {
     return v
 }
 
-// In-place AST rewrite: replace IDENT nodes named varName with STRING_LIT replaceWith,
-// recursing through int slots (I1..I4) and the list slot. Non-node ints are filtered by
-// nGetKind == "" check, so flag/count slots are safe.
-function foldIdentInTree(rootId: int, varName: string, replaceWith: string) {
+// Look up an IDENT name in the outer comptime scope (ctScopeStack → ctVars
+// → interpVars), mirroring genVal's IDENT path but without IR side effects.
+// Returns tagged ctVal if bound to a comptime value, -1 otherwise.
+function lookupComptimeBinding(name: string): int {
+    if (comptimeDepth > 0 && ctScopeStack.length() > 0) {
+        let si = ctScopeStack.length() - 1
+        while (si >= 0) {
+            const k = `${ctScopeStack[si]}:${name}`
+            if (ctVars.has(k) == 1) { return parseInt(ctVars.getString(k)) }
+            si = si - 1
+        }
+    }
+    const fk = `${currentFunc}:${name}`
+    if (ctVars.has(fk) == 1 && ctInvalidated.has(fk) == 0) {
+        const v = parseInt(ctVars.getString(fk))
+        if (isCt(v) == 1) { return v }
+    }
+    if (comptimeDepth > 0) {
+        const ik = interpFindScopeKey(name)
+        if (ik != "") { return ctVal(parseInt(interpVars.getString(ik))) }
+    }
+    return -1
+}
+
+// Replace an IDENT node in-place with the corresponding LIT for its comptime
+// value. Returns 1 if replaced, 0 otherwise.
+function rewriteIdentToLit(nodeId: int, tagged: int): int {
+    if (isCt(tagged) == 0) { return 0 }
+    const pl = payload(tagged)
+    const tk = tvKindOf(pl)
+    if (tk == "string") {
+        nKind.set(nodeId + "", "STRING_LIT")
+        nSetS1(nodeId, tvStringOf(pl))
+        return 1
+    }
+    if (tk == "int") {
+        nKind.set(nodeId + "", "INT_LIT")
+        nSetS1(nodeId, `${tvIntOf(pl)}`)
+        return 1
+    }
+    if (tk == "double") {
+        nKind.set(nodeId + "", "DOUBLE_LIT")
+        nSetS1(nodeId, tvD1.getString(pl + ""))
+        return 1
+    }
+    if (tk == "bool") {
+        nKind.set(nodeId + "", tvIntOf(pl) == 1 ? "TRUE_LIT" : "FALSE_LIT")
+        return 1
+    }
+    return 0
+}
+
+// In-place AST rewrite: walk tree, fold every IDENT whose name resolves to
+// a comptime value in the outer handler's scope. Recurses through I1..I4 and
+// the list slot. Non-node ints are filtered by nGetKind == "" check.
+function foldComptimeIdentsInTree(rootId: int) {
     if (rootId <= 0) { return }
     const k = nGetKind(rootId)
     if (k == "") { return }
-    if (k == "IDENT" && nGetS1(rootId) == varName) {
-        nKind.set(rootId + "", "STRING_LIT")
-        nSetS1(rootId, replaceWith)
+    if (k == "IDENT") {
+        const name = nGetS1(rootId)
+        const tagged = lookupComptimeBinding(name)
+        if (tagged > 0) { rewriteIdentToLit(rootId, tagged) }
         return
     }
-    foldIdentInTree(nGetI1(rootId), varName, replaceWith)
-    foldIdentInTree(nGetI2(rootId), varName, replaceWith)
-    foldIdentInTree(nGetI3(rootId), varName, replaceWith)
-    foldIdentInTree(nGetI4(rootId), varName, replaceWith)
+    foldComptimeIdentsInTree(nGetI1(rootId))
+    foldComptimeIdentsInTree(nGetI2(rootId))
+    foldComptimeIdentsInTree(nGetI3(rootId))
+    foldComptimeIdentsInTree(nGetI4(rootId))
     const list = nGetList(rootId)
     if (list != "") {
         const parts = list.split(",")
-        for (p in parts) { foldIdentInTree(parseInt(p), varName, replaceWith) }
+        for (p in parts) { foldComptimeIdentsInTree(parseInt(p)) }
     }
 }
 
@@ -434,8 +487,9 @@ function hasMethodOfAnnotation(funcId: int): int {
     return 0
 }
 
-// Detect @methodOf(cls) on a comptime FUNC_DECL: fold cls IDENTs in body to their
-// captured string value, queue the func for injection into that class. Returns 1 if handled.
+// Detect @methodOf(cls) on a comptime FUNC_DECL: fold every captured outer
+// IDENT in body (including cls) to its comptime literal, queue the func for
+// injection into that class. Returns 1 if handled.
 function handleMethodOfFuncDecl(funcId: int): int {
     const annListId = nGetI4(funcId)
     if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return 0 }
@@ -449,12 +503,11 @@ function handleMethodOfFuncDecl(funcId: int): int {
         if (argList == "") { continue }
         const aArg = parseInt(argList.split(",")[0])
         if (aArg <= 0 || nGetKind(aArg) != "IDENT") { continue }
-        const clsVar = nGetS1(aArg)
         const tagged = genVal(aArg)
         if (isCt(tagged) == 0) { continue }
         const clsName = interpAsStr(payload(tagged))
         if (clsName == "") { continue }
-        foldIdentInTree(funcId, clsVar, clsName)
+        foldComptimeIdentsInTree(funcId)
         pendingMethodAdd(clsName, funcId)
         return 1
     }
@@ -502,9 +555,36 @@ function emitClassComptimeMethods(className: string) {
     interpClearComptimeSS()
 }
 
-// Compile-time call handler(className) and inject any class-level methods it produced.
-function runComptimeAnnotationCall(handlerName: string, className: string) {
-    const callSrc = `${handlerName}("${className}")\n`
+// Render an annotation arg AST node to its source-text form for handler call
+// synthesis. Handles string/int/double/bool literals.
+function annArgToSrc(argId: int): string {
+    if (argId <= 0) { return "" }
+    const k = nGetKind(argId)
+    if (k == "STRING_LIT") {
+        return "\"" + nGetS1(argId) + "\""
+    }
+    if (k == "INT_LIT" || k == "DOUBLE_LIT") { return nGetS1(argId) }
+    if (k == "TRUE_LIT") { return "true" }
+    if (k == "FALSE_LIT") { return "false" }
+    if (k == "UNARY" && nGetS1(argId) == "Neg") {
+        return "-" + annArgToSrc(nGetI1(argId))
+    }
+    return ""
+}
+
+// Compile-time call handler(className, ...annotationArgs) and inject any
+// class-level methods it produced.
+function runComptimeAnnotationCall(handlerName: string, className: string, extraArgList: string) {
+    let argsStr = "\"" + className + "\""
+    if (extraArgList != "") {
+        const eParts = extraArgList.split(",")
+        for (ep in eParts) {
+            const eId = parseInt(ep)
+            const eSrc = annArgToSrc(eId)
+            if (eSrc != "") { argsStr = argsStr + ", " + eSrc }
+        }
+    }
+    const callSrc = `${handlerName}(${argsStr})\n`
     const tks = tokenize(callSrc)
     const root = parse(tks)
     const blk = newNode("BLOCK")
@@ -579,10 +659,10 @@ function genClassDecl(id: int) {
                     for (dap in argParts) {
                         const argId = parseInt(dap)
                         if (argId <= 0 || nGetKind(argId) != "STRING_LIT") { continue }
-                        runComptimeAnnotationCall(`ctDerive${nGetS1(argId)}`, name)
+                        runComptimeAnnotationCall(`ctDerive${nGetS1(argId)}`, name, "")
                     }
                 } else if (ctFuncNodes.has(annName) == 1) {
-                    runComptimeAnnotationCall(annName, name)
+                    runComptimeAnnotationCall(annName, name, nGetList(aId))
                 }
             }
         }
