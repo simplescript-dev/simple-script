@@ -417,6 +417,18 @@ function emitClassComptimeMethods(className: string) {
     interpClearComptimeSS()
 }
 
+// Compile-time call handler(className) and inject any class-level methods it produced.
+function runComptimeAnnotationCall(handlerName: string, className: string) {
+    const callSrc = `${handlerName}("${className}")\n`
+    const tks = tokenize(callSrc)
+    const root = parse(tks)
+    const blk = newNode("BLOCK")
+    nSetList(blk, nGetList(root))
+    runComptimeBlockBody(blk)
+    flushComptimeIR()
+    emitClassComptimeMethods(className)
+}
+
 function genClassDecl(id: int) {
     if (comptimeDepth > 0) {
         const ctClassName = nGetS1(id)
@@ -463,30 +475,29 @@ function genClassDecl(id: int) {
             }
         }
     }
-    // @derive annotation: call ctDerive{Name}(className) in comptime scope
-    const deriveAnnListId = nGetI4(id)
-    if (deriveAnnListId > 0 && nGetKind(deriveAnnListId) == "ANNOTATION_LIST") {
-        const deriveAnns = nGetList(deriveAnnListId)
-        if (deriveAnns != "") {
-            const daParts = deriveAnns.split(",")
-            for (da in daParts) {
-                const daId = parseInt(da)
-                if (daId <= 0 || nGetKind(daId) != "ANNOTATION" || nGetS1(daId) != "derive") { continue }
-                const argList = nGetList(daId)
-                if (argList == "") { continue }
-                const argParts = argList.split(",")
-                for (ap in argParts) {
-                    const argId = parseInt(ap)
-                    if (argId <= 0 || nGetKind(argId) != "STRING_LIT") { continue }
-                    const dn = nGetS1(argId)
-                    const deriveSrc = `ctDerive${dn}("${name}")\n`
-                    const dTokens = tokenize(deriveSrc)
-                    const dRoot = parse(dTokens)
-                    const dBlock = newNode("BLOCK")
-                    nSetList(dBlock, nGetList(dRoot))
-                    runComptimeBlockBody(dBlock)
-                    flushComptimeIR()
-                    emitClassComptimeMethods(name)
+    // Annotation handler dispatch:
+    //   @derive("X")    → ctDeriveX(className)        (legacy shim)
+    //   @AnnName(...)   → AnnName(className)          (handler = function with same name)
+    const annListId = nGetI4(id)
+    if (annListId > 0 && nGetKind(annListId) == "ANNOTATION_LIST") {
+        const anns = nGetList(annListId)
+        if (anns != "") {
+            const aParts = anns.split(",")
+            for (ap in aParts) {
+                const aId = parseInt(ap)
+                if (aId <= 0 || nGetKind(aId) != "ANNOTATION") { continue }
+                const annName = nGetS1(aId)
+                if (annName == "derive") {
+                    const argList = nGetList(aId)
+                    if (argList == "") { continue }
+                    const argParts = argList.split(",")
+                    for (dap in argParts) {
+                        const argId = parseInt(dap)
+                        if (argId <= 0 || nGetKind(argId) != "STRING_LIT") { continue }
+                        runComptimeAnnotationCall(`ctDerive${nGetS1(argId)}`, name)
+                    }
+                } else if (ctFuncNodes.has(annName) == 1) {
+                    runComptimeAnnotationCall(annName, name)
                 }
             }
         }
