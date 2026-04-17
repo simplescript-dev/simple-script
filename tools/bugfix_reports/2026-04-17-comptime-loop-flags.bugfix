@@ -1,0 +1,25 @@
+[meta]
+title = comptime loop continue/break flag not reset + ctArrayMethod wrong storage
+date = 2026-04-17
+commit = 1b0abcf
+
+[causality]
+test_file = tests/phase5/comptime_comprehensive.ss
+stash_exit = 1
+fix_exit = 0
+
+[root_cause]
+broken = genWhile/genFor/genDoWhile comptime paths did not consume interpContinueFlag between iterations or reset interpBreakFlag after loop exit; ctArrayMethod used interpAsStr(tvS1) to read array contents instead of tvList
+why = runtime loops use br-label for control flow with no flag to reset; comptime paths copied the structure but missed flag lifecycle; ctArrayMethod lacked type-safe array-items accessor leading to tvS1/tvList confusion
+fix = added interpContinueFlag=0 after each iteration and interpBreakFlag=0 after loop exit in all 3 loop comptime paths; changed ctArrayMethod to read tvList.getString(objVal+"")
+same_pattern_count = 0
+
+[structure]
+net_new_ifs = 0
+net_new_fns = 0
+
+[verification]
+bootstrap = PASS
+test_passed = 185
+test_failed = 1
+test_known_fail = 1

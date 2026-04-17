@@ -1,0 +1,25 @@
+[meta]
+title = <bug 简述>
+date = <YYYY-MM-DD>
+commit = <commit hash 或 uncommitted>
+
+[causality]
+test_file = <回归测��文件路径>
+stash_exit = <回退 fix 后测试 exit code，必须 != 0>
+fix_exit = <当前 fix 下测试 exit code，必须 == 0>
+
+[root_cause]
+broken = <什么机制坏了>
+why = <为什么会坏——设计缺口>
+fix = <改了什么——机制层面>
+same_pattern_count = <��模式 grep 残留数，必须 == 0>
+
+[structure]
+net_new_ifs = <bootstrap/ 中净新增 if 语句数>
+net_new_fns = <bootstrap/ 中净新增函数数>
+
+[verification]
+bootstrap = <PASS 或 FAIL>
+test_passed = <通过数>
+test_failed = <失败数>
+test_known_fail = <已知失败数>
