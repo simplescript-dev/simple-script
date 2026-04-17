@@ -704,6 +704,19 @@ function genForIn(id: int) {
         }
     }
 
+    // D095: detect "ClassName".fields (STRING_LIT.fields) → compile-time unroll.
+    // Fires inside @methodOf body where cls IDENT was folded to string literal.
+    if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "fields") {
+        const mfObj = nGetI1(iterableId)
+        if (nGetKind(mfObj) == "STRING_LIT") {
+            const mfCls = nGetS1(mfObj)
+            if (classFields.has(mfCls) == 1) {
+                genForInUnrolled(id, classFields.getString(mfCls))
+                return
+            }
+        }
+    }
+
     if (nGetKind(iterableId) == "ARRAY_LIT") {
         const litCsv = stringLitArrayCsv(iterableId)
         if (litCsv != "") {
