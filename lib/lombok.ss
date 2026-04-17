@@ -18,10 +18,22 @@ function ToString(cls: string) {
 
 // Per-field accessor methods. Naming convention: get_<field> (underscore).
 // Camel-case `getX` awaits comptime capitalize (future).
+// Return type is inferred from the returned expression — works for any field type.
 function Getter(cls: string) {
     for (f in cls.fields) {
-        @methodOf(cls) function [`get_${f.name}`](): int {
+        @methodOf(cls) function [`get_${f.name}`]() {
             return this[f.name]
+        }
+    }
+}
+
+// Per-field mutators. Naming: set_<field>. Parameter type is currently int-only
+// because type-position comptime interpolation (`v: ${f.type}`) is a future
+// Stage. Mixed-type classes with @Setter will fail to compile non-int fields.
+function Setter(cls: string) {
+    for (f in cls.fields) {
+        @methodOf(cls) function [`set_${f.name}`](v: int) {
+            this[f.name] = v
         }
     }
 }

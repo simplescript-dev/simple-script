@@ -618,7 +618,34 @@ function emitClassComptimeMethods(className: string) {
         if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
             const ccMName = nGetS1(ccSid)
             let ccRet = stripNullableCG(nGetS2(ccSid))
-            if (ccRet == "") { ccRet = "void" }
+            if (ccRet == "") {
+                // D095: infer retType from first RETURN in body so @Getter-style
+                // handlers work for any field type without explicit annotation.
+                ccRet = "void"
+                const ccBody = nGetI1(ccSid)
+                if (ccBody > 0 && nGetKind(ccBody) == "BLOCK") {
+                    const ccBList = nGetList(ccBody)
+                    if (ccBList != "") {
+                        const ccSavedName = currentClassName
+                        currentClassName = className
+                        const ccBParts = ccBList.split(",")
+                        for (cbp in ccBParts) {
+                            const cbStmtId = parseInt(cbp)
+                            if (cbStmtId > 0 && nGetKind(cbStmtId) == "RETURN") {
+                                const cbRetExpr = nGetI1(cbStmtId)
+                                if (cbRetExpr > 0) {
+                                    // "i64" is inferType's sentinel for unknown bracket access — keep void fallback.
+                                    const cbInferred = inferType(cbRetExpr)
+                                    if (cbInferred != "" && cbInferred != "i64") { ccRet = cbInferred }
+                                }
+                                break
+                            }
+                        }
+                        currentClassName = ccSavedName
+                    }
+                }
+                nSetS2(ccSid, ccRet)
+            }
             funcRetTypes.set(`${className}_${ccMName}`, ccRet)
             const ccMSig = paramSig(nGetList(ccSid))
             if (ccMSig != "") { funcRetTypes.set(`${className}_${ccMName}_${ccMSig}`, ccRet) }
