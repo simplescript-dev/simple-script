@@ -129,29 +129,15 @@ function parseSwitch(): int {
             defaultId = parseSwitchBody()
         } else {
             pExpect("CASE")
-            const patId = newNode("SWITCH_PAT")
-            let patKind = "IDENT"
-            let patValue = ""
-            if (curKind() == "INT") { patKind = "INT"; patValue = curValue(); pAdvance() }
-            else if (curKind() == "STRING") { patKind = "STRING"; patValue = curValue(); pAdvance() }
-            else if (curKind() == "TRUE") { patKind = "BOOL"; patValue = "1"; pAdvance() }
-            else if (curKind() == "FALSE") { patKind = "BOOL"; patValue = "0"; pAdvance() }
-            else if (curKind() == "IDENT") {
-                const name = curValue(); pAdvance()
-                if (curKind() == "DOT") {
-                    pAdvance()
-                    const member = curValue(); pExpect("IDENT")
-                    patKind = "ENUM"; patValue = `${name}.${member}`
-                } else {
-                    patValue = name
-                }
-            } else { patValue = curValue(); pAdvance() }
-            nSetS1(patId, patKind)
-            nSetS2(patId, patValue)
+            let patIds = parseSwitchPat() + ""
+            while (curKind() == "COMMA") {
+                pAdvance()
+                patIds = listAppend(patIds, parseSwitchPat())
+            }
             pExpect("THIN_ARROW")
             const bodyId = parseSwitchBody()
             const caseId = newNode("SWITCH_CASE")
-            nSetI1(caseId, patId)
+            nSetList(caseId, patIds)
             nSetI2(caseId, bodyId)
             cases = listAppend(cases, caseId)
         }
@@ -163,6 +149,29 @@ function parseSwitch(): int {
     nSetI2(id, defaultId)
     nSetList(id, cases)
     return id
+}
+
+function parseSwitchPat(): int {
+    const patId = newNode("SWITCH_PAT")
+    let patKind = "IDENT"
+    let patValue = ""
+    if (curKind() == "INT") { patKind = "INT"; patValue = curValue(); pAdvance() }
+    else if (curKind() == "STRING") { patKind = "STRING"; patValue = curValue(); pAdvance() }
+    else if (curKind() == "TRUE") { patKind = "BOOL"; patValue = "1"; pAdvance() }
+    else if (curKind() == "FALSE") { patKind = "BOOL"; patValue = "0"; pAdvance() }
+    else if (curKind() == "IDENT") {
+        const name = curValue(); pAdvance()
+        if (curKind() == "DOT") {
+            pAdvance()
+            const member = curValue(); pExpect("IDENT")
+            patKind = "ENUM"; patValue = `${name}.${member}`
+        } else {
+            patValue = name
+        }
+    } else { patValue = curValue(); pAdvance() }
+    nSetS1(patId, patKind)
+    nSetS2(patId, patValue)
+    return patId
 }
 
 function parseSwitchBody(): int {

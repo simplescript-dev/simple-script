@@ -349,17 +349,23 @@ function cmdBuildLegacy() {
 function cmdRun() {
     let inputFile = ""
     let release = 0
+    let runArgs = ""
     let i = 2
     while (i < args()) {
         const a = arg(i)
-        if (a == "--release") { release = 1 } else { inputFile = a }
+        if (inputFile == "") {
+            if (a == "--release") { release = 1 } else { inputFile = a }
+        } else {
+            if (runArgs == "") { runArgs = a } else { runArgs = runArgs + " " + a }
+        }
         i = i + 1
     }
     if (inputFile == "") { println("error: no input file"); exit(1) }
     const outBin = "/tmp/ss_run_output"
     compile(inputFile, outBin, release, 0)
-    // Run the compiled binary, forwarding remaining args
-    const rc = system(outBin)
+    let cmd = outBin
+    if (runArgs != "") { cmd = cmd + " " + runArgs }
+    const rc = system(cmd)
     exit(rc)
 }
 

@@ -680,16 +680,14 @@ function genForIn(id: int) {
     if (comptimeDepth > 0) {
         const ctIterVal = genVal(iterableId)
         if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") {
-            const ctItems = interpAsStr(payload(ctIterVal))
-            if (ctItems != "") {
-                const ctParts = ctItems.split(",")
-                let ctFi = 0
-                while (ctFi < ctParts.length()) {
-                    ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(parseInt(ctParts[ctFi]))}`)
-                    genBlock(bodyId)
-                    if (interpCheckLoopExit() == 1) { break }
-                    ctFi = ctFi + 1
-                }
+            const ctArrId = payload(ctIterVal)
+            const ctArrLen = interpArrayLen(ctArrId)
+            let ctFi = 0
+            while (ctFi < ctArrLen) {
+                ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(interpArrayGet(ctArrId, ctFi))}`)
+                genBlock(bodyId)
+                if (interpCheckLoopExit() == 1) { break }
+                ctFi = ctFi + 1
             }
         }
         return
@@ -887,25 +885,35 @@ function genSwitch(id: int) {
                 for (cc in ctCases) {
                     const ctCaseId = parseInt(cc)
                     if (ctCaseId <= 0) { continue }
-                    const ctPatId = nGetI1(ctCaseId)
+                    const ctPatList = nGetList(ctCaseId)
                     const ctBodyId = nGetI2(ctCaseId)
-                    const ctPatType = nGetS1(ctPatId)
-                    const ctPatVal = nGetS2(ctPatId)
                     let hit = 0
-                    if (ctPatType == "STRING") {
-                        if (subjStr == ctPatVal) { hit = 1 }
-                    } else if (ctPatType == "INT") {
-                        if (subjInt == parseInt(ctPatVal)) { hit = 1 }
-                    } else if (ctPatType == "BOOL") {
-                        if (interpTruthy(subjPayload) == parseInt(ctPatVal)) { hit = 1 }
-                    } else if (ctPatType == "ENUM") {
-                        if (interpEnumValues.has(ctPatVal) == 1) {
-                            const ctResolved = interpEnumValues.getString(ctPatVal)
-                            if (subjKind == "string") {
-                                if (subjStr == ctResolved) { hit = 1 }
-                            } else {
-                                if (subjInt == parseInt(ctResolved)) { hit = 1 }
+                    if (ctPatList != "") {
+                        const ctPats = ctPatList.split(",")
+                        let cpi = 0
+                        while (cpi < ctPats.length()) {
+                            const ctPatId = parseInt(ctPats[cpi].trim())
+                            cpi = cpi + 1
+                            if (ctPatId <= 0) { continue }
+                            const ctPatType = nGetS1(ctPatId)
+                            const ctPatVal = nGetS2(ctPatId)
+                            if (ctPatType == "STRING") {
+                                if (subjStr == ctPatVal) { hit = 1 }
+                            } else if (ctPatType == "INT") {
+                                if (subjInt == parseInt(ctPatVal)) { hit = 1 }
+                            } else if (ctPatType == "BOOL") {
+                                if (interpTruthy(subjPayload) == parseInt(ctPatVal)) { hit = 1 }
+                            } else if (ctPatType == "ENUM") {
+                                if (interpEnumValues.has(ctPatVal) == 1) {
+                                    const ctResolved = interpEnumValues.getString(ctPatVal)
+                                    if (subjKind == "string") {
+                                        if (subjStr == ctResolved) { hit = 1 }
+                                    } else {
+                                        if (subjInt == parseInt(ctResolved)) { hit = 1 }
+                                    }
+                                }
                             }
+                            if (hit == 1) { break }
                         }
                     }
                     if (hit == 1) {
@@ -930,41 +938,57 @@ function genSwitch(id: int) {
         for (c in cases) {
             const caseId = parseInt(c)
             if (caseId <= 0) { continue }
-            const patId = nGetI1(caseId)
+            const patList = nGetList(caseId)
             const bodyId = nGetI2(caseId)
-            const patType = nGetS1(patId)
-            const patVal = nGetS2(patId)
             const thenLabel = nextLabel("switch.case")
-            const nextLabel2 = nextLabel("switch.next")
-            // Compare subject with pattern
-            let cmpResult = ""
-            let resolvedVal = patVal
-            let useStringCmp = 0
-            if (patType == "STRING" || subjectType == "string") { useStringCmp = 1 }
-            if (patType == "ENUM") {
-                if (enumValues.has(patVal) == 0) {
-                    println(`error: unknown enum value '${patVal}' in switch case`)
-                    exit(1)
+            const nextCaseLabel = nextLabel("switch.next")
+
+            if (patList != "") {
+                const pats = patList.split(",")
+                let pi = 0
+                while (pi < pats.length()) {
+                    const patId = parseInt(pats[pi].trim())
+                    pi = pi + 1
+                    if (patId <= 0) { continue }
+                    const patType = nGetS1(patId)
+                    const patVal = nGetS2(patId)
+                    let cmpResult = ""
+                    let resolvedVal = patVal
+                    let useStringCmp = 0
+                    if (patType == "STRING" || subjectType == "string") { useStringCmp = 1 }
+                    if (patType == "ENUM") {
+                        if (enumValues.has(patVal) == 0) {
+                            println(`error: unknown enum value '${patVal}' in switch case`)
+                            exit(1)
+                        }
+                        resolvedVal = enumValues.getString(patVal)
+                        const dotIdx = patVal.indexOf(".")
+                        if (dotIdx > 0 && enumTypes.has(patVal.substring(0, dotIdx)) == 1) { useStringCmp = 1 }
+                    }
+                    if (useStringCmp == 1) {
+                        const patStr = addStringConst(resolvedVal)
+                        const cmp = nextReg(); emitIR(`  ${cmp} = call i32 @ss_string_eq(ptr ${subjectVal}, ptr ${patStr})`)
+                        const br = nextReg(); emitIR(`  ${br} = icmp ne i32 ${cmp}, 0`)
+                        cmpResult = br
+                    } else {
+                        const cmp = nextReg(); emitIR(`  ${cmp} = icmp eq i32 ${subjectVal}, ${resolvedVal}`)
+                        cmpResult = cmp
+                    }
+                    if (pi < pats.length()) {
+                        const nextPatLabel = nextLabel("switch.pat")
+                        emitIR(`  br i1 ${cmpResult}, label %${thenLabel}, label %${nextPatLabel}`)
+                        emitIR(`${nextPatLabel}:`)
+                    } else {
+                        emitIR(`  br i1 ${cmpResult}, label %${thenLabel}, label %${nextCaseLabel}`)
+                    }
                 }
-                resolvedVal = enumValues.getString(patVal)
-                const dotIdx = patVal.indexOf(".")
-                if (dotIdx > 0 && enumTypes.has(patVal.substring(0, dotIdx)) == 1) { useStringCmp = 1 }
             }
-            if (useStringCmp == 1) {
-                const patStr = addStringConst(resolvedVal)
-                const cmp = nextReg(); emitIR(`  ${cmp} = call i32 @ss_string_eq(ptr ${subjectVal}, ptr ${patStr})`)
-                const br = nextReg(); emitIR(`  ${br} = icmp ne i32 ${cmp}, 0`)
-                cmpResult = br
-            } else {
-                const cmp = nextReg(); emitIR(`  ${cmp} = icmp eq i32 ${subjectVal}, ${resolvedVal}`)
-                cmpResult = cmp
-            }
-            emitIR(`  br i1 ${cmpResult}, label %${thenLabel}, label %${nextLabel2}`)
+
             emitIR(`${thenLabel}:`)
             terminated = 0
             genNestedBlock(bodyId)
             if (terminated == 0) { emitIR(`  br label %${afterLabel}`) }
-            emitIR(`${nextLabel2}:`)
+            emitIR(`${nextCaseLabel}:`)
         }
     }
     // Last switch.next block is the no-match fallthrough — needs a terminator

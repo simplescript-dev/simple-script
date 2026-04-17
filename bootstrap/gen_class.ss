@@ -381,18 +381,103 @@ function emitClassConstructor(name: string, fieldStr: string, hasVtable: int) {
 
 import { assignClassDtorTags, buildClassVtables, emitClassVtableConst, emitClassDtorRegister, emitClassTypeInfo, emitClassDropFieldsFn, emitClassCtorBody, emitClassConstructorReuse, genAutoToJson } from "./gen_type_ops"
 
+// @methodOf(cls) state: handler-internal FUNC_DECLs queued for class injection.
+let pendingMethodInjections = new Map()  // className → comma-separated FUNC_DECL ids
+
+function pendingMethodAdd(className: string, funcId: int) {
+    let cur = ""
+    if (pendingMethodInjections.has(className) == 1) { cur = pendingMethodInjections.getString(className) }
+    pendingMethodInjections.set(className, listAppend(cur, funcId))
+}
+
+function pendingMethodTake(className: string): string {
+    if (pendingMethodInjections.has(className) == 0) { return "" }
+    const v = pendingMethodInjections.getString(className)
+    pendingMethodInjections.delete(className)
+    return v
+}
+
+// In-place AST rewrite: replace IDENT nodes named varName with STRING_LIT replaceWith,
+// recursing through int slots (I1..I4) and the list slot. Non-node ints are filtered by
+// nGetKind == "" check, so flag/count slots are safe.
+function foldIdentInTree(rootId: int, varName: string, replaceWith: string) {
+    if (rootId <= 0) { return }
+    const k = nGetKind(rootId)
+    if (k == "") { return }
+    if (k == "IDENT" && nGetS1(rootId) == varName) {
+        nKind.set(rootId + "", "STRING_LIT")
+        nSetS1(rootId, replaceWith)
+        return
+    }
+    foldIdentInTree(nGetI1(rootId), varName, replaceWith)
+    foldIdentInTree(nGetI2(rootId), varName, replaceWith)
+    foldIdentInTree(nGetI3(rootId), varName, replaceWith)
+    foldIdentInTree(nGetI4(rootId), varName, replaceWith)
+    const list = nGetList(rootId)
+    if (list != "") {
+        const parts = list.split(",")
+        for (p in parts) { foldIdentInTree(parseInt(p), varName, replaceWith) }
+    }
+}
+
+// Cheap check: does this FUNC_DECL carry a @methodOf annotation?
+function hasMethodOfAnnotation(funcId: int): int {
+    const annListId = nGetI4(funcId)
+    if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return 0 }
+    const anns = nGetList(annListId)
+    if (anns == "") { return 0 }
+    const aParts = anns.split(",")
+    for (ap in aParts) {
+        const aId = parseInt(ap)
+        if (aId > 0 && nGetKind(aId) == "ANNOTATION" && nGetS1(aId) == "methodOf") { return 1 }
+    }
+    return 0
+}
+
+// Detect @methodOf(cls) on a comptime FUNC_DECL: fold cls IDENTs in body to their
+// captured string value, queue the func for injection into that class. Returns 1 if handled.
+function handleMethodOfFuncDecl(funcId: int): int {
+    const annListId = nGetI4(funcId)
+    if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return 0 }
+    const anns = nGetList(annListId)
+    if (anns == "") { return 0 }
+    const aParts = anns.split(",")
+    for (ap in aParts) {
+        const aId = parseInt(ap)
+        if (aId <= 0 || nGetKind(aId) != "ANNOTATION" || nGetS1(aId) != "methodOf") { continue }
+        const argList = nGetList(aId)
+        if (argList == "") { continue }
+        const aArg = parseInt(argList.split(",")[0])
+        if (aArg <= 0 || nGetKind(aArg) != "IDENT") { continue }
+        const clsVar = nGetS1(aArg)
+        const tagged = genVal(aArg)
+        if (isCt(tagged) == 0) { continue }
+        const clsName = interpAsStr(payload(tagged))
+        if (clsName == "") { continue }
+        foldIdentInTree(funcId, clsVar, clsName)
+        pendingMethodAdd(clsName, funcId)
+        return 1
+    }
+    return 0
+}
+
 // Process comptimeSS as class methods: register + generate FUNC_DECLs, top-level for rest.
 // Used by class-level comptime blocks and @derive annotation.
 function emitClassComptimeMethods(className: string) {
     const ccSS = interpGetComptimeSS()
-    if (ccSS == "") { return }
-    const ccTokens = tokenize(ccSS)
-    const ccRoot = parse(ccTokens)
-    const ccList = nGetList(ccRoot)
-    if (ccList == "") { interpClearComptimeSS(); return }
-    const ccParts = ccList.split(",")
+    let ccParts = ""
+    if (ccSS != "") {
+        const ccTokens = tokenize(ccSS)
+        const ccRoot = parse(ccTokens)
+        const ccList = nGetList(ccRoot)
+        if (ccList != "") { ccParts = ccList }
+    }
+    const pending = pendingMethodTake(className)
+    if (pending != "") { ccParts = ccParts == "" ? pending : `${ccParts},${pending}` }
+    if (ccParts == "") { interpClearComptimeSS(); return }
+    const partList = ccParts.split(",")
     let ccMethods = classMethods.getString(className)
-    for (ccp in ccParts) {
+    for (ccp in partList) {
         const ccSid = parseInt(ccp)
         if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
             const ccMName = nGetS1(ccSid)
@@ -406,11 +491,11 @@ function emitClassComptimeMethods(className: string) {
         }
     }
     classMethods.set(className, ccMethods)
-    for (ccp in ccParts) {
+    for (ccp in partList) {
         const ccSid = parseInt(ccp)
         if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") { genClassMethod(className, ccSid) }
     }
-    for (ccp in ccParts) {
+    for (ccp in partList) {
         const ccSid = parseInt(ccp)
         if (ccSid > 0 && nGetKind(ccSid) != "FUNC_DECL") { genStmt(ccSid) }
     }

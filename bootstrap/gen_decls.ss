@@ -32,7 +32,14 @@ function emitParamAllocas(paramList: string, useVarAlias: int) {
 }
 
 function genFuncDeclStmt(id: int) {
-    if (comptimeDepth > 0) { ctFuncNodes.set(nGetS1(id), `${id}`); return }
+    if (comptimeDepth > 0) {
+        if (handleMethodOfFuncDecl(id) == 1) { return }
+        ctFuncNodes.set(nGetS1(id), `${id}`)
+        return
+    }
+    // @methodOf-annotated functions are class-method injection targets,
+    // not standalone runtime functions. Skip runtime emission.
+    if (hasMethodOfAnnotation(id) == 1) { return }
     // Generic functions are emitted on-demand at call sites (monomorphization)
     if (nGetS3(id) != "") { return }
     const fname = nGetS1(id)
@@ -87,18 +94,7 @@ function genFuncDecl(id: int) {
 
     // For 'main', use C main signature
     if (name == "main") {
-        emitIR("define i32 @main(i32 %0, ptr %1) {")
-        emitIR("entry:")
-        emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
-        emitIR("  %_atexit = call i32 @atexit(ptr @ss_rc_atexit_cleanup)")
-        // D079: register test summary atexit (runs before rc cleanup, prints results)
-        emitIR("  %_atexit_test = call i32 @atexit(ptr @ss_test_summary)")
-        emitIR("  %_seedtime = call i64 @time(ptr null)")
-        emitIR("  %_seedtime32 = trunc i64 %_seedtime to i32")
-        emitIR("  call void @srand(i32 %_seedtime32)")
-        regCount = 3
-        emitGlobalInits()
-        emitStaticFieldInits()
+        emitMainProlog()
     } else {
         // Collect param types (MVP: all int for now)
         const paramList = nGetList(id)
@@ -240,17 +236,23 @@ function genGlobalVar(id: int) {
             else { globalInitIds = `${globalInitIds},${id}` }
         }
     } else {
-        // Non-literal init: declare null, queue runtime init
-        emitIR(`@${name} = global ptr null, align 8`)
+        // Non-literal init: declare null/zero, queue runtime init
+        const annotation = nGetS3(id)
+        const realType = inferType(initId)
+        if (annotation == "fn" || realType == "fn") {
+            emitIR(`@${name} = global i64 0, align 8`)
+            gType = "fn"
+        } else {
+            emitIR(`@${name} = global ptr null, align 8`)
+        }
         if (globalInitIds == "") { globalInitIds = `${id}` }
         else { globalInitIds = `${globalInitIds},${id}` }
-        // Infer actual type for class tracking
-        const annotation = nGetS3(id)
-        if (annotation != "") {
-            gType = annotation
-        } else {
-            const realType = inferType(initId)
-            if (realType != "" && realType != "ptr" && realType != "int") { gType = realType }
+        if (gType != "fn") {
+            if (annotation != "") {
+                gType = annotation
+            } else {
+                if (realType != "" && realType != "ptr" && realType != "int") { gType = realType }
+            }
         }
     }
     setVarType(name, gType)
@@ -265,7 +267,20 @@ function emitGlobalVars(stmtList: string) {
     }
 }
 
-// Called at the start of main() to init global vars with runtime expressions
+function emitMainProlog() {
+    emitIR("define i32 @main(i32 %0, ptr %1) {")
+    emitIR("entry:")
+    emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
+    emitIR("  %_atexit = call i32 @atexit(ptr @ss_rc_atexit_cleanup)")
+    emitIR("  %_atexit_test = call i32 @atexit(ptr @ss_test_summary)")
+    emitIR("  %_seedtime = call i64 @time(ptr null)")
+    emitIR("  %_seedtime32 = trunc i64 %_seedtime to i32")
+    emitIR("  call void @srand(i32 %_seedtime32)")
+    regCount = 3
+    emitGlobalInits()
+    emitStaticFieldInits()
+}
+
 function emitGlobalInits() {
     if (globalInitIds != "") {
         const parts = globalInitIds.split(",")
@@ -275,7 +290,12 @@ function emitGlobalInits() {
                 const gname = nGetS1(gid)
                 const initId = nGetI1(gid)
                 const val = genExpr(initId)
-                emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
+                const gVarType = getVarType(gname)
+                if (gVarType == "fn") {
+                    emitIR(`  store i64 ${val}, ptr @${gname}, align 8`)
+                } else {
+                    emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
+                }
                 // Infer class type for global var (store in global scope, not main)
                 const gInitType = inferType(initId)
                 if (gInitType != "" && classFields.has(gInitType) == 1) {
@@ -301,18 +321,20 @@ function genDestructureArray(id: int) {
         if (isCt(ctArrV) != 1) { return }
         const arrPayload = payload(ctArrV)
         if (interpType(arrPayload) != "array") { return }
-        const items = interpAsStr(arrPayload)
-        const ctParts = items.split(",")
+        const arrLen = interpArrayLen(arrPayload)
         let ctIdx = 0
         for (cn in names.split(",")) {
             if (cn.startsWith("...") == 1) {
-                println("[comptime] rest element in array destructure not supported")
+                const restName = cn.substring(3, cn.length() - 3)
+                const restArr = interpNewArray("")
+                while (ctIdx < arrLen) {
+                    interpArrayPush(restArr, interpArrayGet(arrPayload, ctIdx))
+                    ctIdx = ctIdx + 1
+                }
+                ctVars.set(`${currentFunc}:${restName}`, `${ctVal(restArr)}`)
                 break
             }
-            let ctElemValId = interpNewNull()
-            if (items != "" && ctIdx < ctParts.length()) {
-                ctElemValId = parseInt(ctParts[ctIdx])
-            }
+            const ctElemValId = ctIdx < arrLen ? interpArrayGet(arrPayload, ctIdx) : interpNewNull()
             ctVars.set(`${currentFunc}:${cn}`, `${ctVal(ctElemValId)}`)
             ctIdx = ctIdx + 1
         }

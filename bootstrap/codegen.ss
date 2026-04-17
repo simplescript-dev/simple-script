@@ -163,6 +163,7 @@ let tvS1 = ""
 let tvS2 = ""
 let tvD1 = ""
 let tvList = ""
+let tvArrElem = ""
 let tvMap = ""
 let tvReady = 0
 
@@ -173,6 +174,7 @@ function initTypedValue() {
     tvS2 = new Map()
     tvD1 = new Map()
     tvList = new Map()
+    tvArrElem = new Map()
     tvMap = new Map()
     // index 0 is unused (tv IDs start at 1)
     tvI1.push(0)
@@ -216,9 +218,14 @@ function newTvNull(): int {
 
 function newTvArray(initCsv: string): int {
     const id = allocTv("array")
-    tvList.set(id + "", initCsv)
     if (initCsv != "") {
-        tvI2[id] = initCsv.split(",").length()
+        const parts = initCsv.split(",")
+        let i = 0
+        while (i < parts.length()) {
+            tvArrElem.set(`${id}:${i}`, parts[i])
+            i = i + 1
+        }
+        tvI2[id] = parts.length()
     }
     return id
 }
@@ -353,35 +360,26 @@ function interpSetField(objId: int, name: string, valTvId: int) {
 }
 
 function interpArrayPush(arrId: int, valTvId: int): int {
-    const idStr = arrId + ""
-    tvList.set(idStr, listAppend(tvList.getString(idStr), valTvId))
-    tvI2[arrId] = tvI2[arrId] + 1
+    const len = tvI2[arrId]
+    tvArrElem.set(`${arrId}:${len}`, `${valTvId}`)
+    tvI2[arrId] = len + 1
     return arrId
 }
 
 function interpArraySet(arrId: int, idx: int, valTvId: int) {
-    const idStr = arrId + ""
-    const items = tvList.getString(idStr)
-    if (items == "") { return }
-    const parts = items.split(",")
-    if (idx < 0 || idx >= parts.length()) { return }
-    let result = ""
-    let i = 0
-    while (i < parts.length()) {
-        const elem = i == idx ? `${valTvId}` : parts[i]
-        if (result == "") { result = elem }
-        else { result = `${result},${elem}` }
-        i = i + 1
-    }
-    tvList.set(idStr, result)
+    if (idx < 0 || idx >= tvI2[arrId]) { return }
+    tvArrElem.set(`${arrId}:${idx}`, `${valTvId}`)
+}
+
+function interpArrayLen(arrId: int): int {
+    return tvI2[arrId]
 }
 
 function interpArrayGet(arrId: int, idx: int): int {
-    const items = tvList.getString(arrId + "")
-    if (items == "") { return newTvNull() }
-    const parts = items.split(",")
-    if (idx < 0 || idx >= parts.length()) { return newTvNull() }
-    return parseInt(parts[idx])
+    if (idx < 0 || idx >= tvI2[arrId]) { return newTvNull() }
+    const key = `${arrId}:${idx}`
+    if (tvArrElem.has(key) == 0) { return newTvNull() }
+    return parseInt(tvArrElem.getString(key))
 }
 
 function interpNewMap(): int {
@@ -543,6 +541,11 @@ function interpIntOp(op: string, a: int, b: int): int {
     if (op == "Shr") { return newTvInt(a >> b) }
     // gen_exprs.ss genIntBinary 用 lshr (zero-fill)，与 SS 的 >>> 运算符对齐
     if (op == "UShr") { return newTvInt(a >>> b) }
+    if (op == "Pow") {
+        let pr = 1; let pi = 0
+        while (pi < b) { pr = pr * a; pi = pi + 1 }
+        return newTvInt(pr)
+    }
     return newTvNull()
 }
 
@@ -557,6 +560,11 @@ function interpDoubleOp(op: string, a: double, b: double): int {
     if (op == "Gt") { return newTvBool(a > b ? 1 : 0) }
     if (op == "Le") { return newTvBool(a <= b ? 1 : 0) }
     if (op == "Ge") { return newTvBool(a >= b ? 1 : 0) }
+    if (op == "Pow") {
+        let pr = 1.0; let pi = 0; const pe = parseInt(`${b}`)
+        while (pi < pe) { pr = pr * a; pi = pi + 1 }
+        return interpNewDouble(pr)
+    }
     return newTvNull()
 }
 
@@ -608,6 +616,27 @@ function interpCtFieldsArray(className: string): int {
 }
 
 function interpFindMethod(className: string, methodName: string): int {
+    let cur = className
+    while (cur != "") {
+        if (interpClasses.has(cur) == 1) {
+            const cid = parseInt(interpClasses.getString(cur))
+            const mbId = nGetI2(cid)
+            if (mbId > 0) {
+                const mList = nGetList(mbId)
+                if (mList != "") {
+                    const mParts = mList.split(",")
+                    for (mp in mParts) {
+                        const mId = parseInt(mp)
+                        if (mId > 0 && nGetKind(mId) == "FUNC_DECL" && nGetS1(mId) == methodName) {
+                            interpLastFoundMethodClass = cur
+                            return mId
+                        }
+                    }
+                }
+            }
+        }
+        cur = interpClassParents.has(cur) == 1 ? interpClassParents.getString(cur) : ""
+    }
     return 0
 }
 
@@ -925,21 +954,58 @@ function registerAllDecls(rootId: int) {
     generateInterfaceDispatchers()
 }
 
+function isTopLevelDecl(id: int): int {
+    const k = nGetKind(id)
+    if (k == "VAR_DECL") { return 1 }
+    if (k == "FUNC_DECL") { return 1 }
+    if (k == "CLASS_DECL") { return 1 }
+    if (k == "ENUM_DECL") { return 1 }
+    if (k == "INTERFACE_DECL") { return 1 }
+    if (k == "ANNOTATION") { return 1 }
+    return 0
+}
+
 function emitGlobalsAndCode(rootId: int) {
     const sl = nGetList(rootId)
     if (sl == "") { return }
     const parts = sl.split(",")
     emitGlobalVars(sl)
     emitIR("")
+
+    let hasMain = 0
+    let bareStmts = ""
+    for (x in parts) {
+        const s = parseInt(x)
+        if (s <= 0) { continue }
+        if (nGetKind(s) == "FUNC_DECL" && nGetS1(s) == "main") { hasMain = 1 }
+        if (isTopLevelDecl(s) == 0) { bareStmts = listAppend(bareStmts, s) }
+    }
+
     for (x2 in parts) {
         const s2 = parseInt(x2)
         if (s2 <= 0) { continue }
         if (nGetKind(s2) == "VAR_DECL") { continue }
-        // Skip generic functions — emitted on-demand at call sites
         if (nGetKind(s2) == "FUNC_DECL" && nGetS3(s2) != "") { continue }
-        // Skip generic classes — emitted on-demand at new expressions
         if (nGetKind(s2) == "CLASS_DECL" && genericClassNodes.has(nGetS1(s2)) == 1) { continue }
+        if (hasMain == 0 && isTopLevelDecl(s2) == 0) { continue }
         genStmt(s2)
+    }
+
+    if (hasMain == 0 && bareStmts != "") {
+        currentFunc = "main"
+        emitMainProlog()
+        const bareParts = bareStmts.split(",")
+        for (bs in bareParts) {
+            const bsId = parseInt(bs)
+            if (bsId > 0) { genStmt(bsId) }
+        }
+        emitReleaseFnLocals()
+        emitReleaseLocals()
+        emitIR("  ret i32 0")
+        emitIR("}")
+        emitIR("")
+        flushArrowDefs()
+        currentFunc = ""
     }
 }
 

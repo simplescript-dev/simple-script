@@ -83,6 +83,12 @@ function genPostfixExpr(id: int): string {
     return r1
 }
 
+function comptimeError(msg: string, nodeId: int): int {
+    println(`error: [comptime] ${msg} at line ${nGetLine(nodeId)}:${nGetCol(nodeId)}`)
+    exit(1)
+    return ctVal(interpNewNull())
+}
+
 // ── Expression dispatcher ───────────────────────────────────────
 
 function genVal(id: int): int {
@@ -159,10 +165,7 @@ function genVal(id: int): int {
         return constVal(genPostfixExpr(id))
     }
     if (kind == "COMPTIME_EXPR") {
-        if (comptimeDepth > 0) {
-            println(`[comptime] unsupported expression: COMPTIME_EXPR`)
-            return ctVal(interpNewNull())
-        }
+        if (comptimeDepth > 0) { return comptimeError("nested comptime expression", id) }
         inferType(id)
         return constVal(comptimeExprLiteral.getString(`${id}`))
     }
@@ -171,10 +174,12 @@ function genVal(id: int): int {
         const callArgList = nGetList(id)
         if (genericFuncNodes.has(callName) == 1) {
             if (comptimeDepth > 0) {
-                println(`[comptime] cannot call generic function: ${callName}`)
-                return ctVal(interpNewNull())
+                if (ctFuncNodes.has(callName) == 0) {
+                    ctFuncNodes.set(callName, genericFuncNodes.getString(callName))
+                }
+            } else {
+                return constVal(genGenericCall(id, callName, callArgList))
             }
-            return constVal(genGenericCall(id, callName, callArgList))
         }
         const savedCallPreRegs = callPreRegs
         callPreRegs = new Map()
@@ -206,13 +211,12 @@ function genVal(id: int): int {
                                 }
                                 callPreRegs.set(`${nGetI1(callArgId)}`, reg(srcVal))
                             } else {
-                                const srcItems = interpAsStr(srcPayload)
-                                if (srcItems != "") {
-                                    const srcParts = srcItems.split(",")
-                                    for (sp in srcParts) {
-                                        const srcElemId = parseInt(sp)
-                                        if (srcElemId > 0) { callCtArgVals = callCtArgVals.push(`${srcElemId}`) }
-                                    }
+                                const srcLen = interpArrayLen(srcPayload)
+                                let srcI = 0
+                                while (srcI < srcLen) {
+                                    const srcElemId = interpArrayGet(srcPayload, srcI)
+                                    if (srcElemId > 0) { callCtArgVals = callCtArgVals.push(`${srcElemId}`) }
+                                    srcI = srcI + 1
                                 }
                             }
                         } else {
@@ -246,10 +250,12 @@ function genVal(id: int): int {
         const newClassName = nGetS1(id)
         if (genericClassNodes.has(newClassName) == 1) {
             if (comptimeDepth > 0) {
-                println(`[comptime] cannot instantiate generic class: ${newClassName}`)
-                return ctVal(interpNewNull())
+                if (interpClasses.has(newClassName) == 0) {
+                    interpClasses.set(newClassName, genericClassNodes.getString(newClassName))
+                }
+            } else {
+                return constVal(genGenericNewExpr(id, newClassName))
             }
-            return constVal(genGenericNewExpr(id, newClassName))
         }
         if (newClassName == "Map" || newClassName == "Set") {
             if (comptimeDepth > 0) { return ctVal(interpNewMap()) }
@@ -331,8 +337,7 @@ function genVal(id: int): int {
             }
         }
         if (comptimeDepth > 0) {
-            println(`[comptime] cannot access field '${member}' on ${isCt(obj) == 1 ? interpType(payload(obj)) : "runtime"}`)
-            return ctVal(interpNewNull())
+            return comptimeError(`cannot access field '${member}' on ${isCt(obj) == 1 ? interpType(payload(obj)) : "runtime"} value`, id)
         }
         if (nGetI3(id) > 0) { return constVal(genOptionalMemberAccess(id, reg(obj))) }
         return constVal(genMemberAccess(id, reg(obj)))
@@ -397,8 +402,7 @@ function genVal(id: int): int {
         if (comptimeDepth > 0) {
             callPreRegs = mcSavedCPR
             if (isCt(mcObj) == 0) {
-                println(`[comptime] cannot call method '${mcMethod}' on runtime value`)
-                return ctVal(interpNewNull())
+                return comptimeError(`cannot call method '${mcMethod}' on runtime value`, id)
             }
             return ctMethodCallDispatch(id, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
         }
@@ -444,7 +448,7 @@ function genVal(id: int): int {
             }
             return ctVal(interpNewString(ctResult))
         }
-        if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+        if (comptimeDepth > 0) { return comptimeError("template literal contains runtime expression", id) }
         tmplPreRegs = new Map()
         for (tp in tmplParts) {
             const fragId = parseInt(tp)
@@ -486,13 +490,13 @@ function genVal(id: int): int {
                     const ev = parseInt(elemVals.getString(`${elemId}`))
                     if (nGetKind(elemId) == "SPREAD_ELEM") {
                         if (isCt(ev) == 1 && interpType(payload(ev)) == "array") {
-                            const srcItems = interpAsStr(payload(ev))
-                            if (srcItems != "") {
-                                const srcParts = srcItems.split(",")
-                                for (sp in srcParts) {
-                                    const srcElemId = parseInt(sp)
-                                    if (srcElemId > 0) { interpArrayPush(arr, srcElemId) }
-                                }
+                            const srcArrId = payload(ev)
+                            const srcLen = interpArrayLen(srcArrId)
+                            let srcI = 0
+                            while (srcI < srcLen) {
+                                const srcElemId = interpArrayGet(srcArrId, srcI)
+                                if (srcElemId > 0) { interpArrayPush(arr, srcElemId) }
+                                srcI = srcI + 1
                             }
                         } else {
                             println(`error: [comptime] cannot spread non-array value at line ${nGetLine(elemId)}:${nGetCol(elemId)}`)
@@ -546,7 +550,7 @@ function genVal(id: int): int {
                 return ctVal(interpNewString(""))
             }
         }
-        if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+        if (comptimeDepth > 0) { return comptimeError("index access requires compile-time known operands", id) }
         return constVal(genIndexAccess(id, reg(obj), reg(idx)))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
@@ -559,11 +563,7 @@ function genVal(id: int): int {
             return ctVal(interpNewNull())
         }
         if (kind == "TYPEINFO_EXPR") { return ctVal(interpBuildTypeInfo(nGetS1(id))) }
-        // Unsupported comptime expression — abort instead of silently returning null,
-        // otherwise downstream code keeps running on a fake value and the failure is invisible.
-        println(`error: [comptime] unsupported expression: ${kind} at line ${nGetLine(id)}:${nGetCol(id)}`)
-        exit(1)
-        return ctVal(interpNewNull())
+        return comptimeError(`unsupported expression: ${kind}`, id)
     }
     println(`[genVal] unknown kind: ${kind}`)
     return constVal("0")
@@ -579,10 +579,14 @@ function genValBinary(id: int): int {
             if (isCt(ctNcL) == 1 && interpType(payload(ctNcL)) != "null") { return ctNcL }
             return genVal(nGetI2(id))
         }
-        if (op == "Instanceof" || op == "As" || op == "Pow") { return ctVal(interpNewNull()) }
+        if (op == "Instanceof" || op == "As") {
+            return comptimeError(`operator '${op}' not supported`, id)
+        }
         const ctBlv = genVal(nGetI1(id))
         const ctBrv = genVal(nGetI2(id))
-        if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) { return ctVal(interpNewNull()) }
+        if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) {
+            return comptimeError(`binary '${op}' operand is not compile-time known`, id)
+        }
         const ctBlp = payload(ctBlv)
         const ctBrp = payload(ctBrv)
         const ctBlt = interpType(ctBlp)
@@ -1109,9 +1113,7 @@ function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctAr
     }
     const methodNode = interpFindMethod(lookupStart, methodName)
     if (methodNode == 0) {
-        println(`error: [comptime] no method '${methodName}' on class ${lookupStart} at line ${nGetLine(id)}:${nGetCol(id)}`)
-        exit(1)
-        return ctVal(interpNewNull())
+        return comptimeError(`no method '${methodName}' on class ${lookupStart}`, id)
     }
     const ownerClass = interpLastFoundMethodClass
     const savedThis = interpThisVal
@@ -1331,10 +1333,7 @@ function ctStringMethod(objVal: int, method: string, argVals: Array<string>): in
 
 function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int {
     if (method == "push") { return interpArrayPush(objVal, parseInt(argVals[0])) }
-    const items = tvList.getString(objVal + "")
-    let parts: Array<string> = []
-    if (items != "") { parts = items.split(",") }
-    const len = parts.length()
+    const len = interpArrayLen(objVal)
     if (method == "length") { return interpNewInt(len) }
     if (method == "join") {
         const sep = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ","
@@ -1342,7 +1341,7 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         let i = 0
         while (i < len) {
             if (i > 0) { result = `${result}${sep}` }
-            result = `${result}${interpToStr(parseInt(parts[i]))}`
+            result = `${result}${interpToStr(interpArrayGet(objVal, i))}`
             i = i + 1
         }
         return interpNewString(result)
@@ -1351,7 +1350,7 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         const target = parseInt(argVals[0])
         let i = 0
         while (i < len) {
-            if (interpValEquals(parseInt(parts[i]), target) == 1) {
+            if (interpValEquals(interpArrayGet(objVal, i), target) == 1) {
                 return interpNewInt(i)
             }
             i = i + 1
@@ -1365,14 +1364,13 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         if (end < 0) { end = len + end }
         if (start < 0) { start = 0 }
         if (end > len) { end = len }
-        let newItems = ""
+        const newArr = interpNewArray("")
         let i = start
         while (i < end) {
-            if (i > start) { newItems = `${newItems},` }
-            newItems = `${newItems}${parts[i]}`
+            interpArrayPush(newArr, interpArrayGet(objVal, i))
             i = i + 1
         }
-        return interpNewArray(newItems)
+        return newArr
     }
     if (method == "map") {
         const fnVal = parseInt(argVals[0])
@@ -1380,7 +1378,7 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         let i = 0
         while (i < len) {
             let callArgs: Array<string> = []
-            callArgs = callArgs.push(parts[i])
+            callArgs = callArgs.push(`${interpArrayGet(objVal, i)}`)
             interpArrayPush(newArr, ctCallValue(fnVal, callArgs))
             i = i + 1
         }
@@ -1391,10 +1389,11 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         const newArr = interpNewArray("")
         let i = 0
         while (i < len) {
+            const elemId = interpArrayGet(objVal, i)
             let callArgs: Array<string> = []
-            callArgs = callArgs.push(parts[i])
+            callArgs = callArgs.push(`${elemId}`)
             if (interpTruthy(ctCallValue(fnVal, callArgs)) == 1) {
-                interpArrayPush(newArr, parseInt(parts[i]))
+                interpArrayPush(newArr, elemId)
             }
             i = i + 1
         }
@@ -1405,7 +1404,7 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         let i = 0
         while (i < len) {
             let callArgs: Array<string> = []
-            callArgs = callArgs.push(parts[i])
+            callArgs = callArgs.push(`${interpArrayGet(objVal, i)}`)
             ctCallValue(fnVal, callArgs)
             i = i + 1
         }
@@ -1418,7 +1417,7 @@ function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int
         while (i < len) {
             let callArgs: Array<string> = []
             callArgs = callArgs.push(`${acc}`)
-            callArgs = callArgs.push(parts[i])
+            callArgs = callArgs.push(`${interpArrayGet(objVal, i)}`)
             acc = ctCallValue(fnVal, callArgs)
             i = i + 1
         }
@@ -1730,6 +1729,27 @@ function genBinary(id: int): string {
         const pcR2 = nextReg()
         emitIR(`  ${pcR2} = zext i1 ${pcR} to i32`)
         return pcR2
+    }
+    // fn comparison: compare as i64
+    if ((op == "Eq" || op == "Ne") && (blt == "fn" || brt == "fn")) {
+        let fnL = left
+        let fnR = right
+        if (blt != "fn" && blt != "i64") {
+            const ext = nextReg()
+            emitIR(`  ${ext} = sext i32 ${fnL} to i64`)
+            fnL = ext
+        }
+        if (brt != "fn" && brt != "i64") {
+            const ext = nextReg()
+            emitIR(`  ${ext} = sext i32 ${fnR} to i64`)
+            fnR = ext
+        }
+        const fnCmpOp = op == "Eq" ? "eq" : "ne"
+        const fnCmpR = nextReg()
+        emitIR(`  ${fnCmpR} = icmp ${fnCmpOp} i64 ${fnL}, ${fnR}`)
+        const fnCmpR2 = nextReg()
+        emitIR(`  ${fnCmpR2} = zext i1 ${fnCmpR} to i32`)
+        return fnCmpR2
     }
     return genIntBinary(op, left, right)
 }
