@@ -335,6 +335,9 @@ function genVal(id: int): int {
                 if (items == "") { return ctVal(interpNewInt(0)) }
                 return ctVal(interpNewInt(items.split(",").length()))
             }
+            if (member == "name" && interpType(objPayload) == "string") {
+                return obj
+            }
             if (member == "fields" && interpType(objPayload) == "string") {
                 const clsName = interpAsStr(objPayload)
                 if (classFields.has(clsName) == 1) {

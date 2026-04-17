@@ -931,6 +931,11 @@ function genMemberAccess(id: int, preObj: string = ""): string {
     const member = nGetS1(id)
     const objId = nGetI1(id)
     const objKind = nGetKind(objId)
+    // D095: STRING_LIT.name → string itself. Fires when cls was folded from
+    // comptime IDENT to string literal in @methodOf body.
+    if (objKind == "STRING_LIT" && member == "name") {
+        return addStringConst(nGetS1(objId))
+    }
     // Enum value access: EnumName.Variant
     if (objKind == "IDENT" && enumReady == 1) {
         const eName = nGetS1(objId)

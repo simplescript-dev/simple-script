@@ -413,6 +413,8 @@ function inferType(id: int): string {
     }
     if (kind == "MEMBER_ACCESS") {
         const mObj = nGetI1(id)
+        // D095: STRING_LIT.name → string (cls.name after fold)
+        if (nGetKind(mObj) == "STRING_LIT" && nGetS1(id) == "name") { return "string" }
         // D082: Ref<T>.value → element type T
         if (nGetS1(id) == "value" && nGetKind(mObj) == "IDENT") {
             const rvt = getVarType(nGetS1(mObj))
