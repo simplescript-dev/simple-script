@@ -449,6 +449,78 @@ function rewriteIdentToLit(nodeId: int, tagged: int): int {
     return 0
 }
 
+// Deep-clone an AST subtree. Required because foldComptimeIdentsInTree rewrites
+// nodes in place; when the same FUNC_DECL is visited across multiple iterations
+// of a handler-level for-in loop (D095 @Getter / @Setter pattern), each iteration
+// must operate on its own AST copy so prior folds don't poison later ones.
+//
+// Slot semantics follow foldComptimeIdentsInTree: I1..I4 may be child node IDs
+// (detected via `nGetKind(val) != ""`) OR raw ints; list is CSV of child IDs.
+// Strings and line/col metadata are copied verbatim.
+function cloneAstNode(id: int): int {
+    if (id <= 0) { return 0 }
+    const k = nGetKind(id)
+    if (k == "") { return 0 }
+    const nid = newNode(k)
+    nSetS1(nid, nGetS1(id))
+    nSetS2(nid, nGetS2(id))
+    nSetS3(nid, nGetS3(id))
+    nSetLine(nid, nGetLine(id))
+    nSetCol(nid, nGetCol(id))
+    const i1 = nGetI1(id)
+    nSetI1(nid, i1 > 0 && nGetKind(i1) != "" ? cloneAstNode(i1) : i1)
+    const i2 = nGetI2(id)
+    nSetI2(nid, i2 > 0 && nGetKind(i2) != "" ? cloneAstNode(i2) : i2)
+    const i3 = nGetI3(id)
+    nSetI3(nid, i3 > 0 && nGetKind(i3) != "" ? cloneAstNode(i3) : i3)
+    const i4 = nGetI4(id)
+    nSetI4(nid, i4 > 0 && nGetKind(i4) != "" ? cloneAstNode(i4) : i4)
+    const list = nGetList(id)
+    if (list != "") {
+        const parts = list.split(",")
+        let newList = ""
+        for (p in parts) {
+            const childId = parseInt(p)
+            const cloned = childId > 0 && nGetKind(childId) != "" ? cloneAstNode(childId) : childId
+            newList = newList == "" ? `${cloned}` : `${newList},${cloned}`
+        }
+        nSetList(nid, newList)
+    }
+    return nid
+}
+
+// Resolve an AST node (after fold) to its compile-time string literal.
+// STRING_LIT → its text; TEMPLATE_LIT → concat of fragments where TMPL_FRAG_EXPR
+// inner node is recursively resolved (folded IDENTs now appear as STRING_LIT).
+function resolveComptimeString(id: int): string {
+    if (id <= 0) { return "" }
+    const k = nGetKind(id)
+    if (k == "STRING_LIT") { return nGetS1(id) }
+    // D095 FieldMeta: `f.name` where f has been folded to STRING_LIT — .name
+    // on a string literal is self (the field name itself).
+    if (k == "MEMBER_ACCESS" && nGetS1(id) == "name") {
+        const mObj = nGetI1(id)
+        if (nGetKind(mObj) == "STRING_LIT") { return nGetS1(mObj) }
+    }
+    if (k == "TEMPLATE_LIT") {
+        const list = nGetList(id)
+        if (list == "") { return "" }
+        let s = ""
+        const parts = list.split(",")
+        for (p in parts) {
+            const fragId = parseInt(p)
+            const fk = nGetKind(fragId)
+            if (fk == "TMPL_FRAG_LIT") {
+                s = s + nGetS1(fragId)
+            } else if (fk == "TMPL_FRAG_EXPR") {
+                s = s + resolveComptimeString(nGetI1(fragId))
+            }
+        }
+        return s
+    }
+    return ""
+}
+
 // In-place AST rewrite: walk tree, fold every IDENT whose name resolves to
 // a comptime value in the outer handler's scope. Recurses through I1..I4 and
 // the list slot. Non-node ints are filtered by nGetKind == "" check.
@@ -507,8 +579,19 @@ function handleMethodOfFuncDecl(funcId: int): int {
         if (isCt(tagged) == 0) { continue }
         const clsName = interpAsStr(payload(tagged))
         if (clsName == "") { continue }
-        foldComptimeIdentsInTree(funcId)
-        pendingMethodAdd(clsName, funcId)
+        // D095 Stage E: clone before fold so each handler-level for-in iteration
+        // gets its own AST copy. Resolves computed method names (I2 template)
+        // against the post-fold literal fragments.
+        const clonedId = cloneAstNode(funcId)
+        foldComptimeIdentsInTree(clonedId)
+        if (nGetS1(clonedId) == "" && nGetI2(clonedId) > 0) {
+            const resolvedName = resolveComptimeString(nGetI2(clonedId))
+            if (resolvedName != "") {
+                nSetS1(clonedId, resolvedName)
+                nSetI2(clonedId, 0)
+            }
+        }
+        pendingMethodAdd(clsName, clonedId)
         return 1
     }
     return 0

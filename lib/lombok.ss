@@ -15,3 +15,13 @@ function ToString(cls: string) {
         return cls.name + "(" + parts + ")"
     }
 }
+
+// Per-field accessor methods. Naming convention: get_<field> (underscore).
+// Camel-case `getX` awaits comptime capitalize (future).
+function Getter(cls: string) {
+    for (f in cls.fields) {
+        @methodOf(cls) function [`get_${f.name}`](): int {
+            return this[f.name]
+        }
+    }
+}

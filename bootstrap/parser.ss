@@ -310,7 +310,18 @@ function parseFuncDecl(): int {
     const startCol = curColNum()
     if (curKind() == "OVERRIDE") { pAdvance() }
     pExpect("FUNCTION")
-    const name = pExpectIdent()
+    // D095 Stage E: computed method name `function [${expr}]()` — only
+    // meaningful on @methodOf-annotated nested functions inside a handler's
+    // for-in over cls.fields. Resolved at codegen after foldComptimeIdents.
+    let name = ""
+    let nameTemplateId = 0
+    if (curKind() == "LBRACKET") {
+        pAdvance()
+        nameTemplateId = parseExpr()
+        pExpect("RBRACKET")
+    } else {
+        name = pExpectIdent()
+    }
     let typeParams = ""
     if (curKind() == "LT") {
         pAdvance()
@@ -331,6 +342,8 @@ function parseFuncDecl(): int {
     nSetS2(id, retType)
     nSetS3(id, typeParams)
     nSetList(id, params)
+    // D095 Stage E: stash computed-name template node in I2 (S1 stays empty).
+    if (nameTemplateId > 0) { nSetI2(id, nameTemplateId) }
     if (parsingAbstractMethod == 1) {
         // D071: abstract method — no body
         parsingAbstractMethod = 0

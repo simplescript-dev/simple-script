@@ -58,7 +58,9 @@ function isCtStringIdx(nodeId: int): int {
     if (k == "IDENT" && comptimeConsts.has(nGetS1(nodeId)) == 1) { return 1 }
     if (k == "MEMBER_ACCESS" && nGetS1(nodeId) == "name") {
         const mObj = nGetI1(nodeId)
-        if (nGetKind(mObj) == "IDENT" && comptimeConsts.has(nGetS1(mObj)) == 1) { return 1 }
+        const mk = nGetKind(mObj)
+        if (mk == "STRING_LIT") { return 1 }
+        if (mk == "IDENT" && comptimeConsts.has(nGetS1(mObj)) == 1) { return 1 }
     }
     return 0
 }
@@ -67,7 +69,11 @@ function resolveCtString(nodeId: int): string {
     const k = nGetKind(nodeId)
     if (k == "STRING_LIT") { return nGetS1(nodeId) }
     if (k == "IDENT") { return comptimeConsts.getString(nGetS1(nodeId)) }
-    if (k == "MEMBER_ACCESS") { return comptimeConsts.getString(nGetS1(nGetI1(nodeId))) }
+    if (k == "MEMBER_ACCESS") {
+        const mObj = nGetI1(nodeId)
+        if (nGetKind(mObj) == "STRING_LIT") { return nGetS1(mObj) }
+        return comptimeConsts.getString(nGetS1(mObj))
+    }
     return ""
 }
 

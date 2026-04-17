@@ -239,8 +239,8 @@ class/field/method/param 编译时:
 1. **[~] Partial** — ClassMeta / FieldMeta / MethodMeta / ParamMeta / AnnotationMeta 5 个内置 class 定义
    现状:cls 仍为 string,但 `cls.name` / `cls.fields` 已可编译期访问;`for (f in cls.fields)` 里 f 支持 `.name` / `.type` (comptimeConsts + `${itemName}.__class` 绑定,`bootstrap/gen_exprs.ss` + `bootstrap/gen_stmts.ss` + `bootstrap/gen_types.ss`)。目标:升级 cls 为 comptime-only ClassMeta object
 
-2. **[ ] Planned** — 内置注解 `@methodOf(cls)` 实现
-   现状:parser 已支持任意 @xxx 语法;`gen_class.ss:466` 仅特殊识别 @derive。目标:编译器特殊识别 @methodOf,吸收嵌套函数到 cls
+2. **[x] Done** — 内置注解 `@methodOf(cls)` 实现 (+ handler 内 for-in 多次独立展开)
+   `handleMethodOfFuncDecl` (bootstrap/gen_class.ss) 吸收 `@methodOf` 嵌套函数,`cloneAstNode` 保证 handler for-in 里同一 FUNC_DECL 每次迭代独立 fold。parseFuncDecl 支持 `function [${expr}]()` computed name (ES6 风格),`resolveComptimeString` 在 fold 后求值 template 成最终方法名。端到端证据:lib/lombok.ss `Getter` handler + tests/phase5/d095_getter.ss 通过 `p.get_x()==10 && p.get_y()==20`
 
 3. **[ ] Planned** — codegen 阶段 dispatch 注解到同名 function
    现状:仅 @derive 走 ctDerive{X} 字符串拼接路径 (gen_class.ss:479)。目标:通用机制——任意注解名 → 查找同名 function → 调用,annotations 透明
