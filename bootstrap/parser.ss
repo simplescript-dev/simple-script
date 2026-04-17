@@ -251,15 +251,15 @@ function parseAnnotationList(): string {
         // D087: comptime directives are expressions, not annotations
         if (aName == "typeInfo" || aName == "comptimeEmit") { break }
         pAdvance()
-        let aArg = ""
+        let aArgs = ""
         if (curKind() == "LPAREN") {
             pAdvance()
-            if (curKind() == "STRING") { aArg = curValue(); pAdvance() }
+            aArgs = parseArgs()
             pExpect("RPAREN")
         }
         const aId = newNode("ANNOTATION")
         nSetS1(aId, aName)
-        nSetS2(aId, aArg)
+        nSetList(aId, aArgs)
         annotations = listAppend(annotations, aId)
         skipNL()
     }
@@ -574,9 +574,13 @@ function isBodyFieldStart(): int {
         while (kindAt(pos) == "ANNOTATION") {
             pos = pos + 1
             if (kindAt(pos) == "LPAREN") {
+                let depth = 1
                 pos = pos + 1
-                if (kindAt(pos) == "STRING") { pos = pos + 1 }
-                if (kindAt(pos) == "RPAREN") { pos = pos + 1 }
+                while (depth > 0 && kindAt(pos) != "EOF") {
+                    if (kindAt(pos) == "LPAREN") { depth = depth + 1 }
+                    else if (kindAt(pos) == "RPAREN") { depth = depth - 1 }
+                    pos = pos + 1
+                }
             }
             while (kindAt(pos) == "NEWLINE") { pos = pos + 1 }
         }
@@ -642,8 +646,15 @@ function parseParams(): string {
         if (curKind() == "ANNOTATION") {
             const annName = curValue()
             pAdvance()
+            let pAnnArgs = ""
+            if (curKind() == "LPAREN") {
+                pAdvance()
+                pAnnArgs = parseArgs()
+                pExpect("RPAREN")
+            }
             paramAnn = newNode("ANNOTATION")
             nSetS1(paramAnn, annName)
+            nSetList(paramAnn, pAnnArgs)
             skipNL()
         }
         // Field-level const: const name: Type

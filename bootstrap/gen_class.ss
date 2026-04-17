@@ -472,10 +472,13 @@ function genClassDecl(id: int) {
             for (da in daParts) {
                 const daId = parseInt(da)
                 if (daId <= 0 || nGetKind(daId) != "ANNOTATION" || nGetS1(daId) != "derive") { continue }
-                const deriveArg = nGetS2(daId)
-                if (deriveArg == "") { continue }
-                const deriveNames = deriveArg.split(",")
-                for (dn in deriveNames) {
+                const argList = nGetList(daId)
+                if (argList == "") { continue }
+                const argParts = argList.split(",")
+                for (ap in argParts) {
+                    const argId = parseInt(ap)
+                    if (argId <= 0 || nGetKind(argId) != "STRING_LIT") { continue }
+                    const dn = nGetS1(argId)
                     const deriveSrc = `ctDerive${dn}("${name}")\n`
                     const dTokens = tokenize(deriveSrc)
                     const dRoot = parse(dTokens)
