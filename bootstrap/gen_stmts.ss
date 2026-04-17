@@ -319,16 +319,16 @@ function genIndexAssign(id: int) {
         return
     }
     // D088: compile-time field name → direct GEP+store; otherwise fall through to ss_arraySet
+    // D095: idx can also be f.name where f is comptimeConsts-bound
     const iaIdxNode = nGetI1(id)
-    const iaIdxKind = nGetKind(iaIdxNode)
-    if (iaIdxKind == "STRING_LIT" || (iaIdxKind == "IDENT" && comptimeConsts.has(nGetS1(iaIdxNode)) == 1)) {
+    if (isCtStringIdx(iaIdxNode) == 1) {
         let iaObjClass = getObjClass(nGetS1(id))
         if (iaObjClass == "") {
             const vt = getVarType(nGetS1(id))
             if (vt != "" && classFields.has(vt) == 1) { iaObjClass = vt }
         }
         if (iaObjClass != "" && classFields.has(iaObjClass) == 1) {
-            const iaFieldName = iaIdxKind == "STRING_LIT" ? nGetS1(iaIdxNode) : comptimeConsts.getString(nGetS1(iaIdxNode))
+            const iaFieldName = resolveCtString(iaIdxNode)
             const iaObjReg = nextReg()
             emitIR(`  ${iaObjReg} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
             const iaIdx = getFieldIndex(iaObjClass, iaFieldName)
@@ -615,7 +615,7 @@ function genFor(id: int) {
 // Compile-time for-in unroll. itemCsv is a comma-separated list of the values
 // the loop variable takes on each iteration — from classFields when iterating
 // obj.fields(), or from stringLitArrayCsv when iterating a string-literal array.
-function genForInUnrolled(id: int, itemCsv: string) {
+function genForInUnrolled(id: int, itemCsv: string, classContext: string = "") {
     const itemName = nGetS1(id)
     const bodyId = nGetI2(id)
 
@@ -635,6 +635,10 @@ function genForInUnrolled(id: int, itemCsv: string) {
     const savedLoopStack = loopBlockStackSaved
     breakLabel = afterLabel
     loopBlockStackSaved = blockPtrVarStack
+
+    // D095 FieldMeta: when looping over cls.fields, bind class context so
+    // f.name / f.type can resolve per iteration.
+    if (classContext != "") { comptimeConsts.set(`${itemName}.__class`, classContext) }
 
     let i = 0
     for (itemVal in items) {
@@ -663,6 +667,7 @@ function genForInUnrolled(id: int, itemCsv: string) {
     }
 
     comptimeConsts.delete(itemName)
+    if (classContext != "") { comptimeConsts.delete(`${itemName}.__class`) }
 
     emitIR(`${afterLabel}:`)
     terminated = 0
@@ -699,7 +704,7 @@ function genForIn(id: int) {
         const fieldsClass = resolveObjClass(fieldsObjId)
         if (fieldsClass != "" && classFields.has(fieldsClass) == 1) {
             const fsStr = classFields.getString(fieldsClass)
-            genForInUnrolled(id, fsStr)
+            genForInUnrolled(id, fsStr, fieldsClass)
             return
         }
     }
@@ -711,7 +716,7 @@ function genForIn(id: int) {
         if (nGetKind(mfObj) == "STRING_LIT") {
             const mfCls = nGetS1(mfObj)
             if (classFields.has(mfCls) == 1) {
-                genForInUnrolled(id, classFields.getString(mfCls))
+                genForInUnrolled(id, classFields.getString(mfCls), mfCls)
                 return
             }
         }

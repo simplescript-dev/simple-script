@@ -15,7 +15,7 @@ function ToString(cls: string) {
         let parts = ""
         for (f in cls.fields) {
             if (parts != "") { parts = parts + ", " }
-            parts = parts + f + "=" + this[f]
+            parts = parts + f.name + "=" + this[f.name]
         }
         return cls.name + "(" + parts + ")"
     }
@@ -26,14 +26,14 @@ function DataLike(cls: string) {
         let parts = ""
         for (f in cls.fields) {
             if (parts != "") { parts = parts + ", " }
-            parts = parts + f + "=" + this[f]
+            parts = parts + f.name + "=" + this[f.name]
         }
         return cls.name + "{" + parts + "}"
     }
     @methodOf(cls) function describe(): string {
         let s = ""
         for (f in cls.fields) {
-            s = s + "f=" + f + ";"
+            s = s + "f=" + f.name + ";"
         }
         return s
     }

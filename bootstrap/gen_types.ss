@@ -415,6 +415,11 @@ function inferType(id: int): string {
         const mObj = nGetI1(id)
         // D095: STRING_LIT.name → string (cls.name after fold)
         if (nGetKind(mObj) == "STRING_LIT" && nGetS1(id) == "name") { return "string" }
+        // D095 FieldMeta: f.name / f.type when f is in comptimeConsts (loop var) → "string"
+        if (nGetKind(mObj) == "IDENT" && comptimeConsts.has(nGetS1(mObj)) == 1) {
+            const fmm = nGetS1(id)
+            if (fmm == "name" || fmm == "type") { return "string" }
+        }
         // D082: Ref<T>.value → element type T
         if (nGetS1(id) == "value" && nGetKind(mObj) == "IDENT") {
             const rvt = getVarType(nGetS1(mObj))
@@ -451,12 +456,12 @@ function inferType(id: int): string {
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "INDEX_ACCESS") {
         // D088: obj[name] bracket notation on class instance
-        // Only attempt resolveObjClass when index could be a field name
-        const iaIdxKind = nGetKind(nGetI2(id))
-        if (iaIdxKind == "STRING_LIT" || (iaIdxKind == "IDENT" && comptimeConsts.has(nGetS1(nGetI2(id))) == 1)) {
+        // D095: idx can also be f.name where f is comptimeConsts-bound
+        const iaIdxNode = nGetI2(id)
+        if (isCtStringIdx(iaIdxNode) == 1) {
             const iaObjClass = resolveObjClass(nGetI1(id))
             if (iaObjClass != "" && classFields.has(iaObjClass) == 1) {
-                const iaFieldName = iaIdxKind == "STRING_LIT" ? nGetS1(nGetI2(id)) : comptimeConsts.getString(nGetS1(nGetI2(id)))
+                const iaFieldName = resolveCtString(iaIdxNode)
                 if (classFieldTypes.has(`${iaObjClass}.${iaFieldName}`) == 1) {
                     return classFieldTypes.getString(`${iaObjClass}.${iaFieldName}`)
                 }

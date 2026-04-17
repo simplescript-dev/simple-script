@@ -236,8 +236,8 @@ class/field/method/param 编译时:
 
 ## 与现状的差距清单(每项标 P19 状态)
 
-1. **[ ] Planned** — ClassMeta / FieldMeta / MethodMeta / ParamMeta / AnnotationMeta 5 个内置 class 定义
-   现状:不存在。目标:comptime-only class,编译器在调 handler 前构造
+1. **[~] Partial** — ClassMeta / FieldMeta / MethodMeta / ParamMeta / AnnotationMeta 5 个内置 class 定义
+   现状:cls 仍为 string,但 `cls.name` / `cls.fields` 已可编译期访问;`for (f in cls.fields)` 里 f 支持 `.name` / `.type` (comptimeConsts + `${itemName}.__class` 绑定,`bootstrap/gen_exprs.ss` + `bootstrap/gen_stmts.ss` + `bootstrap/gen_types.ss`)。目标:升级 cls 为 comptime-only ClassMeta object
 
 2. **[ ] Planned** — 内置注解 `@methodOf(cls)` 实现
    现状:parser 已支持任意 @xxx 语法;`gen_class.ss:466` 仅特殊识别 @derive。目标:编译器特殊识别 @methodOf,吸收嵌套函数到 cls

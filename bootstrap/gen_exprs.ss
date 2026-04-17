@@ -47,13 +47,36 @@ function genUnary(id: int): string {
     return r
 }
 
+// D095: resolve a node to its compile-time string value, honoring:
+//   STRING_LIT             → nGetS1
+//   IDENT in comptimeConsts → bound value (loop var)
+//   IDENT.name where IDENT in comptimeConsts → bound value (FieldMeta.name)
+// Returns 1 if resolvable, else 0. Companion resolveCtString returns the string.
+function isCtStringIdx(nodeId: int): int {
+    const k = nGetKind(nodeId)
+    if (k == "STRING_LIT") { return 1 }
+    if (k == "IDENT" && comptimeConsts.has(nGetS1(nodeId)) == 1) { return 1 }
+    if (k == "MEMBER_ACCESS" && nGetS1(nodeId) == "name") {
+        const mObj = nGetI1(nodeId)
+        if (nGetKind(mObj) == "IDENT" && comptimeConsts.has(nGetS1(mObj)) == 1) { return 1 }
+    }
+    return 0
+}
+
+function resolveCtString(nodeId: int): string {
+    const k = nGetKind(nodeId)
+    if (k == "STRING_LIT") { return nGetS1(nodeId) }
+    if (k == "IDENT") { return comptimeConsts.getString(nGetS1(nodeId)) }
+    if (k == "MEMBER_ACCESS") { return comptimeConsts.getString(nGetS1(nGetI1(nodeId))) }
+    return ""
+}
+
 function genIndexAccess(id: int, preObj: string = "", preIdx: string = ""): string {
     const idxId = nGetI2(id)
-    const idxKind = nGetKind(idxId)
-    if (idxKind == "STRING_LIT" || (idxKind == "IDENT" && comptimeConsts.has(nGetS1(idxId)) == 1)) {
+    if (isCtStringIdx(idxId) == 1) {
         const objClass = resolveObjClass(nGetI1(id))
         if (objClass != "" && classFields.has(objClass) == 1) {
-            const fieldName = idxKind == "STRING_LIT" ? nGetS1(idxId) : comptimeConsts.getString(nGetS1(idxId))
+            const fieldName = resolveCtString(idxId)
             const objVal = preObj != "" ? preObj : genExpr(nGetI1(id))
             return emitFieldLoad(objClass, objVal, fieldName)
         }
@@ -302,6 +325,23 @@ function genVal(id: int): int {
     if (kind == "MEMBER_ACCESS") {
         const member = nGetS1(id)
         const objNode = nGetI1(id)
+        // D095 FieldMeta: f.name / f.type when f is a for-in-unroll bound comptime const
+        if (nGetKind(objNode) == "IDENT" && comptimeConsts.has(nGetS1(objNode)) == 1) {
+            const fmName = nGetS1(objNode)
+            if (member == "name") {
+                return constVal(addStringConst(comptimeConsts.getString(fmName)))
+            }
+            if (member == "type") {
+                const fmClsKey = `${fmName}.__class`
+                if (comptimeConsts.has(fmClsKey) == 1) {
+                    const fmCls = comptimeConsts.getString(fmClsKey)
+                    const fmFld = comptimeConsts.getString(fmName)
+                    if (classFieldTypes.has(`${fmCls}.${fmFld}`) == 1) {
+                        return constVal(addStringConst(classFieldTypes.getString(`${fmCls}.${fmFld}`)))
+                    }
+                }
+            }
+        }
         if (nGetKind(objNode) == "IDENT") {
             const eName = nGetS1(objNode)
             const enumKey = `${eName}.${member}`
