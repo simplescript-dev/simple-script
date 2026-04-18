@@ -100,6 +100,8 @@ bin/ss clean
 
 **决策记录**：每个确认的设计决策立即写入 `docs/3-decisions/D0NN-*.md`，一个决策一个文件，不等到实现完成再补。多阶段计划的 Phase 进度只写在 D 文档里，不创建 `next-prompt.md`、`handoff.md` 等"自动传递任务"文件。下一轮提示词直接输出到对话，由用户决定是否执行。
 
+**Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
+
 **回复语言**：所有回复及总结使用中文。
 
 ## 外部引用
