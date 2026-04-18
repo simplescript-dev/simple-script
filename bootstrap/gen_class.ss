@@ -6,6 +6,8 @@ let classFields = ""     // "ClassName" -> "field1,field2,..."
 let classFieldTypes = "" // "ClassName.field" -> "type"
 let classFieldAnnotations = "" // "ClassName.field" -> "Ann1,Ann2" CSV of annotation names (D095 Stage C — FieldMeta reflection)
 let classFieldAnnotationArgs = "" // "ClassName.field.AnnName" -> "arg0,arg1" CSV of string-lit arg values (D095 Stage C — a.args reflection, L2η)
+let classAnnotations = ""     // "ClassName" -> "Ann1,Ann2" CSV of class-level annotation names (D096 L2θ — cls.annotations reflection)
+let classAnnotationArgs = ""  // "ClassName.AnnName" -> "arg0,arg1" CSV of string-lit arg values (D096 L2θ — a.args for class-level annotations)
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
@@ -51,6 +53,8 @@ function initClassState() {
     classFieldTypes = Map()
     classFieldAnnotations = Map()
     classFieldAnnotationArgs = Map()
+    classAnnotations = Map()
+    classAnnotationArgs = Map()
     classMethods = Map()
     objClasses = Map()
     classParents = Map()
@@ -190,6 +194,39 @@ function emitStaticFieldInits() {
 
 // ── Class support ─────────────────────────────────────────────
 
+// L2ζ/L2η/L2θ: fill namesMap[keyPrefix] with annotation name CSV and
+// argsMap["${keyPrefix}.${annName}"] with STRING_LIT arg CSV for each annotation.
+// Non-STRING_LIT args are silently dropped. Shared by field-level and class-level
+// reflection paths.
+function extractAnnotationsReflection(annListId: int, namesMap: Map, argsMap: Map, keyPrefix: string) {
+    if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return }
+    const anns = nGetList(annListId)
+    if (anns == "") { return }
+    let names = ""
+    const aParts = anns.split(",")
+    for (ap in aParts) {
+        const aId = parseInt(ap)
+        if (aId <= 0 || nGetKind(aId) != "ANNOTATION") { continue }
+        const annName = nGetS1(aId)
+        names = listAppendStr(names, annName)
+        const argsCsv = nGetList(aId)
+        if (argsCsv != "") {
+            let argVals = ""
+            const argParts = argsCsv.split(",")
+            for (arp in argParts) {
+                const argId = parseInt(arp)
+                if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
+                    argVals = listAppendStr(argVals, nGetS1(argId))
+                }
+            }
+            if (argVals != "") {
+                argsMap.set(`${keyPrefix}.${annName}`, argVals)
+            }
+        }
+    }
+    if (names != "") { namesMap.set(keyPrefix, names) }
+}
+
 function registerClass(id: int) {
     // Generic classes: skip registration (unresolved type params).
     // Will be registered with concrete types at specialization time.
@@ -250,46 +287,10 @@ function registerClass(id: int) {
                 } else {
                     fieldNames = listAppendStr(fieldNames, fName)
                     classFieldTypes.set(`${name}.${fName}`, strippedType)
-                    // D095 Stage C: extract field-level @Annotation names (CSV)
-                    // for FieldMeta.annotations reflection. PARAM.list holds the
-                    // ANNOTATION_LIST node id as a string (parser.ss:437); that
-                    // node's list is the CSV of ANNOTATION node ids.
-                    const annListRaw = nGetList(pId)
-                    if (annListRaw != "") {
-                        const annListId = parseInt(annListRaw)
-                        if (annListId > 0 && nGetKind(annListId) == "ANNOTATION_LIST") {
-                            const annCsv = nGetList(annListId)
-                            if (annCsv != "") {
-                                let annNames = ""
-                                const aParts = annCsv.split(",")
-                                for (ap in aParts) {
-                                    const aId = parseInt(ap)
-                                    if (aId > 0 && nGetKind(aId) == "ANNOTATION") {
-                                        const aName = nGetS1(aId)
-                                        annNames = listAppendStr(annNames, aName)
-                                        // L2η: also capture STRING_LIT args for a.args reflection.
-                                        // Key = ClassName.field.AnnName. Non-string args are dropped.
-                                        const aArgsCsv = nGetList(aId)
-                                        if (aArgsCsv != "") {
-                                            let argVals = ""
-                                            const aArgParts = aArgsCsv.split(",")
-                                            for (arp in aArgParts) {
-                                                const argId = parseInt(arp)
-                                                if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
-                                                    argVals = listAppendStr(argVals, nGetS1(argId))
-                                                }
-                                            }
-                                            if (argVals != "") {
-                                                classFieldAnnotationArgs.set(`${name}.${fName}.${aName}`, argVals)
-                                            }
-                                        }
-                                    }
-                                }
-                                if (annNames != "") {
-                                    classFieldAnnotations.set(`${name}.${fName}`, annNames)
-                                }
-                            }
-                        }
+                    // D095 Stage C: PARAM.list holds ANNOTATION_LIST id as string (parser.ss:437).
+                    const fAnnListRaw = nGetList(pId)
+                    if (fAnnListRaw != "") {
+                        extractAnnotationsReflection(parseInt(fAnnListRaw), classFieldAnnotations, classFieldAnnotationArgs, `${name}.${fName}`)
                     }
                 }
             }
@@ -855,6 +856,8 @@ function genClassDecl(id: int) {
         const anns = nGetList(annListId)
         if (anns != "") {
             const aParts = anns.split(",")
+            // L2θ: class-level annotation reflection capture (names + args).
+            extractAnnotationsReflection(annListId, classAnnotations, classAnnotationArgs, name)
             for (ap in aParts) {
                 const aId = parseInt(ap)
                 if (aId <= 0 || nGetKind(aId) != "ANNOTATION") { continue }
