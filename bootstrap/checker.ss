@@ -49,6 +49,7 @@ let currentStaticMethod = 0    // 1 when inside a static method body (D070)
 let abstractClasses = ""       // "ClassName" -> "1" if abstract class (D071)
 let abstractMethods = ""       // "ClassName.methodName" -> "1" if abstract method (D071)
 let classMethodNames = ""      // "ClassName" -> ",method1,method2," for abstract impl check (D071)
+let checkerDeferredAliases = "" // "aliasName" -> "1" if alias 绑定到泛型 type param(由 specialization 决定 class) — 跳过字段严校验,codegen 兜底
 
 function initChecker() {
     if (funcReady == 1) { return }
@@ -90,6 +91,7 @@ function initChecker() {
     abstractClasses = Map()
     abstractMethods = Map()
     classMethodNames = Map()
+    checkerDeferredAliases = Map()
     // Built-in class: Map
     classConsMin.set("Map", "0")
     classConsMax.set("Map", "0")
@@ -1122,8 +1124,10 @@ function registerCheckerClassDecl(s: int, overrideName: string) {
 // 扫 stmtList 里所有 VAR_DECL,若 init 是 COMPTIME_EXPR:
 //   - 把 body 里的 CLASS_DECL 按原名注册到 checker
 //   - 若 body 末尾 return IDENT 指向某 CLASS_DECL 名,把 VAR_DECL 名注册为该 class 的 alias(字段/方法签名共享)
-// 递归进 FUNC_DECL body,让 `function f() { const W = comptime {...} }` 也被识别。
-function preScanComptimeClasses(stmtList: string) {
+//   - 若 return IDENT 指向 enclosing function 的 type param(如 `function f<T>() { const R = comptime { return T } }`),
+//     把 VAR_DECL 名登记到 checkerDeferredAliases:具体 class 由 specialization 决定,checker 跳过字段严校验。
+// 递归进 FUNC_DECL body,传下该函数的 type params。
+function preScanComptimeClasses(stmtList: string, enclosingTypeParams: string) {
     if (stmtList == "") { return }
     const parts = stmtList.split(",")
     for (p in parts) {
@@ -1132,7 +1136,7 @@ function preScanComptimeClasses(stmtList: string) {
         const sk = nGetKind(s)
         if (sk == "FUNC_DECL") {
             const fbId = nGetI1(s)
-            if (fbId > 0) { preScanComptimeClasses(nGetList(fbId)) }
+            if (fbId > 0) { preScanComptimeClasses(nGetList(fbId), nGetS3(s)) }
             continue
         }
         if (sk != "VAR_DECL") { continue }
@@ -1159,10 +1163,20 @@ function preScanComptimeClasses(stmtList: string) {
         }
         if (returnName != "") {
             const varName = nGetS1(s)
+            let resolvedAsClassDecl = 0
             for (bp2 in bParts) {
                 const bs2 = parseInt(bp2)
                 if (bs2 > 0 && nGetKind(bs2) == "CLASS_DECL" && nGetS1(bs2) == returnName) {
                     registerCheckerClassDecl(bs2, varName)
+                    resolvedAsClassDecl = 1
+                }
+            }
+            if (resolvedAsClassDecl == 0 && enclosingTypeParams != "") {
+                const tpParts = enclosingTypeParams.split(",")
+                for (tp in tpParts) {
+                    if (tp == returnName) {
+                        checkerDeferredAliases.set(varName, "1")
+                    }
                 }
             }
         }
@@ -1265,7 +1279,7 @@ function check(rootId: int): int {
         }
     }
     // Pass 2 前注册 comptime 块内声明的 class,让 `new W(...)` 可被 checker 识别
-    preScanComptimeClasses(stmtList)
+    preScanComptimeClasses(stmtList, "")
     // Pass 2: check all statements
     checkStmtList(stmtList)
     // Report collected errors

@@ -942,6 +942,8 @@ function checkArgList(listStr: string) {
 // Validate named constructor arguments: all names must be valid fields, no duplicates
 function checkNamedConstructorArgs(className: string, argList: string, line: int, col: int) {
     if (argList == "") { return }
+    // type-param-dependent alias(L2δ):具体 class 由 specialization 时决定,字段校验下放 codegen
+    if (checkerDeferredAliases.has(className) == 1) { return }
     // Resolve full field list including parent fields
     let fullFields = ""
     let cls = className
