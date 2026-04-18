@@ -742,6 +742,18 @@ function genForIn(id: int) {
             }
         }
     }
+    // L2ι: cls.methods unroll. No classContext passed — __class sidecar is
+    // owned by L2ζ field-level .annotations; reusing it here would misroute.
+    if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "methods") {
+        const mmObj = nGetI1(iterableId)
+        if (nGetKind(mmObj) == "STRING_LIT") {
+            const mmCls = nGetS1(mmObj)
+            if (classMethods.has(mmCls) == 1) {
+                genForInUnrolled(id, classMethods.getString(mmCls))
+                return
+            }
+        }
+    }
     // D095 Stage C: f.annotations unroll — mirrors the .fields path but keyed on
     // comptimeConsts-bound field IDENT (set by the enclosing cls.fields loop's
     // genForInUnrolled at gen_stmts.ss:641/645). Item binding is plain string,
