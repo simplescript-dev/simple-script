@@ -42,13 +42,17 @@ D093 §决策 §Zig 原理 已固化四条原语,本文以此为**不变量**,�
 - 统一 `val: int` 域让 MaybeVal 可以不判 known 就**传递**(evalExpr 返回值链式传入上层 evalExpr),减少"先判 known 再取"的双轨分支
 - Value 句柄和 regTable 索引都是 int,语义差异由 `known` 字段携带而非 val 类型携带 —— 和 Zig `?Value` 把 "null" 作 optional discriminant 同构
 
-**构造入口**:
+**构造入口**(字段顺序按 class 声明 `known, val`):
 
 ```ss
-function mvKnown(valId: int): MaybeVal { ... }          // Phase A: valId 是 tagged int;Phase B: pool index
-function mvRuntime(regId: int): MaybeVal { ... }         // regTable 已 emit,返回入口索引
-function mvError(): MaybeVal { ... }                     // {known:false, val:-1},调用方禁止 reg()
+function mvKnown(valId: int): MaybeVal { return new MaybeVal(true, valId); }   // Phase A: valId 是 tagged int;Phase B: pool index
+function mvRuntime(regId: int): MaybeVal { return new MaybeVal(false, regId); } // regTable 已 emit,返回入口索引
+function mvError(): MaybeVal { return new MaybeVal(false, -1); }                // 调用方禁止 reg()
 ```
+
+**SS 语言约束**(2026-04-18 probe `/tmp/maybeval_probe.ss` 验证):
+- class 带字段 → SS 自动按字段顺序生成构造器,`new MaybeVal()` 无参非法,**必须** `new MaybeVal(knownArg, valArg)`
+- 函数重载按参数类型 dispatch **对 int vs ptr 同名失效**(probe `/tmp/maybeval_overload.ss` 证 `mvKnown(int):MaybeVal` + `mvKnown(MaybeVal):bool` 同名声明 → 调用 `mvKnown(42)` 走最后声明签名 → LLVM 类型错误)。因此访问器命名**必须与构造器区分**,见下 §访问器 mvKnownOf/mvValOf 命名
 
 **接入 evalExpr**(D093 §SS 本质一样骨架 行 52-59 直译):
 
@@ -56,25 +60,25 @@ function mvError(): MaybeVal { ... }                     // {known:false, val:-1
 function evalExpr(astId: int): MaybeVal {
     // 每 kind:
     //   递归 evalExpr 所有子节点 → 得到子 MaybeVal 列表
-    //   全部 known=true → 调对应 interp* 常量计算 → mvKnown(valId)
+    //   全部 mvKnownOf=true → 调对应 interp* 常量计算 → mvKnown(valId)
     //   否则 → emitRuntimeSubExprs(先 emit 未 known 子表达式) → mvRuntime(regId)
     //   错误路径 → mvError()
     // 无 "if comptimeDepth > 0" 分岔
 }
 
 function genExpr(astId: int): string {
-    const mv = evalExpr(astId)
-    if (mvKnown(mv)) { return emitConstFromVal(mvVal(mv)) }
-    if (comptimeMustBeKnown) { error("comptime block contains runtime-only expression") }
-    return emitRuntimeInst(astId)  // 或直接 reg(mv) 返回寄存器
+    let mv = evalExpr(astId);
+    if (mvKnownOf(mv)) { return emitConstFromVal(mvValOf(mv)); }
+    if (comptimeMustBeKnown) { error("comptime block contains runtime-only expression"); }
+    return emitRuntimeInst(astId);  // 或走 regTable[mvValOf(mv)] 取寄存器
 }
 ```
 
-**访问器**(内部封装 Phase A / Phase B 差异):
+**访问器**(内部封装 Phase A / Phase B 差异,命名与构造器错开避开 SS 重载约束):
 
 ```ss
-function mvKnown(mv: MaybeVal): bool { ... }
-function mvVal(mv: MaybeVal): int { ... }
+function mvKnownOf(mv: MaybeVal): bool { return mv.known; }
+function mvValOf(mv: MaybeVal): int { return mv.val; }
 function valOf(valId: int): int { ... }        // Phase A: payload(valId);Phase B: pool.load(valId).payload
 function valType(valId: int): string { ... }   // Phase A: interpType(valId);Phase B: pool.load(valId).tag
 ```
@@ -152,9 +156,12 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 
 5. **`interp*` 家族(codegen.ss L277-500 约 30 函数)的去留节奏** — D093 §差距清单 第 5 条目标是消除独立求值器,但 Phase A / B 都保留 `interp*` 作为 Value 运算库(由 evalExpr 调用)。**张力**:`interp*` 是"双轨状态"还是"Value 运算库"? 本文立场:**运算库**(evalExpr 调用它们做常量计算,就像 Zig `Value.zig` 内有各种常量运算方法)。消除的是"独立求值入口 / 独立 state 机",不消除"常量运算函数"。Phase C 若走则把 `interp*` 重写为无 state 的纯函数(接收 valId 返回 valId),当前 `interp*` 多带隐式 state(如 `ctScopeStack` / `ctVars`),Phase C 前需提纯。
 
+6. **SS 函数重载 int vs ptr 同名 dispatch 不生效**(2026-04-18 probe `/tmp/maybeval_overload.ss` 发现) — 声明 `f(x:int):A` + `f(mv:MaybeVal):B` 两个同名函数,调 `f(42)` 时走"最后声明"签名产生 LLVM 类型错误。原因未定位(parser / checker / codegen 哪层 mangling 失效 TBD)。**解决**:§决策 1 访问器命名从 `mvKnown/mvVal` 错到 `mvKnownOf/mvValOf`(本文已应用),与构造器 `mvKnown/mvRuntime/mvError` 区分。**衍生后续**:SS 函数重载语义待单独澄清(Java 风格严格类型 dispatch vs JS 风格"最后声明"),与本 D 文档独立,记入 §下一步 开放项。
+
 ## 下一步(Plan 型,不触发代码改动)
 
-- **[ ] Planned** 验证 SS 语言能力承载 `class MaybeVal { known: bool, val: int }`:class 带 bool + int 字段 / class 作函数返回值 / class 字段读写 — 已在 D093 §下一步 第 2 条列,本 D 文档引用不重复,缺则补
+- **[x] Done(2026-04-18)** 验证 SS 语言能力承载 `class MaybeVal { known: bool, val: int }`:class 带 bool + int 字段 ✓ / class 作函数返回值 ✓ / 字段读写 ✓ / 自动按字段顺序构造器(`new MaybeVal(true, 42)`,无参非法,已纳入 §决策 1 构造形式)。probe `/tmp/maybeval_probe.ss` 跑通 `probe OK`
+- **[ ] Planned** SS 函数重载语义澄清(int vs ptr 同名 dispatch 缺失,见 §新张力 6),不作 Phase A 阻塞项,Phase A 先用 `mvKnownOf/mvValOf` 错名访问器
 - **[ ] Planned** 写 evalExpr Phase A 首批 1a 合并 Plan(5 个 kind:BINARY/UNARY/TERNARY/SHORT_CIRCUIT/COMPTIME_EXPR),对应上轮候选表 §C "首批 1a",引用本 D098 §决策 1 的 MaybeVal 接口 + D094 §决策 §规则 2 的 pure subset 白名单
 - **[ ] Planned** 写 Phase A 末尾 `comptimeTypeAliases` → `ctVars` 合并 Plan(§决策 3 Phase A 收尾项)
 - **[ ] Planned** Phase B 启动前单独决策:Map hash 策略 / `STR` key 预 hash / `interp*` 访问器改造范围
