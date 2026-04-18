@@ -159,6 +159,14 @@ function genVal(id: int): int {
             if (isKnownClass(ctIdName) == 1) {
                 return ctVal(interpNewType(ctIdName))
             }
+            // 泛型实参 T 绑定的类名 → TypeValue(monomorphize 时 genericTypeSubs[T]=Foo);
+            // 支持 comptime 内 T.name / T.fields / `return T`。
+            if (genericTypeSubs.has(ctIdName) == 1) {
+                const ctSubName = genericTypeSubs.getString(ctIdName)
+                if (isKnownClass(ctSubName) == 1) {
+                    return ctVal(interpNewType(ctSubName))
+                }
+            }
             const ctAliased = resolveCtTypeAlias(ctIdName)
             if (ctAliased != ctIdName) {
                 return ctVal(interpNewType(ctAliased))
