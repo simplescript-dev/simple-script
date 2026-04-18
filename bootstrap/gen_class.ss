@@ -619,8 +619,8 @@ function emitClassComptimeMethods(className: string) {
             const ccMName = nGetS1(ccSid)
             let ccRet = stripNullableCG(nGetS2(ccSid))
             if (ccRet == "") {
-                // D095: infer retType from first RETURN in body so @Getter-style
-                // handlers work for any field type without explicit annotation.
+                // Infer retType from first RETURN in body so comptime-generated
+                // methods work without an explicit annotation.
                 ccRet = "void"
                 const ccBody = nGetI1(ccSid)
                 if (ccBody > 0 && nGetKind(ccBody) == "BLOCK") {

@@ -1,9 +1,6 @@
 // Lombok-style annotation handlers for SimpleScript.
-//
-// D095 Stage E — 对外接口证据：这些 handler 通过 `import { X } from "@/lib/lombok"`
-// 引入后,必须能在 class 前作为 `@X class Foo` 使用。行为与 Java Lombok 对齐。
-//
-// 当前阶段 cls 参数类型为 string (类名),未来升级为 ClassMeta (D095 §差距清单 第 1 条)。
+// Import via `import { X } from "@/lib/lombok"` and apply as `@X class Foo`.
+// Semantics match Java Lombok.
 
 function ToString(cls: string) {
     @methodOf(cls) function toString(): string {
@@ -16,9 +13,8 @@ function ToString(cls: string) {
     }
 }
 
-// Per-field accessor methods. Naming convention: get_<field> (underscore).
-// Camel-case `getX` awaits comptime capitalize (future).
-// Return type is inferred from the returned expression — works for any field type.
+// Per-field accessor methods. Naming: get_<field>.
+// Return type inferred from the RETURN expression — works for any field type.
 function Getter(cls: string) {
     for (f in cls.fields) {
         @methodOf(cls) function [`get_${f.name}`]() {
@@ -27,9 +23,9 @@ function Getter(cls: string) {
     }
 }
 
-// Per-field mutators. Naming: set_<field>. Parameter type is currently int-only
-// because type-position comptime interpolation (`v: ${f.type}`) is a future
-// Stage. Mixed-type classes with @Setter will fail to compile non-int fields.
+// Per-field mutators. Naming: set_<field>. Parameter forced to int because
+// type-position comptime interpolation (`v: ${f.type}`) is not yet supported —
+// @Setter on non-int fields will fail to compile.
 function Setter(cls: string) {
     for (f in cls.fields) {
         @methodOf(cls) function [`set_${f.name}`](v: int) {
