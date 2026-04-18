@@ -13,6 +13,19 @@ class ExecResult {
     exitCode: int
 }
 
+// D097 Meta objects — comptime reflection carrier classes.
+// Constructed by compiler during cls.fields/cls.annotations evaluation;
+// user code reads `.name`/`.type`/`.args` via MEMBER_ACCESS on iteration binding.
+class FieldMeta {
+    name: string
+    type: string
+}
+
+class AnnotationMeta {
+    name: string
+    args: Array<string>
+}
+
 // ── Higher-order array methods ────────────────────────────────
 
 function _ss_map(arr: List<int>, callback: fn): List<int> {
