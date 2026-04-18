@@ -764,21 +764,6 @@ function genForIn(id: int) {
     // no class context needed.
     if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "annotations") {
         const annObj = nGetI1(iterableId)
-        // L2θ: cls.annotations when cls has been folded to STRING_LIT class name.
-        // Only __annCls sidecar is set; absence of __annFld signals class-level
-        // to the inner .args branch.
-        if (nGetKind(annObj) == "STRING_LIT" && isKnownClass(nGetS1(annObj)) == 1) {
-            const clsAnnClass = nGetS1(annObj)
-            let clsAnnCsv = ""
-            if (classAnnotations.has(clsAnnClass) == 1) {
-                clsAnnCsv = classAnnotations.getString(clsAnnClass)
-            }
-            const clsAnnItemName = nGetS1(id)
-            comptimeConsts.set(`${clsAnnItemName}.__annCls`, clsAnnClass)
-            genForInUnrolled(id, clsAnnCsv)
-            comptimeConsts.delete(`${clsAnnItemName}.__annCls`)
-            return
-        }
         if (nGetKind(annObj) == "IDENT" && comptimeConsts.has(nGetS1(annObj)) == 1) {
             const annFieldIdent = nGetS1(annObj)
             // L2κ: m.annotations when m is bound inside cls.methods unroll.
@@ -818,31 +803,22 @@ function genForIn(id: int) {
             }
         }
     }
-    // L2η: a.args unroll. a = annotation name (per-iteration), __annCls/__annFld
-    // sidecars identify which class+field the annotation attaches to.
+    // L2η: a.args unroll (field-level). a = annotation name (per-iteration),
+    // __annCls/__annFld sidecars identify the class+field owning the annotation.
     if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "args") {
         const argObj = nGetI1(iterableId)
         if (nGetKind(argObj) == "IDENT" && comptimeConsts.has(nGetS1(argObj)) == 1) {
             const argAnnIdent = nGetS1(argObj)
             const argClsKey = `${argAnnIdent}.__annCls`
             const argFldKey = `${argAnnIdent}.__annFld`
-            if (comptimeConsts.has(argClsKey) == 1) {
+            if (comptimeConsts.has(argClsKey) == 1 && comptimeConsts.has(argFldKey) == 1) {
                 const argAnnName = comptimeConsts.getString(argAnnIdent)
                 const argCls = comptimeConsts.getString(argClsKey)
+                const argFld = comptimeConsts.getString(argFldKey)
                 let argCsv = ""
-                // Field-level (__annFld set by L2ζ IDENT.annotations) vs class-level
-                // (L2θ STRING_LIT.annotations sets only __annCls) — dispatch on presence.
-                if (comptimeConsts.has(argFldKey) == 1) {
-                    const argFld = comptimeConsts.getString(argFldKey)
-                    const argKey = `${argCls}.${argFld}.${argAnnName}`
-                    if (classFieldAnnotationArgs.has(argKey) == 1) {
-                        argCsv = classFieldAnnotationArgs.getString(argKey)
-                    }
-                } else {
-                    const argKey2 = `${argCls}.${argAnnName}`
-                    if (classAnnotationArgs.has(argKey2) == 1) {
-                        argCsv = classAnnotationArgs.getString(argKey2)
-                    }
+                const argKey = `${argCls}.${argFld}.${argAnnName}`
+                if (classFieldAnnotationArgs.has(argKey) == 1) {
+                    argCsv = classFieldAnnotationArgs.getString(argKey)
                 }
                 genForInUnrolled(id, argCsv)
                 return

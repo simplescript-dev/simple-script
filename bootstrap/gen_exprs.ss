@@ -77,28 +77,6 @@ function resolveCtString(nodeId: int): string {
     return ""
 }
 
-function buildClassAnnotationMetaArray(clsName: string): int {
-    const arr = interpNewArray("")
-    if (classAnnotations.has(clsName) == 0) { return arr }
-    const nameCsv = classAnnotations.getString(clsName)
-    if (nameCsv == "") { return arr }
-    for (annName in nameCsv.split(",")) {
-        const metaTv = interpNewVal("object", "AnnotationMeta")
-        interpSetField(metaTv, "name", interpNewString(annName))
-        const argsArr = interpNewArray("")
-        const argsKey = `${clsName}.${annName}`
-        if (classAnnotationArgs.has(argsKey) == 1) {
-            const argsCsv = classAnnotationArgs.getString(argsKey)
-            if (argsCsv != "") {
-                for (a in argsCsv.split(",")) { interpArrayPush(argsArr, interpNewString(a)) }
-            }
-        }
-        interpSetField(metaTv, "args", argsArr)
-        interpArrayPush(arr, metaTv)
-    }
-    return arr
-}
-
 function genIndexAccess(id: int, preObj: string = "", preIdx: string = ""): string {
     const idxId = nGetI2(id)
     if (isCtStringIdx(idxId) == 1) {
@@ -457,13 +435,30 @@ function genVal(id: int): int {
                     return ctVal(interpCtFieldsArray(clsName))
                 }
             }
-            // D097: cls.annotations → comptime Array<AnnotationMeta>. Replaces
-            // L2θ's CSV + __annCls sidecar + genForInUnrolled (gen_stmts.ss:770).
+            // D097: cls.annotations → comptime Array<AnnotationMeta>, AST-sourced.
             if (member == "annotations" && (mpKind == "string" || mpKind == "type")) {
+                const arr = interpNewArray("")
                 const clsAnnName = interpAsStr(objPayload)
-                if (isKnownClass(clsAnnName) == 1) {
-                    return ctVal(buildClassAnnotationMetaArray(clsAnnName))
+                if (classNodeIds.has(clsAnnName) == 1) {
+                    const annListId = nGetI4(parseInt(classNodeIds.getString(clsAnnName)))
+                    if (annListId > 0) {
+                        for (ap in nGetList(annListId).split(",")) {
+                            const aId = parseInt(ap)
+                            const metaTv = interpNewVal("object", "AnnotationMeta")
+                            interpSetField(metaTv, "name", interpNewString(nGetS1(aId)))
+                            const argsArr = interpNewArray("")
+                            for (arp in nGetList(aId).split(",")) {
+                                const argId = parseInt(arp)
+                                if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
+                                    interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
+                                }
+                            }
+                            interpSetField(metaTv, "args", argsArr)
+                            interpArrayPush(arr, metaTv)
+                        }
+                    }
                 }
+                return ctVal(arr)
             }
         }
         if (comptimeDepth > 0) {
