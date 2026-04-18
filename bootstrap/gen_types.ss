@@ -198,6 +198,12 @@ function resolveObjClass(nodeId: int): string {
         }
         const objClass = resolveObjClass(nGetI1(nodeId))
         if (objClass != "") {
+            const iacKey = `${objClass}.${nGetS1(nodeId)}`
+            if (classAccessorGetters.has(iacKey) == 1) {
+                const iacRet = getAccessorRetType(objClass, nGetS1(nodeId))
+                if (iacRet != "" && classFields.has(iacRet) == 1) { return iacRet }
+                return ""
+            }
             const fType = classFieldTypes.getString(`${objClass}.${nGetS1(nodeId)}`)
             if (fType != "" && classFields.has(fType) == 1) { return fType }
         }
@@ -444,6 +450,12 @@ function inferType(id: int): string {
         }
         const mField = nGetS1(id)
         let maClassName = resolveObjClass(mObj)
+        // D096: accessor getter retType wins over field type (TS/JS semantics
+        // forbid same-name coexistence).
+        if (maClassName != "") {
+            const maAccRet = getAccessorRetType(maClassName, mField)
+            if (maAccRet != "") { return maAccRet }
+        }
         if (maClassName != "" && classFieldTypes.has(`${maClassName}.${mField}`) == 1) {
             return classFieldTypes.getString(`${maClassName}.${mField}`)
         }

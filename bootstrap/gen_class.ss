@@ -19,6 +19,9 @@ let classStateReady = 0
 // MEMBER_ACCESS/ASSIGN codegen consults these to rewrite obj.field into a call.
 let classAccessorGetters = ""
 let classAccessorSetters = ""
+// D096: setter's declared first-param SS type; call sites use it to pick the
+// LLVM arg type and trunc i64→i32 when the value expr disagrees.
+let classAccessorSetterParamTypes = ""
 // Interface metadata
 let ifaceMethodsCG = ""   // "Shape" -> "area,name" (interface method list)
 let ifaceMethodRets = ""  // "Shape.area" -> "int" (return type)
@@ -75,6 +78,7 @@ function initClassState() {
     abstractMethodsCG = Map()
     classAccessorGetters = Map()
     classAccessorSetters = Map()
+    classAccessorSetterParamTypes = Map()
     staticFieldGlobals = Map()
     staticFieldTypes = Map()
     sfPendingInits = ""
@@ -281,6 +285,14 @@ function registerClass(id: int) {
                         const setMangled = `${name}_set_${mName}`
                         classAccessorSetters.set(`${name}.${mName}`, setMangled)
                         funcRetTypes.set(setMangled, mRet)
+                        const setParams = funcParams(mId)
+                        if (setParams != "") {
+                            const setParts = setParams.split(",")
+                            const setFirstPid = parseInt(setParts[0])
+                            if (setFirstPid > 0) {
+                                classAccessorSetterParamTypes.set(`${name}.${mName}`, nGetS2(setFirstPid))
+                            }
+                        }
                     } else {
                         funcRetTypes.set(`${name}_${mName}`, mRet)
                         const mSig = paramSig(funcParams(mId))
@@ -1026,6 +1038,37 @@ function emitFieldLoad(className: string, objReg: string, field: string): string
     return loadReg
 }
 
+// D096: accessor getter retType lookup. Returns "" if no accessor or funcRetTypes
+// missing; distinguishes "no accessor" from "accessor exists" via paired
+// classAccessorGetters.has() check when the caller needs both signals.
+function getAccessorRetType(className: string, member: string): string {
+    const accKey = `${className}.${member}`
+    if (classAccessorGetters.has(accKey) == 0) { return "" }
+    const mangled = classAccessorGetters.getString(accKey)
+    if (funcRetTypes.has(mangled) == 1) { return funcRetTypes.getString(mangled) }
+    return ""
+}
+
+// D096: accessor getter dispatch. Returns reg from @ClassName_get_FIELD(ptr) call,
+// or "" when no accessor is registered (caller falls through to emitFieldLoad).
+function tryEmitAccessorGet(className: string, objReg: string, member: string): string {
+    const accKey = `${className}.${member}`
+    if (classAccessorGetters.has(accKey) == 0) { return "" }
+    const getMangled = classAccessorGetters.getString(accKey)
+    const retType = funcRetTypes.has(getMangled) == 1 ? funcRetTypes.getString(getMangled) : "int"
+    const llRet = ssTypeToLLVM(retType)
+    const resR = nextReg()
+    emitIR(`  ${resR} = call ${llRet} @${getMangled}(ptr ${objReg})`)
+    return resR
+}
+
+// D096: MEMBER_ACCESS dispatch — accessor getter wins, else plain field load.
+function emitFieldOrAccessorGet(className: string, objReg: string, member: string): string {
+    const acc = tryEmitAccessorGet(className, objReg, member)
+    if (acc != "") { return acc }
+    return emitFieldLoad(className, objReg, member)
+}
+
 // obj?.field — if obj is null, return default; otherwise access normally
 function genOptionalMemberAccess(id: int, preObj: string = ""): string {
     const objId = nGetI1(id)
@@ -1101,7 +1144,7 @@ function genMemberAccess(id: int, preObj: string = ""): string {
     if (objKind == "THIS") {
         const thisReg = nextReg()
         emitIR(`  ${thisReg} = load ptr, ptr %this, align 8`)
-        return emitFieldLoad(currentClassName, thisReg, member)
+        return emitFieldOrAccessorGet(currentClassName, thisReg, member)
     }
     // D082: Ref<T>.value read
     if (member == "value" && objKind == "IDENT") {
@@ -1123,11 +1166,11 @@ function genMemberAccess(id: int, preObj: string = ""): string {
     }
     if (objKind == "IDENT") {
         const cn = getObjClass(nGetS1(objId))
-        if (cn != "") { return emitFieldLoad(cn, objVal, member) }
+        if (cn != "") { return emitFieldOrAccessorGet(cn, objVal, member) }
     }
     // Generic fallback: resolve class via resolveObjClass for nested access, calls, etc.
     const resolvedClass = resolveObjClass(objId)
-    if (resolvedClass != "") { return emitFieldLoad(resolvedClass, objVal, member) }
+    if (resolvedClass != "") { return emitFieldOrAccessorGet(resolvedClass, objVal, member) }
     return objVal
 }
 

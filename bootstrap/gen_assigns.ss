@@ -128,6 +128,30 @@ function genMemberAssign(id: int) {
         exit(1)
     }
     const objReg = genExpr(objExpr)
+    // D096: accessor setter dispatch — must precede getFieldIndex since accessor
+    // names are not part of the field layout.
+    const accSetKey = `${objClass}.${fieldName}`
+    if (classAccessorSetters.has(accSetKey) == 1) {
+        if (op != "ASSIGN") {
+            println(`codegen error: compound assignment to accessor '${objClass}.${fieldName}' not supported`)
+            exit(1)
+        }
+        const setMangled = classAccessorSetters.getString(accSetKey)
+        const setValR = genExpr(valExpr)
+        const setValSrc = inferType(valExpr)
+        let setParamType = setValSrc
+        if (classAccessorSetterParamTypes.has(accSetKey) == 1) {
+            setParamType = classAccessorSetterParamTypes.getString(accSetKey)
+        }
+        let setArgR = setValR
+        if (setValSrc == "i64" && setParamType != "i64") {
+            const setTruncR = nextReg()
+            emitIR(`  ${setTruncR} = trunc i64 ${setValR} to i32`)
+            setArgR = setTruncR
+        }
+        emitIR(`  call void @${setMangled}(ptr ${objReg}, ${ssTypeToLLVM(setParamType)} ${setArgR})`)
+        return
+    }
     const idx = getFieldIndex(objClass, fieldName)
     if (idx < 0) {
         println(`codegen error: class '${objClass}' has no field '${fieldName}'`)
