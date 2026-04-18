@@ -15,6 +15,10 @@ let classDtorTags = ""    // "ClassName" -> "tag" (tag >= 10 for classes with pt
 let dtorNextTag = 10      // next available class dtor tag
 let currentClassName = ""
 let classStateReady = 0
+// D096: accessor tables — key "ClassName.field" -> mangled symbol name.
+// MEMBER_ACCESS/ASSIGN codegen consults these to rewrite obj.field into a call.
+let classAccessorGetters = ""
+let classAccessorSetters = ""
 // Interface metadata
 let ifaceMethodsCG = ""   // "Shape" -> "area,name" (interface method list)
 let ifaceMethodRets = ""  // "Shape.area" -> "int" (return type)
@@ -69,6 +73,8 @@ function initClassState() {
     // Register Thread as built-in class (D082 Phase 2)
     classFields.set("Thread", "")
     abstractMethodsCG = Map()
+    classAccessorGetters = Map()
+    classAccessorSetters = Map()
     staticFieldGlobals = Map()
     staticFieldTypes = Map()
     sfPendingInits = ""
@@ -263,12 +269,26 @@ function registerClass(id: int) {
                     }
                     let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
-                    funcRetTypes.set(`${name}_${mName}`, mRet)
-                    const mSig = paramSig(funcParams(mId))
-                    if (mSig != "") {
-                        funcRetTypes.set(`${name}_${mName}_${mSig}`, mRet)
+                    // D096: accessor mangling — I2=2 getter / I2=3 setter.
+                    // Prefix disambiguates from same-name regular methods and from
+                    // paired getter+setter (both have mName=field).
+                    const mKind = nGetI2(mId)
+                    if (mKind == 2) {
+                        const getMangled = `${name}_get_${mName}`
+                        classAccessorGetters.set(`${name}.${mName}`, getMangled)
+                        funcRetTypes.set(getMangled, mRet)
+                    } else if (mKind == 3) {
+                        const setMangled = `${name}_set_${mName}`
+                        classAccessorSetters.set(`${name}.${mName}`, setMangled)
+                        funcRetTypes.set(setMangled, mRet)
+                    } else {
+                        funcRetTypes.set(`${name}_${mName}`, mRet)
+                        const mSig = paramSig(funcParams(mId))
+                        if (mSig != "") {
+                            funcRetTypes.set(`${name}_${mName}_${mSig}`, mRet)
+                        }
+                        trackOverload(`${name}_${mName}`)
                     }
-                    trackOverload(`${name}_${mName}`)
                 }
             }
         }
@@ -809,11 +829,20 @@ function genClassMethod(className: string, id: int) {
         }
     }
 
-    // Use mangled name if method is overloaded
-    let llMethodName = `${className}_${mName}`
-    if (isOverloaded(`${className}_${mName}`) == 1) {
-        const mSig = paramSig(paramList)
-        if (mSig != "") { llMethodName = `${className}_${mName}_${mSig}` }
+    // Mangled name: accessors get `get_`/`set_` prefix (D096); overloaded
+    // regular methods get a param-signature suffix; otherwise plain `Class_method`.
+    const mKind = nGetI2(id)
+    let llMethodName = ""
+    if (mKind == 2) {
+        llMethodName = `${className}_get_${mName}`
+    } else if (mKind == 3) {
+        llMethodName = `${className}_set_${mName}`
+    } else {
+        llMethodName = `${className}_${mName}`
+        if (isOverloaded(`${className}_${mName}`) == 1) {
+            const mSig = paramSig(paramList)
+            if (mSig != "") { llMethodName = `${className}_${mName}_${mSig}` }
+        }
     }
 
     regCount = 0
