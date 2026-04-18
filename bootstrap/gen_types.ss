@@ -267,6 +267,13 @@ function inferType(id: int): string {
                 comptimeExprLiteral.set(ceKey, `${interpAsBool(ceRetVal)}`)
                 return "int"
             }
+            // TypeValue:literal 存 class 名,外层 VAR_DECL 走 comptimeTypeAliases
+            if (ceType == "type") {
+                const ceClass = interpAsClassName(ceRetVal)
+                comptimeExprType.set(ceKey, "type")
+                comptimeExprLiteral.set(ceKey, ceClass)
+                return "type"
+            }
         }
         comptimeExprType.set(ceKey, "int")
         comptimeExprLiteral.set(ceKey, "0")

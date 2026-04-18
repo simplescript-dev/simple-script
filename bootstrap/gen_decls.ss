@@ -230,6 +230,10 @@ function genGlobalVar(id: int) {
         } else if (ceType == "string") {
             emitIR(`@${name} = global ptr ${ceLit}, align 8`)
             gType = "string"
+        } else if (ceType == "type") {
+            // TypeValue 不落 runtime:T 只在 comptime 上下文可见
+            comptimeTypeAliases.set(name, ceLit)
+            return
         } else {
             emitIR(`@${name} = global ptr null, align 8`)
             if (globalInitIds == "") { globalInitIds = `${id}` }

@@ -155,6 +155,13 @@ function genVal(id: int): int {
             if (ctInterpKey != "") {
                 return ctVal(parseInt(interpVars.getString(ctInterpKey)))
             }
+            // class 名 in comptime → TypeValue;外层 const T = comptime {...} 先查 alias
+            if (interpClasses.has(ctIdName) == 1) {
+                return ctVal(interpNewType(ctIdName))
+            }
+            if (comptimeTypeAliases.has(ctIdName) == 1) {
+                return ctVal(interpNewType(comptimeTypeAliases.getString(ctIdName)))
+            }
         }
         return constVal(genIdent(id))
     }
@@ -1115,12 +1122,13 @@ function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamed
 }
 
 function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedArgs: Map): int {
-    if (interpClasses.has(className) != 1) {
-        println(`[comptime] unknown class: ${className}`)
+    const realName = comptimeTypeAliases.has(className) == 1 ? comptimeTypeAliases.getString(className) : className
+    if (interpClasses.has(realName) != 1) {
+        println(`[comptime] unknown class: ${realName}`)
         return ctVal(interpNewNull())
     }
-    const objId = interpNewVal("object", className)
-    const allFields = interpCollectFields(className)
+    const objId = interpNewVal("object", realName)
+    const allFields = interpCollectFields(realName)
     let ctFieldNames: Array<string> = []
     if (allFields != "") {
         const fieldParts = allFields.split(",")

@@ -233,7 +233,7 @@ comptime {
 
 ### Phase 4(自原 Phase 9 激活): 类型作为 comptime 值
 
-**Status:** [ ] Planned — 真实场景 D096 Phase 4 `reactive<T>(v)` 驱动,从"暂缓"恢复为 active。节号沿用 D096 Phase 4 外部依赖命名,不按 D088 内部时间顺序。
+**Status:** [x] Done at `bootstrap/codegen.ss:83,213,305`(comptimeTypeAliases 全局 + newTvType/interpNewType)/ `bootstrap/gen_exprs.ss:158-163,1125`(genVal IDENT comptime 查 interpClasses+comptimeTypeAliases + ctNewExprDispatch 解别名)/ `bootstrap/gen_types.ss:270`(COMPTIME_EXPR inferType 第五分支 "type")/ `bootstrap/gen_decls.ss:235`(genGlobalVar 识别 type 写 comptimeTypeAliases 不落 runtime) — 2026-04-18 RED `tests/phase5/d088_phase4_type_value.ss` GREEN 输出 `v=5`。
 
 **目标:** 让 class 名本身成为 comptime 值(TypeValue),可被 comptime 块返回、绑定到外层 `const`、传入另一个 comptime 块用作 `new T(...)` 的类名。打破"comptime 返回通道只有 int/double/string/bool"四标量壁垒。
 

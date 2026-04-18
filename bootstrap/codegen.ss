@@ -78,6 +78,9 @@ let comptimeExprLiteral = new Map()
 
 // Compile-time constant bindings (D088: for-in unrolling propagates field names)
 let comptimeConsts = new Map()
+// 外层 `const T = comptime { return Foo }` 把 T → "Foo" 的别名记到这里。
+// T 不生成 runtime 存储,只在 comptime 上下文被 IDENT/NEW_EXPR 识别。
+let comptimeTypeAliases = new Map()
 
 // Generic function state (monomorphization)
 let genericFuncNodes = ""
@@ -206,6 +209,13 @@ function newTvString(s: string): int {
     return id
 }
 
+// comptime TypeValue:kind="type",tvS1 存 class 名
+function newTvType(className: string): int {
+    const id = allocTv("type")
+    tvS1.set(id + "", className)
+    return id
+}
+
 function newTvBool(b: int): int {
     const id = allocTv("bool")
     tvI1[id] = b
@@ -289,6 +299,15 @@ function interpNewBool(b: int): int {
 
 function interpNewNull(): int {
     return newTvNull()
+}
+
+// comptime TypeValue delegate(kind="type" 时读 tvS1 得 class 名)
+function interpNewType(className: string): int {
+    return newTvType(className)
+}
+
+function interpAsClassName(id: int): string {
+    return tvStringOf(id)
 }
 
 function interpNewArray(init: string): int {
