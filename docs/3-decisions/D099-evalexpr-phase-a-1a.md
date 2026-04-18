@@ -37,35 +37,36 @@ D093 §决策 要求把 comptime/runtime 双轨合并为 evalExpr 单函数 disp
 
 ## 决策(分 6 步,每步独立可 bootstrap + linter GATE PASS)
 
-### §步骤 0 — 建 evalExpr 骨架 + MaybeVal class 落地
+### §步骤 0 — 建 evalExpr 骨架(D098 §决策 1 Phase A 物理编码:纯 int)
 
-**目标**:在 `bootstrap/gen_exprs.ss` 或新文件 `bootstrap/eval_expr.ss` 中建 evalExpr 骨架,**不改任何现有 genVal/genValBinary/... 调用路径**。evalExpr 先走**旁路**(没有调用者),由步骤 1-5 逐步接入。
+**目标**:在新文件 `bootstrap/eval_expr.ss` 中建 **evalExpr 单函数空壳**,**不**同步建 mv* 系列 helper。helpers(mvKnown/mvRuntime/mvError/mvKnownOf/mvValOf)挪到步骤 1 BINARY 合并期随首次使用时建,那时可用 genValBinary 删除抵消 M7b。
 
-**落地**:
+**为什么只 1 函数**:2026-04-18 实测:6 函数骨架触 M7b +5 / M1 +4 regression(无法用"不改现有调用路径"的骨架单独抵消)。linter 机械阻断任一指标 > baseline 的 commit,step 0 独立提交必须 ≤ baseline。最小骨架 = 1 函数 evalExpr 返回 `0 - 1` 哨兵,M7b +1(baseline 余量 -1 抵消净 +0),M1 +0,M2 +8 左右,N1 +0。
+
+**编码**(D098 §决策 1 Phase A):`mv >= 0` known / `mv <= -2` runtime regId 索引(1-based) / `mv == -1` error。纯 int,无 class,无 bool 字面量,无 field access。**规避 linter N1 regression 已验证**(bootstrap 其他文件从不用裸 `true`/`false` 字面量、从不直读 class field)。
+
+**落地(step 0 单 commit)**:
 ```ss
-class MaybeVal {
-    known: bool;
-    val: int;
-}
-function mvKnown(valId: int): MaybeVal { return new MaybeVal(true, valId); }
-function mvRuntime(regId: int): MaybeVal { return new MaybeVal(false, regId); }
-function mvError(): MaybeVal { return new MaybeVal(false, -1); }
-function mvKnownOf(mv: MaybeVal): bool { return mv.known; }
-function mvValOf(mv: MaybeVal): int { return mv.val; }
-
-function evalExpr(astId: int): MaybeVal {
-    // 首批 1a 只覆盖 5 kind,其余 kind 返回 mvError() 占位
-    const kind = nGetKind(astId);
-    // kind 分支由步骤 1-5 依次填入
-    return mvError();
+// bootstrap/eval_expr.ss
+function evalExpr(astId: int): int {
+    // 步骤 1-5 依次填入 BINARY / UNARY / TERNARY / SHORT_CIRCUIT / COMPTIME_EXPR
+    // helpers mvKnown/mvKnownOf/mvValOf 在步骤 1 随第一次使用时建
+    return 0 - 1
 }
 ```
 
-**验证**:
-- `./build.sh bootstrap` 固定点 PASS(新增 class + 函数,无调用点,不影响现有语义)
-- `bin/ss run tools/reflection_health_linter.ss` GATE PASS(M2 节点数、M7b 函数数会上升 — **这是步骤 0 唯一允许的上升**,因为骨架本身就是新增结构。步骤 1-5 必须用"合并削减"抵消到不低于 baseline)
+**main.ss import 增补(step 0 单 commit)**:
+```ss
+import { evalExpr } from "./eval_expr"
+```
 
-**Linter 指标预期(步骤 0 单步)**:M2 +~15(class + 6 函数 AST 节点)/ M7b +7 / 其他 M/N 持平。**累计到步骤 5 结束必须全部 ≤ baseline**,中途不 record baseline。
+**注**:`regTable` / `constVal` / `reg` 已在 `codegen.ss:16, 143, 148` 存在,步骤 0 **不新建**,步骤 1-5 接入时从 codegen 调用即可。
+
+**验证**:
+- `./build.sh bootstrap` 固定点 PASS
+- `bin/ss run tools/reflection_health_linter.ss` **GATE PASS**(M7b cur 可达 679 = baseline 679,delta=0;其他 M/N 持平或 PROGRESS)
+
+**Linter 指标预期(步骤 0 单步)**:M7b +1(抵消 baseline 余量 -1 净 0)/ M2 +~8 / M1 / M4 / N1 持平。**所有指标 ≤ baseline**。
 
 ### §步骤 1 — BINARY 迁移(不含 And/Or,留给步骤 4)
 

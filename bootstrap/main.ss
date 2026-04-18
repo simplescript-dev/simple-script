@@ -14,6 +14,7 @@ import { registerClass, initClassState } from "./gen_class"
 import { emitRuntimeDefs } from "./gen_runtime"
 import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./gen_pir"
 import { pirLivenessPass, pirMoveAnalysis } from "./pir_opt"
+import { evalExpr } from "./eval_expr"
 import { JSON_parse, JsonNode } from "@/lib/json"
 
 // ── Import resolution ─────────────────────────────────────────

@@ -32,53 +32,81 @@ D093 §决策 §Zig 原理 已固化四条原语,本文以此为**不变量**,�
 
 ### §决策 1 — MaybeVal 编码
 
-**`class MaybeVal { known: bool, val: int }`**
+**概念容器**:`MaybeVal { known: bool, val: int }` — 有无值 + 值句柄二元。**接口**恒定,**物理编码**随 Phase 演进。
 
-- `known=true`:`val` 是 **Value 句柄**(Phase A = `ctVal(id) | 1073741824` tagged int 沿用,Phase B = InternPool index,见 §决策 2)
-- `known=false`:`val` 是 **regTable 索引**(`regTable: Array<string>`,`reg(mv) = regTable[mv.val]` 取 LLVM 寄存器字符串);evalExpr 在"尚未 emit runtime 指令就要返回 unknown"(错误路径)时用哨兵 `val = -1`,由 `mvError()` 构造,调用方禁止 reg()
+**语义**(Phase 无关):
+- `known=true`:`val` 是 **Value 句柄**(Phase A = `ctVal(id)` tagged int,Phase B = InternPool index)
+- `known=false, val>=0`:`val` 是 **regTable 1-based 索引**(`regTable: Array<string>` 存 LLVM 寄存器字符串,`reg(mv) = regTable[val-1]`)
+- `known=false, val=-1`:错误哨兵(`mvError()` 构造,调用方禁止 `reg()`)
 
-**为什么 class + bool 字段 + int val(而非 nullable / union / tuple)**:
-- SS 无 nullable(feedback_no_rust_result 禁 `Option<T>` / `Result<T,E>`);class + bool 字段是 CLAUDE.md §Java/TS 语法优先 允许的 TS 写法等价物
-- 统一 `val: int` 域让 MaybeVal 可以不判 known 就**传递**(evalExpr 返回值链式传入上层 evalExpr),减少"先判 known 再取"的双轨分支
-- Value 句柄和 regTable 索引都是 int,语义差异由 `known` 字段携带而非 val 类型携带 —— 和 Zig `?Value` 把 "null" 作 optional discriminant 同构
+**Phase A 物理编码:纯 int 符号位辨识**(2026-04-18 实测 bootstrap linter baseline 约束,**不是** class field)。
 
-**构造入口**(字段顺序按 class 声明 `known, val`):
+理由:
+- SS 无 nullable;`{known:bool, val:int}` class 实现会引入 `TRUE_LIT/FALSE_LIT/MEMBER_ACCESS` 三个 bootstrap 其他文件**从未使用过**的 AST kind(bootstrap 风格是全局 Map + int 键,无裸 bool 字面量、无字段直读),触 linter N1 = +3 regression 违反 `CLAUDE.md §反射根因 gate`
+- 而 D098 §决策 2 Phase A 已定"沿用 `ctVal(id) = id | 1073741824` tagged int 编码 value 句柄",MaybeVal 用**同一 int 空间**自然契合 — Zig `?Value` 的 optional discriminant 可由 int 符号位承载
+- 不扩新 tag 位(避 §Rejected Alternatives C),用 int 正负符号作 known 区分
 
-```ss
-function mvKnown(valId: int): MaybeVal { return new MaybeVal(true, valId); }   // Phase A: valId 是 tagged int;Phase B: pool index
-function mvRuntime(regId: int): MaybeVal { return new MaybeVal(false, regId); } // regTable 已 emit,返回入口索引
-function mvError(): MaybeVal { return new MaybeVal(false, -1); }                // 调用方禁止 reg()
+**编码方案**:
+```
+mv >= 0               → known=true,  val = mv             (Value 句柄,通常已是 ctVal tagged int)
+mv <= -2              → known=false, regId = -mv - 1      (regTable 1-based 索引,可直接 reg 出字符串)
+mv == -1              → error 哨兵,禁止 reg()
 ```
 
-**SS 语言约束**(2026-04-18 probe `/tmp/maybeval_probe.ss` 验证):
-- class 带字段 → SS 自动按字段顺序生成构造器,`new MaybeVal()` 无参非法,**必须** `new MaybeVal(knownArg, valArg)`
-- 函数重载按参数类型 dispatch **对 int vs ptr 同名失效**(probe `/tmp/maybeval_overload.ss` 证 `mvKnown(int):MaybeVal` + `mvKnown(MaybeVal):bool` 同名声明 → 调用 `mvKnown(42)` 走最后声明签名 → LLVM 类型错误)。因此访问器命名**必须与构造器区分**,见下 §访问器 mvKnownOf/mvValOf 命名
+**构造入口**:
+
+```ss
+function mvKnown(valId: int): int { return valId }           // valId 必 >= 0(Phase A: ctVal tagged int 本就非负)
+function mvRuntime(regId: int): int { return 0 - regId - 1 } // regId 1-based → mv <= -2
+function mvError(): int { return 0 - 1 }                      // -1 哨兵
+```
+
+**访问器**(命名与构造器错开避 SS 函数重载 int 同名 dispatch 缺口,见 §新张力 6):
+
+```ss
+function mvKnownOf(mv: int): int { if (mv >= 0) { return 1 } return 0 }
+function mvValOf(mv: int): int {
+    if (mv >= 0) { return mv }              // known=true:Value 句柄
+    if (mv == 0 - 1) { return 0 - 1 }       // error:返回 -1 哨兵
+    return 0 - mv - 1                        // runtime:decode regId
+}
+```
+
+**注**:`mvKnownOf` 返回 `int`(1/0)而非 `bool`,避 bootstrap 外引入 bool 字面量风格(与 bootstrap `if (xxx == 1)` 规约一致)。`- n` 裸负号未用,改为 `0 - n` 形式(probe 显示 bootstrap 裸负号使用有限,保守写法避 UNARY 节点膨胀,但 bootstrap 既有 UNARY kind,此项为样式对齐,不是硬约束)。
 
 **接入 evalExpr**(D093 §SS 本质一样骨架 行 52-59 直译):
 
 ```ss
-function evalExpr(astId: int): MaybeVal {
+function evalExpr(astId: int): int {
     // 每 kind:
-    //   递归 evalExpr 所有子节点 → 得到子 MaybeVal 列表
-    //   全部 mvKnownOf=true → 调对应 interp* 常量计算 → mvKnown(valId)
+    //   递归 evalExpr 所有子节点 → 得到子 mv 列表
+    //   全部 mvKnownOf(sub)==1 → 调对应 interp* 常量计算 → mvKnown(valId)
     //   否则 → emitRuntimeSubExprs(先 emit 未 known 子表达式) → mvRuntime(regId)
     //   错误路径 → mvError()
     // 无 "if comptimeDepth > 0" 分岔
 }
 
 function genExpr(astId: int): string {
-    let mv = evalExpr(astId);
-    if (mvKnownOf(mv)) { return emitConstFromVal(mvValOf(mv)); }
-    if (comptimeMustBeKnown) { error("comptime block contains runtime-only expression"); }
-    return emitRuntimeInst(astId);  // 或走 regTable[mvValOf(mv)] 取寄存器
+    const mv = evalExpr(astId)
+    if (mvKnownOf(mv) == 1) { return emitConstFromVal(mvValOf(mv)) }
+    if (comptimeMustBeKnown == 1) { return comptimeError("comptime block contains runtime-only expression", astId) }
+    return regTable[mvValOf(mv) - 1]
 }
 ```
 
-**访问器**(内部封装 Phase A / Phase B 差异,命名与构造器错开避开 SS 重载约束):
+**Phase B 物理编码**(InternPool 引入期):
+- `mv` 空间拆分保持 Phase A 符号位约定:`mv >= 0` 直接作 pool index,`mv <= -2` 仍作 regTable 索引,`mv == -1` error
+- 即 Phase A → B **接口完全不变**,内部把 "mv 是 ctVal tagged int" 改为 "mv 是 pool index" — evalExpr 代码透明
+- 由访问器 `valOf(valId)` / `valType(valId)` 承担 "pool 查表 vs tagged int 解码" 的内部差异,调用方不感知
 
+**保留的 class 视图**(仅作文档 / 测试):2026-04-18 probe `/tmp/maybeval_probe.ss` 已验证 `class MaybeVal { known: bool; val: int }` 可跑通,为未来若取消 linter N1 约束时的后备形态。Phase A **实现用纯 int**,class 视图本 D 文档不落地到 bootstrap。
+
+**SS 语言约束**(探 probe 结论):
+- class 带字段 → SS 自动按字段顺序生成构造器,`new Cls()` 无参非法(本 Phase A 不用 class,此约束仅记录)
+- 函数重载按参数类型 dispatch 对 int vs ptr 同名失效(见 §新张力 6),命名错开 `mvKnown/mvKnownOf` 等即可
+
+**valOf / valType 访问器**(Value payload 提取):
 ```ss
-function mvKnownOf(mv: MaybeVal): bool { return mv.known; }
-function mvValOf(mv: MaybeVal): int { return mv.val; }
 function valOf(valId: int): int { ... }        // Phase A: payload(valId);Phase B: pool.load(valId).payload
 function valType(valId: int): string { ... }   // Phase A: interpType(valId);Phase B: pool.load(valId).tag
 ```
