@@ -102,6 +102,8 @@ bin/ss clean
 
 **Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
 
+**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；G1-G4 升或 G5 降阻断 commit。规则/baseline/触发范围见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`。
+
 **回复语言**：所有回复及总结使用中文。
 
 ## 外部引用
