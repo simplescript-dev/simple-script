@@ -461,10 +461,8 @@ function parseClassDecl(): int {
                 // Lookahead: IDENT "get"|"set" then IDENT then LPAREN disambiguates from a
                 // method literally named get/set (which would be followed directly by LPAREN).
                 let accessorKind = 0
-                if (isStatic == 0 && isAbstract == 0 && curKind() == "IDENT"
-                    && (curValue() == "get" || curValue() == "set")
-                    && kindAt(tPos + 1) == "IDENT"
-                    && kindAt(tPos + 2) == "LPAREN") {
+                const isGetSetIdent = isStatic == 0 && isAbstract == 0 && curKind() == "IDENT" && (curValue() == "get" || curValue() == "set")
+                if (isGetSetIdent && kindAt(tPos + 1) == "IDENT" && kindAt(tPos + 2) == "LPAREN") {
                     accessorKind = curValue() == "get" ? 2 : 3
                     pAdvance()
                 }
