@@ -367,6 +367,28 @@ function genVal(id: int): int {
                     }
                 }
             }
+            // D095 Stage C: f.annotations → comptime string array of annotation
+            // names. Empty array when no annotations attached. Only valid in
+            // comptimeDepth>0 since handlers consume it via for-in unroll.
+            if (member == "annotations" && comptimeDepth > 0) {
+                const fmClsKey = `${fmName}.__class`
+                if (comptimeConsts.has(fmClsKey) == 1) {
+                    const fmCls = comptimeConsts.getString(fmClsKey)
+                    const fmFld = comptimeConsts.getString(fmName)
+                    const fmAnnArr = interpNewArray("")
+                    const fmAnnKey = `${fmCls}.${fmFld}`
+                    if (classFieldAnnotations.has(fmAnnKey) == 1) {
+                        const fmAnnCsv = classFieldAnnotations.getString(fmAnnKey)
+                        if (fmAnnCsv != "") {
+                            const fmAnnParts = fmAnnCsv.split(",")
+                            for (fap in fmAnnParts) {
+                                interpArrayPush(fmAnnArr, interpNewString(fap))
+                            }
+                        }
+                    }
+                    return ctVal(fmAnnArr)
+                }
+            }
         }
         if (nGetKind(objNode) == "IDENT") {
             const eName = nGetS1(objNode)

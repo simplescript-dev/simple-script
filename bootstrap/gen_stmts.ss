@@ -742,6 +742,28 @@ function genForIn(id: int) {
             }
         }
     }
+    // D095 Stage C: f.annotations unroll — mirrors the .fields path but keyed on
+    // comptimeConsts-bound field IDENT (set by the enclosing cls.fields loop's
+    // genForInUnrolled at gen_stmts.ss:641/645). Item binding is plain string,
+    // no class context needed.
+    if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "annotations") {
+        const annObj = nGetI1(iterableId)
+        if (nGetKind(annObj) == "IDENT" && comptimeConsts.has(nGetS1(annObj)) == 1) {
+            const annFieldIdent = nGetS1(annObj)
+            const annClsKey = `${annFieldIdent}.__class`
+            if (comptimeConsts.has(annClsKey) == 1) {
+                const annCls = comptimeConsts.getString(annClsKey)
+                const annFld = comptimeConsts.getString(annFieldIdent)
+                let annCsv = ""
+                const annKey = `${annCls}.${annFld}`
+                if (classFieldAnnotations.has(annKey) == 1) {
+                    annCsv = classFieldAnnotations.getString(annKey)
+                }
+                genForInUnrolled(id, annCsv)
+                return
+            }
+        }
+    }
 
     if (nGetKind(iterableId) == "ARRAY_LIT") {
         const litCsv = stringLitArrayCsv(iterableId)

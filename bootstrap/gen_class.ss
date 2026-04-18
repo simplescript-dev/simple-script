@@ -4,6 +4,7 @@
 
 let classFields = ""     // "ClassName" -> "field1,field2,..."
 let classFieldTypes = "" // "ClassName.field" -> "type"
+let classFieldAnnotations = "" // "ClassName.field" -> "Ann1,Ann2" CSV of annotation names (D095 Stage C — FieldMeta reflection)
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
@@ -47,6 +48,7 @@ function initClassState() {
     if (classStateReady == 1) { return }
     classFields = Map()
     classFieldTypes = Map()
+    classFieldAnnotations = Map()
     classMethods = Map()
     objClasses = Map()
     classParents = Map()
@@ -246,6 +248,30 @@ function registerClass(id: int) {
                 } else {
                     fieldNames = listAppendStr(fieldNames, fName)
                     classFieldTypes.set(`${name}.${fName}`, strippedType)
+                    // D095 Stage C: extract field-level @Annotation names (CSV)
+                    // for FieldMeta.annotations reflection. PARAM.list holds the
+                    // ANNOTATION_LIST node id as a string (parser.ss:437); that
+                    // node's list is the CSV of ANNOTATION node ids.
+                    const annListRaw = nGetList(pId)
+                    if (annListRaw != "") {
+                        const annListId = parseInt(annListRaw)
+                        if (annListId > 0 && nGetKind(annListId) == "ANNOTATION_LIST") {
+                            const annCsv = nGetList(annListId)
+                            if (annCsv != "") {
+                                let annNames = ""
+                                const aParts = annCsv.split(",")
+                                for (ap in aParts) {
+                                    const aId = parseInt(ap)
+                                    if (aId > 0 && nGetKind(aId) == "ANNOTATION") {
+                                        annNames = listAppendStr(annNames, nGetS1(aId))
+                                    }
+                                }
+                                if (annNames != "") {
+                                    classFieldAnnotations.set(`${name}.${fName}`, annNames)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
