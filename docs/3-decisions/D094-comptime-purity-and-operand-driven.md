@@ -1,8 +1,61 @@
 # D094: Comptime Purity + Operand-Driven Folding
 
-**Status:** Done — 自然终态 (genVal 81%, genStmt missing=0, coexist 守卫不可消除=正确架构)
+**Status:** Partial (2026-04-18 回写) — §决策 §规则 1-3 + §P2 实施步骤 Done at gen_exprs.ss / gen_assigns.ss;§Q2 收尾 §天花板分析 §终态判定 "comptimeDepth 不可消除 = 正确架构" 与 D093 §决策 §Zig 原理 第 2 条冲突,**不作未来架构权威依据**,见 §Supersession
 **Depends on:** D093(SEMA 单函数 dispatch), Q1 成果(配对=0, zig=7)
 **Date:** 2026-04-16
+**Last Updated:** 2026-04-18
+
+## Supersession(2026-04-18 回写,D094 §终态判定 vs D093 §决策 边界澄清)
+
+**D094 §Q2 收尾 §天花板分析 §终态判定 与 D093 §决策 互斥。该终态不作未来 evalExpr 工程的架构权威依据。** D094 §决策 §规则 1-3 本身有效并已落地,超出部分(§Q2 §终态判定 / §coexist 守卫分析)是对"当前 kind 级审计"的事实陈述,**不是对 D093 §决策 的达成宣告**。
+
+### 证据 — 判定互斥对照
+
+| D094 断言(§Q2 收尾) | D093 断言(§决策) | 状态 |
+|---|---|---|
+| §天花板分析:"comptimeDepth 作为 comptime 上下文标记**不可消除,是正确架构**" | §Zig 原理 第 2 条:"`?Value` 二元返回...**没有任何 `if comptime then A else B` 分岔**" | 互斥 |
+| §coexist 守卫分析:"44 个 coexist 引用中的 comptimeDepth...**operand ct-ness 无法替代**" | §SS 本质一样骨架 行 73-76:"块内任何 `evalExpr` 返回 known=false 即 error,**不存在 'comptime 专用' 走法**" | 互斥 |
+| §度量 终态:"dual kinds 4→3, comptimeDepth 命中 53→52,自动折叠覆盖 0→1 kind(TEMPLATE_LIT)" | §差距清单 第 5 条:"现状 comptime 块内触发一整套独立求值器...**本质是 code + state 两份独立系统**。目标:块内走同一个 `evalExpr`,只在块边界把 flag 置位/复位" | D094 是局部改进;D093 目标未承载 |
+
+### 机制原因
+
+D094 §Q2 §天花板分析 基于**当前 `genVal` / `genStmt` dispatcher 架构不变**的前提做 kind 级审计——在该前提下,"coexist 44 点"确实是局部正确守卫(避免 fall-through 到错误路径)。但 D093 §决策 要求的是**把 dispatcher 本身换成 `evalExpr` 单函数**,在新架构下 comptime 块降为边界 flag,44 处 coexist 分派入口 → 分派表合并进 `evalExpr` kind 分支,两种 state(ctVars/interp* 独立求值器 vs `MaybeVal` 共享 Value)合并到一份。
+
+D094 终态判定属于 **D093 §Rejected Alternatives §D** 的具体形态:
+
+> **D**: 把 `genValCt*` 合入 `genExpr` 但保留 `if comptimeDepth > 0` 分岔 — **表面合并底层仍双轨,消除不到根**
+
+D094 把 `genValCt*` 配对函数吸收进 `genVal`(Q1 成果配对 4→0),再做 operand-driven pure subset 白名单,但 44 处 coexist 守卫保留 —— 这正是 §D 所述"表面合并底层仍双轨"。
+
+### D094 适用范围(保留,继续有效)
+
+- §决策 §规则 1: Comptime = 纯计算(禁 IO/FFI,`println`=`@compileLog`,`exit`=`@compileError`)
+- §决策 §规则 2: 两级折叠(块内全部编译期,块外 pure subset 自动折叠白名单)
+- §决策 §规则 3: IDENT ct validity tracking(`ctInvalidated` Map)
+- §实施步骤 §P2-a / §P2-b / §P2-c: 已落地,bootstrap 固定点通过
+
+以上作为 D093 路径上的**局部优化**保留——evalExpr 合并完成后 pure subset 白名单仍有意义(自动折叠策略),`ctInvalidated` 语义在 MaybeVal scope 模型中仍需(变量 runtime 赋值后 comptime 值失效)。
+
+### D094 不适用范围(不作权威依据)
+
+- §Q2 收尾 §kind 级转换到顶:"9 zig + 2 dual + 11 simple,81% 转化率,replaceable ≈ 0" 作为**当前架构的审计事实**保留,但**不代表 D093 §决策 已达成**
+- §Q2 §天花板分析 §coexist 守卫分析:"不可消除,是正确架构" **只对 D094 dispatcher 不变的前提成立**,D093 换 `evalExpr` 后失效
+- §Q2 §终态判定:"D094 kind 级转换到顶,comptimeDepth 不可消除" **不作为 evalExpr 工程的起点或约束**
+
+### Supersession 关系
+
+- **D094 §决策 §规则 1-3 + §P2 实施步骤**: 保留有效,D093 evalExpr 合并期可并用(pure subset 白名单 / ctInvalidated 语义继承)
+- **D094 §Q2 §终态判定 + §天花板分析**: 作为 2026-04-16 当时架构审计的历史快照保留,**不作未来 evalExpr 工程的架构权威依据**
+- **D093 §决策 §Zig 原理 / §SS 本质一样骨架**: D088 §第一性需求 → 根因路径的**唯一权威主干**
+- **D093 §张力 1-3**(MaybeVal 编码 / InternPool / Type-as-Value): 由 D098 承接(本文档不承载,2026-04-18 巡检确证)
+
+### 禁止行为
+
+1. **禁止**引用 D094 §Q2 §终态判定 反对 D093 §决策 要求的 "comptime 块降为 flag" 或 "evalExpr 单 dispatch"
+2. **禁止**把"D094 Status = Done"当作 D093 §下一步 第 1 条(产出 MaybeVal/InternPool/Type-as-Value 详设)的委托已完成(D094 全文 0 次 MaybeVal/InternPool,见本段 §证据)
+3. **禁止**在未过 D093 §决策 + 未决 D093 §张力 1-3 的情况下,以"D094 already Done"理由跳过 evalExpr 首批合并的架构设计工作
+
+---
 
 ## 第一性原则
 
