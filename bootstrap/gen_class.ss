@@ -302,12 +302,7 @@ function registerClass(id: int) {
                             }
                         }
                     } else {
-                        funcRetTypes.set(`${name}_${mName}`, mRet)
-                        const mSig = paramSig(funcParams(mId))
-                        if (mSig != "") {
-                            funcRetTypes.set(`${name}_${mName}_${mSig}`, mRet)
-                        }
-                        trackOverload(`${name}_${mName}`)
+                        registerClassMethodRetType(name, mId, mRet)
                     }
                 }
             }
@@ -599,6 +594,43 @@ function hasMethodOfAnnotation(funcId: int): int {
     return 0
 }
 
+// Evaluate a `ct:<exprId>` encoded type to its string. Errors point at the
+// expr's source node so users see line:col, not just the slot description.
+function resolveCtType(encoded: string, slotDesc: string): string {
+    const exprId = parseInt(encoded.substring(3, encoded.length() - 3))
+    const tagged = genVal(exprId)
+    if (isCt(tagged) == 0) {
+        comptimeError(`type interpolation must resolve at comptime (${slotDesc})`, exprId)
+    }
+    const typeName = interpAsStr(payload(tagged))
+    if (typeName == "") {
+        comptimeError(`type interpolation yielded empty string (${slotDesc})`, exprId)
+    }
+    return typeName
+}
+
+// Resolve `ct:<exprId>` encoded types (from type-position `${expr}` syntax) on
+// each PARAM's S2 and the FUNC_DECL's own retType (S2). Runs after the body
+// fold so exprs can reference folded comptime consts (e.g. `v: ${f.type}`).
+function foldCtTypesInFuncDecl(funcId: int) {
+    const paramList = funcParams(funcId)
+    if (paramList != "") {
+        const parts = paramList.split(",")
+        for (p in parts) {
+            const pId = parseInt(p)
+            if (pId <= 0 || nGetKind(pId) != "PARAM") { continue }
+            const t = paramType(pId)
+            if (t.startsWith("ct:") == 1) {
+                nSetS2(pId, resolveCtType(t, `param '${paramName(pId)}'`))
+            }
+        }
+    }
+    const retT = funcRetType(funcId)
+    if (retT.startsWith("ct:") == 1) {
+        nSetS2(funcId, resolveCtType(retT, `func '${funcName(funcId)}' return type`))
+    }
+}
+
 // Detect @methodOf(cls) on a comptime FUNC_DECL: fold every captured outer
 // IDENT in body (including cls) to its comptime literal, queue the func for
 // injection into that class. Returns 1 if handled.
@@ -624,6 +656,7 @@ function handleMethodOfFuncDecl(funcId: int): int {
         // against the post-fold literal fragments.
         const clonedId = cloneAstNode(funcId)
         foldComptimeIdentsInTree(clonedId)
+        foldCtTypesInFuncDecl(clonedId)
         if (nGetS1(clonedId) == "" && nGetI2(clonedId) > 0) {
             const resolvedName = resolveComptimeString(nGetI2(clonedId))
             if (resolvedName != "") {
@@ -637,8 +670,7 @@ function handleMethodOfFuncDecl(funcId: int): int {
     return 0
 }
 
-// Process comptimeSS as class methods: register + generate FUNC_DECLs, top-level for rest.
-// Used by class-level comptime blocks and @derive annotation.
+// Callers: class-level comptime blocks and @derive annotations.
 function emitClassComptimeMethods(className: string) {
     const ccSS = interpGetComptimeSS()
     let ccParts = ""
@@ -652,55 +684,34 @@ function emitClassComptimeMethods(className: string) {
     if (pending != "") { ccParts = ccParts == "" ? pending : `${ccParts},${pending}` }
     if (ccParts == "") { interpClearComptimeSS(); return }
     const partList = ccParts.split(",")
+    // Pass 1: register each comptime-generated method's signature so sibling
+    // methods in pass 2 can resolve `this.other()` during IR gen.
     let ccMethods = classMethods.getString(className)
     for (ccp in partList) {
         const ccSid = parseInt(ccp)
         if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") {
-            const ccMName = nGetS1(ccSid)
-            let ccRet = stripNullableCG(nGetS2(ccSid))
+            let ccRet = stripNullableCG(funcRetType(ccSid))
             if (ccRet == "") {
-                // Infer retType from first RETURN in body so comptime-generated
-                // methods work without an explicit annotation.
-                ccRet = "void"
-                const ccBody = nGetI1(ccSid)
-                if (ccBody > 0 && nGetKind(ccBody) == "BLOCK") {
-                    const ccBList = nGetList(ccBody)
-                    if (ccBList != "") {
-                        const ccSavedName = currentClassName
-                        currentClassName = className
-                        const ccBParts = ccBList.split(",")
-                        for (cbp in ccBParts) {
-                            const cbStmtId = parseInt(cbp)
-                            if (cbStmtId > 0 && nGetKind(cbStmtId) == "RETURN") {
-                                const cbRetExpr = nGetI1(cbStmtId)
-                                if (cbRetExpr > 0) {
-                                    // "i64" is inferType's sentinel for unknown bracket access — keep void fallback.
-                                    const cbInferred = inferType(cbRetExpr)
-                                    if (cbInferred != "" && cbInferred != "i64") { ccRet = cbInferred }
-                                }
-                                break
-                            }
-                        }
-                        currentClassName = ccSavedName
-                    }
-                }
+                // No explicit return annotation → infer from first RETURN.
+                // inferType's "i64" sentinel means unknown bracket access; treat as void.
+                const ccSavedName = currentClassName
+                currentClassName = className
+                const inferred = firstReturnInferredType(funcBody(ccSid))
+                currentClassName = ccSavedName
+                ccRet = (inferred != "" && inferred != "i64") ? inferred : "void"
                 nSetS2(ccSid, ccRet)
             }
-            funcRetTypes.set(`${className}_${ccMName}`, ccRet)
-            const ccMSig = paramSig(nGetList(ccSid))
-            if (ccMSig != "") { funcRetTypes.set(`${className}_${ccMName}_${ccMSig}`, ccRet) }
-            trackOverload(`${className}_${ccMName}`)
-            ccMethods = listAppendStr(ccMethods, ccMName)
+            registerClassMethodRetType(className, ccSid, ccRet)
+            ccMethods = listAppendStr(ccMethods, funcName(ccSid))
         }
     }
     classMethods.set(className, ccMethods)
+    // Pass 2: emit IR for methods; run any non-FUNC_DECL stmts in place.
     for (ccp in partList) {
         const ccSid = parseInt(ccp)
-        if (ccSid > 0 && nGetKind(ccSid) == "FUNC_DECL") { genClassMethod(className, ccSid) }
-    }
-    for (ccp in partList) {
-        const ccSid = parseInt(ccp)
-        if (ccSid > 0 && nGetKind(ccSid) != "FUNC_DECL") { genStmt(ccSid) }
+        if (ccSid <= 0) { continue }
+        if (nGetKind(ccSid) == "FUNC_DECL") { genClassMethod(className, ccSid) }
+        else { genStmt(ccSid) }
     }
     interpClearComptimeSS()
 }
@@ -722,8 +733,6 @@ function annArgToSrc(argId: int): string {
     return ""
 }
 
-// Compile-time call handler(className, ...annotationArgs) and inject any
-// class-level methods it produced.
 function runComptimeAnnotationCall(handlerName: string, className: string, extraArgList: string) {
     let argsStr = "\"" + className + "\""
     if (extraArgList != "") {

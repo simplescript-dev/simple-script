@@ -770,6 +770,14 @@ function parseTypeAnn(): string {
     if (k == "STRING_TYPE") { pAdvance(); return maybeNullable("string") }
     if (k == "BOOL_TYPE") { pAdvance(); return maybeNullable("bool") }
     if (k == "VOID_TYPE") { pAdvance(); return "void" }
+    // `${expr}` type-position comptime interpolation. Encoded as `ct:<exprId>`;
+    // codegen folds the expr to a string at FUNC_DECL PARAM binding time.
+    if (k == "TMPL_EXPR_START") {
+        pAdvance()
+        const exprId = parseExpr()
+        pExpect("TMPL_EXPR_END")
+        return `ct:${exprId}`
+    }
     // Tuple type: [type, type, ...]
     if (k == "LBRACKET") {
         pAdvance()

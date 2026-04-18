@@ -351,7 +351,9 @@ function genVal(id: int): int {
         if (nGetKind(objNode) == "IDENT" && comptimeConsts.has(nGetS1(objNode)) == 1) {
             const fmName = nGetS1(objNode)
             if (member == "name") {
-                return constVal(addStringConst(comptimeConsts.getString(fmName)))
+                const nmStr = comptimeConsts.getString(fmName)
+                if (comptimeDepth > 0) { return ctVal(interpNewString(nmStr)) }
+                return constVal(addStringConst(nmStr))
             }
             if (member == "type") {
                 const fmClsKey = `${fmName}.__class`
@@ -359,7 +361,9 @@ function genVal(id: int): int {
                     const fmCls = comptimeConsts.getString(fmClsKey)
                     const fmFld = comptimeConsts.getString(fmName)
                     if (classFieldTypes.has(`${fmCls}.${fmFld}`) == 1) {
-                        return constVal(addStringConst(classFieldTypes.getString(`${fmCls}.${fmFld}`)))
+                        const tStr = classFieldTypes.getString(`${fmCls}.${fmFld}`)
+                        if (comptimeDepth > 0) { return ctVal(interpNewString(tStr)) }
+                        return constVal(addStringConst(tStr))
                     }
                 }
             }

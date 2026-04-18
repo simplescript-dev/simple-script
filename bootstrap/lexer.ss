@@ -80,6 +80,16 @@ function tokenize(source: string): string {
             emit("DOT", ".")
             continue
         }
+        // `${...}` at top level — type-position comptime interpolation
+        // (e.g. `v: ${f.type}`). Emits TMPL_EXPR_START + body tokens + TMPL_EXPR_END.
+        if (ch == 36 && peekNext() == 123) {
+            tokenStartCol = curCol
+            advance()
+            advance()
+            emit("TMPL_EXPR_START", "${")
+            lexInterpExprBody()
+            continue
+        }
         println("lexer error: unexpected '" + fromCharCode(ch) + "' at line " + curLine)
         exit(1)
     }
@@ -244,6 +254,59 @@ function lexSQString() { lexStringWith(39) }
 
 // ── Template literal ──────────────────────────────────────────
 
+// Tokenize `${...}` body up to matching `}`. Caller has already advanced past
+// `${` and emitted TMPL_EXPR_START. Shared by template literals and the
+// top-level type-position branch — keeps the two sites from drifting (the
+// inlined copy in lexTemplate was 47 lines).
+function lexInterpExprBody() {
+    let depth = 1
+    while (pos < srcLen) {
+        if (depth <= 0) { break }
+        skipWS()
+        if (pos >= srcLen) { break }
+        tokenStartCol = curCol
+        const ch = peek()
+        if (ch == 123) { depth = depth + 1; emit("LBRACE", "{"); advance() } else if (ch == 125) {
+            depth = depth - 1
+            if (depth > 0) { emit("RBRACE", "}"); advance() } else { advance() }
+        } else if (ch == 96) {
+            lexTemplate()
+        } else if (ch == 34) {
+            lexString()
+        } else if (isDigit(ch)) {
+            lexNumber()
+        } else if (isAlpha(ch)) {
+            lexIdent()
+        } else if (ch == 43) { lexPlus()
+        } else if (ch == 45) { lexMinus()
+        } else if (ch == 42) { lexStar()
+        } else if (ch == 47) { emit("SLASH", "/"); advance()
+        } else if (ch == 40) { emit("LPAREN", "("); advance()
+        } else if (ch == 41) { emit("RPAREN", ")"); advance()
+        } else if (ch == 91) { emit("LBRACKET", "["); advance()
+        } else if (ch == 93) { emit("RBRACKET", "]"); advance()
+        } else if (ch == 44) { emit("COMMA", ","); advance()
+        } else if (ch == 46) { emit("DOT", "."); advance()
+        } else if (ch == 58) { emit("COLON", ":"); advance()
+        } else if (ch == 63) { lexQuestion()
+        } else if (ch == 61) { lexEq()
+        } else if (ch == 33) { lexBang()
+        } else if (ch == 60) { lexLt()
+        } else if (ch == 62) { lexGt()
+        } else if (ch == 38) { lexAnd()
+        } else if (ch == 124) { lexOr()
+        } else if (ch == 94) { lexCaret()
+        } else if (ch == 126) { lexTilde()
+        } else if (ch == 37) { emit("PERCENT", "%"); advance()
+        } else {
+            println(`lexer error: unexpected '${fromCharCode(ch)}' in template`)
+            exit(1)
+        }
+    }
+    tokenStartCol = curCol
+    emit("TMPL_EXPR_END", "}")
+}
+
 function lexTemplate() {
     advance()
     let literal = ""
@@ -260,52 +323,7 @@ function lexTemplate() {
             advance()
             advance()
             emit("TMPL_EXPR_START", "${")
-            let depth = 1
-            while (pos < srcLen) {
-                if (depth <= 0) { break }
-                skipWS()
-                if (pos >= srcLen) { break }
-                tokenStartCol = curCol
-                const ch = peek()
-                if (ch == 123) { depth = depth + 1; emit("LBRACE", "{"); advance() } else if (ch == 125) {
-                    depth = depth - 1
-                    if (depth > 0) { emit("RBRACE", "}"); advance() } else { advance() }
-                } else if (ch == 96) {
-                    lexTemplate()
-                } else if (ch == 34) {
-                    lexString()
-                } else if (isDigit(ch)) {
-                    lexNumber()
-                } else if (isAlpha(ch)) {
-                    lexIdent()
-                } else if (ch == 43) { lexPlus()
-                } else if (ch == 45) { lexMinus()
-                } else if (ch == 42) { lexStar()
-                } else if (ch == 47) { emit("SLASH", "/"); advance()
-                } else if (ch == 40) { emit("LPAREN", "("); advance()
-                } else if (ch == 41) { emit("RPAREN", ")"); advance()
-                } else if (ch == 91) { emit("LBRACKET", "["); advance()
-                } else if (ch == 93) { emit("RBRACKET", "]"); advance()
-                } else if (ch == 44) { emit("COMMA", ","); advance()
-                } else if (ch == 46) { emit("DOT", "."); advance()
-                } else if (ch == 58) { emit("COLON", ":"); advance()
-                } else if (ch == 63) { lexQuestion()
-                } else if (ch == 61) { lexEq()
-                } else if (ch == 33) { lexBang()
-                } else if (ch == 60) { lexLt()
-                } else if (ch == 62) { lexGt()
-                } else if (ch == 38) { lexAnd()
-                } else if (ch == 124) { lexOr()
-                } else if (ch == 94) { lexCaret()
-                } else if (ch == 126) { lexTilde()
-                } else if (ch == 37) { emit("PERCENT", "%"); advance()
-                } else {
-                    println(`lexer error: unexpected '${fromCharCode(ch)}' in template`)
-                    exit(1)
-                }
-            }
-            tokenStartCol = curCol
-            emit("TMPL_EXPR_END", "}")
+            lexInterpExprBody()
             continue
         }
         if (peek() == 92) {

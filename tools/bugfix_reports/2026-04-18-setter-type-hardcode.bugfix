@@ -1,0 +1,30 @@
+[meta]
+type = bugfix
+title = Lombok @Setter 硬编码 v: int — 类型位置 ${expr} 插值不支持
+date = 2026-04-18
+commit = uncommitted
+
+[found]
+symptom = @Setter 作用于非 int 字段时编译失败；lib/lombok.ss 内 `v: int` 硬编码覆盖一切字段类型
+
+[isolate]
+test_file = tests/phase5/d095_setter_mixed.ss
+stash_exit = 1
+
+[analyze]
+broken = lexer/parser 拒绝类型位置的 `${expr}`；FUNC_DECL PARAM.S2 与 funcRetType.S2 仅能存固定类型名字符串；handler 层级 comptime for-in 不绑定 comptimeConsts，导致 FieldMeta 路径无法解析 f.type；FieldMeta 固定返回 constVal，comptimeDepth>0 下 isCt 校验失败
+why = L2α-L2δ 只解决 class/method 层 TypeValue，类型注解槽仍是纯字符串；@methodOf 处理流程只 fold IDENT 未 fold 类型 ct:，且 comptime for-in 分支不发布类上下文给嵌套 FUNC_DECL 克隆
+fix = lexer 顶层加 `${` 分支 + 抽 lexInterpExprBody（去 47 行重复）；parseTypeAnn 接受 TMPL_EXPR_START，编码为 `ct:<exprId>`；gen_class.ss 新 foldCtTypesInFuncDecl 在 handleMethodOfFuncDecl body fold 后解码 PARAM/retType ct: 槽；gen_exprs.ss FieldMeta 在 comptimeDepth>0 下返回 ctVal(interpNewString(...))；gen_stmts.ss genForIn comptime 分支探测 `cls.fields`，对循环变量 set/delete comptimeConsts + `${item}.__class`
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 9
+net_new_fns = 5
+
+[verify]
+bootstrap = PASS
+test_passed = 152
+test_failed = 3
+test_known_fail = 3

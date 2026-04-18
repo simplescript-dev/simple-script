@@ -74,30 +74,37 @@ function channelElemType(chanType: string): string {
     return "int"
 }
 
-// Infer the return type of an arrow function node
-function inferArrowRetType(arrowId: int): string {
-    if (arrowId <= 0) { return "int" }
-    // 1. Explicit return type annotation
-    const annot = nGetS2(arrowId)
-    if (annot != "") { return annot }
-    // 2. Walk body BLOCK for first RETURN statement
-    const bodyId = nGetI1(arrowId)
-    if (bodyId <= 0) { return "int" }
-    const bodyKind = nGetKind(bodyId)
-    // Single expression body (not a BLOCK)
-    if (bodyKind != "BLOCK") { return inferType(bodyId) }
+// Walk a BLOCK body for the first RETURN, returning inferType on its expression
+// (or "" if body missing / bare return / no RETURN found). Shared by arrow and
+// comptime-class-method retType inference; callers pick their own fallback.
+function firstReturnInferredType(bodyId: int): string {
+    if (bodyId <= 0 || nGetKind(bodyId) != "BLOCK") { return "" }
     const bodyList = nGetList(bodyId)
-    if (bodyList == "") { return "void" }
+    if (bodyList == "") { return "" }
     const parts = bodyList.split(",")
     for (p in parts) {
         const stmtId = parseInt(p)
         if (stmtId > 0 && nGetKind(stmtId) == "RETURN") {
             const retVal = nGetI1(stmtId)
             if (retVal > 0) { return inferType(retVal) }
-            return "void"
+            return ""
         }
     }
-    return "void"
+    return ""
+}
+
+// Infer the return type of an arrow function node
+function inferArrowRetType(arrowId: int): string {
+    if (arrowId <= 0) { return "int" }
+    const annot = nGetS2(arrowId)
+    if (annot != "") { return annot }
+    const bodyId = nGetI1(arrowId)
+    if (bodyId <= 0) { return "int" }
+    // Single-expression body: infer directly (no BLOCK to walk).
+    if (nGetKind(bodyId) != "BLOCK") { return inferType(bodyId) }
+    const t = firstReturnInferredType(bodyId)
+    if (t == "") { return "void" }
+    return t
 }
 
 // ── Type inference ────────────────────────────────────────────

@@ -23,12 +23,10 @@ function Getter(cls: string) {
     }
 }
 
-// Per-field mutators. Naming: set_<field>. Parameter forced to int because
-// type-position comptime interpolation (`v: ${f.type}`) is not yet supported —
-// @Setter on non-int fields will fail to compile.
+// Per-field mutators. Naming: set_<field>. Parameter type taken from field.
 function Setter(cls: string) {
     for (f in cls.fields) {
-        @methodOf(cls) function [`set_${f.name}`](v: int) {
+        @methodOf(cls) function [`set_${f.name}`](v: ${f.type}) {
             this[f.name] = v
         }
     }

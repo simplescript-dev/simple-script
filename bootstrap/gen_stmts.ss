@@ -685,14 +685,35 @@ function genForIn(id: int) {
     if (comptimeDepth > 0) {
         const ctIterVal = genVal(iterableId)
         if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") {
+            // D095 FieldMeta: detect `cls.fields` so nested FUNC_DECL cloning
+            // can resolve f.name / f.type against the class in comptimeConsts.
+            let ctFieldsClass = ""
+            if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "fields") {
+                const ctFObjVal = genVal(nGetI1(iterableId))
+                if (isCt(ctFObjVal) == 1) {
+                    const ctFObjStr = interpAsStr(payload(ctFObjVal))
+                    if (isKnownClass(ctFObjStr) == 1) { ctFieldsClass = ctFObjStr }
+                }
+            }
+            if (ctFieldsClass != "") {
+                comptimeConsts.set(`${itemName}.__class`, ctFieldsClass)
+            }
             const ctArrId = payload(ctIterVal)
             const ctArrLen = interpArrayLen(ctArrId)
             let ctFi = 0
             while (ctFi < ctArrLen) {
-                ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(interpArrayGet(ctArrId, ctFi))}`)
+                const ctCurVal = interpArrayGet(ctArrId, ctFi)
+                ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(ctCurVal)}`)
+                if (ctFieldsClass != "" && interpType(ctCurVal) == "string") {
+                    comptimeConsts.set(itemName, interpAsStr(ctCurVal))
+                }
                 genBlock(bodyId)
                 if (interpCheckLoopExit() == 1) { break }
                 ctFi = ctFi + 1
+            }
+            if (ctFieldsClass != "") {
+                comptimeConsts.delete(`${itemName}.__class`)
+                comptimeConsts.delete(itemName)
             }
         }
         return

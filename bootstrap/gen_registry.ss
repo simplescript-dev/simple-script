@@ -33,6 +33,17 @@ function trackOverload(name: string) {
     }
 }
 
+// Register a class method's return type under both base (`Cls_m`) and
+// overload-mangled (`Cls_m_sig`) keys, plus overload tracking. Keep the three
+// ops together so callers can't drift (gen_generic_class.ss once missed trackOverload).
+function registerClassMethodRetType(className: string, methodId: int, retType: string) {
+    const baseName = `${className}_${funcName(methodId)}`
+    funcRetTypes.set(baseName, retType)
+    const mSig = paramSig(funcParams(methodId))
+    if (mSig != "") { funcRetTypes.set(`${baseName}_${mSig}`, retType) }
+    trackOverload(baseName)
+}
+
 function initFuncRetTypes() {
     if (funcRetReady == 1) { return }
     funcRetTypes = Map()

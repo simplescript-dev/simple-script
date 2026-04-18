@@ -103,12 +103,7 @@ function preRegisterSpecializedClass(classNodeId: int, mangledName: string, subs
                     let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
                     if (subs.has(mRet) == 1) { mRet = subs.getString(mRet) }
-                    funcRetTypes.set(`${mangledName}_${mName}`, mRet)
-                    // Register overloaded variant
-                    const mSig = paramSig(funcParams(mId))
-                    if (mSig != "") {
-                        funcRetTypes.set(`${mangledName}_${mName}_${mSig}`, mRet)
-                    }
+                    registerClassMethodRetType(mangledName, mId, mRet)
                 }
             }
         }
