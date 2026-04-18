@@ -759,7 +759,36 @@ function genForIn(id: int) {
                 if (classFieldAnnotations.has(annKey) == 1) {
                     annCsv = classFieldAnnotations.getString(annKey)
                 }
+                // L2η sidecar: bind ${a}.__annCls / ${a}.__annFld so inner a.args
+                // unroll can resolve classFieldAnnotationArgs keys.
+                const annItemName = nGetS1(id)
+                comptimeConsts.set(`${annItemName}.__annCls`, annCls)
+                comptimeConsts.set(`${annItemName}.__annFld`, annFld)
                 genForInUnrolled(id, annCsv)
+                comptimeConsts.delete(`${annItemName}.__annCls`)
+                comptimeConsts.delete(`${annItemName}.__annFld`)
+                return
+            }
+        }
+    }
+    // L2η: a.args unroll. a = annotation name (per-iteration), __annCls/__annFld
+    // sidecars identify which class+field the annotation attaches to.
+    if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "args") {
+        const argObj = nGetI1(iterableId)
+        if (nGetKind(argObj) == "IDENT" && comptimeConsts.has(nGetS1(argObj)) == 1) {
+            const argAnnIdent = nGetS1(argObj)
+            const argClsKey = `${argAnnIdent}.__annCls`
+            const argFldKey = `${argAnnIdent}.__annFld`
+            if (comptimeConsts.has(argClsKey) == 1 && comptimeConsts.has(argFldKey) == 1) {
+                const argAnnName = comptimeConsts.getString(argAnnIdent)
+                const argCls = comptimeConsts.getString(argClsKey)
+                const argFld = comptimeConsts.getString(argFldKey)
+                let argCsv = ""
+                const argKey = `${argCls}.${argFld}.${argAnnName}`
+                if (classFieldAnnotationArgs.has(argKey) == 1) {
+                    argCsv = classFieldAnnotationArgs.getString(argKey)
+                }
+                genForInUnrolled(id, argCsv)
                 return
             }
         }

@@ -5,6 +5,7 @@
 let classFields = ""     // "ClassName" -> "field1,field2,..."
 let classFieldTypes = "" // "ClassName.field" -> "type"
 let classFieldAnnotations = "" // "ClassName.field" -> "Ann1,Ann2" CSV of annotation names (D095 Stage C — FieldMeta reflection)
+let classFieldAnnotationArgs = "" // "ClassName.field.AnnName" -> "arg0,arg1" CSV of string-lit arg values (D095 Stage C — a.args reflection, L2η)
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
@@ -49,6 +50,7 @@ function initClassState() {
     classFields = Map()
     classFieldTypes = Map()
     classFieldAnnotations = Map()
+    classFieldAnnotationArgs = Map()
     classMethods = Map()
     objClasses = Map()
     classParents = Map()
@@ -263,7 +265,24 @@ function registerClass(id: int) {
                                 for (ap in aParts) {
                                     const aId = parseInt(ap)
                                     if (aId > 0 && nGetKind(aId) == "ANNOTATION") {
-                                        annNames = listAppendStr(annNames, nGetS1(aId))
+                                        const aName = nGetS1(aId)
+                                        annNames = listAppendStr(annNames, aName)
+                                        // L2η: also capture STRING_LIT args for a.args reflection.
+                                        // Key = ClassName.field.AnnName. Non-string args are dropped.
+                                        const aArgsCsv = nGetList(aId)
+                                        if (aArgsCsv != "") {
+                                            let argVals = ""
+                                            const aArgParts = aArgsCsv.split(",")
+                                            for (arp in aArgParts) {
+                                                const argId = parseInt(arp)
+                                                if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
+                                                    argVals = listAppendStr(argVals, nGetS1(argId))
+                                                }
+                                            }
+                                            if (argVals != "") {
+                                                classFieldAnnotationArgs.set(`${name}.${fName}.${aName}`, argVals)
+                                            }
+                                        }
                                     }
                                 }
                                 if (annNames != "") {
