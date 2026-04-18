@@ -1,6 +1,6 @@
 # D096: Class Accessors (get/set) — 响应式底层原语
 
-**Status:** Phase 1 ✓ / Phase 2 ✓(codegen + 边界校验全部打通)/ Phase 3 未启动
+**Status:** Phase 1 ✓ / Phase 2 ✓ / Phase 3 ✓(lib/reactive.ss + d096_reactive.ss PoC 通过)/ Phase 4+ 未启动
 **Depends on:** D088 (Zig comptime 路线 — 字段反射), D095 (Annotation Handler API)
 **Date:** 2026-04-18
 **Last Updated:** 2026-04-18
