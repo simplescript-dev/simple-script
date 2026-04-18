@@ -231,10 +231,54 @@ comptime {
 
 **完成标准：** 上述所有缺失特性在 `comptime {}` 中可用。
 
-### 原 Phase 8/9（暂缓，等有真实场景再推进）
+### Phase 4(自原 Phase 9 激活): 类型作为 comptime 值
 
-- **comptime 参数特化** — `function foo(const n: int, s: string)` 编译期求值。SS 已有泛型，当前无驱动场景。
-- **类型作为 comptime 值** — `comptime { return Pair(int, string) }`。复杂度高，等解释器完整后再评估。
+**Status:** [ ] Planned — 真实场景 D096 Phase 4 `reactive<T>(v)` 驱动,从"暂缓"恢复为 active。节号沿用 D096 Phase 4 外部依赖命名,不按 D088 内部时间顺序。
+
+**目标:** 让 class 名本身成为 comptime 值(TypeValue),可被 comptime 块返回、绑定到外层 `const`、传入另一个 comptime 块用作 `new T(...)` 的类名。打破"comptime 返回通道只有 int/double/string/bool"四标量壁垒。
+
+**最小标靶(`tests/phase5/d088_phase4_type_value.ss`):**
+
+```ss
+const T = comptime {
+    class Foo { x: int = 0 }
+    return Foo
+}
+function main() {
+    const v = comptime {
+        const f = new T(x: 5)
+        return f.x
+    }
+    println(`v=${v}`)  // 期望输出 v=5
+}
+```
+
+**当前行为(RED 已固化):** `[comptime] unknown class: T` — comptime 返回 `Foo` 被当 int 0 丢掉,外层 `const T` 拿不到 class 信息,内层 `new T(...)` 找不到类。
+
+**实现切面清单(待用户选型后展开):**
+
+1. **TypedValue 载体新增 `type` kind** — `codegen.ss` tv* 层加 `newTvType(className)` + `tvKindOf` 识别 "type" + `tvClassNameOf` 读取。
+2. **comptime IDENT 解析** — class 名(`interpClasses.has(name) == 1`)在 comptime 上下文里 return TypeValue 而非 IDENT load。
+3. **COMPTIME_EXPR inferType** — `gen_types.ss` L247 四分支表扩展一条 `ceType == "type"`,把类型记为 "type"、literal 存 class 名字符串。
+4. **外层 const 绑定为 comptime-only** — `gen_decls.ss` VAR_DECL 遇到 `inferType == "type"`,不生成 `@T` 全局存储,改写入 `comptimeTypeBindings: Map<varName, className>`,runtime 不可见。
+5. **下游 NEW_EXPR 消费** — `gen_exprs.ss` / comptime `new` 遇到 className 是 IDENT,先查 comptimeTypeBindings,命中则替换为真实 class 名走原有路径。
+
+**guardrail(D088 §核心验证 2+3):**
+
+- 禁止新开 interp.ss 家族文件;所有改动必须落在现有 gen_* / codegen.ss 共享 SEMA 层。
+- 禁止 runtime 反射 —— `const T` 不可被 runtime 代码消费,只能流入另一个 comptime 块或编译期展开点。
+- TypeValue 必须是 codegen 期 comptime-only,不得生成 `@T` 全局变量或栈槽。
+
+**不做:**
+
+- 不做 `reactive<T>(v)` 本体(D096 Phase 4,Phase 4 GREEN 后的下一步)。
+- 不做泛型 comptime 参数特化(原 Phase 8,SS 已有泛型,无驱动场景)。
+- 不做类型作为函数签名一等公民(本轮仅 comptime 边界内流动)。
+- 不做多个类型打包成 tuple `Pair(int, string)` 形式(暂缓条下另半,留到下一轮评估)。
+
+### 原 Phase 8(暂缓,等有真实场景再推进)
+
+- **comptime 参数特化** — `function foo(const n: int, s: string)` 编译期求值。SS 已有泛型,当前无驱动场景。
 
 ### 各 Phase 解锁的能力
 
