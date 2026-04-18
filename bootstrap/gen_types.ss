@@ -152,7 +152,7 @@ function resolveObjClass(nodeId: int): string {
     }
     // new ClassName() → class name directly (mangled for generic classes)
     if (kind == "NEW_EXPR") {
-        const neCn = nGetS1(nodeId)
+        const neCn = resolveCtTypeAlias(nGetS1(nodeId))
         if (genericClassNodes.has(neCn) == 1) { return inferGenericClassName(neCn, nGetList(nodeId), nGetS2(nodeId)) }
         return neCn
     }
@@ -330,7 +330,7 @@ function inferType(id: int): string {
         return callReturnType(callee)
     }
     if (kind == "NEW_EXPR") {
-        const newCn = nGetS1(id)
+        const newCn = resolveCtTypeAlias(nGetS1(id))
         // D082 Phase 4: new Channel<T>() → Channel<T>
         if (newCn == "Channel") {
             const chanTypeArg = nGetS2(id)

@@ -81,6 +81,15 @@ let comptimeConsts = new Map()
 // 外层 `const T = comptime { return Foo }` 把 T → "Foo" 的别名记到这里。
 // T 不生成 runtime 存储,只在 comptime 上下文被 IDENT/NEW_EXPR 识别。
 let comptimeTypeAliases = new Map()
+// comptime 块里声明的 CLASS_DECL AST id。flushPendingCtClasses() 消费后清空。
+// 延迟到主 codegen pass 外发射,避免在其他函数体 IR 输出中途插入 class IR。
+let pendingCtClassIds: Array<string> = []
+
+// 若 name 是 `const T = comptime { return X }` 注册的别名,返回真正类名 X;否则原样返回。
+function resolveCtTypeAlias(name: string): string {
+    if (comptimeTypeAliases.has(name) == 1) { return comptimeTypeAliases.getString(name) }
+    return name
+}
 
 // Generic function state (monomorphization)
 let genericFuncNodes = ""
@@ -914,6 +923,29 @@ function flushComptimeIR() {
     if (fir != "") { emitIR(fir); interpClearComptimeIR() }
 }
 
+// 消费 comptime 块里声明的 class:registration + IR emit 在 comptimeDepth=0 下跑,
+// genClassDecl 走 runtime 分支。genStmt 若产生新 pending(嵌套 comptime class),继续 drain。
+function flushPendingCtClasses() {
+    while (pendingCtClassIds.length() > 0) {
+        const snapshot = pendingCtClassIds
+        pendingCtClassIds = []
+        for (idStr in snapshot) {
+            const sid = parseInt(idStr)
+            if (sid <= 0) { continue }
+            if (nGetKind(sid) == "CLASS_DECL") {
+                registerClass(sid)
+                collectClassAnnotations(sid)
+                resolveInheritanceForClass(nGetS1(sid))
+                assignDtorTagForClass(nGetS1(sid))
+            }
+        }
+        for (idStr in snapshot) {
+            const sid = parseInt(idStr)
+            if (sid > 0 && nGetKind(sid) == "CLASS_DECL") { genStmt(sid) }
+        }
+    }
+}
+
 function registerAllDecls(rootId: int) {
     const stmtList0 = nGetList(rootId)
     if (stmtList0 == "") { return }
@@ -990,6 +1022,9 @@ function emitGlobalsAndCode(rootId: int) {
     const parts = sl.split(",")
     emitGlobalVars(sl)
     emitIR("")
+    // Comptime blocks in global inits may declare classes; register & emit them
+    // before downstream genStmt uses classFields for `new X(...)` lookup.
+    flushPendingCtClasses()
 
     let hasMain = 0
     let bareStmts = ""
@@ -1110,6 +1145,7 @@ function generate(rootId: int): string {
     emitRuntimeDefs()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
+    flushPendingCtClasses()
     generateDeferredSpecializations()
     return `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${strConsts}\n${irBuf}`
 }
@@ -1160,6 +1196,7 @@ function generateToFile(rootId: int, outFile: string) {
     }
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
+    flushPendingCtClasses()
     generateDeferredSpecializations()
     irOutFile = ""
     const body = readFile(outFile)

@@ -1000,6 +1000,168 @@ function isTypeCompatible(declared: string, actual: string): int {
 
 // ── Public API ────────────────────────────────────────────────
 
+// overrideName == "" 按 nGetS1(s) 注册;否则以别名注册,让 `const W=comptime{...return Wrap}` 的 W 与 Wrap 共享字段/方法签名
+function registerCheckerClassDecl(s: int, overrideName: string) {
+    const className = overrideName != "" ? overrideName : nGetS1(s)
+    defineVar(className, "class", 0)
+    if (nGetI1(s) == 1) {
+        abstractClasses.set(className, "1")
+    }
+    let parentName = nGetS2(s)
+    if (parentName != "") {
+        parentName = baseTypeName(parentName)
+        checkerClassParents.set(className, parentName)
+    }
+    const fieldList = nGetList(s)
+    let fieldNameList = ""
+    let instanceParamList = ""
+    if (fieldList != "") {
+        const flds = fieldList.split(",")
+        for (f in flds) {
+            const fId = parseInt(f)
+            if (fId > 0 && nGetKind(fId) == "PARAM") {
+                const fName = nGetS1(fId)
+                const fType = nGetS2(fId)
+                const fKey = `${className}.${fName}`
+                checkerFieldTypes.set(fKey, fType)
+                if (nGetI4(fId) == 1) {
+                    staticFields.set(fKey, "1")
+                } else {
+                    fieldNameList = listAppendStr(fieldNameList, fName)
+                    instanceParamList = listAppend(instanceParamList, fId)
+                }
+                if (nGetS3(fId) == "const") {
+                    constFields.set(fKey, "1")
+                }
+                if (nGetI3(fId) == 1) {
+                    privateFields.set(fKey, "1")
+                }
+                if (nGetI3(fId) == 2) {
+                    protectedFields.set(fKey, "1")
+                }
+            }
+        }
+    }
+    checkerClassFields.set(className, fieldNameList)
+    if (classTypeParams(s) != "") {
+        classConsMin.set(className, "0")
+        classConsMax.set(className, "99")
+        checkerGenericClasses.set(className, "1")
+    } else {
+        const consRange = countParamRange(instanceParamList)
+        const consComma = consRange.indexOf(",")
+        classConsMin.set(className, consRange.substring(0, consComma))
+        classConsMax.set(className, consRange.substring(consComma + 1, consRange.length() - consComma - 1))
+    }
+    let clsMethodNameList = ","
+    const clsMethodsBlock = nGetI2(s)
+    if (clsMethodsBlock > 0) {
+        const clsML = nGetList(clsMethodsBlock)
+        if (clsML != "") {
+            const clsMS = clsML.split(",")
+            for (cm in clsMS) {
+                const cmId = parseInt(cm)
+                if (cmId > 0 && nGetKind(cmId) == "FUNC_DECL") {
+                    const mName = nGetS1(cmId)
+                    clsMethodNameList = `${clsMethodNameList}${mName},`
+                    if (nGetI3(cmId) == 1) {
+                        privateMethods.set(`${className}.${mName}`, "1")
+                    }
+                    if (nGetI3(cmId) == 2) {
+                        protectedMethods.set(`${className}.${mName}`, "1")
+                    }
+                    if (nGetI2(cmId) == 1) {
+                        staticMethods.set(`${className}.${mName}`, "1")
+                    }
+                    if (nGetI4(cmId) == 1) {
+                        abstractMethods.set(`${className}.${mName}`, "1")
+                        if (abstractClasses.has(className) == 0) {
+                            checkerError(`abstract method '${mName}' can only be declared in an abstract class`, nGetLine(cmId), nGetCol(cmId))
+                        }
+                        if (nGetI3(cmId) == 1) {
+                            checkerError(`'private' modifier cannot be used with 'abstract' modifier`, nGetLine(cmId), nGetCol(cmId))
+                        }
+                        if (nGetI2(cmId) == 1) {
+                            checkerError(`'static' modifier cannot be used with 'abstract' modifier`, nGetLine(cmId), nGetCol(cmId))
+                        }
+                    }
+                    const mRange = countParamRange(nGetList(cmId))
+                    const mComma = mRange.indexOf(",")
+                    registerMethodParams(className, mName, parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))
+                    if (classTypeParams(s) == "") {
+                        const mRetType = nGetS2(cmId)
+                        if (mRetType != "") {
+                            methodRetTypes.set(`${className}.${mName}`, mRetType)
+                        }
+                        const mPList = nGetList(cmId)
+                        if (mPList != "") {
+                            const mParts = mPList.split(",")
+                            let mPIdx = 0
+                            for (mp in mParts) {
+                                const mpId = parseInt(mp)
+                                if (mpId > 0 && nGetKind(mpId) == "PARAM") {
+                                    const mpType = nGetS2(mpId)
+                                    if (mpType != "") {
+                                        methodParamTypes.set(`${className}.${mName}:${mPIdx}`, mpType)
+                                    }
+                                    mPIdx = mPIdx + 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    classMethodNames.set(className, clsMethodNameList)
+    if (abstractClasses.has(className) == 0 && parentName != "") {
+        checkAbstractImpl(className, parentName, clsMethodNameList, nGetLine(s), nGetCol(s))
+    }
+}
+
+// 扫顶层 VAR_DECL,若 init 是 COMPTIME_EXPR:
+//   - 把 body 里的 CLASS_DECL 按原名注册到 checker
+//   - 若 body 末尾 return IDENT 指向某 CLASS_DECL 名,把 VAR_DECL 名注册为该 class 的 alias(字段/方法签名共享)
+function preScanComptimeClasses(stmtList: string) {
+    if (stmtList == "") { return }
+    const parts = stmtList.split(",")
+    for (p in parts) {
+        const s = parseInt(p)
+        if (s <= 0) { continue }
+        if (nGetKind(s) != "VAR_DECL") { continue }
+        const initId = nGetI1(s)
+        if (initId <= 0 || nGetKind(initId) != "COMPTIME_EXPR") { continue }
+        const bodyId = nGetI1(initId)
+        if (bodyId <= 0) { continue }
+        const bList = nGetList(bodyId)
+        if (bList == "") { continue }
+        const bParts = bList.split(",")
+        let returnName = ""
+        for (bp in bParts) {
+            const bs = parseInt(bp)
+            if (bs <= 0) { continue }
+            if (nGetKind(bs) == "CLASS_DECL") {
+                registerCheckerClassDecl(bs, "")
+            }
+            if (nGetKind(bs) == "RETURN") {
+                const retExpr = nGetI1(bs)
+                if (retExpr > 0 && nGetKind(retExpr) == "IDENT") {
+                    returnName = nGetS1(retExpr)
+                }
+            }
+        }
+        if (returnName != "") {
+            const varName = nGetS1(s)
+            for (bp2 in bParts) {
+                const bs2 = parseInt(bp2)
+                if (bs2 > 0 && nGetKind(bs2) == "CLASS_DECL" && nGetS1(bs2) == returnName) {
+                    registerCheckerClassDecl(bs2, varName)
+                }
+            }
+        }
+    }
+}
+
 function check(rootId: int): int {
     initChecker()
     errorCount = 0
@@ -1059,134 +1221,7 @@ function check(rootId: int): int {
                 }
             }
             if (sk == "CLASS_DECL") {
-                const className = nGetS1(s)
-                defineVar(className, "class", 0)
-                // D071: Register abstract class
-                if (nGetI1(s) == 1) {
-                    abstractClasses.set(className, "1")
-                }
-                // Register parent class (strip generic type args: "Box<int>" → "Box")
-                let parentName = nGetS2(s)
-                if (parentName != "") {
-                    parentName = baseTypeName(parentName)
-                    checkerClassParents.set(className, parentName)
-                }
-                // Register field const status, types, and ordered field list
-                const fieldList = nGetList(s)
-                let fieldNameList = ""
-                // D078: build instance-only param list for constructor counting (skip static fields)
-                let instanceParamList = ""
-                if (fieldList != "") {
-                    const flds = fieldList.split(",")
-                    for (f in flds) {
-                        const fId = parseInt(f)
-                        if (fId > 0 && nGetKind(fId) == "PARAM") {
-                            const fName = nGetS1(fId)
-                            const fType = nGetS2(fId)
-                            const fKey = `${className}.${fName}`
-                            checkerFieldTypes.set(fKey, fType)
-                            // D078: static fields — register but exclude from instance fields
-                            if (nGetI4(fId) == 1) {
-                                staticFields.set(fKey, "1")
-                            } else {
-                                fieldNameList = listAppendStr(fieldNameList, fName)
-                                instanceParamList = listAppend(instanceParamList, fId)
-                            }
-                            if (nGetS3(fId) == "const") {
-                                constFields.set(fKey, "1")
-                            }
-                            if (nGetI3(fId) == 1) {
-                                privateFields.set(fKey, "1")
-                            }
-                            if (nGetI3(fId) == 2) {
-                                protectedFields.set(fKey, "1")
-                            }
-                        }
-                    }
-                }
-                checkerClassFields.set(className, fieldNameList)
-                // Register constructor params — D078: use instance-only params (skip static)
-                if (classTypeParams(s) != "") {
-                    classConsMin.set(className, "0")
-                    classConsMax.set(className, "99")
-                    checkerGenericClasses.set(className, "1")
-                } else {
-                    const consRange = countParamRange(instanceParamList)
-                    const consComma = consRange.indexOf(",")
-                    classConsMin.set(className, consRange.substring(0, consComma))
-                    classConsMax.set(className, consRange.substring(consComma + 1, consRange.length() - consComma - 1))
-                }
-                // Register method params
-                let clsMethodNameList = ","
-                const clsMethodsBlock = nGetI2(s)
-                if (clsMethodsBlock > 0) {
-                    const clsML = nGetList(clsMethodsBlock)
-                    if (clsML != "") {
-                        const clsMS = clsML.split(",")
-                        for (cm in clsMS) {
-                            const cmId = parseInt(cm)
-                            if (cmId > 0 && nGetKind(cmId) == "FUNC_DECL") {
-                                const mName = nGetS1(cmId)
-                                clsMethodNameList = `${clsMethodNameList}${mName},`
-                                if (nGetI3(cmId) == 1) {
-                                    privateMethods.set(`${className}.${mName}`, "1")
-                                }
-                                if (nGetI3(cmId) == 2) {
-                                    protectedMethods.set(`${className}.${mName}`, "1")
-                                }
-                                if (nGetI2(cmId) == 1) {
-                                    staticMethods.set(`${className}.${mName}`, "1")
-                                }
-                                // D071: Register abstract method + validate rules
-                                if (nGetI4(cmId) == 1) {
-                                    abstractMethods.set(`${className}.${mName}`, "1")
-                                    // R4: abstract method must be in abstract class
-                                    if (abstractClasses.has(className) == 0) {
-                                        checkerError(`abstract method '${mName}' can only be declared in an abstract class`, nGetLine(cmId), nGetCol(cmId))
-                                    }
-                                    // R5: private abstract is invalid
-                                    if (nGetI3(cmId) == 1) {
-                                        checkerError(`'private' modifier cannot be used with 'abstract' modifier`, nGetLine(cmId), nGetCol(cmId))
-                                    }
-                                    // R6: static abstract is invalid
-                                    if (nGetI2(cmId) == 1) {
-                                        checkerError(`'static' modifier cannot be used with 'abstract' modifier`, nGetLine(cmId), nGetCol(cmId))
-                                    }
-                                }
-                                const mRange = countParamRange(nGetList(cmId))
-                                const mComma = mRange.indexOf(",")
-                                registerMethodParams(className, mName, parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))
-                                // Store method param types + return type (non-generic classes)
-                                if (classTypeParams(s) == "") {
-                                    const mRetType = nGetS2(cmId)
-                                    if (mRetType != "") {
-                                        methodRetTypes.set(`${className}.${mName}`, mRetType)
-                                    }
-                                    const mPList = nGetList(cmId)
-                                    if (mPList != "") {
-                                        const mParts = mPList.split(",")
-                                        let mPIdx = 0
-                                        for (mp in mParts) {
-                                            const mpId = parseInt(mp)
-                                            if (mpId > 0 && nGetKind(mpId) == "PARAM") {
-                                                const mpType = nGetS2(mpId)
-                                                if (mpType != "") {
-                                                    methodParamTypes.set(`${className}.${mName}:${mPIdx}`, mpType)
-                                                }
-                                                mPIdx = mPIdx + 1
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                classMethodNames.set(className, clsMethodNameList)
-                // D071 R2: Non-abstract class must implement all inherited abstract methods
-                if (abstractClasses.has(className) == 0 && parentName != "") {
-                    checkAbstractImpl(className, parentName, clsMethodNameList, nGetLine(s), nGetCol(s))
-                }
+                registerCheckerClassDecl(s, "")
             }
             if (sk == "ENUM_DECL") {
                 defineVar(nGetS1(s), "enum", 0)
@@ -1222,6 +1257,8 @@ function check(rootId: int): int {
             }
         }
     }
+    // Pass 2 前注册 comptime 块内声明的 class,让 `new W(...)` 可被 checker 识别
+    preScanComptimeClasses(stmtList)
     // Pass 2: check all statements
     checkStmtList(stmtList)
     // Report collected errors

@@ -525,7 +525,7 @@ function genVarDecl(id: int) {
 
     // Track object class for method dispatch (redundant with varTypes but kept for compatibility)
     if (nGetKind(initId) == "NEW_EXPR") {
-        const newClassName = nGetS1(initId)
+        const newClassName = resolveCtTypeAlias(nGetS1(initId))
         if (genericClassNodes.has(newClassName) == 1) {
             setObjClass(name, inferGenericClassName(newClassName, nGetList(initId), nGetS2(initId)))
         } else {

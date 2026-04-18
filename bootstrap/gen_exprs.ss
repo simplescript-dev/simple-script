@@ -159,8 +159,9 @@ function genVal(id: int): int {
             if (interpClasses.has(ctIdName) == 1) {
                 return ctVal(interpNewType(ctIdName))
             }
-            if (comptimeTypeAliases.has(ctIdName) == 1) {
-                return ctVal(interpNewType(comptimeTypeAliases.getString(ctIdName)))
+            const ctAliased = resolveCtTypeAlias(ctIdName)
+            if (ctAliased != ctIdName) {
+                return ctVal(interpNewType(ctAliased))
             }
         }
         return constVal(genIdent(id))
@@ -1122,7 +1123,7 @@ function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamed
 }
 
 function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedArgs: Map): int {
-    const realName = comptimeTypeAliases.has(className) == 1 ? comptimeTypeAliases.getString(className) : className
+    const realName = resolveCtTypeAlias(className)
     if (interpClasses.has(realName) != 1) {
         println(`[comptime] unknown class: ${realName}`)
         return ctVal(interpNewNull())

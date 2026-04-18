@@ -750,6 +750,7 @@ function genClassDecl(id: int) {
         interpClasses.set(ctClassName, `${id}`)
         const ctParent = nGetS2(id)
         if (ctParent != "") { interpClassParents.set(ctClassName, ctParent) }
+        pendingCtClassIds = pendingCtClassIds.push(`${id}`)
         return
     }
     const name = specClassName != "" ? specClassName : classNodeName(id)
@@ -909,7 +910,7 @@ function genClassMethod(className: string, id: int) {
 }
 
 function genNewExpr(id: int): string {
-    const className = nGetS1(id)
+    let className = resolveCtTypeAlias(nGetS1(id))
     // Generic class: monomorphize at instantiation site
     if (genericClassNodes.has(className) == 1) {
         return genGenericNewExpr(id, className)
