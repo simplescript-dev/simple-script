@@ -305,6 +305,33 @@ function parseTypeParamList(ownerName: string, cMap: Map): string {
     return result
 }
 
+// D096: class body accessor —— `get NAME(): T { body }` / `set NAME(v: T) { body }`.
+// Caller already consumed the leading `get`/`set` identifier; this parses what follows.
+// Returns a FUNC_DECL node; caller stashes accessor kind (2=get / 3=set) into I2.
+function parseAccessorDecl(): int {
+    const startLine = curLineNum()
+    const startCol = curColNum()
+    const name = pExpectIdent()
+    pExpect("LPAREN")
+    const params = parseParams()
+    pExpect("RPAREN")
+    let retType = ""
+    if (curKind() == "COLON") {
+        pAdvance()
+        retType = parseTypeAnn()
+    }
+    const id = newNode("FUNC_DECL")
+    nSetLine(id, startLine)
+    nSetCol(id, startCol)
+    nSetS1(id, name)
+    nSetS2(id, retType)
+    nSetList(id, params)
+    skipNL()
+    const bodyId = parseBlock()
+    nSetI1(id, bodyId)
+    return id
+}
+
 function parseFuncDecl(): int {
     const startLine = curLineNum()
     const startCol = curColNum()
@@ -430,10 +457,22 @@ function parseClassDecl(): int {
                 }
                 if (isAbstract == 1) { parsingAbstractMethod = 1 }
                 const mAnnotations = parseAnnotationList()
-                const mId = parseFuncDecl()
+                // D096: accessor `get NAME(...)` / `set NAME(...)` — non-static only.
+                // Lookahead: IDENT "get"|"set" then IDENT then LPAREN disambiguates from a
+                // method literally named get/set (which would be followed directly by LPAREN).
+                let accessorKind = 0
+                if (isStatic == 0 && isAbstract == 0 && curKind() == "IDENT"
+                    && (curValue() == "get" || curValue() == "set")
+                    && kindAt(tPos + 1) == "IDENT"
+                    && kindAt(tPos + 2) == "LPAREN") {
+                    accessorKind = curValue() == "get" ? 2 : 3
+                    pAdvance()
+                }
+                const mId = accessorKind > 0 ? parseAccessorDecl() : parseFuncDecl()
                 attachAnnotations(mId, mAnnotations)
                 if (methodAccess > 0) { nSetI3(mId, methodAccess) }
                 if (isStatic == 1) { nSetI2(mId, 1) }
+                else if (accessorKind > 0) { nSetI2(mId, accessorKind) }
                 if (isAbstract == 1) { nSetI4(mId, 1) }
                 methods = listAppend(methods, mId)
             }
