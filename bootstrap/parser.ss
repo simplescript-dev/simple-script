@@ -470,7 +470,21 @@ function parseClassDecl(): int {
                 attachAnnotations(mId, mAnnotations)
                 if (methodAccess > 0) { nSetI3(mId, methodAccess) }
                 if (isStatic == 1) { nSetI2(mId, 1) }
-                else if (accessorKind > 0) { nSetI2(mId, accessorKind) }
+                else if (accessorKind > 0) {
+                    nSetI2(mId, accessorKind)
+                    // D096: getter must have 0 params, setter must have exactly 1.
+                    const accParams = nGetList(mId)
+                    const accParamCount = accParams == "" ? 0 : accParams.split(",").length()
+                    const accName = nGetS1(mId)
+                    if (accessorKind == 2 && accParamCount != 0) {
+                        println(`parse error at line ${nGetLine(mId)}: getter '${accName}' must have 0 parameters (found ${accParamCount})`)
+                        exit(1)
+                    }
+                    if (accessorKind == 3 && accParamCount != 1) {
+                        println(`parse error at line ${nGetLine(mId)}: setter '${accName}' must have exactly 1 parameter (found ${accParamCount})`)
+                        exit(1)
+                    }
+                }
                 if (isAbstract == 1) { nSetI4(mId, 1) }
                 methods = listAppend(methods, mId)
             }

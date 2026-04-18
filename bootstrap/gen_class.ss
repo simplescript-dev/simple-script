@@ -277,6 +277,14 @@ function registerClass(id: int) {
                     // Prefix disambiguates from same-name regular methods and from
                     // paired getter+setter (both have mName=field).
                     const mKind = nGetI2(mId)
+                    if (mKind == 2 || mKind == 3) {
+                        // D096: accessor cannot share a name with a declared field.
+                        if (classFieldTypes.has(`${name}.${mName}`) == 1) {
+                            const accKindName = mKind == 2 ? "getter" : "setter"
+                            println(`error: class '${name}' ${accKindName} '${mName}' conflicts with field of the same name`)
+                            exit(1)
+                        }
+                    }
                     if (mKind == 2) {
                         const getMangled = `${name}_get_${mName}`
                         classAccessorGetters.set(`${name}.${mName}`, getMangled)
@@ -1050,16 +1058,23 @@ function getAccessorRetType(className: string, member: string): string {
 }
 
 // D096: accessor getter dispatch. Returns reg from @ClassName_get_FIELD(ptr) call,
-// or "" when no accessor is registered (caller falls through to emitFieldLoad).
+// "" when no accessor is registered (caller falls through to emitFieldLoad),
+// or exits with a write-only-accessor error when only the setter exists.
 function tryEmitAccessorGet(className: string, objReg: string, member: string): string {
     const accKey = `${className}.${member}`
-    if (classAccessorGetters.has(accKey) == 0) { return "" }
-    const getMangled = classAccessorGetters.getString(accKey)
-    const retType = funcRetTypes.has(getMangled) == 1 ? funcRetTypes.getString(getMangled) : "int"
-    const llRet = ssTypeToLLVM(retType)
-    const resR = nextReg()
-    emitIR(`  ${resR} = call ${llRet} @${getMangled}(ptr ${objReg})`)
-    return resR
+    if (classAccessorGetters.has(accKey) == 1) {
+        const getMangled = classAccessorGetters.getString(accKey)
+        const retType = funcRetTypes.has(getMangled) == 1 ? funcRetTypes.getString(getMangled) : "int"
+        const llRet = ssTypeToLLVM(retType)
+        const resR = nextReg()
+        emitIR(`  ${resR} = call ${llRet} @${getMangled}(ptr ${objReg})`)
+        return resR
+    }
+    if (classAccessorSetters.has(accKey) == 1) {
+        println(`error: cannot read from write-only accessor '${className}.${member}'`)
+        exit(1)
+    }
+    return ""
 }
 
 // D096: MEMBER_ACCESS dispatch — accessor getter wins, else plain field load.

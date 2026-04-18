@@ -152,6 +152,11 @@ function genMemberAssign(id: int) {
         emitIR(`  call void @${setMangled}(ptr ${objReg}, ${ssTypeToLLVM(setParamType)} ${setArgR})`)
         return
     }
+    // D096: assigning to a getter-only accessor is a compile-time error.
+    if (classAccessorGetters.has(accSetKey) == 1) {
+        println(`error: cannot assign to read-only accessor '${objClass}.${fieldName}'`)
+        exit(1)
+    }
     const idx = getFieldIndex(objClass, fieldName)
     if (idx < 0) {
         println(`codegen error: class '${objClass}' has no field '${fieldName}'`)
