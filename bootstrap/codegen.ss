@@ -639,8 +639,25 @@ function interpCollectFields(className: string): string {
     return fields
 }
 
+function isKnownClass(name: string): int {
+    if (classFields.has(name) == 1) { return 1 }
+    if (interpClasses.has(name) == 1) { return 1 }
+    return 0
+}
+
 function interpCtFieldsArray(className: string): int {
-    return newTvArray("")
+    const fArr = interpNewArray("")
+    let fStr = ""
+    if (interpClasses.has(className) == 1) {
+        fStr = interpCollectFields(className)
+    } else if (classFields.has(className) == 1) {
+        fStr = classFields.getString(className)
+    }
+    if (fStr != "") {
+        const fParts = fStr.split(",")
+        for (fp in fParts) { interpArrayPush(fArr, interpNewString(fp)) }
+    }
+    return fArr
 }
 
 function interpFindMethod(className: string, methodName: string): int {

@@ -1,6 +1,6 @@
 # D096: Class Accessors (get/set) — 响应式底层原语
 
-**Status:** Phase 1 ✓ / Phase 2 ✓ / Phase 3 ✓(lib/reactive.ss + d096_reactive.ss PoC 通过)/ Phase 4 L1 ✓(comptime 块内 class 可在 runtime 实例化,双轨消除)/ Phase 4 L2+ 未启动
+**Status:** Phase 1 ✓ / Phase 2 ✓ / Phase 3 ✓(lib/reactive.ss + d096_reactive.ss PoC 通过)/ Phase 4 L1 ✓(comptime 块内 class 可在 runtime 实例化,双轨消除)/ Phase 4 L2α ✓(TypeValue 在 comptime 支持 .name/.fields/.fields(),顶层 user class 名可作 TypeValue 传递)/ Phase 4 L2β+ 未启动
 **Depends on:** D088 (Zig comptime 路线 — 字段反射), D095 (Annotation Handler API)
 **Date:** 2026-04-18
 **Last Updated:** 2026-04-18

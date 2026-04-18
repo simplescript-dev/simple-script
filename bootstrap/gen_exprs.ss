@@ -155,8 +155,8 @@ function genVal(id: int): int {
             if (ctInterpKey != "") {
                 return ctVal(parseInt(interpVars.getString(ctInterpKey)))
             }
-            // class 名 in comptime → TypeValue;外层 const T = comptime {...} 先查 alias
-            if (interpClasses.has(ctIdName) == 1) {
+            // class 名 in comptime → TypeValue(已注册的 user/interp class,或 const T = comptime{...} alias)
+            if (isKnownClass(ctIdName) == 1) {
                 return ctVal(interpNewType(ctIdName))
             }
             const ctAliased = resolveCtTypeAlias(ctIdName)
@@ -389,19 +389,16 @@ function genVal(id: int): int {
                 if (items == "") { return ctVal(interpNewInt(0)) }
                 return ctVal(interpNewInt(items.split(",").length()))
             }
-            if (member == "name" && interpType(objPayload) == "string") {
+            // string / TypeValue 都当作 class 句柄,支持 .name / .fields 属性式访问
+            const mpKind = interpType(objPayload)
+            if (member == "name" && (mpKind == "string" || mpKind == "type")) {
+                if (mpKind == "type") { return ctVal(interpNewString(interpAsStr(objPayload))) }
                 return obj
             }
-            if (member == "fields" && interpType(objPayload) == "string") {
+            if (member == "fields" && (mpKind == "string" || mpKind == "type")) {
                 const clsName = interpAsStr(objPayload)
-                if (classFields.has(clsName) == 1) {
-                    const fArr = interpNewArray("")
-                    const fStr = classFields.getString(clsName)
-                    if (fStr != "") {
-                        const fParts = fStr.split(",")
-                        for (fp in fParts) { interpArrayPush(fArr, interpNewString(fp)) }
-                    }
-                    return ctVal(fArr)
+                if (isKnownClass(clsName) == 1) {
+                    return ctVal(interpCtFieldsArray(clsName))
                 }
             }
         }
@@ -1168,6 +1165,13 @@ function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctAr
     const objType = interpType(objPayload)
     if (objType == "string" || objType == "array" || objType == "map") {
         return ctVal(ctBuiltinMethod(objPayload, methodName, ctArgVals))
+    }
+    // TypeValue: T.fields()/T.name — read off the underlying class name
+    if (objType == "type") {
+        const typeName = interpAsStr(objPayload)
+        if (methodName == "fields") { return ctVal(interpCtFieldsArray(typeName)) }
+        if (methodName == "name") { return ctVal(interpNewString(typeName)) }
+        return comptimeError(`method '${methodName}' not supported on type value`, id)
     }
     if (objType != "object") {
         println(`[comptime] cannot call method '${methodName}' on ${objType}`)
