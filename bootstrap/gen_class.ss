@@ -9,6 +9,8 @@ let classFieldAnnotationArgs = "" // "ClassName.field.AnnName" -> "arg0,arg1" CS
 let classAnnotations = ""     // "ClassName" -> "Ann1,Ann2" CSV of class-level annotation names (D096 L2θ — cls.annotations reflection)
 let classAnnotationArgs = ""  // "ClassName.AnnName" -> "arg0,arg1" CSV of string-lit arg values (D096 L2θ — a.args for class-level annotations)
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
+let classMethodAnnotations = ""    // "ClassName.method" -> "Ann1,Ann2" CSV (D096 L2κ — m.annotations reflection)
+let classMethodAnnotationArgs = "" // "ClassName.method.AnnName" -> "arg0,arg1" CSV (D096 L2κ — populated but unread; method-level a.args consumption pending)
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
 let classConstFields = "" // "ClassName.field" -> "1" (if field is const)
@@ -56,6 +58,8 @@ function initClassState() {
     classAnnotations = Map()
     classAnnotationArgs = Map()
     classMethods = Map()
+    classMethodAnnotations = Map()
+    classMethodAnnotationArgs = Map()
     objClasses = Map()
     classParents = Map()
     classConstFields = Map()
@@ -316,6 +320,11 @@ function registerClass(id: int) {
                     // D071: track abstract methods
                     if (nGetI4(mId) == 1) {
                         abstractMethodsCG.set(`${name}.${mName}`, "1")
+                    } else {
+                        // L2κ: non-abstract FUNC_DECL's I4 holds ANNOTATION_LIST id
+                        // (parser.ss:273 via attachAnnotations); abstract overwrites
+                        // I4 with 1, so abstract method annotations cannot be read here.
+                        extractAnnotationsReflection(nGetI4(mId), classMethodAnnotations, classMethodAnnotationArgs, `${name}.${mName}`)
                     }
                     let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
@@ -331,6 +340,9 @@ function registerClass(id: int) {
                             exit(1)
                         }
                     }
+                    // L2κ: accessor get/set share the same mName, so their
+                    // annotations collapse onto one classMethodAnnotations key.
+                    // Per-kind annotation reflection for accessors remains future work.
                     if (mKind == 2) {
                         const getMangled = `${name}_get_${mName}`
                         classAccessorGetters.set(`${name}.${mName}`, getMangled)

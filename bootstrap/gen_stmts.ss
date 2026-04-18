@@ -744,12 +744,16 @@ function genForIn(id: int) {
     }
     // L2ι: cls.methods unroll. No classContext passed — __class sidecar is
     // owned by L2ζ field-level .annotations; reusing it here would misroute.
+    // L2κ: __methodCls sidecar binds method's owning class for inner m.annotations.
     if (nGetKind(iterableId) == "MEMBER_ACCESS" && nGetS1(iterableId) == "methods") {
         const mmObj = nGetI1(iterableId)
         if (nGetKind(mmObj) == "STRING_LIT") {
             const mmCls = nGetS1(mmObj)
             if (classMethods.has(mmCls) == 1) {
+                const mmItemName = nGetS1(id)
+                comptimeConsts.set(`${mmItemName}.__methodCls`, mmCls)
                 genForInUnrolled(id, classMethods.getString(mmCls))
+                comptimeConsts.delete(`${mmItemName}.__methodCls`)
                 return
             }
         }
@@ -777,6 +781,22 @@ function genForIn(id: int) {
         }
         if (nGetKind(annObj) == "IDENT" && comptimeConsts.has(nGetS1(annObj)) == 1) {
             const annFieldIdent = nGetS1(annObj)
+            // L2κ: m.annotations when m is bound inside cls.methods unroll.
+            // __methodCls sidecar (set by .methods branch) signals method-level lookup.
+            const mAnnSidecarKey = `${annFieldIdent}.__methodCls`
+            if (comptimeConsts.has(mAnnSidecarKey) == 1) {
+                const mAnnCls = comptimeConsts.getString(mAnnSidecarKey)
+                const mAnnName = comptimeConsts.getString(annFieldIdent)
+                let mAnnCsv = ""
+                const mAnnKey = `${mAnnCls}.${mAnnName}`
+                if (classMethodAnnotations.has(mAnnKey) == 1) {
+                    mAnnCsv = classMethodAnnotations.getString(mAnnKey)
+                }
+                // Only a.annotations is resolved here; a.args for method-level
+                // annotations needs additional sidecar wiring not yet in place.
+                genForInUnrolled(id, mAnnCsv)
+                return
+            }
             const annClsKey = `${annFieldIdent}.__class`
             if (comptimeConsts.has(annClsKey) == 1) {
                 const annCls = comptimeConsts.getString(annClsKey)
