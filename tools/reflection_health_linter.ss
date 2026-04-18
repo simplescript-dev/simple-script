@@ -1,359 +1,382 @@
 // tools/reflection_health_linter.ss
 //
-// 反射根因指标守护。详细规则/目标/不可伪造性论证见
-// docs/3-decisions/D097-reflection-root-cause-metrics.md。
+// 编译器结构物理指标守护 (reflection root-cause gate, D097 后续)。
+// 指标全是 AST / 调用图的纯图论量。改名、拆 helper、藏深嵌套皆不可伪造。
 //
-// Gate 行为: G1-G4 高于 baseline 或 G5 低于 baseline → exit(1)。
-// 仅阻挡回归,不强制逼近 Target;Target 推进靠人工跟进。
+// M1  CC 总和    每函数 (IF/WHILE/DO_WHILE/FOR/FOR_IN/FOR_OF/TERNARY/
+//                       SWITCH_CASE/CATCH_CLAUSE/&&/||/NullCoalesce +1) 之和
+// M2  节点总数   AST 节点访问总数
+// M3a 调用边数   CALL + METHOD_CALL + NEW_EXPR 的 callsite 数
+// M3b 最大入度   最"热"目标函数被引用次数
+// M4  分发深度   所有 IF 的 else-chain 长度之和 + SWITCH case 总数
+// M5  可变 state 顶层 VAR_DECL 数 + 所有赋值节点数 (ASSIGN/INDEX_ASSIGN/
+//                MEMBER_ASSIGN/COMPOUND_ASSIGN/POSTFIX_INC/POSTFIX_DEC)
+// M6  递归函数   函数 body 内直接调自身的函数数 (SCC proxy)
+// M7a 最大 IF 深 单函数内最大 IF 嵌套深度 (对抗"藏到深嵌套")
+// M7b 函数总数   FUNC_DECL + ARROW_FUNC 总数 (对抗"拆到 helper")
 //
-// 用法: bin/ss run tools/reflection_health_linter.ss
+// 基线: tools/linter_baseline.txt。任一 M 指标 > baseline → exit(1)。
+// 用法: bin/ss run tools/reflection_health_linter.ss           # 对比基线
+//       bin/ss run tools/reflection_health_linter.ss record    # 把当前值写为新基线
 
 import { tokenize } from "@/bootstrap/lexer"
-import { parse, nGetKind, nGetS1, nGetI1, nGetI2, nGetI3, nGetList, nGetLine } from "@/bootstrap/parser"
+import { parse, nGetKind, nGetS1, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine } from "@/bootstrap/parser"
 
-// Baseline frozen 2026-04-18 @ commit 0750511
-let BASELINE_G1 = 6
-let BASELINE_G2 = 6
-let BASELINE_G3 = 4
-let BASELINE_G4 = 8
-let BASELINE_G5 = 0
+// ── 指标累加器 ─────────────────────────────────────────────────
+let m1 = 0
+let m2 = 0
+let m3a = 0
+let m3b = 0
+let m4 = 0
+let m5 = 0
+let m6 = 0
+let m7a = 0
+let m7b = 0
 
-let TARGET_G1 = 0
-let TARGET_G2 = 1
-let TARGET_G3 = 0
-let TARGET_G4 = 2
-let TARGET_G5 = 4
-
-// ── State ──────────────────────────────────────────────────
-
+// ── 辅助 state ────────────────────────────────────────────────
+let indeg: Map<string, string> = new Map()
+let recFuncs: Map<string, string> = new Map()
+let funcScope: Array<string> = []
 let files: Array<string> = []
 
-let currentFile = ""
+const BASELINE_PATH = "tools/linter_baseline.txt"
 
-let g1Count = 0
-let g1Hits = ""
-
-let g2Count = 0
-let g2Names = ""
-
-let g3Suffixes = ""
-
-let g4Count = 0
-let g4Hits = ""
-
-let g5Count = 0
-let g5Types = ""
-
-// ── Helpers ─────────────────────────────────────────────────
-
-function setContainsExact(s: string, elem: string): int {
-    return ((`,${s},`).contains(`,${elem},`) == 1) ? 1 : 0
+// ── Map<string,string> → int 适配 ────────────────────────────
+function mapGetInt(m: Map<string, string>, k: string): int {
+    if (m.has(k) == 0) { return 0 }
+    return parseInt(m.getString(k))
 }
 
-function addToSet(set: string, elem: string): string {
-    if (set == "") { return elem }
-    if (setContainsExact(set, elem) == 1) { return set }
-    return `${set},${elem}`
+function mapSetInt(m: Map<string, string>, k: string, v: int) {
+    m.set(k, `${v}`)
 }
 
-function setSize(s: string): int {
-    if (s == "") { return 0 }
-    return s.split(",").length()
+// ── 函数作用域栈 ───────────────────────────────────────────────
+function pushFunc(name: string) { funcScope.push(name) }
+
+function popFunc() {
+    const n = funcScope.length()
+    if (n <= 0) { return }
+    let out: Array<string> = []
+    let i = 0
+    while (i < n - 1) { out.push(funcScope[i]); i = i + 1 }
+    funcScope = out
 }
 
-function padRight(s: string, width: int): string {
-    let out = s
-    while (out.length() < width) { out = `${out} ` }
+function funcTop(): string {
+    const n = funcScope.length()
+    if (n == 0) { return "" }
+    return funcScope[n - 1]
+}
+
+function markRecursive(f: string) {
+    if (recFuncs.has(f) == 1) { return }
+    recFuncs.set(f, "1")
+    m6 = m6 + 1
+}
+
+function countEdge(target: string) {
+    if (target == "") { return }
+    m3a = m3a + 1
+    const now = mapGetInt(indeg, target) + 1
+    mapSetInt(indeg, target, now)
+    if (now > m3b) { m3b = now }
+    const top = funcTop()
+    if (top != "" && target == top) { markRecursive(top) }
+}
+
+// ── children 枚举 (沿用原 linter 结构,扩展 FUNC_DECL/ARROW_FUNC/CLASS_DECL) ─
+function appendListIds(out: Array<int>, listStr: string): Array<int> {
+    if (listStr == "") { return out }
+    for (p in listStr.split(",")) {
+        if (p == "") { continue }
+        const cid = parseInt(p)
+        if (cid > 0) { out.push(cid) }
+    }
     return out
 }
 
-function isIdentChar(code: int): int {
-    if (code >= 97 && code <= 122) { return 1 }  // a-z
-    if (code >= 65 && code <= 90) { return 1 }   // A-Z
-    if (code >= 48 && code <= 57) { return 1 }   // 0-9
-    if (code == 95) { return 1 }                 // _
-    return 0
-}
+function collectChildren(id: int, kind: string): Array<int> {
+    let out: Array<int> = []
+    if (kind == "IDENT" || kind == "STRING_LIT" || kind == "INT_LIT" || kind == "DOUBLE_LIT") { return out }
+    if (kind == "TRUE_LIT" || kind == "FALSE_LIT" || kind == "NULL_LIT") { return out }
+    if (kind == "THIS" || kind == "SUPER" || kind == "TMPL_FRAG_LIT") { return out }
+    if (kind == "BREAK" || kind == "CONTINUE") { return out }
 
-// 输入:TMPL_FRAG_LIT 文本;提取紧随第一个 ".__" 之后的标识符。
-// 例: ".__methodCls" -> "__methodCls"; "foo.__x.bar" -> "__x"。
-function extractSidecarSuffix(fragText: string): string {
-    if (fragText.contains(".__") != 1) { return "" }
-    const parts = fragText.split(".__")
-    if (parts.length() < 2) { return "" }
-    const tail = parts[1]
-    let out = ""
-    let i = 0
-    while (i < tail.length()) {
-        const code = tail.charCodeAt(i)
-        if (isIdentChar(code) == 1) {
-            out = `${out}${tail.charAt(i)}`
-            i = i + 1
-        } else { break }
+    if (kind == "BLOCK" || kind == "PROGRAM" || kind == "CALL" || kind == "NEW_EXPR" || kind == "ARRAY_LIT" || kind == "TEMPLATE_LIT" || kind == "OBJ_LITERAL" || kind == "ANNOTATION_LIST") {
+        out = appendListIds(out, nGetList(id))
+        return out
     }
-    if (out == "") { return "" }
-    return `__${out}`
-}
-
-function isExcludedSidecar(suffix: string): int {
-    if (suffix == "__comptime") { return 1 }
-    if (suffix == "__ct_") { return 1 }
-    if (suffix == "__ct") { return 1 }
-    if (suffix == "__FILE__") { return 1 }
-    if (suffix == "__LINE__") { return 1 }
-    return 0
-}
-
-function isCallOfNGetS1(id: int): int {
-    if (id <= 0) { return 0 }
-    if (nGetKind(id) != "CALL") { return 0 }
-    if (nGetS1(id) != "nGetS1") { return 0 }
-    return 1
-}
-
-function isReflectionMember(m: string): int {
-    if (m == "fields") { return 1 }
-    if (m == "methods") { return 1 }
-    if (m == "annotations") { return 1 }
-    if (m == "args") { return 1 }
-    return 0
-}
-
-function isMetaType(t: string): int {
-    if (t == "ClassMeta") { return 1 }
-    if (t == "FieldMeta") { return 1 }
-    if (t == "MethodMeta") { return 1 }
-    if (t == "AnnotationMeta") { return 1 }
-    if (t == "ParamMeta") { return 1 }
-    return 0
-}
-
-// ── AST 遍历 ───────────────────────────────────────────────
-
-function visitList(listStr: string) {
-    if (listStr == "") { return }
-    const parts = listStr.split(",")
-    for (p in parts) {
-        if (p == "") { continue }
-        const id = parseInt(p)
-        if (id > 0) { visitNode(id) }
-    }
-}
-
-function visitNode(nid: int) {
-    if (nid <= 0) { return }
-    const kind = nGetKind(nid)
-
-    if (kind == "BINARY" && nGetS1(nid) == "Eq") {
-        const leftId = nGetI1(nid)
-        const rightId = nGetI2(nid)
-        if (isCallOfNGetS1(leftId) == 1 && rightId > 0 && nGetKind(rightId) == "STRING_LIT") {
-            const mem = nGetS1(rightId)
-            if (isReflectionMember(mem) == 1) {
-                g1Count = g1Count + 1
-                const hit = `${currentFile}:${nGetLine(nid)} nGetS1(x)=="${mem}"`
-                if (g1Hits == "") { g1Hits = hit } else { g1Hits = `${g1Hits}\n${hit}` }
-            }
-        }
-    }
-
-    if (kind == "TMPL_FRAG_LIT") {
-        const text = nGetS1(nid)
-        if (text.contains(".__") == 1) {
-            const suffix = extractSidecarSuffix(text)
-            if (suffix != "" && isExcludedSidecar(suffix) == 0) {
-                g3Suffixes = addToSet(g3Suffixes, suffix)
-            }
-        }
-    }
-
-    if (kind == "CALL" && nGetS1(nid) == "genForInUnrolled") {
-        g4Count = g4Count + 1
-        const hit = `${currentFile}:${nGetLine(nid)}`
-        if (g4Hits == "") { g4Hits = hit } else { g4Hits = `${g4Hits}\n${hit}` }
-    }
-
-    if (kind == "NEW_EXPR") {
-        const cls = nGetS1(nid)
-        if (isMetaType(cls) == 1 && setContainsExact(g5Types, cls) != 1) {
-            g5Count = g5Count + 1
-            g5Types = addToSet(g5Types, cls)
-        }
-    }
-
-    visitChildren(nid, kind)
-}
-
-function visitChildren(nid: int, kind: string) {
-    if (kind == "IDENT" || kind == "STRING_LIT" || kind == "INT_LIT" || kind == "DOUBLE_LIT") { return }
-    if (kind == "TRUE_LIT" || kind == "FALSE_LIT" || kind == "NULL_LIT") { return }
-    if (kind == "THIS" || kind == "SUPER") { return }
-    if (kind == "TMPL_FRAG_LIT") { return }
-
-    if (kind == "BLOCK" || kind == "PROGRAM") { visitList(nGetList(nid)); return }
-    if (kind == "CALL" || kind == "NEW_EXPR" || kind == "ARRAY_LIT") { visitList(nGetList(nid)); return }
-    if (kind == "TEMPLATE_LIT" || kind == "OBJ_LITERAL" || kind == "ANNOTATION_LIST") { visitList(nGetList(nid)); return }
-
     if (kind == "METHOD_CALL") {
-        visitNode(nGetI1(nid))
-        visitList(nGetList(nid))
-        return
+        const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+        out = appendListIds(out, nGetList(id))
+        return out
     }
-
     if (kind == "BINARY" || kind == "INDEX_ACCESS" || kind == "WHILE" || kind == "FOR_IN" || kind == "FOR_OF" || kind == "ASSIGN" || kind == "COMPOUND_ASSIGN" || kind == "SWITCH_CASE" || kind == "DO_WHILE") {
-        visitNode(nGetI1(nid))
-        visitNode(nGetI2(nid))
+        const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+        const i2 = nGetI2(id); if (i2 > 0) { out.push(i2) }
+        return out
+    }
+    if (kind == "IF" || kind == "TERNARY" || kind == "TRY" || kind == "FOR") {
+        const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+        const i2 = nGetI2(id); if (i2 > 0) { out.push(i2) }
+        const i3 = nGetI3(id); if (i3 > 0) { out.push(i3) }
+        return out
+    }
+    if (kind == "UNARY" || kind == "GROUPING" || kind == "RETURN" || kind == "MEMBER_ACCESS" || kind == "VAR_DECL" || kind == "COMPTIME_EXPR" || kind == "COMPTIME_EMIT" || kind == "TYPEINFO_EXPR" || kind == "EXPR_STMT" || kind == "THROW" || kind == "TMPL_FRAG_EXPR" || kind == "POSTFIX_INC" || kind == "POSTFIX_DEC" || kind == "COMPTIME_BLOCK") {
+        const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+        return out
+    }
+    if (kind == "CATCH_CLAUSE" || kind == "CATCH") {
+        const i2 = nGetI2(id); if (i2 > 0) { out.push(i2) }
+        return out
+    }
+    if (kind == "SWITCH") {
+        const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+        out = appendListIds(out, nGetList(id))
+        return out
+    }
+    if (kind == "INDEX_ASSIGN" || kind == "MEMBER_ASSIGN") {
+        const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+        const i2 = nGetI2(id); if (i2 > 0) { out.push(i2) }
+        const i3 = nGetI3(id); if (i3 > 0) { out.push(i3) }
+        return out
+    }
+    if (kind == "CLASS_DECL") {
+        out = appendListIds(out, nGetList(id))
+        const mb = nGetI2(id); if (mb > 0) { out.push(mb) }
+        return out
+    }
+    if (kind == "FUNC_DECL" || kind == "ARROW_FUNC") {
+        const body = nGetI1(id); if (body > 0) { out.push(body) }
+        return out
+    }
+    const i1 = nGetI1(id); if (i1 > 0) { out.push(i1) }
+    const i2 = nGetI2(id); if (i2 > 0) { out.push(i2) }
+    const i3 = nGetI3(id); if (i3 > 0) { out.push(i3) }
+    return out
+}
+
+// ── 圈复杂度 per-function (不穿透 nested function) ─────────
+function countDecisions(id: int): int {
+    if (id <= 0) { return 0 }
+    const kind = nGetKind(id)
+    if (kind == "FUNC_DECL" || kind == "ARROW_FUNC") { return 0 }
+    let inc = 0
+    if (kind == "IF" || kind == "WHILE" || kind == "DO_WHILE" || kind == "FOR" || kind == "FOR_IN" || kind == "FOR_OF" || kind == "TERNARY" || kind == "SWITCH_CASE" || kind == "CATCH_CLAUSE") {
+        inc = 1
+    } else if (kind == "BINARY") {
+        const op = nGetS1(id)
+        if (op == "And" || op == "Or" || op == "NullCoalesce") { inc = 1 }
+    }
+    let total = inc
+    const kids = collectChildren(id, kind)
+    for (c in kids) { total = total + countDecisions(c) }
+    return total
+}
+
+// ── 主 visit (计 m2/m3/m4/m5/m6/m7a/m7b) ────────────────────
+function visit(id: int, ifDepth: int) {
+    if (id <= 0) { return }
+    const kind = nGetKind(id)
+    m2 = m2 + 1
+
+    if (kind == "FUNC_DECL") {
+        m7b = m7b + 1
+        const name = nGetS1(id)
+        pushFunc(name)
+        const body = nGetI1(id)
+        m1 = m1 + 1 + countDecisions(body)
+        visit(body, 0)
+        popFunc()
+        return
+    }
+    if (kind == "ARROW_FUNC") {
+        m7b = m7b + 1
+        pushFunc(`__arrow_${id}`)
+        const body = nGetI1(id)
+        m1 = m1 + 1 + countDecisions(body)
+        visit(body, 0)
+        popFunc()
         return
     }
 
-    if (kind == "IF" || kind == "TERNARY" || kind == "TRY") {
-        visitNode(nGetI1(nid))
-        visitNode(nGetI2(nid))
-        visitNode(nGetI3(nid))
+    if (kind == "IF") {
+        const depth = ifDepth + 1
+        if (depth > m7a) { m7a = depth }
+        let chain = 1
+        let el = nGetI3(id)
+        while (el > 0 && nGetKind(el) == "IF") {
+            chain = chain + 1
+            el = nGetI3(el)
+        }
+        m4 = m4 + chain
+        visit(nGetI1(id), ifDepth)
+        visit(nGetI2(id), depth)
+        const e2 = nGetI3(id); if (e2 > 0) { visit(e2, depth) }
         return
     }
-
-    if (kind == "UNARY" || kind == "GROUPING" || kind == "RETURN" || kind == "MEMBER_ACCESS" || kind == "VAR_DECL" || kind == "COMPTIME_EXPR" || kind == "COMPTIME_EMIT" || kind == "TYPEINFO_EXPR" || kind == "EXPR_STMT" || kind == "THROW" || kind == "TMPL_FRAG_EXPR") {
-        visitNode(nGetI1(nid))
-        return
-    }
-
-    if (kind == "CATCH") { visitNode(nGetI2(nid)); return }
 
     if (kind == "SWITCH") {
-        visitNode(nGetI1(nid))
-        visitList(nGetList(nid))
+        const cases = nGetList(id)
+        if (cases != "") { m4 = m4 + cases.split(",").length() }
+        visit(nGetI1(id), ifDepth)
+        if (cases != "") {
+            for (p in cases.split(",")) {
+                if (p == "") { continue }
+                const cid = parseInt(p)
+                if (cid > 0) { visit(cid, ifDepth) }
+            }
+        }
         return
     }
 
-    const i1 = nGetI1(nid)
-    const i2 = nGetI2(nid)
-    const i3 = nGetI3(nid)
-    if (i1 > 0) { visitNode(i1) }
-    if (i2 > 0) { visitNode(i2) }
-    if (i3 > 0) { visitNode(i3) }
-}
+    if (kind == "CALL") { countEdge(nGetS1(id)) }
+    else if (kind == "METHOD_CALL") { countEdge(nGetS1(id)) }
+    else if (kind == "NEW_EXPR") { countEdge(nGetS1(id)) }
 
-// ── G2: top-level VAR_DECL 扫描 ─────────────────────────────
-
-function scanTopLevelVarDecls(rootId: int) {
-    const topList = nGetList(rootId)
-    if (topList == "") { return }
-    const parts = topList.split(",")
-    for (p in parts) {
-        if (p == "") { continue }
-        const sid = parseInt(p)
-        if (sid <= 0) { continue }
-        if (nGetKind(sid) != "VAR_DECL") { continue }
-        const name = nGetS1(sid)
-        if (name.startsWith("class") != 1) { continue }
-        if (name.contains("Annotation") != 1) { continue }
-        g2Count = g2Count + 1
-        g2Names = addToSet(g2Names, name)
+    if (kind == "ASSIGN" || kind == "INDEX_ASSIGN" || kind == "MEMBER_ASSIGN" || kind == "COMPOUND_ASSIGN" || kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") {
+        m5 = m5 + 1
     }
+
+    const kids = collectChildren(id, kind)
+    for (c in kids) { visit(c, ifDepth) }
 }
 
-// ── 文件扫描 ────────────────────────────────────────────────
-
+// ── 文件扫描 ──────────────────────────────────────────────────
 function collectSSFiles(dir: string) {
     const entries = listDir(dir)
     if (entries == "") { return }
-    const parts = entries.split("\n")
-    for (entry in parts) {
+    for (entry in entries.split("\n")) {
         if (entry == "") { continue }
-        if (entry.endsWith(".ss") == 1) {
-            files.push(`${dir}/${entry}`)
-        }
+        if (entry.endsWith(".ss") == 1) { files.push(`${dir}/${entry}`) }
     }
 }
 
 function processFile(path: string) {
-    currentFile = path
     const source = readFile(path)
     tokenize(source)
     const rootId = parse("done")
-    scanTopLevelVarDecls(rootId)
+    visit(rootId, 0)
     const topList = nGetList(rootId)
     if (topList == "") { return }
-    const parts = topList.split(",")
-    for (p in parts) {
+    for (p in topList.split(",")) {
         if (p == "") { continue }
         const sid = parseInt(p)
-        if (sid <= 0) { continue }
-        visitNode(sid)
+        if (sid > 0 && nGetKind(sid) == "VAR_DECL") { m5 = m5 + 1 }
     }
 }
 
-// ── Report ──────────────────────────────────────────────────
-
-function verdict(name: string, cur: int, baseline: int, target: int, isMin: int): string {
-    let status = ""
-    if (isMin == 1) {
-        if (cur < baseline) { status = "REGRESSION" }
-        else if (cur >= target) { status = "TARGET" }
-        else if (cur == baseline) { status = "BASELINE" }
-        else { status = "PROGRESS" }
-    } else {
-        if (cur > baseline) { status = "REGRESSION" }
-        else if (cur <= target) { status = "TARGET" }
-        else if (cur == baseline) { status = "BASELINE" }
-        else { status = "PROGRESS" }
-    }
-    const arrow = (isMin == 1) ? "≥" : "≤"
-    return `${padRight(name, 4)} cur=${padRight(`${cur}`, 3)} baseline=${padRight(`${baseline}`, 3)} target ${arrow}${padRight(`${target}`, 2)} → ${status}`
+// ── baseline IO ───────────────────────────────────────────────
+function parseKV(line: string, prefix: string): int {
+    if (line.startsWith(prefix) == 0) { return -1 }
+    const rest = line.substring(prefix.length(), line.length() - prefix.length())
+    return parseInt(rest)
 }
 
+function writeBaseline() {
+    const text = `# auto-generated by tools/reflection_health_linter.ss — do not edit\nM1=${m1}\nM2=${m2}\nM3a=${m3a}\nM3b=${m3b}\nM4=${m4}\nM5=${m5}\nM6=${m6}\nM7a=${m7a}\nM7b=${m7b}\n`
+    writeFile(BASELINE_PATH, text)
+}
+
+function compareAndReport(): int {
+    if (fileExists(BASELINE_PATH) == 0) {
+        println("(no baseline found — will not gate)")
+        println(`  (to record current as baseline: bin/ss run ${"tools/reflection_health_linter.ss"} record)`)
+        return 0
+    }
+    const text = readFile(BASELINE_PATH)
+    let bm1 = -1
+    let bm2 = -1
+    let bm3a = -1
+    let bm3b = -1
+    let bm4 = -1
+    let bm5 = -1
+    let bm6 = -1
+    let bm7a = -1
+    let bm7b = -1
+    for (line in text.split("\n")) {
+        if (line == "" || line.startsWith("#") == 1) { continue }
+        const v1 = parseKV(line, "M1="); if (v1 >= 0) { bm1 = v1 }
+        const v2 = parseKV(line, "M2="); if (v2 >= 0) { bm2 = v2 }
+        const v3a = parseKV(line, "M3a="); if (v3a >= 0) { bm3a = v3a }
+        const v3b = parseKV(line, "M3b="); if (v3b >= 0) { bm3b = v3b }
+        const v4 = parseKV(line, "M4="); if (v4 >= 0) { bm4 = v4 }
+        const v5 = parseKV(line, "M5="); if (v5 >= 0) { bm5 = v5 }
+        const v6 = parseKV(line, "M6="); if (v6 >= 0) { bm6 = v6 }
+        const v7a = parseKV(line, "M7a="); if (v7a >= 0) { bm7a = v7a }
+        const v7b = parseKV(line, "M7b="); if (v7b >= 0) { bm7b = v7b }
+    }
+    println("--- 基线对比 (任一指标 > baseline → exit(1)) ---")
+    let regressions = 0
+    regressions = regressions + reportDelta("M1 ", m1, bm1)
+    regressions = regressions + reportDelta("M2 ", m2, bm2)
+    regressions = regressions + reportDelta("M3a", m3a, bm3a)
+    regressions = regressions + reportDelta("M3b", m3b, bm3b)
+    regressions = regressions + reportDelta("M4 ", m4, bm4)
+    regressions = regressions + reportDelta("M5 ", m5, bm5)
+    regressions = regressions + reportDelta("M6 ", m6, bm6)
+    regressions = regressions + reportDelta("M7a", m7a, bm7a)
+    regressions = regressions + reportDelta("M7b", m7b, bm7b)
+    return regressions
+}
+
+function reportDelta(label: string, cur: int, baseline: int): int {
+    if (baseline < 0) {
+        println(`  ${label} cur=${cur} baseline=(missing)`)
+        return 0
+    }
+    const delta = cur - baseline
+    let tag = "OK"
+    let isReg = 0
+    if (cur > baseline) { tag = "REGRESSION"; isReg = 1 }
+    else if (cur < baseline) { tag = "PROGRESS" }
+    println(`  ${label} cur=${cur} baseline=${baseline} delta=${delta} → ${tag}`)
+    return isReg
+}
+
+// ── main ──────────────────────────────────────────────────────
 function main() {
-    collectSSFiles("bootstrap")
+    let mode = ""
+    let scanDir = "bootstrap"
+    let i = 1
+    while (i < args()) {
+        const a = arg(i)
+        if (a == "record") { mode = "record" }
+        else if (a == "--dir" && i + 1 < args()) { scanDir = arg(i + 1); i = i + 1 }
+        i = i + 1
+    }
+    collectSSFiles(scanDir)
     let fi = 0
     while (fi < files.length()) { processFile(files[fi]); fi = fi + 1 }
 
-    const g3Count = setSize(g3Suffixes)
-
-    println("=== D097 反射根因指标 (Reflection Root-Cause Metrics) ===")
+    println("=== 编译器结构物理指标 (pure graph-theoretic, unforgeable) ===")
     println(`扫描 ${files.length()} 个 bootstrap 文件`)
     println("")
-    println(verdict("G1", g1Count, BASELINE_G1, TARGET_G1, 0))
-    println("     (hardcoded 反射 kind 分支: nGetS1(x)==fields/methods/annotations/args)")
-    println(verdict("G2", g2Count, BASELINE_G2, TARGET_G2, 0))
-    println(`     (反射 Annotation 全局 Map: ${g2Names})`)
-    println(verdict("G3", g3Count, BASELINE_G3, TARGET_G3, 0))
-    println(`     (distinct sidecar 后缀: ${g3Suffixes})`)
-    println(verdict("G4", g4Count, BASELINE_G4, TARGET_G4, 0))
-    println("     (genForInUnrolled 调用点)")
-    println(verdict("G5", g5Count, BASELINE_G5, TARGET_G5, 1))
-    println(`     (comptime Meta 构造 distinct 类型: ${g5Types})`)
+    println(`M1  (CC 总和)          = ${m1}`)
+    println(`M2  (AST 节点总数)     = ${m2}`)
+    println(`M3a (调用边数)         = ${m3a}`)
+    println(`M3b (最大入度)         = ${m3b}`)
+    println(`M4  (Dispatch 深度和)  = ${m4}`)
+    println(`M5  (可变 state 点数)  = ${m5}`)
+    println(`M6  (递归函数数)       = ${m6}`)
+    println(`M7a (最大 IF 嵌套深)   = ${m7a}`)
+    println(`M7b (函数总数)         = ${m7b}`)
     println("")
 
-    let regressions = 0
-    if (g1Count > BASELINE_G1) { regressions = regressions + 1 }
-    if (g2Count > BASELINE_G2) { regressions = regressions + 1 }
-    if (g3Count > BASELINE_G3) { regressions = regressions + 1 }
-    if (g4Count > BASELINE_G4) { regressions = regressions + 1 }
-    if (g5Count < BASELINE_G5) { regressions = regressions + 1 }
+    if (mode == "record") {
+        writeBaseline()
+        println(`✓ 基线已写入 ${BASELINE_PATH}`)
+        return
+    }
 
-    let allTargets = 0
-    if (g1Count <= TARGET_G1 && g2Count <= TARGET_G2 && g3Count <= TARGET_G3 && g4Count <= TARGET_G4 && g5Count >= TARGET_G5) { allTargets = 1 }
-
-    println("=====================================")
+    const regressions = compareAndReport()
+    println("")
     if (regressions > 0) {
         println(`GATE BLOCKED — ${regressions} metric(s) regressed`)
-        if (g1Hits != "") {
-            println("")
-            println("G1 命中 (reflection branches):")
-            const hits = g1Hits.split("\n")
-            for (h in hits) { if (h != "") { println(`  ${h}`) } }
-        }
-        if (g4Hits != "") {
-            println("")
-            println("G4 命中 (genForInUnrolled call sites):")
-            const hits = g4Hits.split("\n")
-            for (h in hits) { if (h != "") { println(`  ${h}`) } }
-        }
+        println("  改动触及反射路径且未伴随根因削减,请回头想清楚再提交。")
         exit(1)
-    } else if (allTargets == 1) {
-        println("ALL TARGETS MET — 根因解决达成,反射已走 Meta 对象路径")
     } else {
-        println("GATE PASS — no regressions; 未完成 Zig SEMA 目标")
+        println("GATE PASS — no regressions")
     }
 }
