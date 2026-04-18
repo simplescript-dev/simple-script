@@ -1119,16 +1119,23 @@ function registerCheckerClassDecl(s: int, overrideName: string) {
     }
 }
 
-// 扫顶层 VAR_DECL,若 init 是 COMPTIME_EXPR:
+// 扫 stmtList 里所有 VAR_DECL,若 init 是 COMPTIME_EXPR:
 //   - 把 body 里的 CLASS_DECL 按原名注册到 checker
 //   - 若 body 末尾 return IDENT 指向某 CLASS_DECL 名,把 VAR_DECL 名注册为该 class 的 alias(字段/方法签名共享)
+// 递归进 FUNC_DECL body,让 `function f() { const W = comptime {...} }` 也被识别。
 function preScanComptimeClasses(stmtList: string) {
     if (stmtList == "") { return }
     const parts = stmtList.split(",")
     for (p in parts) {
         const s = parseInt(p)
         if (s <= 0) { continue }
-        if (nGetKind(s) != "VAR_DECL") { continue }
+        const sk = nGetKind(s)
+        if (sk == "FUNC_DECL") {
+            const fbId = nGetI1(s)
+            if (fbId > 0) { preScanComptimeClasses(nGetList(fbId)) }
+            continue
+        }
+        if (sk != "VAR_DECL") { continue }
         const initId = nGetI1(s)
         if (initId <= 0 || nGetKind(initId) != "COMPTIME_EXPR") { continue }
         const bodyId = nGetI1(initId)

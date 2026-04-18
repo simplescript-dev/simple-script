@@ -750,6 +750,8 @@ function genClassDecl(id: int) {
         interpClasses.set(ctClassName, `${id}`)
         const ctParent = nGetS2(id)
         if (ctParent != "") { interpClassParents.set(ctClassName, ctParent) }
+        // 预扫描可能已注册元数据;若已注册则跳过二次 push,避免 flushPendingCtClasses 重复 emit IR
+        if (classFields.has(ctClassName) == 1) { return }
         pendingCtClassIds = pendingCtClassIds.push(`${id}`)
         return
     }

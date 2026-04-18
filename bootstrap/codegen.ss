@@ -940,6 +940,69 @@ function flushComptimeIR() {
     if (fir != "") { emitIR(fir); interpClearComptimeIR() }
 }
 
+// 幂等注册一条 class 的完整元数据(由 flush 与预扫描共享;顺序同原 flush)。
+function fullyRegisterCtClass(id: int) {
+    registerClass(id)
+    collectClassAnnotations(id)
+    resolveInheritanceForClass(nGetS1(id))
+    assignDtorTagForClass(nGetS1(id))
+}
+
+// 预扫描 `const X = comptime { class Y ...; return Y }` 模式(含递归函数体),把 CLASS_DECL
+// 元数据注册 + push 提前到模块 codegen 开头,让 struct/ctor IR 必先于任何函数体发射。
+// 不执行 comptime 块(依 AST 静态结构),避免 reactive<T> 这类需 T 绑定的场景过早跑崩。
+// inheritance resolution 与 dtor tag 延后到 flush:预扫时父类可能还未入表,提前 resolve
+// 会把 resolvedInheritance memo 写成 no-op,后面真正的父类到位也不会再 resolve。
+function preScanCodegenCtClassesInStmts(stmtList: string) {
+    if (stmtList == "") { return }
+    const parts = stmtList.split(",")
+    for (p in parts) {
+        const s = parseInt(p)
+        if (s <= 0) { continue }
+        const sk = nGetKind(s)
+        if (sk == "FUNC_DECL") {
+            const fbId = nGetI1(s)
+            if (fbId > 0) { preScanCodegenCtClassesInStmts(nGetList(fbId)) }
+            continue
+        }
+        if (sk != "VAR_DECL") { continue }
+        const initId = nGetI1(s)
+        if (initId <= 0 || nGetKind(initId) != "COMPTIME_EXPR") { continue }
+        const bodyId = nGetI1(initId)
+        if (bodyId <= 0) { continue }
+        const bList = nGetList(bodyId)
+        if (bList == "") { continue }
+        const bParts = bList.split(",")
+        let returnName = ""
+        for (bp in bParts) {
+            const bs = parseInt(bp)
+            if (bs <= 0) { continue }
+            if (nGetKind(bs) == "CLASS_DECL") {
+                // 带类型参数的 comptime class 延迟到实参绑定时再走 specialization 路径
+                if (classTypeParams(bs) != "") { continue }
+                const csName = nGetS1(bs)
+                if (classFields.has(csName) == 0) {
+                    registerClass(bs)
+                    collectClassAnnotations(bs)
+                    pendingCtClassIds = pendingCtClassIds.push(`${bs}`)
+                }
+                interpClasses.set(csName, `${bs}`)
+                const csParent = nGetS2(bs)
+                if (csParent != "") { interpClassParents.set(csName, csParent) }
+            }
+            if (nGetKind(bs) == "RETURN") {
+                const retExpr = nGetI1(bs)
+                if (retExpr > 0 && nGetKind(retExpr) == "IDENT") {
+                    returnName = nGetS1(retExpr)
+                }
+            }
+        }
+        if (returnName != "") {
+            comptimeTypeAliases.set(nGetS1(s), returnName)
+        }
+    }
+}
+
 // 消费 comptime 块里声明的 class:registration + IR emit 在 comptimeDepth=0 下跑,
 // genClassDecl 走 runtime 分支。genStmt 若产生新 pending(嵌套 comptime class),继续 drain。
 function flushPendingCtClasses() {
@@ -948,13 +1011,7 @@ function flushPendingCtClasses() {
         pendingCtClassIds = []
         for (idStr in snapshot) {
             const sid = parseInt(idStr)
-            if (sid <= 0) { continue }
-            if (nGetKind(sid) == "CLASS_DECL") {
-                registerClass(sid)
-                collectClassAnnotations(sid)
-                resolveInheritanceForClass(nGetS1(sid))
-                assignDtorTagForClass(nGetS1(sid))
-            }
+            if (sid > 0 && nGetKind(sid) == "CLASS_DECL") { fullyRegisterCtClass(sid) }
         }
         for (idStr in snapshot) {
             const sid = parseInt(idStr)
@@ -1037,6 +1094,10 @@ function emitGlobalsAndCode(rootId: int) {
     const sl = nGetList(rootId)
     if (sl == "") { return }
     const parts = sl.split(",")
+    // 预扫描 const X = comptime { class ... } 模式(含函数体内),提前注册元数据 +
+    // 登记 W→Wrap alias,让 emitGlobalVars / 函数体 genVarDecl 跑到 COMPTIME_EXPR 时
+    // genClassDecl 的 dedup 命中,不会重复 push,flushPendingCtClasses 只发射一次 IR。
+    preScanCodegenCtClassesInStmts(sl)
     emitGlobalVars(sl)
     emitIR("")
     // Comptime blocks in global inits may declare classes; register & emit them

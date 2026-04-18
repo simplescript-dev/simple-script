@@ -498,6 +498,14 @@ function genVarDecl(id: int) {
 
     // Infer type from init expression
     const initType = inferType(initId)
+
+    // COMPTIME_EXPR 返回 TypeValue:在函数体内 `const T = comptime { return Foo }`
+    // 不落 runtime 存储,只在 comptime 上下文 + setObjClass/resolveCtTypeAlias 里消费。
+    if (initId > 0 && nGetKind(initId) == "COMPTIME_EXPR" && initType == "type") {
+        const ceLit = comptimeExprLiteral.getString(`${initId}`)
+        comptimeTypeAliases.set(name, ceLit)
+        return
+    }
     const llType = ssTypeToLLVM(initType)
 
     // Global vars: just store (alloca already done by genGlobalVar)
