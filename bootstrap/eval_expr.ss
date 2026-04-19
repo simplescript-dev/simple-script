@@ -1,10 +1,10 @@
-// D099 §步骤 1-2:evalExpr 吸收 BINARY(非 And/Or)+ UNARY。D098 §决策 1 Phase A mv 编码:
+// D099 §步骤 1-3:evalExpr 吸收 BINARY(非 And/Or)+ UNARY + TERNARY。Phase A mv 编码:
 //   mv >= 0   → known,  val = mv        (ctVal tagged int,bit 30 set)
 //   mv <= -2  → runtime,regId = -mv - 1  (regTable 1-based)
 //   mv == -1  → error 哨兵
-// 调用方 shim:genValBinary 过滤 kind==BINARY + op!=And/Or;genValUnary 过滤 kind==UNARY。
-// UNARY 分支内联 evalExpr 体:步骤 2 不建 evalUnary 独立函数(M7b 余量 0),body 进 `if UNARY` 块
-// depth +1,N3 成本 ~80(baseline 余量 889 充裕),抵消 genValUnary body 删除 → 净 N3 小幅下降。
+// 调派:genValBinary/genValUnary 过滤对应 kind 后转 evalExpr;genVal L135 TERNARY inline 转
+// evalExpr。TERNARY body 落在 evalTernary 独立函数(D099 §坑 K/L:runtime phi AST 密度高
+// inline 会炸 N3,改删 genValTernary + 新建 evalTernary 维持 M7b)。
 
 function evalExpr(astId: int): int {
     if (nGetKind(astId) == "UNARY") {
@@ -48,6 +48,7 @@ function evalExpr(astId: int): int {
         emitIR(`  ${uR2} = zext i1 ${uR} to i32`)
         return 0 - constVal(uR2) - 1
     }
+    if (nGetKind(astId) == "TERNARY") { return evalTernary(astId) }
     const op = nGetS1(astId)
     if (comptimeDepth > 0) {
         if (op == "NullCoalesce") {
@@ -97,4 +98,35 @@ function evalExpr(astId: int): int {
         return ctVal(interpIntOp(op, interpAsInt(payload(lv)), interpAsInt(payload(rv))))
     }
     return 0 - constVal(genIntBinary(op, reg(lv), reg(rv))) - 1
+}
+
+function evalTernary(astId: int): int {
+    const cv = genVal(nGetI1(astId))
+    if (isCt(cv) == 1) {
+        const pv = genVal(interpTruthy(payload(cv)) == 1 ? nGetI2(astId) : nGetI3(astId))
+        return isCt(pv) == 1 ? pv : 0 - pv - 1
+    }
+    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+    const condStr = reg(cv)
+    const llType = ssTypeToLLVM(inferType(nGetI2(astId)))
+    const alloca = nextReg()
+    emitIR(`  ${alloca} = alloca ${llType}, align 8`)
+    const cmp = nextReg()
+    emitIR(`  ${cmp} = icmp ne i32 ${condStr}, 0`)
+    const thenL = nextLabel("tern.then")
+    const elseL = nextLabel("tern.else")
+    const mergeL = nextLabel("tern.merge")
+    emitIR(`  br i1 ${cmp}, label %${thenL}, label %${elseL}`)
+    emitIR(`${thenL}:`)
+    const thenV = genExpr(nGetI2(astId))
+    emitIR(`  store ${llType} ${thenV}, ptr ${alloca}, align 8`)
+    emitIR(`  br label %${mergeL}`)
+    emitIR(`${elseL}:`)
+    const elseV = genExpr(nGetI3(astId))
+    emitIR(`  store ${llType} ${elseV}, ptr ${alloca}, align 8`)
+    emitIR(`  br label %${mergeL}`)
+    emitIR(`${mergeL}:`)
+    const r = nextReg()
+    emitIR(`  ${r} = load ${llType}, ptr ${alloca}, align 8`)
+    return 0 - constVal(r) - 1
 }

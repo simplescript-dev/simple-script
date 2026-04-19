@@ -164,6 +164,14 @@ if (kind == "TERNARY") {
 
 **验证**:覆盖 comptime-folded + runtime phi 两条路径测试(若无现成测试,补 `tests/phase5/evalexpr_ternary.ss`)。
 
+**Execute 3 落地实录(2026-04-19)**:
+- `bootstrap/eval_expr.ss`:evalExpr 顶部 UNARY 之后加 1 行分派 `if (nGetKind(astId) == "TERNARY") { return evalTernary(astId) }`;文件末尾新增 `evalTernary(astId: int): int` 独立函数 27 行承载 TERNARY 全部 body(comptime-folded + comptime-block-null + runtime phi),mv 编码返回(runtime 路径 `0 - constVal(r) - 1`);comptime-folded 用 ternary compression `genVal(interpTruthy(...) == 1 ? nGetI2(astId) : nGetI3(astId))` 压缩原 if-else 两分支
+- `bootstrap/gen_exprs.ss` L135:`return genValTernary(id)` → `const mvT = evalExpr(id); return mvT >= 0 ? mvT : 0 - mvT - 1` inline 分派(genValTernary 已删,shim 路径不可行,直接 inline mv decode)
+- `bootstrap/gen_exprs.ss` L709-L740:`genValTernary` 整体删除(步骤 6 L225 清理项前置到步骤 3,触坑 L 的「同步删+新建」)
+- Linter GATE PASS:M1=5135(Δ-9)/ M2=76169(Δ-75)/ M3a=12138(Δ-18)/ M3b=1880(=)/ M4=3042(Δ-9)/ M5=1750(Δ-8)/ M6=32(=)/ M7a=27(=)/ M7b=679(=baseline)/ N1=34(=)/ N2=380845(Δ-375)/ N3=518477(Δ-2)/ N4=321(=)/ N5=0(=);所有指标 ≤ baseline
+- Bootstrap 固定点 PASS:stage2 == stage3;测试 214 passed / 3 failed(spring_web_params / d096_p4_l2_reactive / harness_bug 均 pre-existing,与 TERNARY 无关)
+- **§步骤 3 与 Plan 的偏差**(Execute 3 实录):① mv helpers 不建(坑 G 延续)② operand 走 genVal 非递归 evalExpr(坑 H 延续)③ 方案从「inline + 3 行 shim」→「删 genValTernary + 新建 evalTernary + genVal L135 inline mv decode」(§坑 L)④ 步骤 6 L225 `genValTernary` 清理项前置到步骤 3
+
 ### §步骤 4 — SHORT_CIRCUIT(BINARY And/Or)迁移
 
 **改 `evalExpr`**(在步骤 1 BINARY 分支内):
@@ -222,7 +230,7 @@ if (kind == "COMPTIME_EXPR") {
 **删除清单**(必须在本步骤或更早删,禁止遗留):
 - `function genValBinary(id)` L697(步骤 1 + 4 覆盖后)
 - `function genValUnary(id)` L759(步骤 2 覆盖后)
-- `function genValTernary(id)` L804(步骤 3 覆盖后)
+- ~~`function genValTernary(id)` L804~~ — 已删于步骤 3(Execute 3 落地,触坑 L「同步删+新建」)
 - `function genValShortCircuit(op, id)` L837(步骤 4 覆盖后)
 
 **Linter 指标预期(累计 步骤 0→6,含步骤 0 新增骨架成本)**:
@@ -300,7 +308,23 @@ if (kind == "COMPTIME_EXPR") {
 
 **解决**:改方案 X4 — UNARY body 直接 inline 到 evalExpr 函数体 `if (kind == "UNARY") { ... }` 内。代价 N3 +~80(body 裹进 if 深度 +1),在 N3 余量内。trade-off 选型依据:**看 baseline 余量最紧的指标**(M7b)决定,不看"理论最扁平"。step 3+(TERNARY/SHORT_CIRCUIT/COMPTIME_EXPR)继续 inline 直到 step 6 收尾统一清理。
 
-**延伸**:当 body 很大(genVal 主体 ~200 行)或嵌套很深(depth > 3)时,inline 会炸 N3。届时需要"同步删 + 新建"双操作维持 M7b。step 2 UNARY body 仅 40 行深度 ≤3,inline 可行。
+**延伸**:当 body 很大(genVal 主体 ~200 行)或嵌套很深(depth > 3)时,inline 会炸 N3。届时需要"同步删 + 新建"双操作维持 M7b。step 2 UNARY body 仅 40 行深度 ≤3,inline 可行。step 3 TERNARY runtime phi 行数小但 AST 密度高,触发坑 L「同步删+新建」实操。
+
+### 坑 L:TERNARY runtime phi AST 密度高,inline 到 `if kind==TERNARY` 块 depth 2 炸 N3
+
+**现象(Execute 3 两次尝试)**:① 按 Plan §步骤 3 原文把 genValTernary 全部 body(29 行 runtime phi + comptime-folded)inline 到 evalExpr `if kind==TERNARY` 块,N3=518965 / baseline 518479,Δ+486 REGRESSION,GATE BLOCKED。② partial inline(只 comptime-folded 进 evalExpr ~11 行,runtime phi 留在 genValTernary 混合 shim),N3=518710 Δ+231 仍 REGRESSION。
+
+**根因**:TERNARY runtime phi 22 行里含 alloca + store/store/load + 3 个 label br + 多个 template literal,每个 `${var}` 产生 multiple AST 节点。整块 inline 到 depth 2 后所有节点 depth +1 累加 N3 +486。相比 UNARY 40 行 body inline +659(Execute 2 实测)显得"每行更费 N3",因 UNARY 无 template literal 密集区。坑 K 末段已经预告该情况:"当 body 很大或嵌套很深时,inline 会炸 N3。届时需要'同步删+新建'双操作维持 M7b。"TERNARY runtime phi 是首次触发该条件的 kind。
+
+**解决**:方案 AO——
+- 删除 `genValTernary`(M7b -1)
+- 新建 `evalTernary(astId: int): int` 独立函数(M7b +1,净 0)承载完整 TERNARY body(comptime-folded + comptime-block-null + runtime phi),depth 1 不受 `if kind` 块包裹
+- evalExpr 里 TERNARY 分派只 1 行 `if (nGetKind(astId) == "TERNARY") { return evalTernary(astId) }`
+- gen_exprs.ss L135 分派改 inline mv decode(`const mvT = evalExpr(id); return mvT >= 0 ? mvT : 0 - mvT - 1`),不再走 shim(genValTernary 删除后 shim 路径不可行)
+
+Linter 结果:N3 cur=518477 / baseline 518479,Δ-2 PROGRESS;M7b 净 0 持平;其他指标全 PROGRESS。方案 AO 等价于 **步骤 3 + 部分步骤 6 清理**(步骤 6 L225 本来就要删 genValTernary),提前到步骤 3 只是 linter 约束下的合理前置,不影响 D099 整体 pipeline 收敛。
+
+**延伸**:步骤 4 SHORT_CIRCUIT 如果 runtime phi 模式类似(label + br 密集),可能复刻方案 AO(删 genValShortCircuit + 新建 evalShortCircuit)。步骤 5 COMPTIME_EXPR body 短(< 5 行)应可直接 inline,无需重复。
 
 ### 坑 J:comptime 字符串比较 6 分支 inline 造成 N3 累积
 
@@ -315,8 +339,8 @@ if (kind == "COMPTIME_EXPR") {
 1. ~~**Execute 0**:步骤 0 骨架~~ — 落地于 commit 53066f0(evalExpr 空壳 `return 0 - 1`,Phase A 纯 int 编码,MaybeVal class 延后 Phase B)
 2. ~~**Execute 1**:步骤 1 BINARY 非 And/Or 迁移~~ — 落地于 commit 5f2198e(§步骤 1 Execute 1 落地实录 + §坑 G/H/I/J)
 3. ~~**Execute 2**:步骤 2 UNARY 迁移~~ — 落地(§步骤 2 Execute 2 落地实录 + §坑 K)
-4. **Execute 3**:步骤 3 TERNARY 迁移(下一步)
-5. **Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移
+4. ~~**Execute 3**:步骤 3 TERNARY 迁移~~ — 落地(§步骤 3 Execute 3 落地实录 + §坑 L;步骤 6 `genValTernary` 清理前置到本步)
+5. **Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移(下一步)
 6. **Execute 5**:步骤 5 COMPTIME_EXPR 迁移
 7. **Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline(独立 commit)
 
