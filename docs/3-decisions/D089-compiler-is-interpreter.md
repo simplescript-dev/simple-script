@@ -198,7 +198,7 @@
 
 ### 禁止的 state 操作
 
-- ❌ 把跨轮进度 / 摘要写到 handoff 文件里累积（`.claude/next_prompt.md` 仅作为 `tools/send_next.ss` 的单次 payload,非状态存储,见 `docs/terman-auto-next.md`）
+- ❌ 把跨轮进度 / 摘要写到 handoff 文件里累积（`.claude/next_prompt.md` 仅作为 terman `claude-next` preset 的单次 payload,非状态存储,见 `docs/terman-auto-next.md`）
 - ❌ 写 `notes.md` / `analysis.md` 这类分析文件到仓库
 - ❌ amend 已 push commit（始终 new commit）
 - ❌ 把状态写到对话 / D089 / git 之外的任何位置
@@ -277,7 +277,7 @@ assertEqual(r, 7)
 
 - 不引入 Kotlin/Scala 语法（CLAUDE.md "Java/TS 优先"）
 - 不做 workaround，根因修（user feedback `no_workaround`）
-- 跨轮进度 / 摘要不落到 handoff 文件（`.claude/next_prompt.md` 仅作 send_next.ss payload）
+- 跨轮进度 / 摘要不落到 handoff 文件（`.claude/next_prompt.md` 仅作 terman preset payload）
 - 每个 Step 独立 commit + bootstrap 通过
 - 不 amend 已 push commit
 - 编译器 bug 立即停下修，不绕行

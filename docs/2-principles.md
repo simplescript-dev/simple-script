@@ -102,7 +102,7 @@ VCM 通过 ≠ 回合结束。宣告"完成"到实际 stop 之间还有三步必
 
 1. **代码审查**：`/simplify` 对本轮新增 / 修改的代码做质量审查，修复发现的问题。改动纯文档 / 纯配置可跳过并显式说明
 2. **提交**：`git status` 有未提交改动 → commit（`/commit` 或手工），消息遵循 conventional commits。commit 必须落在同一轮对话里，不许跨轮补
-3. **下一步提示词(自闭环三步)**：(a) 最后一条回复**直接输出**下一步简短提示词(1-3 句、单段、命令式、模仿用户原始风格),(b) **同时**覆盖写入 `.claude/next_prompt.md`(`tools/send_next.ss` 的单次 payload),(c) **Claude 本轮最后一次工具调用**执行 `bin/ss run tools/send_next.ss .claude/next_prompt.md` 自触发下一轮(脚本 `/clear` + bracketed paste + 30s 观察窗口 + Enter,见 `docs/terman-auto-next.md`)。三处内容严格一致,用户在 30s 窗口内 Ctrl+C 可中断。Phase 进度仍只落在 D 文档,`.claude/next_prompt.md` 不承载跨轮状态累积 / 进度摘要。例外:bootstrap 失败 / 测试红 / GATE 阻断 / 用户明说不要时,跳过 (c) 停下等裁决
+3. **下一步提示词(自闭环两步)**:(a) 最后一条回复**直接输出**下一步简短提示词(1-3 句、单段、命令式、模仿用户原始风格),(b) **同时**覆盖写入 `.claude/next_prompt.md`(terman `claude-next` preset 的单次 payload,见 `docs/terman-auto-next.md`)。preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮;两处内容严格一致,用户在 30s 窗口内 Ctrl+C / 键入字符可中断。Phase 进度仍只落在 D 文档,`.claude/next_prompt.md` 不承载跨轮状态累积 / 进度摘要。Claude 本轮**不**执行任何脚本或 terman send —— stop 后 preset 自动接管。例外:bootstrap 失败 / 测试红 / GATE 阻断 / 用户明说不要时,**不写** payload 停下等裁决 —— preset `read_file` 返回空即 early return,天然降级
    - **Execute 型**(动词形态 "改 X / 重写 X / 去掉 Y / 修复 Z / 实现 W")**必须**附**本轮已跑过**的 **RED 命令 + 输出**作为凭据,证明 X 尚未达成。RED 无效(已 GREEN / 命令不成立 / 代码已是目标形态) → **不许写 Execute 型**,改为: (a) 宣告 "本轮已覆盖 X + 证据",终止本线路, 或 (b) 降级为 **Plan 型** "验证 / 巡检 X 现状,若发现 Y 再推进",把诊断权交回下一轮
    - **Plan 型**(动词形态 "验证 / 调研 / 巡检 / 对照 X")不要求 RED 凭据,但提示词里**不得**带 "改 / 重写 / 去掉 / 修复 / 实现" 等变更动词,避免退化为未经验证的 Execute 型
    - 这是防漂移**跨轮传播**的出口 gate——与 §开工 gate §字段 1 D 文档 grep 对照构成两道闸:上一轮关闭出口,下一轮关闭入口

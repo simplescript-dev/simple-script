@@ -98,7 +98,7 @@ bin/ss clean
 
 **PFV 流程（强制）**：接到任意任务，第一次工具调用之前必须按 `docs/2-principles.md §PFV 流程` 的十问 PSM 填表；任务完成宣告之前必须按五验 VCM 逐项贴证据；VCM 通过后必须走**收尾 gate** 的 simplify → commit → 下一步提示词三步，缺一条不许 stop。细节、层级、例外规则以该文档为准，此处不重复。
 
-**决策记录**：每个确认的设计决策立即写入 `docs/3-decisions/D0NN-*.md`，一个决策一个文件，不等到实现完成再补。多阶段计划的 Phase 进度只写在 D 文档里。下轮提示词收尾**自闭环**三步:(1) 对话输出 (2) 覆盖写入 `.claude/next_prompt.md` (3) Claude 自执行 `bin/ss run tools/send_next.ss .claude/next_prompt.md` 触发下一轮（脚本 `/clear` + bracketed paste + 30s 窗口 + Enter，见 `docs/terman-auto-next.md`）。三处内容严格一致;用户在 30s 窗口里审阅,要否决就 Ctrl+C,否则新一轮自动开始。`.claude/next_prompt.md` 只作 send_next.ss 的单次 payload,不承载跨轮状态累积。
+**决策记录**：每个确认的设计决策立即写入 `docs/3-decisions/D0NN-*.md`，一个决策一个文件，不等到实现完成再补。多阶段计划的 Phase 进度只写在 D 文档里。下轮提示词收尾**自闭环**两步:(1) 对话输出(让用户审阅措辞) (2) 覆盖写入 `.claude/next_prompt.md`(单次 payload)。terman 内建 `claude-next` preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮(见 `docs/terman-auto-next.md`)。两处内容严格一致;用户在 30s 窗口里审阅,Ctrl+C 或键入字符即可中断。preset 读完即 `delete_file` 消费,Claude 不承载跨轮状态累积;Claude 本轮**不执行**任何触发脚本,直接 stop。
 
 **Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
 
@@ -113,4 +113,4 @@ bin/ss clean
 - 项目共识与原则：`docs/1-axioms.md`、`docs/2-principles.md`
 - 设计决策归档（含 import 解析、enum、null safety、并发等）：`docs/3-decisions/`
 - 标准库源码：`lib/`（json、base64、sha256、http）
-- Terman 下轮提示词自动注入（`tools/send_next.ss` 脚本用法、`$TERMAN_NAME` 判断）：`docs/terman-auto-next.md`
+- Terman 下轮提示词自动注入（terman `claude-next` preset 机制、`.claude/next_prompt.md` payload 协议）：`docs/terman-auto-next.md`
