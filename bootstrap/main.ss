@@ -4,7 +4,7 @@
 import { tokenize } from "./lexer"
 import { parse, initParser } from "./parser"
 import { check } from "./checker"
-import { generate, generateToFile, initCodegen, initVarAliases } from "./codegen"
+import { generateToFile, initCodegen, initVarAliases } from "./codegen"
 import { initFuncRegistry } from "./gen_registry"
 import { initRcState, detectCyclicOwnership } from "./gen_rc"
 import { genStmt } from "./gen_stmts"

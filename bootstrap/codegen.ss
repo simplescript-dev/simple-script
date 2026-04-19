@@ -1210,16 +1210,6 @@ function ctPopScope() {
     ctScopeStack = ns
 }
 
-function generate(rootId: int): string {
-    resetCodegen()
-    emitRuntimeDefs()
-    registerAllDecls(rootId)
-    emitGlobalsAndCode(rootId)
-    flushPendingCtClasses()
-    generateDeferredSpecializations()
-    return `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${strConsts}\n${irBuf}`
-}
-
 let runtimeCacheObj = "/tmp/ss_rt_cache.o"
 let runtimeCacheDecls = "/tmp/ss_rt_cache.decls"
 let useRuntimeCache = 0
