@@ -1,9 +1,9 @@
 # D099: evalExpr Phase A 首批 1a 合并 Plan — BINARY / UNARY / TERNARY / SHORT_CIRCUIT / COMPTIME_EXPR
 
-**Status:** Executing(Execute 0-5 已落地,Execute 6 待推进)
+**Status:** Done(Execute 0-6 全部落地,Phase A 首批 1a 收敛完成,baseline 已 record)
 **Depends on:** D093(evalExpr 单函数 dispatch 骨架)/ D094 §决策 §规则 2(pure subset 白名单)/ D098 §决策 1(MaybeVal 编码 + 构造器/访问器接口)
 **Date:** 2026-04-18
-**Last Updated:** 2026-04-18
+**Last Updated:** 2026-04-19
 
 ---
 
@@ -245,7 +245,7 @@ if (kind == "COMPTIME_EXPR") {
 **目标**:所有 5 kind 已走 evalExpr 单路径,`genValBinary/genValUnary/genValTernary/genValShortCircuit` 全部删除,`genVal` L132/L133/L135/L212 成为 `evalExpr + mvKnownOf 分派` 薄包装。
 
 **删除清单**(必须在本步骤或更早删,禁止遗留):
-- `function genValBinary(id)` L697 — **未删**,保留为 3 行 mv decode shim(坑 I:inline 到 genVal L132 会炸 N3 +192),步骤 6 收尾评估能否 rename 或删
+- ~~`function genValBinary(id)` L691~~ — 已删于步骤 6(Execute 6a 落地,3 行 shim body 与 L134 `TERNARY \|\| COMPTIME_EXPR` inline body 完全同构,合并为 L132 `BINARY \|\| UNARY \|\| TERNARY \|\| COMPTIME_EXPR` 单行 inline,shim 函数整体删除;M7b 679 → 678,见 §坑 O)
 - ~~`function genValUnary(id)` L759~~ — 已删于步骤 4(Execute 4 落地,触坑 M「前置步骤 6 清理以释放 M7b 余量」,genVal L133 合并到 L132 `BINARY \|\| UNARY` 分派)
 - ~~`function genValTernary(id)` L804~~ — 已删于步骤 3(Execute 3 落地,触坑 L「同步删+新建」)
 - ~~`function genValShortCircuit(op, id)` L837~~ — 已删于步骤 4(Execute 4 落地,evalShortCircuit 独立函数承接)
@@ -263,6 +263,60 @@ if (kind == "COMPTIME_EXPR") {
 | 其他 N1-N5 | 持平 | 不引入新 kind、无 Halstead 体积上升、无深嵌套、无 MEMBER_ASSIGN |
 
 **收尾 gate**:所有指标 **≤ baseline**(M7b 净 +2~3 被 M1-M4 的削减抵消,linter 是**任一**超标阻断,故 M7b 上升允许但需其余指标大幅下降),`bin/ss run tools/reflection_health_linter.ss record` **不执行**(baseline 只在整体削减稳定后由单独 commit record)。
+
+**Execute 6 落地实录(2026-04-19)**:分两 commit 落地。
+
+**Commit 6a — `genValBinary` shim 合并**:
+- `bootstrap/gen_exprs.ss` L132 条件扩 `BINARY \|\| UNARY \|\| TERNARY \|\| COMPTIME_EXPR`,body 替为 `const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1`(原 L134 inline body);L134 整行删(条件已并入 L132)
+- `bootstrap/gen_exprs.ss` L691-694 `function genValBinary` 整体删除(3 行 shim body 与 L132 新合并 inline 完全同构)
+- 方案选型(§坑 O):两备选 — A 合并 L132/L134 + 删 shim 函数(本轮实施);B 保留 shim 并扩展承载 TERNARY/COMPTIME_EXPR。A 净 M7b -1 且消除 L134 的 inline 重复,B 只改 dispatch 不削 M7b。坑 I 预告的"inline 到 genVal L132 会炸 N3 +192"失效 — 该预告假设 shim body 是 genValBinary And/Or 分派 + operand 评估的完整 5 行 inline;Execute 5 结束后 shim body 已瘦身为 2 行(3 行含函数签名),与 L134 完全同构,inline 成本跌到 ~12 节点,完全在 N3 余量内
+- Linter 结果(相较 Execute 5):M1 5137 → 5135(Δ-2)/ M2 76173 → 76153(Δ-20)/ M3a 12135 → 12133(Δ-2)/ M4 3039 → 3038(Δ-1)/ M7b 679 → **678**(Δ-1,首次降到 baseline 以下)/ N2 380865 → 380765(Δ-100)/ N3 518465 → 518387(Δ-78);所有 14 指标 PROGRESS 或 OK,GATE PASS
+- Bootstrap 固定点 stage2 == stage3 PASS;测试 213 passed / 4 pre-existing fail(spring_web_params / d096_p4_l2_reactive / harness_bug / harness_task,Execute 4/5 落地已确认 pre-existing)
+
+**Commit 6b — record linter baseline**:
+- `tools/linter_baseline.txt` 从 Execute 0 前的 baseline(M1=5144 / M2=76244 / M3a=12156 / M3b=1880 / M4=3051 / M5=1758 / M7b=679 / N2=381220 / N3=518479)刷新到 Execute 0-6 累计削减后的新值(M1=5135 / M2=76153 / M3a=12133 / M3b=1879 / M4=3038 / M5=1750 / M7b=678 / N2=380765 / N3=518387)
+- 未改 bootstrap / tests,纯 baseline 文件刷新,独立 commit 作为 Phase A 首批 1a 收敛证据
+- 验证:record 后再跑 `bin/ss run tools/reflection_health_linter.ss` 所有 14 指标 delta=0 OK,GATE PASS
+
+**累计 Execute 0-6 削减量(对照 Execute 0 前 baseline)**:
+
+| 指标 | Execute 0 前 | Execute 6 后 | Δ 累计 |
+|---|---|---|---|
+| M1 CC | 5144 | 5135 | -9 |
+| M2 节点数 | 76244 | 76153 | -91 |
+| M3a 调用边 | 12156 | 12133 | -23 |
+| M3b 最大入度 | 1880 | 1879 | -1 |
+| M4 dispatch 深度 | 3051 | 3038 | -13 |
+| M5 可变 state | 1758 | 1750 | -8 |
+| M7b 函数数 | 679 | 678 | -1 |
+| N2 Halstead | 381220 | 380765 | -455 |
+| N3 AST 深度和 | 518479 | 518387 | -92 |
+| 其余(M6/M7a/N1/N4/N5) | - | - | 持平 |
+
+**相对 §步骤 6 预期对照**:
+- M1 -9 vs 预期 -12 ~ -18 — **略少**,因 evalTernary/evalShortCircuit/evalComptimeExpr 3 独立函数保留的 if-else 分支贡献部分 CC
+- M2 -91 vs 预期 -80 ~ -120 — **在预期区间**
+- M3a -23 vs 预期 -10 ~ -15 — **超预期**,调用边削减更深(shim merge 额外消除 L132 genValBinary 调用 + L134 inline 重复)
+- M7b -1 vs 预期 -4 ~ +2 — **更激进**(Plan 假设新建 MaybeVal class + 5-7 helpers,Phase A 纯 int 编码全部压平,坑 G 确立的"延后 helpers"策略使 M7b 净削减 1)
+- N3 -92 vs 预期持平 — **负向削减超预期**(shim merge 额外削 78,evalTernary/evalShortCircuit/evalComptimeExpr 独立函数 body depth 1 贡献基础 14)
+
+**§步骤 6 与 Plan 的偏差**(Execute 6 实录):
+- ① mv helpers 不建(坑 G 延续,Phase B MaybeVal 类化期再补)
+- ② `evalTernary` / `evalShortCircuit` / `evalComptimeExpr` 3 独立函数保留,不向 evalExpr inline(坑 L/M/N 的对称 pattern,inline 会炸 N3)
+- ③ `genValBinary` shim 合并而非 rename(方案 A,消除 L134 inline 重复 + 净 -1 M7b)
+- ④ baseline record 独立 commit(Plan §收尾 gate 已钦定"独立 commit record"符合原文)
+
+### §坑 O:shim 合并的 N3 成本预告失效(Execute 6a 反转坑 I 延伸)
+
+**现象**:坑 I 延伸 L318 预告 `"gen_exprs.ss L132 原计划展开 5 行 inline mv 解码会把代码叠进 genVal if chain(depth ~5),观测 N3 +192"`。Execute 6a 实测 L132 inline 仅 +12 N3,与预告差 180。
+
+**根因**:坑 I 预告假设的"5 行 inline"是 genValBinary Execute 1 前的完整 body(And/Or 分派 + operand 评估 + 双路径 + comptime string compare 代理 ~40 节点 × depth 3-5),不是 Execute 5 结束后的 3 行 shim body(2 条语句 ~12 节点 × depth 2)。**shim body 规模从 40 节点跌到 12 节点,inline 成本同比跌到 ~1/4**。坑 I 在 Execute 1 结束时写入,未预见 Execute 5 结束后 shim 已是最小 mv decode 形态。
+
+**解决**:Execute 6 开始前**重读坑 I 原文并核对当前 shim 规模**,发现预告失效 → 方案 A 成立。
+
+**延伸 — D 文档脚注预告的时效性**:`踩过的坑` 段落里标记为"步骤 X 收尾评估"的条款,在最终 Execute 轮开始前必须 grep 当前代码状态核对前提是否仍成立。若前提已变化(如本轮 shim body 已瘦身),原预告不再权威,按当前事实重新评估。这条与 §PFV 流程 §字段 1 D 文档 grep 对照同构,是**文档内部**的漂移防护。
+
+**对 Phase B 的启示**:MaybeVal 类化期可能遇到类似情况 — Phase A 保留的 shim / 独立函数 / dispatch 形态,在 Phase B 结束前需重评估是否仍是最优。不锁定本轮的物理结构为 Phase B 的约束。
 
 ## Rejected Alternatives
 
@@ -402,7 +456,7 @@ Linter 结果:N3 Δ**-14** PASS;M7b 净 0 持平;其他全 PROGRESS。
 4. ~~**Execute 3**:步骤 3 TERNARY 迁移~~ — 落地于 commit f54fd9f(§步骤 3 Execute 3 落地实录 + §坑 L;步骤 6 `genValTernary` 清理前置到本步)
 5. ~~**Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移~~ — 落地(§步骤 4 Execute 4 落地实录 + §坑 M;步骤 6 `genValUnary` 清理前置到本步)
 6. ~~**Execute 5**:步骤 5 COMPTIME_EXPR 迁移~~ — 落地(§步骤 5 Execute 5 落地实录 + §坑 N;L134 TERNARY shim merge COMPTIME_EXPR 以抵消 evalComptimeExpr 函数 M7b 成本)
-7. **Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline(独立 commit,下一步)
+7. ~~**Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline~~ — 落地(§步骤 6 Execute 6 落地实录 + §坑 O;分 6a genValBinary shim 合并 / 6b record baseline 两 commit,累计 M7b -1 / N3 -92)
 
 每 Execute 开始前必须先填 PSM 十问(PFV 流程),完成后过 VCM 五验。单步 bootstrap 失败 → 定位根因不越步;单步 linter 任一指标 regression → 先削减再推进,不改 baseline 让 gate 过(CLAUDE.md §反射根因 gate 强制条款)。
 
@@ -413,6 +467,6 @@ Plan 完成后评估推进中批 1b(IDENT / MEMBER_ACCESS / INDEX_ACCESS / TEMPL
 - D093 §决策 §Zig 原理 / §SS 本质一样骨架 行 52-77(evalExpr 骨架直译来源)
 - D094 §决策 §规则 2 两级折叠表 / §Pure subset 白名单(L92-113)
 - D098 §决策 1 MaybeVal 编码 / §构造入口 / §访问器 mvKnownOf/mvValOf / §SS 语言约束(2026-04-18 probe 结论)
-- `bootstrap/gen_exprs.ss` L125-216(`genVal` dispatcher + 5 kind 当前分派入口)
-- `bootstrap/gen_exprs.ss` L697-870(`genValBinary` / `genValUnary` / `genValTernary` / `genValShortCircuit` 4 独立函数主体)
-- `tools/reflection_health_linter.ss` + `tools/linter_baseline.txt`(M1-M7 + N1-N5 基线 @ commit 9e20f26)
+- `bootstrap/gen_exprs.ss` L125-216(`genVal` dispatcher,Execute 6a 后 5 kind 合并单行 inline + evalExpr 分派)
+- `bootstrap/eval_expr.ss`(evalExpr + evalTernary + evalShortCircuit + evalComptimeExpr 4 函数承接 5 kind 单 pass 路径)
+- `tools/reflection_health_linter.ss` + `tools/linter_baseline.txt`(M1-M7 + N1-N5 基线 @ Execute 6b record)
