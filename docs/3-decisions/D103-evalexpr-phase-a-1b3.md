@@ -117,7 +117,7 @@ D101 Execute 1 TEMPLATE_LIT 迁移实测 `M2 +8 / N2 +40 / N3 -238 / F1 -42`,落
 1. `grep -rn "^function " bootstrap/ | sort -t: -k3` + 统计每函数调用点
 2. 找单调用 / 零调用候选 5-10 项
 3. 估每候选 inline / 删除 后 N3 / M2 / F1 副作用
-4. 选「M7b -1 且 N3 不升 且 M2 增量最小 且 F1 不升」
+4. 选「M7b -1 且 N3 不升 且 M2 增量最小 且 F1 GATE 不破(D102 §2.1:R1 文件 cur ≤ baseline,R2+R3 文件 cur ≤ 600)」
 5. 单 commit 落地,bootstrap 固定点 PASS + linter 分层 GATE PASS
 
 **验证**:
