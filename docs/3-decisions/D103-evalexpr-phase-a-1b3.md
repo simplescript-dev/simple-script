@@ -1,6 +1,6 @@
 # D103: evalExpr Phase A 中批 1b 第 3 kind Plan — ARRAY_LIT
 
-**Status:** Execute 0 Done at commit 6197667,Execute 1/2 未开工
+**Status:** Execute 0 Done at commit 6197667,Execute 1 Done at commit f65256d,Execute 2 未开工
 **Depends on:** D101 §步骤 1 evalTemplateLit 对称 pattern / D101 §Rejected A(ARRAY_LIT 推到 1b-3 或更后)/ D100 §Rejected B(ARRAY_LIT body 大推 1b 末轮)/ D100 §步骤 1 evalIndexAccess 三段式模板 / D102 §规则 1.1-1.4(分层 GATE + ±0.5% DRIFT)/ D102 §规则 2.1-2.3(F1 文件行数 GATE)/ D098 §决策 1 mv 编码 / D094 §规则 2 pure subset 白名单(L104 `ARRAY_LIT` 在列)
 **Date:** 2026-04-19
 
@@ -303,7 +303,7 @@ if (k == "ARRAY_LIT") { return evalArrayLit(astId) }
 ## 下一步(Plan 下的 Execute 顺序)
 
 1. [x] Done at commit 6197667 — **Execute 0**:删 bootstrap/prelude.ss L208-252 的 9 个 @derive 死 helpers(`_ss_hashContrib`/`_ss_jsonValue`/`_ss_zero` × int/string/double 三重载,45 行)。grep bootstrap/ lib/ tests/ 全域零调用,@derive 无活跃 ctDeriveX handler。GATE PASS 实测:M7b 676→667 **delta=-9 PROGRESS**(超额目标 ≥-1,腾余量 9 足供 1b-3~5 迁移)/ N3 -513 / M1 -9 / M2 -61 / M3a -3 / M5 -2 / N2 -305 全 PROGRESS / 严格组 OK / F1 gen_exprs.ss 1678(D101 Execute 1 效应保留)/ bootstrap 固定点 PASS / 4 pre-existing tests fail 与改动无关(stash+rebuild 反向验证)
-2. [ ] Planned — **Execute 1**:ARRAY_LIT 迁移 evalArrayLit(对称 evalTemplateLit);同 commit 改 L132 shim 扩 7 kind + evalExpr 头部加 1 分派 + 删 L537-599。单 commit bootstrap PASS + 分层 GATE PASS(M7b 0 / N3 PROGRESS -300~-500 / M2 DRIFT +12~20 / N2 DRIFT +55~80 / F1:gen_exprs.ss -62)
+2. [x] Done at commit f65256d — **Execute 1**:ARRAY_LIT 迁移 evalArrayLit(对称 evalTemplateLit 三段式),eval_expr.ss 末尾新建 evalArrayLit(60 行)+ evalExpr L60 加分派 + 两处 runtime 返回 mv 编码;同 commit 改 gen_exprs.ss L132 shim 扩 7 kind + 删 L537-600 整块 64 行 inline;第一 for loop 合并三元。实测超预估:M7b 676→668 Δ=-8 PROGRESS(Execute 0 -9 + 本轮 +1)/ N3 518111→516994 Δ=-1117 PROGRESS(预估 -300~-500 超 2×+)/ N2 380630→380310 Δ=-320 PROGRESS(反向优于 DRIFT 窗口)/ M2 76126→76082 Δ=-44 PROGRESS / F1:gen_exprs.ss 1721→1614 Δ=-107(预估 -105 精确)。结构组 8 项全 OK/PROGRESS,累计组 6 项全 PROGRESS。tests 213 passed / 4 pre-existing fails(stash 回 6197667 反向验证同 fail)。bootstrap 固定点 PASS
 3. [ ] Planned — **Execute 2**:收尾评估(record vs 继续 1b-4;默认继续)+ 起 D104 选 IDENT 或 MEMBER_ACCESS
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
