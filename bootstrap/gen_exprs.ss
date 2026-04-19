@@ -697,63 +697,8 @@ function genVal(id: int): int {
 function genValBinary(id: int): int {
     const op = nGetS1(id)
     if (op == "And" || op == "Or") { return genValShortCircuit(op, id) }
-    // Comptime: evaluate operands via genVal (handles ctVars scope chain) and dispatch by actual interp types
-    if (comptimeDepth > 0) {
-        if (op == "NullCoalesce") {
-            const ctNcL = genVal(nGetI1(id))
-            if (isCt(ctNcL) == 1 && interpType(payload(ctNcL)) != "null") { return ctNcL }
-            return genVal(nGetI2(id))
-        }
-        if (op == "Instanceof" || op == "As") {
-            return comptimeError(`operator '${op}' not supported`, id)
-        }
-        const ctBlv = genVal(nGetI1(id))
-        const ctBrv = genVal(nGetI2(id))
-        if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) {
-            return comptimeError(`binary '${op}' operand is not compile-time known`, id)
-        }
-        const ctBlp = payload(ctBlv)
-        const ctBrp = payload(ctBrv)
-        const ctBlt = interpType(ctBlp)
-        const ctBrt = interpType(ctBrp)
-        if (op == "Add" && (ctBlt == "string" || ctBrt == "string")) {
-            return ctVal(interpNewString(`${interpToStr(ctBlp)}${interpToStr(ctBrp)}`))
-        }
-        if (ctBlt == "string" && ctBrt == "string") {
-            const cLs = interpAsStr(ctBlp)
-            const cRs = interpAsStr(ctBrp)
-            if (op == "Eq") { return ctVal(interpNewBool(cLs == cRs ? 1 : 0)) }
-            if (op == "Ne") { return ctVal(interpNewBool(cLs != cRs ? 1 : 0)) }
-            if (op == "Lt") { return ctVal(interpNewBool(cLs < cRs ? 1 : 0)) }
-            if (op == "Gt") { return ctVal(interpNewBool(cLs > cRs ? 1 : 0)) }
-            if (op == "Le") { return ctVal(interpNewBool(cLs <= cRs ? 1 : 0)) }
-            if (op == "Ge") { return ctVal(interpNewBool(cLs >= cRs ? 1 : 0)) }
-        }
-        if (ctBlt == "double" || ctBrt == "double") {
-            const ctLd = ctBlt == "double" ? parseDouble(interpAsStr(ctBlp)) : parseDouble(`${interpAsInt(ctBlp)}`)
-            const ctRd = ctBrt == "double" ? parseDouble(interpAsStr(ctBrp)) : parseDouble(`${interpAsInt(ctBrp)}`)
-            return ctVal(interpDoubleOp(op, ctLd, ctRd))
-        }
-        return ctVal(interpIntOp(op, interpAsInt(ctBlp), interpAsInt(ctBrp)))
-    }
-    if (op == "NullCoalesce" || op == "Instanceof" || op == "As" || op == "Pow") {
-        return constVal(genBinary(id))
-    }
-    const blt = inferType(nGetI1(id))
-    const brt = inferType(nGetI2(id))
-    // String comparison: both string operands → comptime fold or inline runtime
-    if (blt == "string" && brt == "string" && (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge")) {
-        return genValStringCompare(op, id)
-    }
-    if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
-        return constVal(genBinary(id))
-    }
-    const lv = genVal(nGetI1(id))
-    const rv = genVal(nGetI2(id))
-    if (isCt(lv) == 1 && isCt(rv) == 1) {
-        return ctVal(interpIntOp(op, interpAsInt(payload(lv)), interpAsInt(payload(rv))))
-    }
-    return constVal(genIntBinary(op, reg(lv), reg(rv)))
+    const mv = evalExpr(id)
+    return mv >= 0 ? mv : 0 - mv - 1
 }
 
 function genValUnary(id: int): int {

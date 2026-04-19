@@ -1,6 +1,6 @@
 # D099: evalExpr Phase A 首批 1a 合并 Plan — BINARY / UNARY / TERNARY / SHORT_CIRCUIT / COMPTIME_EXPR
 
-**Status:** Planned(纯 Plan,本 D 文档不改代码,不跑 bootstrap,授权后方开 Execute 轮)
+**Status:** Executing(Execute 0 / Execute 1 已落地,Execute 2-6 待推进)
 **Depends on:** D093(evalExpr 单函数 dispatch 骨架)/ D094 §决策 §规则 2(pure subset 白名单)/ D098 §决策 1(MaybeVal 编码 + 构造器/访问器接口)
 **Date:** 2026-04-18
 **Last Updated:** 2026-04-18
@@ -106,6 +106,15 @@ if (kind == "BINARY") {
 - bootstrap 固定点 PASS
 - 现有 BINARY 测试全绿(算术/比较/字符串拼接)
 - linter:M1 CC 削 ~3-5 / M4 dispatch 削 ~2 / M3a 调用边削 ~5(genValBinary 主体删除)
+
+**Execute 1 落地实录(2026-04-18)**:
+- `bootstrap/eval_expr.ss`:evalExpr 吸收 BINARY(非 And/Or)主体,复用 codegen `ctVal/constVal/reg/isCt/payload/interpIntOp/interpDoubleOp/interpNewString/interpNewBool` + gen_exprs `genVal/inferType/comptimeError/genBinary/genIntBinary/genValStringCompare`。**不建 Phase A helpers**(mvKnown/mvKnownOf/mvValOf 恒等/1-ternary 抽象,Phase A 纯 int 编码下无语义增益,按 §踩过的坑 G 延迟到 Phase B MaybeVal 类化期)。字符串比较 comptime 路径直接委托 `genValStringCompare`(其内部已折叠 ct-both,省 6 分支 ~100 N3 AST 节点)。**operand 评估仍走 genVal 而非递归 evalExpr** — 步骤 1 evalExpr 仅识别 BINARY,递归 evalExpr 对 IDENT/LIT 等会返回 -1 错误,recursive evalExpr pattern 推迟到批 1b IDENT/LIT 着陆后
+- `bootstrap/gen_exprs.ss` L697:`genValBinary` 主体从 57 行骨架缩为 5 行 shim — `op==And/Or → genValShortCircuit` / 否则 `evalExpr` 解 mv(`mv>=0? mv : 0-mv-1`)。L132 分派不动(`return genValBinary(id)`),inline 解码会使 AST 深度叠进 `genVal` if chain 造成 N3 反弹
+- `bootstrap/main.ss` L17:`import { evalExpr } from "./eval_expr"` 不变(无 helper 新增)
+- Linter GATE PASS:M1=5130(baseline 5144,Δ-14)/ M2=76105(Δ-139)/ M3a=12135(Δ-21)/ M4=3041(Δ-10)/ M5=1750(Δ-8)/ M7b=679(=baseline)/ N2=380525(Δ-695)/ N3=517590(Δ-889);其余指标持平。所有方向削减,合 D097 §L102 单调 gate
+- Bootstrap 固定点 PASS:stage2 == stage3
+- 测试:phase2/3/4 100%(53/53),phase5 tracked 全绿(未追踪 spring_web_params / d096_reactive / harness_bug 失败为 step 1 前的 pre-existing,与 BINARY 迁移无关)
+- **§步骤 1 与 Plan 的 3 处偏差**(Execute 1 实录):① mv helpers 不建(§踩过的坑 G)② operand 评估保留 genVal(§踩过的坑 H)③ 字符串比较 comptime 复用 genValStringCompare(§踩过的坑 I)。均为 Phase A 阶段合理收敛,不污染 Phase B 类化路径
 
 ### §步骤 2 — UNARY 迁移
 
@@ -242,13 +251,52 @@ if (kind == "COMPTIME_EXPR") {
 
 5. **步骤 0 骨架的 `evalExpr` 返回 mvError() 占位是否被调用** — 骨架建立但无调用者时 `evalExpr` dead code,linter M3b(最大入度)维持 1880(不触及),但 `evalExpr` 函数入度=0 是**预期的临时状态**,步骤 1 起接入调用。若步骤 0 结束后 linter 因 evalExpr M2 上升超过累计预算,暂**不 record baseline**,继续步骤 1 合并抵消即可
 
+## 踩过的坑(Execute 实录)
+
+### 坑 G:Phase A helpers mvKnown/mvKnownOf/mvValOf 建了会回滚
+
+**现象(Execute 1 第一次尝试)**:按 Plan §步骤 1 原文建 3 helpers + evalExpr 外层 `if (kind == "BINARY")` dispatch,触 linter M1+4 / M2+3 / M3a+9 / M7b+2 / N2+15 / N3+1379 六指标 regression,GATE BLOCKED。
+
+**根因**:Phase A 编码为纯 int(mv>=0 known / mv<=-2 runtime / mv==-1 error),3 helpers 物理形态:
+- `mvKnown(v: int): int { return v }` — 恒等,CC 1
+- `mvKnownOf(mv: int): int { return mv >= 0 ? 1 : 0 }` — 单 TERNARY,CC 2
+- `mvValOf(mv: int): int { return mv }` — 恒等,CC 1
+
+3 helpers 总 CC 4 + M7b +3 + M2 +~30(body 节点)+ M3a +~13(调用点 wrap 边)。Phase A 是纯 int 编码,helpers 无语义增益(只是 Phase B 类化时的接口形状占位)。
+
+**解决**:Phase A 不建 helpers,mv 编解码直接 inline(`mv >= 0` / `mv` / `0 - mv - 1`)。Phase B MaybeVal 类化时再建真接口(helpers 此时携带 class field 访问语义)。
+
+### 坑 H:recursive evalExpr 对非 BINARY 操作数会返回 -1
+
+**现象**:Plan §步骤 1 原文写 `const lhs = evalExpr(nGetI1(astId))` 递归评估,但 evalExpr 步骤 1 仅识别 BINARY,其他 kind(IDENT / INT_LIT / MEMBER_ACCESS)全部走 fallthrough `return 0 - 1`(error 哨兵),破坏语义。
+
+**根因**:Plan 假设 evalExpr 已完整 dispatch 所有 kind。实际 step 1 只吸收 BINARY 一个 kind,operand 评估必须走现有 genVal 分派(覆盖所有 kind 的旧路径)。
+
+**解决**:step 1 evalExpr BINARY 分支内**保留 genVal(nGetI1/I2(astId))** 作 operand 评估;recursive evalExpr pattern 推迟到批 1b(IDENT/LIT/MEMBER_ACCESS 等 pure subset 余项)着陆后,那时 evalExpr dispatch 表才足以承接递归调用。
+
+### 坑 I:外层 `if (kind == "BINARY")` dispatch 引发 N3 +1379 AST 深度反弹
+
+**现象**:Plan §步骤 1 代码形态 `function evalExpr(astId) { ... if (kind == "BINARY") { body ... } return -1 }` 把 genValBinary body 整体下沉到 IF 块内,所有 ~1400 AST 节点深度 +1,累计 N3 +1379。
+
+**根因**:N3 = 全部 AST 节点深度累加。`if (kind == "BINARY") { ... }` 外层包裹使内部每个节点 depth+1,节点数 × 1 = N3 delta。
+
+**解决**:改扁平 guard pattern `if (nGetKind(astId) != "BINARY") { return 0 - 1 }` 提前返回,body 留在函数体 depth 1 与 genValBinary 同层;step 2+ 若扩 kind dispatch,改为 `if (kind == X) return evalX(astId)` per-kind 分发函数,保持 body 不进 IF 深度。但实际 Execute 1 进一步删去 guard(caller shim 已过滤 BINARY 且 filter And/Or),M1 再 -1。
+
+**延伸**:gen_exprs.ss L132 原计划展开 5 行 inline mv 解码会把代码叠进 `genVal` if chain(depth ~5),观测 N3 +192。**解决**:保留 `genValBinary` 为 5 行 shim(`op 检查 And/Or → genValShortCircuit` / 否则 `evalExpr + mv decode`),shim body 在函数体 depth 1 比 inline depth 5 节省 ~200 N3。shim 是"便宜的函数包装"不违 §决策 2 Phase A(class 留 Phase B)。
+
+### 坑 J:comptime 字符串比较 6 分支 inline 造成 N3 累积
+
+**现象**:evalExpr 吸收 genValBinary 的 comptime string-compare 块(6 个 op 分支,每个 ctVal(interpNewBool(...))),即使扁平 guard 后 N3 仍 +27 residue。
+
+**解决**:委托现有 `genValStringCompare(op, astId)` — 其内部 `genVal(lhs/rhs)` + ct-both 折叠 + runtime IR 发射三路径已完备,直接 delegate 省 6 分支 ~100 N3。委托是**无语义变化的代码复用**,不新建 function(genValStringCompare 原已存在,M7b 不动)。副作用:comptime ct-both 路径重复 genVal 评估(ctBlp/ctBrp payload 不复用),但 genVal 在 comptime 是纯函数,性能损耗可忽略,Phase B InternPool 会消除重复。
+
 ## 下一步(Plan 下的 Execute 顺序)
 
 **本 D 文档不触发任何 bootstrap 改动**。用户批准本 Plan 后,Execute 轮按以下顺序(每步一个 commit,每个 commit linter GATE PASS):
 
-1. **Execute 0**:步骤 0 骨架(MaybeVal class + 构造器 + 访问器 + evalExpr 空壳 + regTable)
-2. **Execute 1**:步骤 1 BINARY 非 And/Or 迁移
-3. **Execute 2**:步骤 2 UNARY 迁移
+1. ~~**Execute 0**:步骤 0 骨架~~ — 落地于 commit 53066f0(evalExpr 空壳 `return 0 - 1`,Phase A 纯 int 编码,MaybeVal class 延后 Phase B)
+2. ~~**Execute 1**:步骤 1 BINARY 非 And/Or 迁移~~ — 落地(§步骤 1 Execute 1 落地实录 + §坑 G/H/I/J)
+3. **Execute 2**:步骤 2 UNARY 迁移(下一步)
 4. **Execute 3**:步骤 3 TERNARY 迁移
 5. **Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移
 6. **Execute 5**:步骤 5 COMPTIME_EXPR 迁移
