@@ -36,12 +36,17 @@ bin/ss run tools/send_next.ss .claude/next_prompt.md
 
 ## 与 handoff 规则的关系
 
-- **允许**：Claude 把本轮结尾的下轮提示词同时输出到对话**和**写入 `.claude/next_prompt.md`，
-  供用户运行 `send_next.ss` 一键注入下一轮。两条路径的 payload 应**一致**。
+- **每轮必做(默认动作,不是可选)**：Claude 把本轮结尾的下轮提示词**同时**
+  输出到对话**和**覆盖写入 `.claude/next_prompt.md`,两处内容严格一致。
+  这是 §收尾 gate 步骤 3 的强制动作,理由见 `feedback_dual_output_next_prompt`:
+  - 对话显示 → 用户审阅措辞,发现问题可以修;脚本 30s 观察窗口期间可 Ctrl+C 中断
+  - 文件写入 → 用户跑 `bin/ss run tools/send_next.ss .claude/next_prompt.md` 一键触发下轮,
+    省掉"复制对话文本 → 粘贴到新一轮输入框"的手动环节
+  两路是 UX 的一对,缺一套都破坏工作流,不要只做其中一路。
 - **仍然禁止**：用 handoff 文件做跨轮**状态累积** / 进度摘要。
-  Phase 进度只写在 `docs/3-decisions/D0NN-*.md`，不写进 `.claude/next_prompt.md`。
-  每轮用 `.claude/next_prompt.md` 时覆盖写,不在里面追加历史。
-- `.claude/next_prompt.md` 的定位：**单次 payload**，生命周期 = 从 Claude 写入 → 用户执行 send_next.ss → 下一轮启动。下一轮启动后该文件即失效,内容参考价值等于零。
+  Phase 进度只写在 `docs/3-decisions/D0NN-*.md`,不写进 `.claude/next_prompt.md`。
+  每轮用 `.claude/next_prompt.md` 时**覆盖写**,不追加,不保留历史 —— 它是单次 payload 不是日志。
+- `.claude/next_prompt.md` 的定位:**单次 payload**,生命周期 = 从 Claude 写入 → 用户执行 send_next.ss → 下一轮启动。下一轮启动后该文件即失效,内容参考价值等于零(但**不删除**,等下一轮 Claude 再覆盖写入)。
 
 ## 相关文件
 
