@@ -1,6 +1,6 @@
 # D105: evalExpr Phase A 中批 1b 第 5 kind Plan — MEMBER_ACCESS(反射 gate 专章)
 
-**Status:** Plan + Execute 1 Done
+**Status:** Plan + Execute 1 Done + Execute 2 Done(1b 全收,起 D106 POSTFIX_INC)
 **Depends on:** D104 §步骤 1 evalIdent 实测(M7b -7 / N3 -1316 / M2 -51 / N2 -255 / F1 -148)/ D104 §步骤 2 指向 D105 MEMBER_ACCESS 反射 gate 专章 / D103 §步骤 1 evalArrayLit(对称三段式)/ D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 mv 编码 / D097 反射根因指标 / D095 FieldMeta 字段 `name`/`type`/`annotations` / D088 §第一性需求 结构化字段访问 / D094 §规则 2 pure subset 白名单(`MEMBER_ACCESS` 在列)/ CLAUDE.md §反射根因 gate(强制) / `memory/feedback_reflection_root_cause_gate.md`
 **Date:** 2026-04-19
 
@@ -346,7 +346,7 @@ if (k == "MEMBER_ACCESS") { return evalMemberAccess(astId) }
    - **§新张力 5**(D088 距离验证):1 Phase 距离,MEMBER_ACCESS 是 `obj.fields()` 读侧主承载,路线合规 —— **验证通过**
    - **§新张力 6**(@derive 连锁回归):d095_stage_b ToString/Equals/HashCode 全绿,f.name/f.type/f.annotations 三字段返回路径无破坏 —— 假设**解除**
    - **1b 批累计**:gen_exprs.ss 1721 → 1450(D100/D101/D103/D104/D105 五轮共 271 行压回 / 15.7% 压缩率),F1 硬上限 ≤600 预算下单调收敛
-3. [ ] Planned — **Execute 2**:收尾评估(1b 全收后 record vs 继续 Phase A 后批 2;默认不 record 延续银行策略)+ 起 D106 Plan(Phase A 后批 2 首 kind,候选 POSTFIX_INC 轻量写 kind 或 METHOD_CALL 中量调用 kind)
+3. [x] **Done** — **Execute 2**:收尾评估完成(1b 全收后默认**不 record**,银行策略延续,M7b bank +6 / N3 bank -2195 深窖,命中 §步骤 2 决策矩阵「M7b 余量 ≥ +5 且 N3 bank < -1500」条件)+ 起 `docs/3-decisions/D106-evalexpr-phase-a-2a.md` Plan(Phase A 后批 2 首 kind 选 **POSTFIX_INC**,28 行 body 最小可验模板,首次写语义 kind 迁移 ctVars.set 跨 evalExpr 边界一致性验证,体量小于 IDENT 41 行 / ARRAY_LIT 62 行 / METHOD_CALL 74 行 / MEMBER_ACCESS 123 行)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进;**反射 gate 专章 R1/R3 任一失败 → Plan 退回,不强推**。
 

@@ -91,7 +91,8 @@ D102 落地后累计组允许 ±0.5% 窗口(M1/M2/M3a/M5/N1/N2),结构组严格�
 |---|---|---|---|---|---|---|
 | D101 TEMPLATE_LIT | 42 | 130 | +8 | +40 | -238 | -42 |
 | D103 ARRAY_LIT | 62 | 180 | -44 | -320 | -1117 | -107(累计) |
-| **D104 IDENT(预估)** | **41** | **150** | **+13~+17** | **+20~+50** | **-50~-200** | **-41** |
+| D104 IDENT(预估)| 41 | 150 | +13~+17 | +20~+50 | -50~-200 | -41 |
+| **D104 IDENT(实测 @ e68b555)** | **41** | **150** | **-51**(相对 baseline,相对 Execute 1 前 +7)| **-255**(相对 baseline,相对 Execute 1 前 +65)| **-1316**(相对 baseline,相对 Execute 1 前 -199)| **-148**(累计,相对 Execute 1 前 -41)|
 
 **预估偏差来源**:
 - M2/N2 比 TEMPLATE_LIT 略高 —— IDENT 有 5 路径 scope 分支(TEMPLATE_LIT 仅 2 分支 comptime/runtime),分支条件数多
@@ -279,8 +280,20 @@ if (k == "IDENT") { return evalIdent(astId) }
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +8 充裕,若 Execute 1 预估偏差超预期触发,补削减 M7b -1;grep 孤儿 helper / inline 单调用点
-2. [ ] Planned — **Execute 1**:IDENT 迁移 evalIdent(对称 evalTemplateLit / evalArrayLit 三段式),eval_expr.ss 末尾新建 evalIdent + evalExpr 头部加分派 + L132 shim 扩 8 kind + 删 gen_exprs.ss L134-174 整块 41 行 inline + L173 runtime 回退改 mv 编码
+1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +8 充裕,若 Execute 1 预估偏差超预期触发,补削减 M7b -1;grep 孤儿 helper / inline 单调用点 —— **本 Plan 未触发,默认跳过生效**
+2. [x] **Done at e68b555** — **Execute 1**:IDENT 迁移 evalIdent(对称 evalTemplateLit / evalArrayLit 三段式),eval_expr.ss 末尾新建 evalIdent + evalExpr 头部加分派 + L132 shim 扩 8 kind + 删 gen_exprs.ss L134-174 整块 41 行 inline + L173 runtime 回退改 mv 编码
+   - **实测指标对照 §DRIFT 预估表**(baseline = commit 9343330,5 项全反向通过):
+     - **M7b 676→669 Δ=-7**(预估 669 / bank -7~-8)**精准命中**,结构组严格 ≤ baseline 通过,bank 相对 Execute 1 前 +8 → +7(净消耗 1,evalIdent 新函数)
+     - **N3 518111→516795 Δ=-1316**(预估 -1167~-1317 相对 baseline)**精准命中下限**,结构组严格 ≤ baseline 通过;相对 Execute 1 前 -199(body 5 路径 scope 搬家深度压缩,接近预估 -50~-200 深度下限,印证 IDENT scope 分支深度模型准确)
+     - **N2 380630→380375 Δ=-255**(预估 -270~-300 相对 baseline)**略优于预估窗口**;实测相对 Execute 1 前 +65(略超预估 +20~+50 上限 +15,IDENT 5 路径分支条件数多 Halstead 项),累计组 DRIFT tol ±1903 **远内**
+     - **M2 76126→76075 Δ=-51**(预估 -11~-31 相对 baseline)**优于预估**;实测相对 Execute 1 前 -7(反向预估 +13~+17,evalIdent 新签名节点少于预估 + L132 shim 扩 kind 字面量替代条件节点优势),累计组 DRIFT tol ±380 **远内**
+     - **F1:gen_exprs.ss 1721→1573 Δ=-148**(预估 ~1573 / 相对 Execute 1 前 -41)**精准命中**,单调下降 PASS
+   - **结构组 8 项** M3b/M4/M6/M7a/M7b/N3/N4/N5 全 OK/PROGRESS(M7b -7 / N3 -1316 / N4 等 0 OK)
+   - **累计组 6 项** M1/M2/M3a/M5/N1/N2 全 OK/PROGRESS(M2 -51 / N2 -255,窗口内 20×+ 充裕)
+   - **F1:gen_exprs.ss** 1614→1573 单调下降 PASS,Phase A 累计 -148(baseline 1721)
+   - **§新张力 1 验证反向通过**:5 scope 路径干净迁入 evalIdent,嵌套 comptime block 场景未出现污染,bootstrap 固定点 PASS
+   - **§新张力 2 验证反向通过**:L173 raw constVal 已改 `0 - constVal(genIdent(astId)) - 1` mv 编码,caller L132 shim 解码正确
+   - **三次生产验证反向通过记录落本轮 D104**:D101 TEMPLATE_LIT(-42 / -238)/ D103 ARRAY_LIT(-107 / -1117)/ D104 IDENT(-148 / -1316),D102 ±0.5% DRIFT 窗口连续 3 次反向通过(全 PROGRESS,连 DRIFT 都未触发),窗口设计有效性得证
 3. [ ] Planned — **Execute 2**:收尾评估(record vs 继续 1b-5;默认继续)+ 起 D105 Plan(MEMBER_ACCESS 反射 gate 专章)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
