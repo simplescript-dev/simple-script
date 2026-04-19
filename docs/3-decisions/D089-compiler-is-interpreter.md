@@ -71,7 +71,6 @@
 ### 禁止的 Context 操作
 
 - ❌ 扫描 `docs/3-decisions/` 找未完成决策自己挑活儿（违反 CLAUDE.md "交互式单文档"）
-- ❌ 读取 `docs/5-handoff/`（已删除，commit `278f34c`）
 - ❌ 顺带修无关文件
 - ❌ 改 `CLAUDE.md` / `docs/1-axioms.md` / `docs/2-principles.md`（D089 范围外）
 
@@ -199,7 +198,8 @@
 
 ### 禁止的 state 操作
 
-- ❌ 写 `next-prompt.md` / `handoff.md` / `notes.md` / `analysis.md`（CLAUDE.md 硬规则，commit `278f34c` 已彻底移除）
+- ❌ 把跨轮进度 / 摘要写到 handoff 文件里累积（`.claude/next_prompt.md` 仅作为 `tools/send_next.ss` 的单次 payload,非状态存储,见 `docs/terman-auto-next.md`）
+- ❌ 写 `notes.md` / `analysis.md` 这类分析文件到仓库
 - ❌ amend 已 push commit（始终 new commit）
 - ❌ 把状态写到对话 / D089 / git 之外的任何位置
 
@@ -277,7 +277,7 @@ assertEqual(r, 7)
 
 - 不引入 Kotlin/Scala 语法（CLAUDE.md "Java/TS 优先"）
 - 不做 workaround，根因修（user feedback `no_workaround`）
-- 不写 `handoff` / `next-prompt` 文件（CLAUDE.md `no_handoff_drift`）
+- 跨轮进度 / 摘要不落到 handoff 文件（`.claude/next_prompt.md` 仅作 send_next.ss payload）
 - 每个 Step 独立 commit + bootstrap 通过
 - 不 amend 已 push commit
 - 编译器 bug 立即停下修，不绕行

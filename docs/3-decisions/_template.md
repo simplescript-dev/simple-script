@@ -155,7 +155,8 @@
 
 ### 禁止 state 操作
 
-- ❌ 写 `next-prompt.md` / `handoff.md` / `notes.md`
+- ❌ 把跨轮进度 / 摘要写到 handoff 文件里累积（`.claude/next_prompt.md` 仅作 `tools/send_next.ss` payload,非状态存储）
+- ❌ 写 `notes.md` / `analysis.md` 这类分析文件到仓库
 - ❌ amend 已 push commit
 - ❌ 把状态写到对话 / 本文档 / git 之外
 
