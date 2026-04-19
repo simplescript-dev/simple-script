@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "IDENT") {
         const ctIdName = nGetS1(id)
@@ -533,70 +533,6 @@ function genVal(id: int): int {
         const mcResult = genMethodCall(id, mcObjReg)
         callPreRegs = mcSavedCPR
         return constVal(mcResult)
-    }
-    if (kind == "ARRAY_LIT") {
-        const elemList = nGetList(id)
-        if (elemList == "") {
-            if (comptimeDepth > 0) { return ctVal(interpNewArray("")) }
-            return constVal(genArrayLit(id))
-        }
-        let allCt = 1
-        const arrParts = elemList.split(",")
-        let elemVals = new Map()
-        for (ap in arrParts) {
-            const elemId = parseInt(ap)
-            if (elemId > 0) {
-                if (nGetKind(elemId) == "SPREAD_ELEM") {
-                    const sv = genVal(nGetI1(elemId))
-                    elemVals.set(`${elemId}`, `${sv}`)
-                    if (isCt(sv) != 1) { allCt = 0 }
-                } else {
-                    const ev = genVal(elemId)
-                    elemVals.set(`${elemId}`, `${ev}`)
-                    if (isCt(ev) != 1) { allCt = 0 }
-                }
-            }
-        }
-        if (comptimeDepth > 0) {
-            const arr = interpNewArray("")
-            for (ap in arrParts) {
-                const elemId = parseInt(ap)
-                if (elemId > 0) {
-                    const ev = parseInt(elemVals.getString(`${elemId}`))
-                    if (nGetKind(elemId) == "SPREAD_ELEM") {
-                        if (isCt(ev) == 1 && interpType(payload(ev)) == "array") {
-                            const srcArrId = payload(ev)
-                            const srcLen = interpArrayLen(srcArrId)
-                            let srcI = 0
-                            while (srcI < srcLen) {
-                                const srcElemId = interpArrayGet(srcArrId, srcI)
-                                if (srcElemId > 0) { interpArrayPush(arr, srcElemId) }
-                                srcI = srcI + 1
-                            }
-                        } else {
-                            println(`error: [comptime] cannot spread non-array value at line ${nGetLine(elemId)}:${nGetCol(elemId)}`)
-                            exit(1)
-                        }
-                    } else {
-                        interpArrayPush(arr, isCt(ev) == 1 ? payload(ev) : interpNewNull())
-                    }
-                }
-            }
-            return ctVal(arr)
-        }
-        arrPreRegs = new Map()
-        for (ap in arrParts) {
-            const elemId = parseInt(ap)
-            if (elemId > 0) {
-                const ev = parseInt(elemVals.getString(`${elemId}`))
-                if (nGetKind(elemId) == "SPREAD_ELEM") {
-                    arrPreRegs.set(`${nGetI1(elemId)}`, reg(ev))
-                } else {
-                    arrPreRegs.set(`${elemId}`, reg(ev))
-                }
-            }
-        }
-        return constVal(genArrayLit(id))
     }
     if (kind == "ARROW_FUNC") {
         if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }
