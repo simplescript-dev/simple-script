@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "IDENT") {
         const ctIdName = nGetS1(id)
@@ -644,32 +644,6 @@ function genVal(id: int): int {
     if (kind == "ARROW_FUNC") {
         if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }
         return constVal(genArrowFunc(id))
-    }
-    if (kind == "INDEX_ACCESS") {
-        const obj = genVal(nGetI1(id))
-        const idx = genVal(nGetI2(id))
-        if (isCt(obj) == 1 && isCt(idx) == 1) {
-            const objP = payload(obj)
-            const ot = interpType(objP)
-            if (ot == "array") {
-                const i = interpAsInt(payload(idx))
-                return ctVal(interpArrayGet(objP, i))
-            }
-            if (ot == "object" || ot == "map") {
-                const fieldName = interpAsStr(payload(idx))
-                return ctVal(interpGetField(objP, fieldName))
-            }
-            if (ot == "string") {
-                const s = interpAsStr(objP)
-                const i = interpAsInt(payload(idx))
-                if (i >= 0 && i < s.length()) {
-                    return ctVal(interpNewString(s.charAt(i)))
-                }
-                return ctVal(interpNewString(""))
-            }
-        }
-        if (comptimeDepth > 0) { return comptimeError("index access requires compile-time known operands", id) }
-        return constVal(genIndexAccess(id, reg(obj), reg(idx)))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
     if (comptimeDepth > 0) {

@@ -7,7 +7,8 @@
 // (D099 §坑 L:runtime phi AST 密度高 inline 会炸 N3,改删 gen*独立函数 + 新建 eval* 维持 M7b)。
 
 function evalExpr(astId: int): int {
-    if (nGetKind(astId) == "UNARY") {
+    const k = nGetKind(astId)
+    if (k == "UNARY") {
         const uOp = nGetS1(astId)
         if (comptimeDepth > 0) {
             const ctUv = genVal(nGetI1(astId))
@@ -48,8 +49,9 @@ function evalExpr(astId: int): int {
         emitIR(`  ${uR2} = zext i1 ${uR} to i32`)
         return 0 - constVal(uR2) - 1
     }
-    if (nGetKind(astId) == "TERNARY") { return evalTernary(astId) }
-    if (nGetKind(astId) == "COMPTIME_EXPR") { return evalComptimeExpr(astId) }
+    if (k == "TERNARY") { return evalTernary(astId) }
+    if (k == "COMPTIME_EXPR") { return evalComptimeExpr(astId) }
+    if (k == "INDEX_ACCESS") { return evalIndexAccess(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (comptimeDepth > 0) {
@@ -167,4 +169,22 @@ function evalComptimeExpr(astId: int): int {
     if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
     inferType(astId)
     return 0 - constVal(comptimeExprLiteral.getString(`${astId}`)) - 1
+}
+
+function evalIndexAccess(astId: int): int {
+    const obj = genVal(nGetI1(astId))
+    const idx = genVal(nGetI2(astId))
+    if (isCt(obj) == 1 && isCt(idx) == 1) {
+        const objP = payload(obj)
+        const ot = interpType(objP)
+        if (ot == "array") { return ctVal(interpArrayGet(objP, interpAsInt(payload(idx)))) }
+        if (ot == "object" || ot == "map") { return ctVal(interpGetField(objP, interpAsStr(payload(idx)))) }
+        if (ot == "string") {
+            const s = interpAsStr(objP)
+            const i = interpAsInt(payload(idx))
+            return ctVal(interpNewString(i >= 0 && i < s.length() ? s.charAt(i) : ""))
+        }
+    }
+    if (comptimeDepth > 0) { return comptimeError("index access requires compile-time known operands", astId) }
+    return 0 - constVal(genIndexAccess(astId, reg(obj), reg(idx))) - 1
 }

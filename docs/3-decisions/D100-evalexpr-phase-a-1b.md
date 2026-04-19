@@ -1,6 +1,6 @@
 # D100: evalExpr Phase A 中批 1b 首轮 Plan — INDEX_ACCESS
 
-**Status:** Draft(待批准后 Execute)
+**Status:** Execute 0 / Execute 1 Done(Execute 2 Pending)
 **Depends on:** D099 §步骤 0-6(Phase A 首批 1a 5 kind 已合并)/ D098 §决策 1(mv Phase A 纯 int 编码)/ D094 §规则 2(pure subset 白名单)
 **Date:** 2026-04-19
 
@@ -160,17 +160,69 @@ if (nGetKind(astId) == "INDEX_ACCESS") { return evalIndexAccess(astId) }
 3. **INDEX_ACCESS comptime object/map 分支调 `interpGetField`** — 当前 genVal L660 路径。D094 §规则 2 pure subset 是否包含 interpGetField?**包含**(纯读取,无副作用),但 Phase B MaybeVal 类化后需确认 `interpGetField` 返回值类型与 mv 编码兼容
 4. **Step 0 预削减 `genValStringCompare` inline 候选与 eval_expr.ss L76/L90 耦合** — 若 step 0 选此源,需同步改 evalExpr BINARY block,**step 0 与 step 1 scope 不能混**,独立 commit
 
-## 踩过的坑(Execute 实录占位 — Plan 阶段空)
+## Execute 1 落地实录(2026-04-19)
 
-*Execute 轮按 D099 §坑 G-O 格式追加记录*
+**Commit 前验证**:
+- RED: `grep -n "function evalIndexAccess" bootstrap/eval_expr.ss` → 空(未存在)
+- gen_exprs.ss L648-673 INDEX_ACCESS inline 存在 / L132 `||` 链 4 kind
+
+**改动**(单 commit):
+1. [x] Done at `bootstrap/eval_expr.ss:173-190` — 新建 `evalIndexAccess(astId: int): int`,对称 evalTernary/Short/Comptime pattern
+2. [x] Done at `bootstrap/eval_expr.ss:53` — evalExpr 顶部加 `if (k == "INDEX_ACCESS") { return evalIndexAccess(astId) }` dispatch
+3. [x] Done at `bootstrap/gen_exprs.ss:132` — `||` 链扩 5 kind(加 `|| kind == "INDEX_ACCESS"`)
+4. [x] Done at `bootstrap/gen_exprs.ss:~648` — 删除 26 行 INDEX_ACCESS inline body
+
+**补救优化**(为了 GATE PASS):
+5. [x] Done at `bootstrap/eval_expr.ss:10` — evalExpr 顶部 `const k = nGetKind(astId)` 一次提取,4 处 `nGetKind(astId) == "X"` 换 `k == "X"`(UNARY/TERNARY/COMPTIME_EXPR/INDEX_ACCESS)。M2 -3 / M3a -3 余量
+6. [x] Done at `bootstrap/eval_expr.ss:183-184` — evalIndexAccess string 分支 `if/else return` 折为 `ternary`,M2 -4 / N2 -10 余量
+
+**linter 最终结果**(GATE PASS):
+```
+M1  =5135 delta=0     OK
+M2  =76150 delta=-3   PROGRESS
+M3a =12128 delta=-5   PROGRESS
+M3b =1879 delta=0     OK
+M4  =3037 delta=-1    PROGRESS
+M5  =1750 delta=0     OK
+M6  =32 delta=0       OK
+M7a =27 delta=0       OK
+M7b =677 delta=-1     PROGRESS (新增 evalIndexAccess +1,Execute 0 -2 余量吸收)
+N1  =34 delta=0       OK
+N2  =380750 delta=-15 PROGRESS
+N3  =518205 delta=-182 PROGRESS
+N4  =321 delta=0      OK
+N5  =0 delta=0        OK
+```
+
+6 指标 PROGRESS / 8 指标持平 / 0 regression。
+
+**bootstrap 固定点 PASS**,tests 213/217(4 failures 与 baseline 一致,与本 commit 无关)。
+
+## 踩过的坑(Execute 实录)
+
+### §坑 P — D100 Plan §预期累计削减 M2 -50~-100 估计严重偏高
+
+Plan §预期累计削减 表格(L134-144)预估 M2 削减 50-100,依据"body 从内联 depth 4-5 移到独立函数 depth 1-2,节点总数近似,深度贡献削减"。**但 M2 是纯节点总数(count),depth 削减走 N3 不走 M2**。Plan 描述已含该事实("节点总数近似")但预估列仍给 -50~-100,内部不一致。
+
+实测:首版迁移 M2 +2 / N2 +10 / N3 -157。N3 符合 depth 削减预期,M2/N2 则略升(新函数签名节点 + 新 dispatch 行 + L132 `||` 扩一 kind 节点 > 删除 outer `if (kind == INDEX_ACCESS)` wrapper 节点)。
+
+**对策**:Execute 1 在既定步骤外补两小优化(k 提取 + string 分支 ternary),回到 M2/N2 PROGRESS。后续 1b kind(TEMPLATE_LIT / ARRAY_LIT / IDENT / MEMBER_ACCESS)迁移时 **Plan 预估表 M2 应写 +0~+3**(而非 -50~-100),提醒每轮 Execute 需预留补救余量或在 Step 0 多拿 -10 N2 / -2 M2 余量。
+
+### §坑 Q — Execute 0 银行余量未 record 至 baseline 的 gate 盲区
+
+Execute 0 commit 3cd9428 削减 M7b -2 / M2 -8 / N2 -40 / M3a -2 / N3 -20 / M1 -2。baseline 未刷新(仍 Execute 6b 值),linter 判定按 cur - baseline:
+- 余量 ≥ 0 时:Execute 0 -8 M2 为 Execute 1 预留 M2 +8 空间
+- 余量 < 0 时:Execute 0 未削减某指标,该指标 Execute 1 严格不可增
+
+M7b 余量 +2 / M2 余量 +8 / N2 余量 +40 / N3 余量 +20。Execute 1 实测 M2 净 -3(即相对 Execute 0 后状态加 5,但相对 baseline 减 3)—— 余量够。
+
+**对策**:后续 Execute 2 如要 record baseline,需同时评估 1b 下 kind 是否已落地。早 record 会吃掉银行余量降低下 kind 迁移空间。**默认不 record**,等 1b 全部 5 kind 着陆后单 commit record(Plan §步骤 2 L127 已说明)。
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-**本 D 文档不触发任何 bootstrap 改动**。用户批准本 Plan 后,Execute 轮按以下顺序(每步一个 commit,每个 commit linter GATE PASS):
-
-1. **Execute 0**:step 0 预削减 — grep 候选源 → 实测削减量 → 单 commit 落地拿 ≥ -1 M7b 或 ≥ -80 N3 余量
-2. **Execute 1**:step 1 INDEX_ACCESS 迁移 — 新建 evalIndexAccess + 改 L132 `\|\|` 链 + 删 L648-673 inline body
-3. **Execute 2**:step 2 收尾评估 — 决策是 record baseline 还是继续 1b 下一 kind(另起 D101)
+1. [x] Done at commit 3cd9428 — **Execute 0**:step 0 预削减(inline interpGetReturnFlag/Val 删函数)
+2. [x] Done at commit TBD — **Execute 1**:step 1 INDEX_ACCESS 迁移 + k 提取 + ternary 补救
+3. [ ] Planned — **Execute 2**:step 2 收尾评估(record baseline vs 继续 1b 下 kind;默认后者,另起 D101 选 TEMPLATE_LIT/ARRAY_LIT)
 
 每 Execute 开始前必须先填 PSM 十问(PFV 流程),完成后过 VCM 五验。单步 bootstrap 失败 → 定位根因不越步;单步 linter 任一指标 regression → 先削减再推进,不改 baseline 让 gate 过(CLAUDE.md §反射根因 gate 强制条款)。
 
