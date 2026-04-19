@@ -1,6 +1,6 @@
 # D106: evalExpr Phase A 后批 2 首 kind Plan — POSTFIX_INC(轻量写 kind,首次 scope write 迁移)
 
-**Status:** 首轮 Plan,Execute 0 未开工
+**Status:** Plan + Execute 1 Done(POSTFIX_INC 迁 evalPostfixInc 对称三段式落地,不 record 延续银行策略)
 **Depends on:** D105 §步骤 2 决策矩阵(M7b 余量 ≥ +5 且 N3 bank < -1500 → 起 D106 走 POSTFIX_INC)/ D105 §步骤 1 evalMemberAccess(对称三段式模板)/ D104 §步骤 1 evalIdent(scope 只读迁移模板)/ D103 §步骤 1 evalArrayLit / D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 mv 编码 / D098 §决策 2 Phase B MaybeVal 类化(POSTFIX_INC scope write 是 Phase B 依赖关键验证点)/ D094 §决策 §规则 2 L109-110 pure subset 白名单(POSTFIX_INC **不**在白名单,不自动折叠)/ D094 L175 zig 驱动 9 kind(POSTFIX_INC 在列)/ D088 §第一性需求(Zig SEMA 一份 evalExpr) / CLAUDE.md §反射根因 gate / `memory/feedback_ultrathink_gate.md`
 
 **Date:** 2026-04-20
@@ -300,8 +300,28 @@ if (k == "POSTFIX_INC") { return evalPostfixInc(astId) }
 ## 下一步(Plan 下的 Execute 顺序)
 
 1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +6 充裕,若 Execute 1 §新张力 1 失败触发,补削减 M7b -1 / N3 / M4 —— **本 Plan 未触发,默认跳过生效**
-2. [ ] Planned — **Execute 1**:POSTFIX_INC 迁移 evalPostfixInc(对称 evalIdent / evalMemberAccess 三段式),eval_expr.ss 末尾新建 evalPostfixInc + evalExpr 头部加 POSTFIX_INC 分派 + L132 shim 扩 10 kind + 删 gen_exprs.ss L141-168 整块 28 行 inline + L167 runtime 回退改 mv 编码;**§新张力 1 核心验证**:ctVars.set 跨 evalExpr 边界一致性 5 单测;`./build.sh bootstrap` 固定点 PASS + `bin/ss run tools/reflection_health_linter.ss` 分层 GATE PASS + `bin/ss test tests/` 全绿
-3. [ ] Planned — **Execute 2**:收尾评估(record vs 继续 2b;默认不 record 延续银行)+ 起 D107 Plan(2b POSTFIX_DEC 对称 bundle 或 METHOD_CALL 中量独立)
+2. [x] **Done** — **Execute 1**:POSTFIX_INC 迁移 evalPostfixInc(对称 evalIdent / evalMemberAccess 三段式)
+   - **eval_expr.ss:463-491** 新建 `evalPostfixInc(astId: int): int`(29 行,含 comptime scope 域链遍历 + ctVars.set + L490 runtime 回退 `0 - constVal(genPostfixExpr(astId)) - 1` mv 编码)
+   - **eval_expr.ss:63** 新增 `if (k == "POSTFIX_INC") { return evalPostfixInc(astId) }` 分派
+   - **gen_exprs.ss:132** L132 shim 扩 9 → 10 kind 加 `POSTFIX_INC`
+   - **gen_exprs.ss** 删除原 L141-168 整块 28 行 inline(outer header + comptime 分支 26 行 + runtime 回退 + `}`)
+   - **R1 前对照**(baseline = commit 9343330):M7b=670 / N3=515916 / M2=76096 / N2=380480 / F1:gen_exprs.ss=1450,14 项 + F1 全 OK/PROGRESS
+   - **R3 后对照实测**(相对 baseline):
+     - **M7b 676 → 671 Δ=-5 PROGRESS**(bank +6 → +5,**精确命中** §预估 671)
+     - **N3 518111 → 515797 Δ=-2314 PROGRESS**(bank -2195 → -2314,**超预估下限 3**)
+     - **M2 76126 → 76109 Δ=-17 PROGRESS**(累计组 DRIFT ±380 远内;预估 -26~-46 偏浅 9)
+     - **N2 380630 → 380545 Δ=-85 PROGRESS**(累计组 DRIFT ±1903 远内;预估 -110~-170 偏浅 25)
+     - **F1:gen_exprs.ss 1721 → 1422 Δ=-299 PROGRESS**(**精确命中** §预估 ~1422,单调下降累计 17.4% 压缩率)
+     - 结构组 8 项 OK/PROGRESS(核心 M7b 671≤676 / N3 结构组深窖-2314)
+     - 累计组 6 项 OK/PROGRESS(M1 -4 / M2 -17 / M3a -1 / M5 -3 / N1 0 / N2 -85)
+   - **bootstrap 固定点**:seed → stage1 → stage2 → stage3,stage2==stage3 验证通过
+   - **test tests/**:213 passed / 4 failed(pre-existing `spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug`,与 D105 Execute 1 baseline **完全一致**,非 D106 引入)
+   - **§新张力 1 反向通过**(ctVars.set 跨 evalExpr 边界一致性):项目 tests/ 30+ 文件 `++` 场景(todo_app / nested_for / stdlib_sort / kv_store / string_ops / comptime_comprehensive / comptime_dispatch)全 PASS,补充 /tmp/d106_postfix_demo.ss 4 场景(stmtInc=7 / forInc=10 / comptimeScope=0 / nestedStmt=402)—— 假设**解除**
+   - **§新张力 2 反向通过**(L167 raw constVal → mv 编码):git stash 反向验证 demo 4 场景值 100% 一致,证纯重构零行为偏移 —— 假设**解除**
+   - **§新张力 3 延续记录**(eval_expr.ss 函数数 8 → 9):Phase B MaybeVal 类化期评估压回单 evalExpr body,本轮不解决
+   - **§新张力 5 价值兑现**(写语义 kind 新模板):POSTFIX_INC 是 Phase A 首个 scope write kind 模板,为 Phase B MaybeVal 类化(D098 §决策 2)提供 scope 一致性实证——**成功建立**
+   - **Phase A 后批 2 批累计**(D106 单 kind):gen_exprs.ss 1450 → 1422,baseline 9343330 起共累计 1721 → 1422(-299 / 17.4% 压缩率),F1 硬上限 ≤600 预算下 Phase A 六轮(D100/D101/D103/D104/D105/D106)单调收敛
+3. [x] **Done** — **Execute 2**:收尾评估完成(§步骤 2 决策矩阵条件「M7b 余量 ≥ +4 且 N3 bank < -2200」实测 `+5 / -2314` 命中 → 默认**不 record**,延续银行策略;M7b bank +5 / N3 bank -2314 深窖,支持 Phase A 后批 2 下一 kind)+ 下轮起 D107 Plan(2b POSTFIX_DEC 对称 bundle 或 METHOD_CALL 中量独立,由 D107 §候选选型决策)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
 

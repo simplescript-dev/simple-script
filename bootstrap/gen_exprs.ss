@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
         if (comptimeDepth > 0) {
@@ -137,34 +137,6 @@ function genVal(id: int): int {
             return ctVal(interpNewNull())
         }
         return constVal(genThisExpr())
-    }
-    if (kind == "POSTFIX_INC") {
-        if (comptimeDepth > 0) {
-            const piName = nGetS1(id)
-            let piKey = ""
-            if (ctScopeStack.length() > 0) {
-                let piSi = ctScopeStack.length() - 1
-                while (piSi >= 0) {
-                    const piSk = `${ctScopeStack[piSi]}:${piName}`
-                    if (ctVars.has(piSk) == 1) { piKey = piSk; break }
-                    piSi = piSi - 1
-                }
-            }
-            if (piKey == "") {
-                const piFk = `${currentFunc}:${piName}`
-                if (ctVars.has(piFk) == 1) { piKey = piFk }
-            }
-            if (piKey != "") {
-                const piTagged = parseInt(ctVars.getString(piKey))
-                if (isCt(piTagged) == 1) {
-                    const piOld = payload(piTagged)
-                    ctVars.set(piKey, `${ctVal(interpNewInt(interpAsInt(piOld) + 1))}`)
-                    return ctVal(piOld)
-                }
-            }
-            return ctVal(interpNewNull())
-        }
-        return constVal(genPostfixExpr(id))
     }
     if (kind == "CALL") {
         const callName = nGetS1(id)

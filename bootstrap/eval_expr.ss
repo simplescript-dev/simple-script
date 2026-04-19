@@ -60,6 +60,7 @@ function evalExpr(astId: int): int {
     if (k == "ARRAY_LIT") { return evalArrayLit(astId) }
     if (k == "IDENT") { return evalIdent(astId) }
     if (k == "MEMBER_ACCESS") { return evalMemberAccess(astId) }
+    if (k == "POSTFIX_INC") { return evalPostfixInc(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (comptimeDepth > 0) {
@@ -458,4 +459,33 @@ function evalMemberAccess(astId: int): int {
     }
     if (nGetI3(astId) > 0) { return 0 - constVal(genOptionalMemberAccess(astId, reg(obj))) - 1 }
     return 0 - constVal(genMemberAccess(astId, reg(obj))) - 1
+}
+
+function evalPostfixInc(astId: int): int {
+    if (comptimeDepth > 0) {
+        const piName = nGetS1(astId)
+        let piKey = ""
+        if (ctScopeStack.length() > 0) {
+            let piSi = ctScopeStack.length() - 1
+            while (piSi >= 0) {
+                const piSk = `${ctScopeStack[piSi]}:${piName}`
+                if (ctVars.has(piSk) == 1) { piKey = piSk; break }
+                piSi = piSi - 1
+            }
+        }
+        if (piKey == "") {
+            const piFk = `${currentFunc}:${piName}`
+            if (ctVars.has(piFk) == 1) { piKey = piFk }
+        }
+        if (piKey != "") {
+            const piTagged = parseInt(ctVars.getString(piKey))
+            if (isCt(piTagged) == 1) {
+                const piOld = payload(piTagged)
+                ctVars.set(piKey, `${ctVal(interpNewInt(interpAsInt(piOld) + 1))}`)
+                return ctVal(piOld)
+            }
+        }
+        return ctVal(interpNewNull())
+    }
+    return 0 - constVal(genPostfixExpr(astId)) - 1
 }
