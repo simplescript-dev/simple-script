@@ -129,8 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY") { return genValBinary(id) }
-    if (kind == "UNARY") { return genValUnary(id) }
+    if (kind == "BINARY" || kind == "UNARY") { return genValBinary(id) }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "TERNARY") { const mvT = evalExpr(id); return mvT >= 0 ? mvT : 0 - mvT - 1 }
     if (kind == "IDENT") {
@@ -695,51 +694,8 @@ function genVal(id: int): int {
 }
 
 function genValBinary(id: int): int {
-    const op = nGetS1(id)
-    if (op == "And" || op == "Or") { return genValShortCircuit(op, id) }
     const mv = evalExpr(id)
     return mv >= 0 ? mv : 0 - mv - 1
-}
-
-function genValUnary(id: int): int {
-    const mv = evalExpr(id)
-    return mv >= 0 ? mv : 0 - mv - 1
-}
-
-function genValShortCircuit(op: string, id: int): int {
-    const lv = genVal(nGetI1(id))
-    if (isCt(lv) == 1) {
-        const leftTruthy = interpTruthy(payload(lv))
-        if (op == "And") {
-            if (leftTruthy == 0) { return ctVal(interpNewBool(0)) }
-            return genVal(nGetI2(id))
-        }
-        if (leftTruthy == 1) { return lv }
-        return genVal(nGetI2(id))
-    }
-    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
-    // Runtime left — inline short-circuit IR (left already evaluated)
-    const leftStr = reg(lv)
-    const scResult = nextReg()
-    emitIR(`  ${scResult} = alloca i32, align 4`)
-    emitIR(`  store i32 ${leftStr}, ptr ${scResult}, align 4`)
-    const scCmp = nextReg()
-    emitIR(`  ${scCmp} = icmp ne i32 ${leftStr}, 0`)
-    const scRhs = nextLabel("sc.rhs")
-    const scEnd = nextLabel("sc.end")
-    if (op == "And") {
-        emitIR(`  br i1 ${scCmp}, label %${scRhs}, label %${scEnd}`)
-    } else {
-        emitIR(`  br i1 ${scCmp}, label %${scEnd}, label %${scRhs}`)
-    }
-    emitIR(`${scRhs}:`)
-    const scRight = genExpr(nGetI2(id))
-    emitIR(`  store i32 ${scRight}, ptr ${scResult}, align 4`)
-    emitIR(`  br label %${scEnd}`)
-    emitIR(`${scEnd}:`)
-    const scRes = nextReg()
-    emitIR(`  ${scRes} = load i32, ptr ${scResult}, align 4`)
-    return constVal(scRes)
 }
 
 function genValStringCompare(op: string, id: int): int {

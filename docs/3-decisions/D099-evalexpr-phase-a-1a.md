@@ -1,6 +1,6 @@
 # D099: evalExpr Phase A 首批 1a 合并 Plan — BINARY / UNARY / TERNARY / SHORT_CIRCUIT / COMPTIME_EXPR
 
-**Status:** Executing(Execute 0 / Execute 1 / Execute 2 已落地,Execute 3-6 待推进)
+**Status:** Executing(Execute 0-4 已落地,Execute 5-6 待推进)
 **Depends on:** D093(evalExpr 单函数 dispatch 骨架)/ D094 §决策 §规则 2(pure subset 白名单)/ D098 §决策 1(MaybeVal 编码 + 构造器/访问器接口)
 **Date:** 2026-04-18
 **Last Updated:** 2026-04-18
@@ -198,6 +198,14 @@ if (kind == "BINARY") {
 
 **验证**:短路语义专项测试(`a() || b()` b 不求值);linter M1/M4 继续削,M3b 最大入度可能下降(genValBinary/genValShortCircuit 被移除)。
 
+**Execute 4 落地实录(2026-04-19)**:
+- `bootstrap/eval_expr.ss`:evalExpr L52 `const op = nGetS1(astId)` 后新增 1 行分派 `if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }`(在 comptimeDepth 检查之前,避免 And/Or 走通用 comptime 双 operand 折叠路径);文件末尾新增 `evalShortCircuit(op, astId): int` 独立函数 28 行承载完整 SHORT_CIRCUIT body(comptime lhs-known short-cut + comptime runtime-lhs null + runtime alloca/store/load phi)。mv 编码:comptime 短路命中 `ctVal(interpNewBool(0))` / `lv`;comptime rhs fallthrough 统一编码 `isCt(rv) == 1 ? rv : 0 - rv - 1`;runtime `0 - constVal(scRes) - 1`。runtime branch direction 从原 `if (op == "And") emitIR(...) else emitIR(...)` 5 行压缩为 2 行 ternary + 1 emitIR(§坑 M.1 Linter 削减专用)
+- `bootstrap/gen_exprs.ss` L697-702:`genValBinary` 从 5 行 shim 瘦身为 3 行(删除 `op == "And" \|\| "Or"` 分派 fork);L709-743 `genValShortCircuit` 35 行整体删除;L133 `if (kind == "UNARY") { return genValUnary(id) }` 合并到 L132 `if (kind == "BINARY" \|\| kind == "UNARY") { return genValBinary(id) }`(§坑 M.2:genValUnary 前置步骤 6 清理,shim body 与 genValBinary 完全同构可合并);`function genValUnary` 3 行 shim 整体删除
+- 方案选型(§坑 L 延伸):M7b=679=baseline 余量 0 + N3=518479 实测余量 2,极紧。genValShortCircuit runtime body 17 行(alloca + 2 label + template literal 密集)与 TERNARY 22 行密度类似,第一次尝试 inline 到 evalExpr `if op==And\|\|Or` 分支会触 N3 regression。实测:inline 方案 N3 +216 BLOCKED;改"删 genValShortCircuit + 新建 evalShortCircuit 独立函数"(与 evalTernary 对称 body depth 1)N3 +82 仍 BLOCKED;再合并 branch ternary N3 +8 BLOCKED;最后前置 genValUnary 清理(M7b -1 余量释放 + N3 -约 20)N3 -82 **PASS**
+- Linter GATE PASS:M1=5136(baseline 5144,Δ-8)/ M2=76157(Δ-87)/ M3a=12133(Δ-23)/ M3b=1879(Δ-1)/ M4=3039(Δ-12)/ M5=1750(Δ-8)/ M7b=**678**(Δ-1,baseline 余量释放 1)/ N1=34(=)/ N2=380785(Δ-435)/ N3=**518397**(Δ-82)/ N4=321(=)/ N5=0(=);所有指标 PROGRESS(M3b 首次低于 baseline,genValShortCircuit 入度消失)
+- Bootstrap 固定点 PASS:stage2 == stage3;测试 213 passed / 4 failed(spring_web_params / d096_p4_l2_reactive / harness_bug / harness_task 均 pre-existing,git stash 回退到 commit f54fd9f 验证 harness_task 已失败,与 SHORT_CIRCUIT 迁移无关)
+- **§步骤 4 与 Plan 的偏差**(Execute 4 实录):① mv helpers 不建(坑 G 延续)② operand 走 genVal 非递归 evalExpr(坑 H 延续)③ 方案从 "inline 到 evalExpr BINARY 分支" → "删 genValShortCircuit + 新建 evalShortCircuit 独立函数"(§坑 L 延伸到 SHORT_CIRCUIT,runtime phi 密度确如步骤 3 预告)④ 步骤 6 `genValUnary` 清理前置到步骤 4(§坑 M:linter GATE 约束下的合理前置,与步骤 3 前置 `genValTernary` 清理同构)⑤ comptime And 短路 `return ctVal(interpNewBool(0))` 语义沿用原 genValShortCircuit(与 runtime `store i32 leftStr` 返回原 lhs 值存在语义分歧,本轮**不修**,属 D099 范围外 bug;需要独立 D 文档追踪)
+
 ### §步骤 5 — COMPTIME_EXPR 迁移
 
 **改 `evalExpr`**:
@@ -228,10 +236,10 @@ if (kind == "COMPTIME_EXPR") {
 **目标**:所有 5 kind 已走 evalExpr 单路径,`genValBinary/genValUnary/genValTernary/genValShortCircuit` 全部删除,`genVal` L132/L133/L135/L212 成为 `evalExpr + mvKnownOf 分派` 薄包装。
 
 **删除清单**(必须在本步骤或更早删,禁止遗留):
-- `function genValBinary(id)` L697(步骤 1 + 4 覆盖后)
-- `function genValUnary(id)` L759(步骤 2 覆盖后)
+- `function genValBinary(id)` L697 — **未删**,保留为 3 行 mv decode shim(坑 I:inline 到 genVal L132 会炸 N3 +192),步骤 6 收尾评估能否 rename 或删
+- ~~`function genValUnary(id)` L759~~ — 已删于步骤 4(Execute 4 落地,触坑 M「前置步骤 6 清理以释放 M7b 余量」,genVal L133 合并到 L132 `BINARY \|\| UNARY` 分派)
 - ~~`function genValTernary(id)` L804~~ — 已删于步骤 3(Execute 3 落地,触坑 L「同步删+新建」)
-- `function genValShortCircuit(op, id)` L837(步骤 4 覆盖后)
+- ~~`function genValShortCircuit(op, id)` L837~~ — 已删于步骤 4(Execute 4 落地,evalShortCircuit 独立函数承接)
 
 **Linter 指标预期(累计 步骤 0→6,含步骤 0 新增骨架成本)**:
 
@@ -326,6 +334,22 @@ Linter 结果:N3 cur=518477 / baseline 518479,Δ-2 PROGRESS;M7b 净 0 持平;其
 
 **延伸**:步骤 4 SHORT_CIRCUIT 如果 runtime phi 模式类似(label + br 密集),可能复刻方案 AO(删 genValShortCircuit + 新建 evalShortCircuit)。步骤 5 COMPTIME_EXPR body 短(< 5 行)应可直接 inline,无需重复。
 
+### 坑 M:step 4 SHORT_CIRCUIT comptime 分支 mv 编码成本 + genValUnary 前置清理
+
+**现象(Execute 4 三次尝试)**:① inline genValShortCircuit body 到 evalExpr `if op==And\|\|Or` 分支,N3 +216 REGRESSION GATE BLOCKED;② 改"删 genValShortCircuit + 新建 evalShortCircuit 独立函数"(与 evalTernary 对称 body depth 1),加两处 `const rv = genVal(nGetI2(astId)); return isCt(rv) == 1 ? rv : 0 - rv - 1` comptime rhs mv 编码,N3 +82 REGRESSION;③ 合并两处编码为一处(短路条件提前 return,fallthrough 统一 encode),再把 runtime `if (op == "And") emitIR(...) else emitIR(...)` 5 行压缩为 `scT/scF ternary + 1 emitIR` 2 行,N3 +8 REGRESSION。
+
+**根因 1**:mv 编码成本。原 `genValShortCircuit` comptime rhs fallthrough 直接 `return genVal(nGetI2(id))`(1 节点 call),新 evalShortCircuit 必须返回 mv 编码 → `const rv = genVal(...); return isCt(rv) == 1 ? rv : 0 - rv - 1`(ternary + eq + bin sub + un neg ~15 节点 × depth 2-3)。这是 mv 编码强加的 N3 成本,且难以完全抵消。
+
+**根因 2**:linter GATE 单调阻断。N3 +8 仍然 BLOCKED,即使 M1/M2/M3a/M4 等全 PROGRESS。必须找出 ≥8 N3 的削减源。
+
+**解决**:前置步骤 6 `genValUnary` 清理 — `genValBinary` 和 `genValUnary` body 完全同构(3 行 mv decode shim),`genVal` L132/L133 两行分派可以合并为 `if (kind == "BINARY" \|\| kind == "UNARY") { return genValBinary(id) }`。删 `genValUnary` 函数(M7b -1) + 合并 dispatch 一行(M2 -数个 + N3 -约 20)。净效果 N3 -82 PASS(其中 genValUnary body 删除贡献 ~20,dispatch 合并 ~5,总和本轮 changed 文件 comparable)。
+
+**延伸**:`genValBinary` shim 保留(坑 I:inline 到 genVal L132 炸 N3),步骤 6 收尾评估能否 rename 为通用 `genValMvDecode` 并让 TERNARY 分派也走同一 shim(L135 当前 inline mv decode 可共享)。
+
+**evalShortCircuit vs evalTernary 对称模式确立**:两者皆为"删 genVal* 独立函数 + 新建 eval* 独立函数 + dispatch 单行 + body depth 1"pattern。后续步骤 5 COMPTIME_EXPR body 短(< 5 行)可 inline,不触发此模式;若将来吸收 pure subset 余项(IDENT/MEMBER_ACCESS 等 body > 10 行 + runtime IR 密集的 kind),对称 pattern 是首选。
+
+**延伸 — evalShortCircuit runtime 块 vs genShortCircuit 跨路径重复(步骤 6 待清理)**:`bootstrap/eval_expr.ss` `evalShortCircuit` L144-163 的 runtime 路径 IR 发射块与 `bootstrap/gen_exprs.ss` `genShortCircuit` L1521-1539 约 15 行完全同构(alloca + store + icmp + br + store + br + load 模板)。**本轮不合并**的原因:`genShortCircuit` 签名为 `(op, leftId, rightId)` 在 L1524 `genExpr(leftId)` 会 emit lhs IR;`evalShortCircuit` runtime 路径进入时 lhs 已由 `genVal(nGetI1)` emit → 委托 `genShortCircuit(op, nGetI1, nGetI2)` 会造成 **lhs double-emit bug**。步骤 6 收尾评估 `genShortCircuit` 签名改造(`leftId` → `leftStr` 或 overload)消除此重复,属跨路径重构,不适合在 §步骤 4 原子任务内做。
+
 ### 坑 J:comptime 字符串比较 6 分支 inline 造成 N3 累积
 
 **现象**:evalExpr 吸收 genValBinary 的 comptime string-compare 块(6 个 op 分支,每个 ctVal(interpNewBool(...))),即使扁平 guard 后 N3 仍 +27 residue。
@@ -338,10 +362,10 @@ Linter 结果:N3 cur=518477 / baseline 518479,Δ-2 PROGRESS;M7b 净 0 持平;其
 
 1. ~~**Execute 0**:步骤 0 骨架~~ — 落地于 commit 53066f0(evalExpr 空壳 `return 0 - 1`,Phase A 纯 int 编码,MaybeVal class 延后 Phase B)
 2. ~~**Execute 1**:步骤 1 BINARY 非 And/Or 迁移~~ — 落地于 commit 5f2198e(§步骤 1 Execute 1 落地实录 + §坑 G/H/I/J)
-3. ~~**Execute 2**:步骤 2 UNARY 迁移~~ — 落地(§步骤 2 Execute 2 落地实录 + §坑 K)
-4. ~~**Execute 3**:步骤 3 TERNARY 迁移~~ — 落地(§步骤 3 Execute 3 落地实录 + §坑 L;步骤 6 `genValTernary` 清理前置到本步)
-5. **Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移(下一步)
-6. **Execute 5**:步骤 5 COMPTIME_EXPR 迁移
+3. ~~**Execute 2**:步骤 2 UNARY 迁移~~ — 落地于 commit ae7a0c2(§步骤 2 Execute 2 落地实录 + §坑 K)
+4. ~~**Execute 3**:步骤 3 TERNARY 迁移~~ — 落地于 commit f54fd9f(§步骤 3 Execute 3 落地实录 + §坑 L;步骤 6 `genValTernary` 清理前置到本步)
+5. ~~**Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移~~ — 落地(§步骤 4 Execute 4 落地实录 + §坑 M;步骤 6 `genValUnary` 清理前置到本步)
+6. **Execute 5**:步骤 5 COMPTIME_EXPR 迁移(下一步)
 7. **Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline(独立 commit)
 
 每 Execute 开始前必须先填 PSM 十问(PFV 流程),完成后过 VCM 五验。单步 bootstrap 失败 → 定位根因不越步;单步 linter 任一指标 regression → 先削减再推进,不改 baseline 让 gate 过(CLAUDE.md §反射根因 gate 强制条款)。

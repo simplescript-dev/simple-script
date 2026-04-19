@@ -1,10 +1,10 @@
-// D099 §步骤 1-3:evalExpr 吸收 BINARY(非 And/Or)+ UNARY + TERNARY。Phase A mv 编码:
+// D099 §步骤 1-4:evalExpr 吸收 BINARY + UNARY + TERNARY + SHORT_CIRCUIT(And/Or)。Phase A mv 编码:
 //   mv >= 0   → known,  val = mv        (ctVal tagged int,bit 30 set)
 //   mv <= -2  → runtime,regId = -mv - 1  (regTable 1-based)
 //   mv == -1  → error 哨兵
 // 调派:genValBinary/genValUnary 过滤对应 kind 后转 evalExpr;genVal L135 TERNARY inline 转
-// evalExpr。TERNARY body 落在 evalTernary 独立函数(D099 §坑 K/L:runtime phi AST 密度高
-// inline 会炸 N3,改删 genValTernary + 新建 evalTernary 维持 M7b)。
+// evalExpr。TERNARY / SHORT_CIRCUIT body 落在 evalTernary / evalShortCircuit 独立函数
+// (D099 §坑 L:runtime phi AST 密度高 inline 会炸 N3,改删 gen*独立函数 + 新建 eval* 维持 M7b)。
 
 function evalExpr(astId: int): int {
     if (nGetKind(astId) == "UNARY") {
@@ -50,6 +50,7 @@ function evalExpr(astId: int): int {
     }
     if (nGetKind(astId) == "TERNARY") { return evalTernary(astId) }
     const op = nGetS1(astId)
+    if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (comptimeDepth > 0) {
         if (op == "NullCoalesce") {
             const ctNcL = genVal(nGetI1(astId))
@@ -129,4 +130,34 @@ function evalTernary(astId: int): int {
     const r = nextReg()
     emitIR(`  ${r} = load ${llType}, ptr ${alloca}, align 8`)
     return 0 - constVal(r) - 1
+}
+
+function evalShortCircuit(op: string, astId: int): int {
+    const lv = genVal(nGetI1(astId))
+    if (isCt(lv) == 1) {
+        const leftTruthy = interpTruthy(payload(lv))
+        if (op == "And" && leftTruthy == 0) { return ctVal(interpNewBool(0)) }
+        if (op == "Or" && leftTruthy == 1) { return lv }
+        const rv = genVal(nGetI2(astId))
+        return isCt(rv) == 1 ? rv : 0 - rv - 1
+    }
+    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+    const leftStr = reg(lv)
+    const scResult = nextReg()
+    emitIR(`  ${scResult} = alloca i32, align 4`)
+    emitIR(`  store i32 ${leftStr}, ptr ${scResult}, align 4`)
+    const scCmp = nextReg()
+    emitIR(`  ${scCmp} = icmp ne i32 ${leftStr}, 0`)
+    const scRhs = nextLabel("sc.rhs")
+    const scEnd = nextLabel("sc.end")
+    const brLabels = op == "And" ? `label %${scRhs}, label %${scEnd}` : `label %${scEnd}, label %${scRhs}`
+    emitIR(`  br i1 ${scCmp}, ${brLabels}`)
+    emitIR(`${scRhs}:`)
+    const scRight = genExpr(nGetI2(astId))
+    emitIR(`  store i32 ${scRight}, ptr ${scResult}, align 4`)
+    emitIR(`  br label %${scEnd}`)
+    emitIR(`${scEnd}:`)
+    const scRes = nextReg()
+    emitIR(`  ${scRes} = load i32, ptr ${scResult}, align 4`)
+    return 0 - constVal(scRes) - 1
 }
