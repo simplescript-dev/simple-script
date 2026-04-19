@@ -1,6 +1,6 @@
 # D103: evalExpr Phase A 中批 1b 第 3 kind Plan — ARRAY_LIT
 
-**Status:** Plan ⏳(Execute 0/1/2 未开工)
+**Status:** Execute 0 Done at commit 6197667,Execute 1/2 未开工
 **Depends on:** D101 §步骤 1 evalTemplateLit 对称 pattern / D101 §Rejected A(ARRAY_LIT 推到 1b-3 或更后)/ D100 §Rejected B(ARRAY_LIT body 大推 1b 末轮)/ D100 §步骤 1 evalIndexAccess 三段式模板 / D102 §规则 1.1-1.4(分层 GATE + ±0.5% DRIFT)/ D102 §规则 2.1-2.3(F1 文件行数 GATE)/ D098 §决策 1 mv 编码 / D094 §规则 2 pure subset 白名单(L104 `ARRAY_LIT` 在列)
 **Date:** 2026-04-19
 
@@ -302,7 +302,7 @@ if (k == "ARRAY_LIT") { return evalArrayLit(astId) }
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**:grep 孤儿 helper 或单调用 helper,选净削减最大 + 副作用最小项,单 commit 落地(目标 M7b ≥ -1,其他指标不 regression)
+1. [x] Done at commit 6197667 — **Execute 0**:删 bootstrap/prelude.ss L208-252 的 9 个 @derive 死 helpers(`_ss_hashContrib`/`_ss_jsonValue`/`_ss_zero` × int/string/double 三重载,45 行)。grep bootstrap/ lib/ tests/ 全域零调用,@derive 无活跃 ctDeriveX handler。GATE PASS 实测:M7b 676→667 **delta=-9 PROGRESS**(超额目标 ≥-1,腾余量 9 足供 1b-3~5 迁移)/ N3 -513 / M1 -9 / M2 -61 / M3a -3 / M5 -2 / N2 -305 全 PROGRESS / 严格组 OK / F1 gen_exprs.ss 1678(D101 Execute 1 效应保留)/ bootstrap 固定点 PASS / 4 pre-existing tests fail 与改动无关(stash+rebuild 反向验证)
 2. [ ] Planned — **Execute 1**:ARRAY_LIT 迁移 evalArrayLit(对称 evalTemplateLit);同 commit 改 L132 shim 扩 7 kind + evalExpr 头部加 1 分派 + 删 L537-599。单 commit bootstrap PASS + 分层 GATE PASS(M7b 0 / N3 PROGRESS -300~-500 / M2 DRIFT +12~20 / N2 DRIFT +55~80 / F1:gen_exprs.ss -62)
 3. [ ] Planned — **Execute 2**:收尾评估(record vs 继续 1b-4;默认继续)+ 起 D104 选 IDENT 或 MEMBER_ACCESS
 
