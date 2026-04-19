@@ -94,7 +94,7 @@ bin/ss clean
 
 **Root Cause 优先**：编译器限制是 bug，不是边界条件。当编译器限制迫使 stdlib 或用户代码使用丑陋 workaround，先修编译器。同一个 workaround 出现第二次必须停下修根因，不要记为 "Known limitation" 然后绕过。
 
-**交互式单文档**：每轮等用户明确指定一个文档/文件，逐个问题确认方向再执行。不自动扫 `docs/3-decisions/` 找未完成决策自主挑任务，不顺带修无关文件，不批量推进类似问题。
+**交互式单文档**：每轮等用户明确指定一个文档/文件，逐个问题确认方向再执行。不自动扫 `docs/3-decisions/` 找未完成决策自主挑任务，不顺带修无关文件，不批量推进类似问题。**下轮提示词 payload `.claude/next_prompt.md` 必含关键字 `ultrathink`**,§收尾 gate 第 3 步 (b) 写入后强制跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss`,stdout 出现 `GATE BLOCKED` 即阻断 stop(机械校验,对称反射根因 gate 模式,详见 `memory/feedback_ultrathink_gate.md`)。
 
 **PFV 流程（强制）**：接到任意任务，第一次工具调用之前必须按 `docs/2-principles.md §PFV 流程` 的十问 PSM 填表；任务完成宣告之前必须按五验 VCM 逐项贴证据；VCM 通过后必须走**收尾 gate** 的 simplify → commit → 下一步提示词三步，缺一条不许 stop。细节、层级、例外规则以该文档为准，此处不重复。
 
