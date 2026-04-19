@@ -49,6 +49,7 @@ function evalExpr(astId: int): int {
         return 0 - constVal(uR2) - 1
     }
     if (nGetKind(astId) == "TERNARY") { return evalTernary(astId) }
+    if (nGetKind(astId) == "COMPTIME_EXPR") { return evalComptimeExpr(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (comptimeDepth > 0) {
@@ -160,4 +161,10 @@ function evalShortCircuit(op: string, astId: int): int {
     const scRes = nextReg()
     emitIR(`  ${scRes} = load i32, ptr ${scResult}, align 4`)
     return 0 - constVal(scRes) - 1
+}
+
+function evalComptimeExpr(astId: int): int {
+    if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
+    inferType(astId)
+    return 0 - constVal(comptimeExprLiteral.getString(`${astId}`)) - 1
 }

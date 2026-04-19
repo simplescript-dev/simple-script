@@ -131,7 +131,7 @@ function genVal(id: int): int {
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
     if (kind == "BINARY" || kind == "UNARY") { return genValBinary(id) }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
-    if (kind == "TERNARY") { const mvT = evalExpr(id); return mvT >= 0 ? mvT : 0 - mvT - 1 }
+    if (kind == "TERNARY" || kind == "COMPTIME_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "IDENT") {
         const ctIdName = nGetS1(id)
         if (comptimeDepth > 0 && ctScopeStack.length() > 0) {
@@ -207,11 +207,6 @@ function genVal(id: int): int {
             return ctVal(interpNewNull())
         }
         return constVal(genPostfixExpr(id))
-    }
-    if (kind == "COMPTIME_EXPR") {
-        if (comptimeDepth > 0) { return comptimeError("nested comptime expression", id) }
-        inferType(id)
-        return constVal(comptimeExprLiteral.getString(`${id}`))
     }
     if (kind == "CALL") {
         const callName = nGetS1(id)

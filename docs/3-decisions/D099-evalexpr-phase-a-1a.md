@@ -1,6 +1,6 @@
 # D099: evalExpr Phase A 首批 1a 合并 Plan — BINARY / UNARY / TERNARY / SHORT_CIRCUIT / COMPTIME_EXPR
 
-**Status:** Executing(Execute 0-4 已落地,Execute 5-6 待推进)
+**Status:** Executing(Execute 0-5 已落地,Execute 6 待推进)
 **Depends on:** D093(evalExpr 单函数 dispatch 骨架)/ D094 §决策 §规则 2(pure subset 白名单)/ D098 §决策 1(MaybeVal 编码 + 构造器/访问器接口)
 **Date:** 2026-04-18
 **Last Updated:** 2026-04-18
@@ -231,6 +231,15 @@ if (kind == "COMPTIME_EXPR") {
 
 **验证**:comptime 块内嵌 comptime 测试 + 块外 comptime 表达式测试全绿。
 
+**Execute 5 落地实录(2026-04-19)**:
+- `bootstrap/eval_expr.ss`:evalExpr 顶部 TERNARY 分派后新增 1 行 `if (nGetKind(astId) == "COMPTIME_EXPR") { return evalComptimeExpr(astId) }`;文件末尾新增 `evalComptimeExpr(astId: int): int` 独立函数 3 行承载 COMPTIME_EXPR 全部 body(`comptimeDepth > 0` nested check → `comptimeError` exit / `inferType` cache fill / `0 - constVal(comptimeExprLiteral.getString(\`${astId}\`)) - 1` runtime mv 编码)。**方案从 inline → 独立函数** — 坑 N 延伸(inline body 3 行 ≤ 5 行 Plan 约束依然满足,但 body 内 `0 - constVal(...) - 1` + template literal `\`${astId}\`` 深度 3 累加,N3 +188 REGRESSION GATE BLOCKED;抽独立 evalComptimeExpr 后 body depth 1 不进 if 块,N3 降至 +83)
+- `bootstrap/gen_exprs.ss` L211-215:5 行 inline body 整体删除;**L134 TERNARY shim merge COMPTIME_EXPR** — 原 L134 `if (kind == "TERNARY")` 与本应新建的 L211 `if (kind == "COMPTIME_EXPR")` shim body 完全同构(`const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1`),合并为 `if (kind == "TERNARY" \|\| kind == "COMPTIME_EXPR") { ... }`。删 L211 整行分派,最终 N3 Δ-14 PASS
+- 方案选型(§坑 N):M7b=679=baseline 余量 0 → 新函数 `evalComptimeExpr` 必须靠 shim 合并抵消 M7b;N3 +83(独立函数方案)仅靠 L134/L211 shim merge -97 才 PASS。inline 方案 N3 +188 即使 shim merge 也只能降到 +91 仍 BLOCKED → 独立函数是 N3 单调 gate 下的 only viable path
+- Linter GATE PASS:M1=5137(baseline 5144,Δ-7)/ M2=76173(Δ-71)/ M3a=12135(Δ-21)/ M3b=1879(Δ-1)/ M4=3039(Δ-12)/ M5=1750(Δ-8)/ M7b=679(=baseline,0 净,新增 `evalComptimeExpr` + 删 gen_exprs L211 分支抵消)/ N1=34(=)/ N2=380865(Δ-355)/ N3=**518465**(Δ-14)/ N4=321(=)/ N5=0(=);所有指标 PROGRESS 或 OK
+- Bootstrap 固定点 PASS:stage2 == stage3
+- 测试:213 passed / 4 failed(spring_web_params / d096_p4_l2_reactive / harness_bug / harness_task 均 pre-existing,与 Execute 4 落地后状态一致,与 COMPTIME_EXPR 迁移无关);comptime 专项 spot check — `comptime_comprehensive` 52/52 / `comptime_dispatch` 10/10 / `comptime_q1_hello` / `comptime_strict_errors` 全绿,证 COMPTIME_EXPR 语义不变
+- **§步骤 5 与 Plan 的偏差**(Execute 5 实录):① inline 方案 → 独立函数 `evalComptimeExpr`(§坑 N:COMPTIME_EXPR body 中 `0 - constVal(...) - 1` + `\`${astId}\`` template literal 叠加 if 块 depth +1 把 N3 推到 +188,与坑 L 的 TERNARY / 坑 M 的 SHORT_CIRCUIT 同属"body inline 超 N3 预算"场景,对称 pattern 确立:凡 body 包含 template literal + binary 深嵌套 + 独立函数删除释放 M7b → 走独立函数,不走 inline)② shim merge TERNARY + COMPTIME_EXPR(L134 单分支 `kind == "TERNARY" \|\| kind == "COMPTIME_EXPR"`)—— 与坑 M 的 BINARY+UNARY shim merge 同构,两 shim body 完全相同时合并省 dispatch 分派 + 减 AST 节点。**均为 Phase A 合理收敛,不污染 Phase B 类化路径**
+
 ### §步骤 6 — 收尾量化 + 清理
 
 **目标**:所有 5 kind 已走 evalExpr 单路径,`genValBinary/genValUnary/genValTernary/genValShortCircuit` 全部删除,`genVal` L132/L133/L135/L212 成为 `evalExpr + mvKnownOf 分派` 薄包装。
@@ -346,9 +355,36 @@ Linter 结果:N3 cur=518477 / baseline 518479,Δ-2 PROGRESS;M7b 净 0 持平;其
 
 **延伸**:`genValBinary` shim 保留(坑 I:inline 到 genVal L132 炸 N3),步骤 6 收尾评估能否 rename 为通用 `genValMvDecode` 并让 TERNARY 分派也走同一 shim(L135 当前 inline mv decode 可共享)。
 
-**evalShortCircuit vs evalTernary 对称模式确立**:两者皆为"删 genVal* 独立函数 + 新建 eval* 独立函数 + dispatch 单行 + body depth 1"pattern。后续步骤 5 COMPTIME_EXPR body 短(< 5 行)可 inline,不触发此模式;若将来吸收 pure subset 余项(IDENT/MEMBER_ACCESS 等 body > 10 行 + runtime IR 密集的 kind),对称 pattern 是首选。
+**evalShortCircuit vs evalTernary 对称模式确立**:两者皆为"删 genVal* 独立函数 + 新建 eval* 独立函数 + dispatch 单行 + body depth 1"pattern。后续步骤 5 COMPTIME_EXPR body 短(< 5 行)可 inline,不触发此模式;若将来吸收 pure subset 余项(IDENT/MEMBER_ACCESS 等 body > 10 行 + runtime IR 密集的 kind),对称 pattern 是首选。(**步骤 5 反转**:COMPTIME_EXPR body 虽 ≤ 5 行,但含 template literal + `0 - constVal - 1` 深嵌套,inline 方案 N3 +188 仍触发此模式,见坑 N)
 
 **延伸 — evalShortCircuit runtime 块 vs genShortCircuit 跨路径重复(步骤 6 待清理)**:`bootstrap/eval_expr.ss` `evalShortCircuit` L144-163 的 runtime 路径 IR 发射块与 `bootstrap/gen_exprs.ss` `genShortCircuit` L1521-1539 约 15 行完全同构(alloca + store + icmp + br + store + br + load 模板)。**本轮不合并**的原因:`genShortCircuit` 签名为 `(op, leftId, rightId)` 在 L1524 `genExpr(leftId)` 会 emit lhs IR;`evalShortCircuit` runtime 路径进入时 lhs 已由 `genVal(nGetI1)` emit → 委托 `genShortCircuit(op, nGetI1, nGetI2)` 会造成 **lhs double-emit bug**。步骤 6 收尾评估 `genShortCircuit` 签名改造(`leftId` → `leftStr` 或 overload)消除此重复,属跨路径重构,不适合在 §步骤 4 原子任务内做。
+
+### 坑 N:COMPTIME_EXPR body ≤ 5 行仍 inline 炸 N3(template literal + 深嵌套 binary 成本)
+
+**现象(Execute 5 两次尝试)**:① 按 Plan §步骤 5 原文 inline body 到 evalExpr `if kind==COMPTIME_EXPR` 块(3 行:`if comptimeDepth return 0-1` / `inferType` / `return 0 - constVal(comptimeExprLiteral.getString(\`${astId}\`)) - 1`),body ≤ 5 行 Plan 约束满足,但 N3=518667 / baseline 518479 Δ+**188** REGRESSION GATE BLOCKED。② 改独立函数 `evalComptimeExpr` body depth 1,N3 降至 +83 仍 BLOCKED。
+
+**根因**:坑 L/M 假设"body ≤ 5 行可 inline",Execute 5 反转 — COMPTIME_EXPR 虽 body 行数少,但 return 行含三层嵌套:
+- 外层 `0 - X - 1` binary sub(depth 2 bin op)
+- `constVal(...)` call(depth 3)
+- `comptimeExprLiteral.getString(\`${astId}\`)` method call with template literal(depth 4)
+- template literal `\`${astId}\`` 每个 `${}` 拆 2 节点(depth +2)
+
+整行 return ~15-18 AST 节点,inline 进 `if kind` 块 depth 2-4,N3 贡献 ~50;comptimeExprLiteral / inferType / comptimeError 三个 call 在 body 内各 depth +1 累加;整体 ~100 N3,加上 gen_exprs.ss shim ~10-15 N3,共 +188。独立函数方案把 body 抬回 depth 1 省 ~105,剩 +83。
+
+**解决**:**evalComptimeExpr 独立函数 + L134 TERNARY shim merge COMPTIME_EXPR**。
+- 新建 `evalComptimeExpr(astId: int): int` 独立函数 3 行(M7b +1)
+- gen_exprs.ss L211 分派全删(M7b -1 抵消,净 0)
+- L134 TERNARY shim `if (kind == "TERNARY") { const mvT = evalExpr(id); return mvT >= 0 ? mvT : 0 - mvT - 1 }` 与新建的 COMPTIME_EXPR shim body 完全同构 → 合并为 `if (kind == "TERNARY" \|\| kind == "COMPTIME_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }`(与坑 M 的 BINARY+UNARY shim merge 同构)
+
+Linter 结果:N3 Δ**-14** PASS;M7b 净 0 持平;其他全 PROGRESS。
+
+**延伸 — 修正坑 L 延伸的"body ≤ 5 行 inline 可行"判断**:
+坑 L 延伸 L319-320 `"body 仅 40 行深度 ≤3,inline 可行"` 与 "COMPTIME_EXPR body 短可 inline"是**尺度错判**。正确的 inline 可行判据应该是 "body AST 节点总数 × 进 if 块的 depth delta < N3 余量"。COMPTIME_EXPR 虽 **行数**少,但**节点密度**高(template literal × 深嵌套 binary × 多 call),单行等效 5-10 行普通语句。步骤 5 之后的判据:
+- 看 body AST 节点数(grep `nGetX`/ `interpX`/ template literal 密度),不看行数
+- 含 template literal 或深嵌套 binary 的 body,首选独立函数
+- M7b 余量 0 时,独立函数必须靠 shim merge / 删除同构函数抵消
+
+**evalTernary/evalShortCircuit/evalComptimeExpr 对称 pattern 升级**:三者现在都是独立函数,body depth 1,与 dispatch 分离。若 Execute 6 清理能证明"evalExpr 本体不做 body inline,仅做 per-kind dispatch + 同构 shim merge",则步骤 6 本身可以完全跳过 inline,evalExpr 退化为 dispatcher。
 
 ### 坑 J:comptime 字符串比较 6 分支 inline 造成 N3 累积
 
@@ -365,8 +401,8 @@ Linter 结果:N3 cur=518477 / baseline 518479,Δ-2 PROGRESS;M7b 净 0 持平;其
 3. ~~**Execute 2**:步骤 2 UNARY 迁移~~ — 落地于 commit ae7a0c2(§步骤 2 Execute 2 落地实录 + §坑 K)
 4. ~~**Execute 3**:步骤 3 TERNARY 迁移~~ — 落地于 commit f54fd9f(§步骤 3 Execute 3 落地实录 + §坑 L;步骤 6 `genValTernary` 清理前置到本步)
 5. ~~**Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移~~ — 落地(§步骤 4 Execute 4 落地实录 + §坑 M;步骤 6 `genValUnary` 清理前置到本步)
-6. **Execute 5**:步骤 5 COMPTIME_EXPR 迁移(下一步)
-7. **Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline(独立 commit)
+6. ~~**Execute 5**:步骤 5 COMPTIME_EXPR 迁移~~ — 落地(§步骤 5 Execute 5 落地实录 + §坑 N;L134 TERNARY shim merge COMPTIME_EXPR 以抵消 evalComptimeExpr 函数 M7b 成本)
+7. **Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline(独立 commit,下一步)
 
 每 Execute 开始前必须先填 PSM 十问(PFV 流程),完成后过 VCM 五验。单步 bootstrap 失败 → 定位根因不越步;单步 linter 任一指标 regression → 先削减再推进,不改 baseline 让 gate 过(CLAUDE.md §反射根因 gate 强制条款)。
 
