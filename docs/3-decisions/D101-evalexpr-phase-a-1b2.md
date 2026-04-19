@@ -247,8 +247,8 @@ if (k == "TEMPLATE_LIT") { return evalTemplateLit(astId) }
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**:Step 0 预削减(按 PFV 流程 grep 实测选净削减最大项,M7b ≥ -1)
-2. [ ] Planned — **Execute 1**:Step 1 TEMPLATE_LIT 迁移(独立函数 evalTemplateLit + L132 扩 6 kind + 删 gen_exprs.ss L537-579)
+1. [x] Done at commit 9343330 — **Execute 0**:删 codegen.ss generate 死函数腾 M7b 余量(677→676 / baseline record)
+2. [x] Done at bootstrap/eval_expr.ss:55,193 + bootstrap/gen_exprs.ss:132 — **Execute 1**:TEMPLATE_LIT 迁移 evalTemplateLit(对称 evalIndexAccess);同 commit inline evalComptimeExpr 回 evalExpr L53 dispatch 块抵消 M7b +1。GATE PASS:M7b 676 delta=0 / N3 -238 / M2 +8 / N2 +40 / F1:gen_exprs.ss 1721→1678 PROGRESS。D102 ±0.5% DRIFT 窗口首次生产验证 PASS
 3. [ ] Planned — **Execute 2**:Step 2 收尾评估(record vs 继续 1b-3;默认继续)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。

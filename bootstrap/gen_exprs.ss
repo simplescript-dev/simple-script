@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "IDENT") {
         const ctIdName = nGetS1(id)
@@ -533,49 +533,6 @@ function genVal(id: int): int {
         const mcResult = genMethodCall(id, mcObjReg)
         callPreRegs = mcSavedCPR
         return constVal(mcResult)
-    }
-    if (kind == "TEMPLATE_LIT") {
-        const fragList = nGetList(id)
-        if (fragList == "") { return ctVal(interpNewString("")) }
-        let allCt = 1
-        const tmplParts = fragList.split(",")
-        let fragVals = new Map()
-        for (tp in tmplParts) {
-            const fragId = parseInt(tp)
-            if (fragId > 0 && nGetKind(fragId) == "TMPL_FRAG_EXPR") {
-                const fv = genVal(nGetI1(fragId))
-                fragVals.set(`${fragId}`, `${fv}`)
-                if (isCt(fv) != 1) { allCt = 0 }
-            }
-        }
-        if (allCt == 1) {
-            let ctResult = ""
-            for (tp in tmplParts) {
-                const fragId = parseInt(tp)
-                if (fragId > 0) {
-                    const fk = nGetKind(fragId)
-                    if (fk == "TMPL_FRAG_LIT") {
-                        ctResult = `${ctResult}${nGetS1(fragId)}`
-                    } else if (fk == "TMPL_FRAG_EXPR" && fragVals.has(`${fragId}`) == 1) {
-                        const fv = parseInt(fragVals.getString(`${fragId}`))
-                        if (isCt(fv) == 1) {
-                            ctResult = `${ctResult}${interpToStr(payload(fv))}`
-                        }
-                    }
-                }
-            }
-            return ctVal(interpNewString(ctResult))
-        }
-        if (comptimeDepth > 0) { return comptimeError("template literal contains runtime expression", id) }
-        tmplPreRegs = new Map()
-        for (tp in tmplParts) {
-            const fragId = parseInt(tp)
-            if (fragId > 0 && nGetKind(fragId) == "TMPL_FRAG_EXPR") {
-                const fv = parseInt(fragVals.getString(`${fragId}`))
-                tmplPreRegs.set(`${fragId}`, reg(fv))
-            }
-        }
-        return constVal(genTemplateLit(id))
     }
     if (kind == "ARRAY_LIT") {
         const elemList = nGetList(id)

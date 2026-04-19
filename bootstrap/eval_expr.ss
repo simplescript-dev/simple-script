@@ -50,8 +50,13 @@ function evalExpr(astId: int): int {
         return 0 - constVal(uR2) - 1
     }
     if (k == "TERNARY") { return evalTernary(astId) }
-    if (k == "COMPTIME_EXPR") { return evalComptimeExpr(astId) }
+    if (k == "COMPTIME_EXPR") {
+        if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
+        inferType(astId)
+        return 0 - constVal(comptimeExprLiteral.getString(`${astId}`)) - 1
+    }
     if (k == "INDEX_ACCESS") { return evalIndexAccess(astId) }
+    if (k == "TEMPLATE_LIT") { return evalTemplateLit(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (comptimeDepth > 0) {
@@ -165,12 +170,6 @@ function evalShortCircuit(op: string, astId: int): int {
     return 0 - constVal(scRes) - 1
 }
 
-function evalComptimeExpr(astId: int): int {
-    if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
-    inferType(astId)
-    return 0 - constVal(comptimeExprLiteral.getString(`${astId}`)) - 1
-}
-
 function evalIndexAccess(astId: int): int {
     const obj = genVal(nGetI1(astId))
     const idx = genVal(nGetI2(astId))
@@ -187,4 +186,48 @@ function evalIndexAccess(astId: int): int {
     }
     if (comptimeDepth > 0) { return comptimeError("index access requires compile-time known operands", astId) }
     return 0 - constVal(genIndexAccess(astId, reg(obj), reg(idx))) - 1
+}
+
+function evalTemplateLit(astId: int): int {
+    const fragList = nGetList(astId)
+    if (fragList == "") { return ctVal(interpNewString("")) }
+    let allCt = 1
+    const tmplParts = fragList.split(",")
+    let fragVals = new Map()
+    for (tp in tmplParts) {
+        const fragId = parseInt(tp)
+        if (fragId > 0 && nGetKind(fragId) == "TMPL_FRAG_EXPR") {
+            const fv = genVal(nGetI1(fragId))
+            fragVals.set(`${fragId}`, `${fv}`)
+            if (isCt(fv) != 1) { allCt = 0 }
+        }
+    }
+    if (allCt == 1) {
+        let ctResult = ""
+        for (tp in tmplParts) {
+            const fragId = parseInt(tp)
+            if (fragId > 0) {
+                const fk = nGetKind(fragId)
+                if (fk == "TMPL_FRAG_LIT") {
+                    ctResult = `${ctResult}${nGetS1(fragId)}`
+                } else if (fk == "TMPL_FRAG_EXPR" && fragVals.has(`${fragId}`) == 1) {
+                    const fv = parseInt(fragVals.getString(`${fragId}`))
+                    if (isCt(fv) == 1) {
+                        ctResult = `${ctResult}${interpToStr(payload(fv))}`
+                    }
+                }
+            }
+        }
+        return ctVal(interpNewString(ctResult))
+    }
+    if (comptimeDepth > 0) { return comptimeError("template literal contains runtime expression", astId) }
+    tmplPreRegs = new Map()
+    for (tp in tmplParts) {
+        const fragId = parseInt(tp)
+        if (fragId > 0 && nGetKind(fragId) == "TMPL_FRAG_EXPR") {
+            const fv = parseInt(fragVals.getString(`${fragId}`))
+            tmplPreRegs.set(`${fragId}`, reg(fv))
+        }
+    }
+    return 0 - constVal(genTemplateLit(astId)) - 1
 }
