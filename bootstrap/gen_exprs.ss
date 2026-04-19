@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
         if (comptimeDepth > 0) {
@@ -267,80 +267,6 @@ function genVal(id: int): int {
         const newResult = constVal(genNewExpr(id))
         callPreRegs = savedNewPreRegs
         return newResult
-    }
-    if (kind == "METHOD_CALL") {
-        pendingSuperParent = resolveSuperParent(nGetI1(id), id)
-        const mcMethod = nGetS1(id)
-        const mcObjNode = nGetI1(id)
-        if (nGetKind(mcObjNode) == "IDENT") {
-            const mcObjName = nGetS1(mcObjNode)
-            if (comptimeDepth > 0 && interpEnumNodes.has(mcObjName) == 1) {
-                if (mcMethod == "values") { return ctVal(ctEnumListMethod(mcObjName, 0)) }
-                if (mcMethod == "names") { return ctVal(ctEnumListMethod(mcObjName, 1)) }
-                if (mcMethod == "valueOf") { return ctVal(ctEnumValueOfMethod(mcObjName, id)) }
-            }
-            if (comptimeDepth == 0 && enumReady == 1 && enumDeclNodes.has(mcObjName) == 1) {
-                if (mcMethod == "values") { return constVal(genEnumValues(mcObjName)) }
-                if (mcMethod == "names") { return constVal(genEnumNames(mcObjName)) }
-                if (mcMethod == "valueOf") { return constVal(genEnumValueOf(mcObjName, nGetList(id))) }
-            }
-            if (comptimeDepth == 0) {
-                if (mcObjName == "Thread" && mcMethod == "start") { return constVal(genMethodCall(id)) }
-                if (getVarType(mcObjName) == "" && classFields.has(mcObjName) == 1) { return constVal(genMethodCall(id)) }
-            }
-        }
-        if (comptimeDepth == 0 && pendingSuperParent != "") { return constVal(genMethodCall(id)) }
-        const mcObj = genVal(mcObjNode)
-        let mcObjReg = ""
-        if (isCt(mcObj) == 0) { mcObjReg = reg(mcObj) }
-        const mcArgList = nGetList(id)
-        const mcSavedCPR = callPreRegs
-        callPreRegs = new Map()
-        let mcCtArgs: Array<string> = []
-        let mcCtNamed = new Map()
-        let mcHasNamed = 0
-        if (mcArgList != "") {
-            const mcArgParts = mcArgList.split(",")
-            for (mcap in mcArgParts) {
-                const mcArgId = parseInt(mcap)
-                if (mcArgId > 0) {
-                    if (nGetKind(mcArgId) == "NAMED_ARG") {
-                        mcHasNamed = 1
-                        const mcnv = genVal(nGetI1(mcArgId))
-                        if (isCt(mcnv) == 1) {
-                            mcCtNamed.set(nGetS1(mcArgId), `${payload(mcnv)}`)
-                        } else {
-                            mcCtNamed.set(nGetS1(mcArgId), `${interpNewNull()}`)
-                            callPreRegs.set(`${mcArgId}`, reg(mcnv))
-                        }
-                    } else {
-                        const mcav = genVal(mcArgId)
-                        if (isCt(mcav) == 1) {
-                            mcCtArgs = mcCtArgs.push(`${payload(mcav)}`)
-                        } else {
-                            mcCtArgs = mcCtArgs.push(`${interpNewNull()}`)
-                            callPreRegs.set(`${mcArgId}`, reg(mcav))
-                        }
-                    }
-                }
-            }
-        }
-        if (comptimeDepth > 0) {
-            callPreRegs = mcSavedCPR
-            if (isCt(mcObj) == 0) {
-                return comptimeError(`cannot call method '${mcMethod}' on runtime value`, id)
-            }
-            return ctMethodCallDispatch(id, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
-        }
-        if (nGetI3(id) > 0) {
-            callPreRegs.set(`${mcObjNode}`, mcObjReg)
-            const mcOptResult = genOptionalMethodCall(id)
-            callPreRegs = mcSavedCPR
-            return constVal(mcOptResult)
-        }
-        const mcResult = genMethodCall(id, mcObjReg)
-        callPreRegs = mcSavedCPR
-        return constVal(mcResult)
     }
     if (kind == "ARROW_FUNC") {
         if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }
