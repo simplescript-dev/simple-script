@@ -36,17 +36,27 @@ bin/ss run tools/send_next.ss .claude/next_prompt.md
 
 ## 与 handoff 规则的关系
 
-- **每轮必做(默认动作,不是可选)**：Claude 把本轮结尾的下轮提示词**同时**
-  输出到对话**和**覆盖写入 `.claude/next_prompt.md`,两处内容严格一致。
-  这是 §收尾 gate 步骤 3 的强制动作,理由见 `feedback_dual_output_next_prompt`:
-  - 对话显示 → 用户审阅措辞,发现问题可以修;脚本 30s 观察窗口期间可 Ctrl+C 中断
-  - 文件写入 → 用户跑 `bin/ss run tools/send_next.ss .claude/next_prompt.md` 一键触发下轮,
-    省掉"复制对话文本 → 粘贴到新一轮输入框"的手动环节
-  两路是 UX 的一对,缺一套都破坏工作流,不要只做其中一路。
+- **每轮必做 — 自闭环三步(Claude 职责,非用户手动)**：
+  1. 对话最后一段输出下轮提示词(让用户审阅措辞)
+  2. 覆盖写入 `.claude/next_prompt.md`(单次 payload,给 send_next.ss 读)
+  3. **Claude 本轮最后一次工具调用**执行
+     `bin/ss run tools/send_next.ss .claude/next_prompt.md` → 脚本 `/clear` + 
+     bracketed paste + 30s 观察窗口 + Enter,下一轮自动开始
+
+  三处内容严格一致。用户在 30s 窗口里看一眼,要否决就 Ctrl+C 中断 Claude 的 Bash 调用,
+  否则不动手 —— "简化我的时间"的设计目的就是消除所有手动敲命令的环节。
+  规则全貌见 `feedback_next_prompt_auto_loop`。
+
 - **仍然禁止**：用 handoff 文件做跨轮**状态累积** / 进度摘要。
   Phase 进度只写在 `docs/3-decisions/D0NN-*.md`,不写进 `.claude/next_prompt.md`。
   每轮用 `.claude/next_prompt.md` 时**覆盖写**,不追加,不保留历史 —— 它是单次 payload 不是日志。
-- `.claude/next_prompt.md` 的定位:**单次 payload**,生命周期 = 从 Claude 写入 → 用户执行 send_next.ss → 下一轮启动。下一轮启动后该文件即失效,内容参考价值等于零(但**不删除**,等下一轮 Claude 再覆盖写入)。
+
+- `.claude/next_prompt.md` 的定位:**单次 payload**,生命周期 = Claude 写入 → Claude 自执行 send_next.ss → 下一轮启动。下一轮启动后该文件即失效,内容参考价值等于零(但**不删除**,等下一轮 Claude 再覆盖写入)。
+
+- **例外(跳过自执行 send_next.ss)**:
+  - bootstrap 失败 / 测试红 / reflection linter GATE 阻断 —— 停下等人类裁决
+  - 用户明说"这轮不要自动进下轮" / "不要跑 send_next"
+  - `$TERMAN_NAME` 为空(非 terman session)—— 脚本会报错,降级为仅对话 + 写文件
 
 ## 相关文件
 
