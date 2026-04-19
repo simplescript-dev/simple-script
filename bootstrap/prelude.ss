@@ -205,52 +205,6 @@ function _ss_padEnd(s: string, width: int, pad: string): string {
 // No runtime behavior — processed during compilation.
 function annotationMapping(name: string, handler: fn) {}
 
-// ── Type-dispatched helpers for @derive ─────────────────────
-// Overloaded: during for-in unrolling, this[name] has a known type,
-// so overload resolution picks the correct variant at compile time.
-
-function _ss_hashContrib(v: int): int {
-    return v
-}
-
-function _ss_hashContrib(v: string): int {
-    let h = 0
-    let i = 0
-    while (i < v.length()) {
-        h = h * 31 + v.charCodeAt(i)
-        i = i + 1
-    }
-    return h
-}
-
-function _ss_hashContrib(v: double): int {
-    return parseInt(`${v}`)
-}
-
-function _ss_jsonValue(v: int): string {
-    return `${v}`
-}
-
-function _ss_jsonValue(v: string): string {
-    return "\"" + v + "\""
-}
-
-function _ss_jsonValue(v: double): string {
-    return `${v}`
-}
-
-function _ss_zero(v: int): int {
-    return 0
-}
-
-function _ss_zero(v: string): string {
-    return ""
-}
-
-function _ss_zero(v: double): double {
-    return 0.0
-}
-
 function _ss_join(arr: List<string>, delim: string): string {
     const len = arr.length()
     if (len == 0) { return "" }
