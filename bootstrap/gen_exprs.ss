@@ -129,9 +129,8 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY") { return genValBinary(id) }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
-    if (kind == "TERNARY" || kind == "COMPTIME_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "IDENT") {
         const ctIdName = nGetS1(id)
         if (comptimeDepth > 0 && ctScopeStack.length() > 0) {
@@ -686,11 +685,6 @@ function genVal(id: int): int {
     }
     println(`[genVal] unknown kind: ${kind}`)
     return constVal("0")
-}
-
-function genValBinary(id: int): int {
-    const mv = evalExpr(id)
-    return mv >= 0 ? mv : 0 - mv - 1
 }
 
 function genValStringCompare(op: string, id: int): int {
