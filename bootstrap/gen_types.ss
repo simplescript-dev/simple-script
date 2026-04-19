@@ -245,8 +245,8 @@ function inferType(id: int): string {
         const ceKey = `${id}`
         if (comptimeExprType.has(ceKey) == 1) { return comptimeExprType.getString(ceKey) }
         runComptimeBlockBody(nGetI1(id))
-        const ceRetFlag = interpGetReturnFlag()
-        const ceRetVal = interpGetReturnVal()
+        const ceRetFlag = interpReturnFlag
+        const ceRetVal = interpReturnVal
         flushComptimeSS()
         flushComptimeIR()
         if (ceRetFlag == 1 && ceRetVal > 0) {

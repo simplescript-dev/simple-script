@@ -601,14 +601,6 @@ function interpBuildTypeInfo(typeName: string): int {
     return newTvNull()
 }
 
-function interpGetReturnFlag(): int {
-    return interpReturnFlag
-}
-
-function interpGetReturnVal(): int {
-    return interpReturnVal
-}
-
 function interpValEquals(lid: int, rid: int): int {
     const lk = tvKindOf(lid)
     const rk = tvKindOf(rid)
