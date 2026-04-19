@@ -1,6 +1,6 @@
 # D105: evalExpr Phase A 中批 1b 第 5 kind Plan — MEMBER_ACCESS(反射 gate 专章)
 
-**Status:** 首轮 Plan,Execute 0 未开工
+**Status:** Plan + Execute 1 Done
 **Depends on:** D104 §步骤 1 evalIdent 实测(M7b -7 / N3 -1316 / M2 -51 / N2 -255 / F1 -148)/ D104 §步骤 2 指向 D105 MEMBER_ACCESS 反射 gate 专章 / D103 §步骤 1 evalArrayLit(对称三段式)/ D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 mv 编码 / D097 反射根因指标 / D095 FieldMeta 字段 `name`/`type`/`annotations` / D088 §第一性需求 结构化字段访问 / D094 §规则 2 pure subset 白名单(`MEMBER_ACCESS` 在列)/ CLAUDE.md §反射根因 gate(强制) / `memory/feedback_reflection_root_cause_gate.md`
 **Date:** 2026-04-19
 
@@ -328,12 +328,24 @@ if (k == "MEMBER_ACCESS") { return evalMemberAccess(astId) }
 ## 下一步(Plan 下的 Execute 顺序)
 
 1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +7 充裕,若 Execute 1 R3 反射 gate 失败触发,补削减 M7b -1 / N3 / M4 —— **本 Plan 未触发,默认跳过生效**
-2. [ ] Planned — **Execute 1**:MEMBER_ACCESS 迁移 evalMemberAccess(对称 evalIdent 三段式),eval_expr.ss 末尾新建 evalMemberAccess + evalExpr 头部加分派 + L132 shim 扩 9 kind + 删 gen_exprs.ss L299-421 整块 123 行 inline + L361/L419/L420 三处 runtime 回退改 mv 编码
-   - **R1 前对照**:`bin/ss run tools/reflection_health_linter.ss` 全部指标 ≤ baseline 后启动
-   - **D095 行为回归首测**:`bin/ss test tests/phase5/d095_*.ss` PASS 后继续
-   - **5 触点单测覆盖**:触点 A D095 / B enum / C class static / D CT object / E D097 AnnotationMeta
-   - **R3 后对照**:结构组 8 项全 OK/PROGRESS / 累计组 6 项全 OK/PROGRESS / F1 PROGRESS
-   - **bootstrap 固定点 + test tests/ 全绿**
+2. [x] **Done**:MEMBER_ACCESS 迁移 evalMemberAccess(对称 evalIdent 三段式),eval_expr.ss 末尾新建 evalMemberAccess + evalExpr 头部加分派 + L132 shim 扩 9 kind + 删 gen_exprs.ss L299-421 整块 123 行 inline + L361/L419/L420 三处 runtime 回退改 mv 编码
+   - **R1 前对照**:`bin/ss run tools/reflection_health_linter.ss` 全部指标 OK/PROGRESS baseline 锚 commit 9343330
+   - **D095 行为回归首测**:`bin/ss test tests/phase5/d095_*.ss` 2/2 + 1/1 PASS
+   - **5 触点单测覆盖**:触点 A D095 FieldMeta(d095_stage_b 2/2, d095_getter 1/1)/ B enum(enum_methods / enum_valueof all passed)/ C class static(static_fields compiled+run)/ D CT object(d095 配套)/ E D097 AnnotationMeta(d097_cls_annotations_meta 2/2)—— **全 PASS**
+   - **R3 后对照实测**(vs baseline 9343330):
+     - M7b 676 → 670(Δ=-6,tol=±0)PROGRESS —— 预测 670 精确命中
+     - N3 518111 → 515916(Δ=-2195,tol=±0)PROGRESS —— 预测 -1816~-2816 中段命中(**新纪录深度**)
+     - M2 76126 → 76096(Δ=-30,tol=±380)OK —— 预测 -6~-36 下限命中
+     - N2 380630 → 380480(Δ=-150,tol=±1903)OK —— 预测 -130~-230 下限命中
+     - F1:gen_exprs.ss 1721 → 1450(-271 / -15.7%,单调压回)PROGRESS —— 预测 ~1450 精确命中
+     - **结构组 8 项全 OK/PROGRESS / 累计组 6 项全 OK/PROGRESS / F1 PROGRESS / GATE PASS**
+   - **bootstrap 固定点**:seed → stage1 → stage2 → stage3,stage2==stage3 验证通过
+   - **test tests/** 213 passed / 4 pre-existing failed(git stash 反向验证 4 failing 同前,非 D105 引入)
+   - **§新张力 1**(5 反射触点交叉干扰):单测全 PASS,无冲突发生 —— 假设**解除**
+   - **§新张力 2**(3 处 raw constVal 同步改):L361/L419/L420 三条 runtime 路径字节级验证,未产生 reg str 被当 known val 折叠的回归 —— 假设**解除**
+   - **§新张力 5**(D088 距离验证):1 Phase 距离,MEMBER_ACCESS 是 `obj.fields()` 读侧主承载,路线合规 —— **验证通过**
+   - **§新张力 6**(@derive 连锁回归):d095_stage_b ToString/Equals/HashCode 全绿,f.name/f.type/f.annotations 三字段返回路径无破坏 —— 假设**解除**
+   - **1b 批累计**:gen_exprs.ss 1721 → 1450(D100/D101/D103/D104/D105 五轮共 271 行压回 / 15.7% 压缩率),F1 硬上限 ≤600 预算下单调收敛
 3. [ ] Planned — **Execute 2**:收尾评估(1b 全收后 record vs 继续 Phase A 后批 2;默认不 record 延续银行策略)+ 起 D106 Plan(Phase A 后批 2 首 kind,候选 POSTFIX_INC 轻量写 kind 或 METHOD_CALL 中量调用 kind)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进;**反射 gate 专章 R1/R3 任一失败 → Plan 退回,不强推**。
