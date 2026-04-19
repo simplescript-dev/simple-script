@@ -1,6 +1,6 @@
 # D102: Linter 分层化 + F1 文件行数 GATE Plan
 
-**Status:** Plan 阶段(未 Execute)
+**Status:** Phase 1 Plan ✅ Done / Phase 2 Execute ✅ Done(linter 分层化 + F1 GATE 落地)
 **Depends on:** D097(14 指标物理定义 + baseline 语义)/ D100 §坑 P(迁移结构成本八股文案例)/ D099 §坑 I-K(M7b/N3 银行余量经验)/ D093 §决策(Zig SEMA 单函数 dispatch 最终目标)
 **Date:** 2026-04-19
 
@@ -280,26 +280,38 @@ function writeBaseline() {
 }
 ```
 
-## Phase 划分(不 Execute)
+## Phase 划分
 
-### Phase 1:Plan ✅(本轮)
+### Phase 1:Plan ✅ Done
 
-- D102 决策文落地
-- 分层规则 §规则 1.1-1.4
-- F1 规则 §规则 2.1-2.4
-- linter 代码改动草案 §方案 3.1-3.4
+- [x] D102 决策文落地 — Done at `docs/3-decisions/D102-linter-stratification-file-gate.md:1`
+- [x] 分层规则 §规则 1.1-1.4
+- [x] F1 规则 §规则 2.1-2.4
+- [x] linter 代码改动草案 §方案 3.1-3.4
 
-### Phase 2:Execute linter 分层化 ⏳(下轮)
+### Phase 2:Execute linter 分层化 ✅ Done
 
 按 §方案 3.1-3.4 落地 linter 代码。步骤:
 
-1. `Step 0`(可选):若 M7b 银行余量 < 1,先 commit 削 1 helper(mapSetInt/funcTop/popFunc 三选一)
-2. `Step 1`:改 reportDelta 加 DRIFT 分层(选项 A +checkF1 同 commit)
-3. `Step 2`:processFile 加 line count + writeBaseline 加 F1 条目 + main 加 checkF1 调用
-4. `Step 3`:`bin/ss run tools/reflection_health_linter.ss record` 首次写入 F1 baseline(14 条)
-5. `Step 4`:负例测试 — 手工 append 10 行到 gen_exprs.ss 验证 R1 阻断,手工新建 601 行文件验证 R3 阻断,撤销
-6. `Step 5`:`./build.sh bootstrap` 固定点 PASS
-7. `Step 6`:commit(linter 代码 + baseline 首次 F1 record)
+1. [x] `Step 0`:inline mapSetInt(唯一调用 indeg.set)— Done at `tools/reflection_health_linter.ss:105`
+2. [x] `Step 1`:改 reportDelta 加 DRIFT + tol inline — Done at `tools/reflection_health_linter.ss:467`
+3. [x] `Step 2`:processFile 加 line count + fileLineCounts — Done at `tools/reflection_health_linter.ss:291-296`;checkF1 独立函数 — Done at `tools/reflection_health_linter.ss:432`;compareAndReport 末尾 `regressions + checkF1()` — Done at `tools/reflection_health_linter.ss:424`;writeBaseline F1 blocking + F1 append — Done at `tools/reflection_health_linter.ss:340-366`
+4. [x] `Step 3`:首次 record 写入 F1 baseline(14 条)— Done at `tools/linter_baseline.txt:16-29`
+5. [x] `Step 4`:负例 R1(append 10 行 gen_exprs.ss 1731 vs 1721 → REGRESSION BLOCKED);R3(新建 bootstrap/d102_r3_probe.ss 601 行 → REGRESSION BLOCKED);撤销后 PASS
+6. [x] `Step 5`:`./build.sh bootstrap` 固定点 PASS(stage2 == stage3)
+7. [x] `Step 6`:commit
+
+#### Execute 实测数据
+
+record 后 baseline:M1=5135/M2=76150/M3a=12128/M3b=1879/M4=3037/M5=1750/M6=32/M7a=27/M7b=**677**(-1,D100 Execute 1 后)/N1=34/N2=380750/N3=518205/N4=321/N5=0 + 14 条 F1 条目。
+
+linter 自身行数:494 行(改动前 468 + 新增 checkF1 ~30 + 双 F1 loop writeBaseline ~20 + reportDelta DRIFT ~10 + processFile 行计 ~5 - mapSetInt -3)。≤ 600 自身合规。
+
+M7b 净增量:理论 +1(checkF1)-1(mapSetInt inline)= 0,但 linter 扫描 `bootstrap/` 默认不含 tools/,实际 M7b 未变化(677)。
+
+### Phase 3:回放 D100 §坑 P 验证 ⏳(可选)
+
+手工制造 M2 +2 / N2 +10 scenario 跑 linter,验证 DRIFT 分级 + PASS。
 
 ### Phase 3:回放 D100 §坑 P 验证 ⏳(可选)
 
