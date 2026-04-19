@@ -702,48 +702,8 @@ function genValBinary(id: int): int {
 }
 
 function genValUnary(id: int): int {
-    // Comptime: evaluate via genVal + interp, never fall through to IR emission
-    if (comptimeDepth > 0) {
-        const ctUv = genVal(nGetI1(id))
-        const ctUop = nGetS1(id)
-        if (isCt(ctUv) == 0) { return ctVal(interpNewNull()) }
-        const ctUp = payload(ctUv)
-        const ctUt = interpType(ctUp)
-        if (ctUop == "Neg") {
-            if (ctUt == "double") { return ctVal(interpNewDouble(0.0 - parseDouble(interpAsStr(ctUp)))) }
-            return ctVal(interpNewInt(0 - interpAsInt(ctUp)))
-        }
-        if (ctUop == "Not") { return ctVal(interpNewBool(interpTruthy(ctUp) == 1 ? 0 : 1)) }
-        if (ctUop == "BitNot") { return ctVal(interpNewInt(~interpAsInt(ctUp))) }
-        return ctVal(interpNewNull())
-    }
-    const uType = inferType(nGetI1(id))
-    if (uType != "int" && uType != "bool") {
-        return constVal(genUnary(id))
-    }
-    const ov = genVal(nGetI1(id))
-    const op = nGetS1(id)
-    if (isCt(ov) == 1) {
-        const val = interpAsInt(payload(ov))
-        if (op == "Neg") { return ctVal(interpNewInt(0 - val)) }
-        if (op == "Not") { return ctVal(interpNewBool(val == 0 ? 1 : 0)) }
-        if (op == "BitNot") { return ctVal(interpNewInt(~val)) }
-    }
-    // Runtime — operand already evaluated, emit IR directly
-    const valStr = reg(ov)
-    const r = nextReg()
-    if (op == "Neg") {
-        emitIR(`  ${r} = sub i32 0, ${valStr}`)
-        return constVal(r)
-    }
-    if (op == "BitNot") {
-        emitIR(`  ${r} = xor i32 ${valStr}, -1`)
-        return constVal(r)
-    }
-    emitIR(`  ${r} = icmp eq i32 ${valStr}, 0`)
-    const r2 = nextReg()
-    emitIR(`  ${r2} = zext i1 ${r} to i32`)
-    return constVal(r2)
+    const mv = evalExpr(id)
+    return mv >= 0 ? mv : 0 - mv - 1
 }
 
 function genValTernary(id: int): int {

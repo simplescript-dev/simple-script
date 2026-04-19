@@ -1,6 +1,6 @@
 # D099: evalExpr Phase A 首批 1a 合并 Plan — BINARY / UNARY / TERNARY / SHORT_CIRCUIT / COMPTIME_EXPR
 
-**Status:** Executing(Execute 0 / Execute 1 已落地,Execute 2-6 待推进)
+**Status:** Executing(Execute 0 / Execute 1 / Execute 2 已落地,Execute 3-6 待推进)
 **Depends on:** D093(evalExpr 单函数 dispatch 骨架)/ D094 §决策 §规则 2(pure subset 白名单)/ D098 §决策 1(MaybeVal 编码 + 构造器/访问器接口)
 **Date:** 2026-04-18
 **Last Updated:** 2026-04-18
@@ -133,6 +133,14 @@ if (kind == "UNARY") {
 **删 `genValUnary`** 主体。
 
 **验证**:同步骤 1;linter M1/M4/M3a 继续削减。
+
+**Execute 2 落地实录(2026-04-19)**:
+- `bootstrap/eval_expr.ss`:evalExpr 顶部加 `if (nGetKind(astId) == "UNARY") { ... }` 吸收 UNARY 主体(comptime + 运行时两路径)。**方案选型** — 按坑 I 延伸候选过两选:X1 `evalUnary` 独立函数(M7b +1 撞 baseline=679 余量 0 阻断)vs X4 inline 到 evalExpr body(N3 +~80 余量 889 充裕)。选 X4。**承坑 G/H/J**:不建 mv helpers,operand 走 `genVal(nGetI1(astId))` 不递归 evalExpr,非 int/bool fallback 委托现有 `genUnary`。runtime 返回编码 `0 - constVal(uR) - 1`(mv runtime 编码)
+- `bootstrap/gen_exprs.ss` L704:`genValUnary` 主体 44 行 → 3 行 shim(`const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1`)。L133 分派不动
+- Linter GATE PASS:M1=5132(baseline 5144,Δ-12)/ M2=76138(Δ-106)/ M3a=12136(Δ-20)/ M4=3042(Δ-9)/ M5=1750(Δ-8)/ M7b=679(=baseline)/ N2=380690(Δ-530)/ N3=518249(Δ-230);其余指标持平。**相对 step 1**:M1 +2(外层 `if kind==UNARY` +1 + shim 三元 +1)/ M2 +33 / M3a +1 / M4 +1 / N3 +659(UNARY body 进 if 块 depth +1 ~659 节点深度累加)— 全部仍在 baseline 内
+- Bootstrap 固定点 PASS:stage2 == stage3
+- 测试:214 passed / 3 failed(spring_web_params / d096_p4_l2_reactive / harness_bug,均为 step 1 前 pre-existing,与 UNARY 迁移无关)
+- **§步骤 2 与 Plan 的偏差**(Execute 2 实录):① mv helpers 不建(坑 G 延续)② operand 仍走 `genVal` 而非递归 evalExpr(坑 H 延续,evalExpr 当前仅识别 BINARY+UNARY)③ 方案从 X1 per-kind 函数 → X4 inline(§坑 K)。均为 Phase A 收敛策略,不污染 Phase B 类化路径
 
 ### §步骤 3 — TERNARY 迁移
 
@@ -284,6 +292,16 @@ if (kind == "COMPTIME_EXPR") {
 
 **延伸**:gen_exprs.ss L132 原计划展开 5 行 inline mv 解码会把代码叠进 `genVal` if chain(depth ~5),观测 N3 +192。**解决**:保留 `genValBinary` 为 5 行 shim(`op 检查 And/Or → genValShortCircuit` / 否则 `evalExpr + mv decode`),shim body 在函数体 depth 1 比 inline depth 5 节省 ~200 N3。shim 是"便宜的函数包装"不违 §决策 2 Phase A(class 留 Phase B)。
 
+### 坑 K:step 2 UNARY 分派 per-kind 函数 vs inline 二选
+
+**现象(Execute 2 方案选型)**:D099 原文坑 I 延伸建议 "step 2+ 若扩 kind dispatch,改为 `if (kind == X) return evalX(astId)` per-kind 分发函数,保持 body 不进 IF 深度"(X1)。但 X1 必须新建 `evalUnary` 独立函数,M7b +1。step 1 结束时 M7b=679 = baseline,余量 0 → X1 立即 GATE BLOCKED。
+
+**根因**:linter GATE 是单调(任一指标 > baseline 阻断),不看综合削减。M7b 余量 0 时任何新函数都触 blocked,除非同步删除等量函数(shim 保留策略下无法删)。N3 余量 889 则宽松。
+
+**解决**:改方案 X4 — UNARY body 直接 inline 到 evalExpr 函数体 `if (kind == "UNARY") { ... }` 内。代价 N3 +~80(body 裹进 if 深度 +1),在 N3 余量内。trade-off 选型依据:**看 baseline 余量最紧的指标**(M7b)决定,不看"理论最扁平"。step 3+(TERNARY/SHORT_CIRCUIT/COMPTIME_EXPR)继续 inline 直到 step 6 收尾统一清理。
+
+**延伸**:当 body 很大(genVal 主体 ~200 行)或嵌套很深(depth > 3)时,inline 会炸 N3。届时需要"同步删 + 新建"双操作维持 M7b。step 2 UNARY body 仅 40 行深度 ≤3,inline 可行。
+
 ### 坑 J:comptime 字符串比较 6 分支 inline 造成 N3 累积
 
 **现象**:evalExpr 吸收 genValBinary 的 comptime string-compare 块(6 个 op 分支,每个 ctVal(interpNewBool(...))),即使扁平 guard 后 N3 仍 +27 residue。
@@ -295,9 +313,9 @@ if (kind == "COMPTIME_EXPR") {
 **本 D 文档不触发任何 bootstrap 改动**。用户批准本 Plan 后,Execute 轮按以下顺序(每步一个 commit,每个 commit linter GATE PASS):
 
 1. ~~**Execute 0**:步骤 0 骨架~~ — 落地于 commit 53066f0(evalExpr 空壳 `return 0 - 1`,Phase A 纯 int 编码,MaybeVal class 延后 Phase B)
-2. ~~**Execute 1**:步骤 1 BINARY 非 And/Or 迁移~~ — 落地(§步骤 1 Execute 1 落地实录 + §坑 G/H/I/J)
-3. **Execute 2**:步骤 2 UNARY 迁移(下一步)
-4. **Execute 3**:步骤 3 TERNARY 迁移
+2. ~~**Execute 1**:步骤 1 BINARY 非 And/Or 迁移~~ — 落地于 commit 5f2198e(§步骤 1 Execute 1 落地实录 + §坑 G/H/I/J)
+3. ~~**Execute 2**:步骤 2 UNARY 迁移~~ — 落地(§步骤 2 Execute 2 落地实录 + §坑 K)
+4. **Execute 3**:步骤 3 TERNARY 迁移(下一步)
 5. **Execute 4**:步骤 4 SHORT_CIRCUIT(BINARY And/Or)迁移
 6. **Execute 5**:步骤 5 COMPTIME_EXPR 迁移
 7. **Execute 6**:步骤 6 清理 + 收尾量化 + linter record baseline(独立 commit)

@@ -1,10 +1,53 @@
-// D099 §步骤 1:evalExpr 吸收 BINARY(非 And/Or)。D098 §决策 1 Phase A mv 编码:
+// D099 §步骤 1-2:evalExpr 吸收 BINARY(非 And/Or)+ UNARY。D098 §决策 1 Phase A mv 编码:
 //   mv >= 0   → known,  val = mv        (ctVal tagged int,bit 30 set)
 //   mv <= -2  → runtime,regId = -mv - 1  (regTable 1-based)
 //   mv == -1  → error 哨兵
-// 调用方 genValBinary shim 已过滤 kind==BINARY + op!=And/Or。
+// 调用方 shim:genValBinary 过滤 kind==BINARY + op!=And/Or;genValUnary 过滤 kind==UNARY。
+// UNARY 分支内联 evalExpr 体:步骤 2 不建 evalUnary 独立函数(M7b 余量 0),body 进 `if UNARY` 块
+// depth +1,N3 成本 ~80(baseline 余量 889 充裕),抵消 genValUnary body 删除 → 净 N3 小幅下降。
 
 function evalExpr(astId: int): int {
+    if (nGetKind(astId) == "UNARY") {
+        const uOp = nGetS1(astId)
+        if (comptimeDepth > 0) {
+            const ctUv = genVal(nGetI1(astId))
+            if (isCt(ctUv) == 0) { return ctVal(interpNewNull()) }
+            const ctUp = payload(ctUv)
+            const ctUt = interpType(ctUp)
+            if (uOp == "Neg") {
+                if (ctUt == "double") { return ctVal(interpNewDouble(0.0 - parseDouble(interpAsStr(ctUp)))) }
+                return ctVal(interpNewInt(0 - interpAsInt(ctUp)))
+            }
+            if (uOp == "Not") { return ctVal(interpNewBool(interpTruthy(ctUp) == 1 ? 0 : 1)) }
+            if (uOp == "BitNot") { return ctVal(interpNewInt(~interpAsInt(ctUp))) }
+            return ctVal(interpNewNull())
+        }
+        const uType = inferType(nGetI1(astId))
+        if (uType != "int" && uType != "bool") {
+            return 0 - constVal(genUnary(astId)) - 1
+        }
+        const ov = genVal(nGetI1(astId))
+        if (isCt(ov) == 1) {
+            const uVal = interpAsInt(payload(ov))
+            if (uOp == "Neg") { return ctVal(interpNewInt(0 - uVal)) }
+            if (uOp == "Not") { return ctVal(interpNewBool(uVal == 0 ? 1 : 0)) }
+            if (uOp == "BitNot") { return ctVal(interpNewInt(~uVal)) }
+        }
+        const uValStr = reg(ov)
+        const uR = nextReg()
+        if (uOp == "Neg") {
+            emitIR(`  ${uR} = sub i32 0, ${uValStr}`)
+            return 0 - constVal(uR) - 1
+        }
+        if (uOp == "BitNot") {
+            emitIR(`  ${uR} = xor i32 ${uValStr}, -1`)
+            return 0 - constVal(uR) - 1
+        }
+        emitIR(`  ${uR} = icmp eq i32 ${uValStr}, 0`)
+        const uR2 = nextReg()
+        emitIR(`  ${uR2} = zext i1 ${uR} to i32`)
+        return 0 - constVal(uR2) - 1
+    }
     const op = nGetS1(astId)
     if (comptimeDepth > 0) {
         if (op == "NullCoalesce") {
