@@ -1,6 +1,6 @@
 # D115: check_stmts.ss 按职责细分 6 文件(return / narrow / named_args / thread / exprs / stmts driver)
 
-**Status:** Plan Done / Execute 1 [x] Done at bootstrap/checker/check_return.ss:5 / Execute 2 [x] Done at bootstrap/checker/check_narrow.ss:4 / Execute 3 [ ] / Execute 4 [ ] / Execute 5 [ ]
+**Status:** Plan Done / Execute 1 [x] Done at bootstrap/checker/check_return.ss:5 / Execute 2 [x] Done at bootstrap/checker/check_narrow.ss:4 / Execute 3 [x] Done at bootstrap/checker/check_named_args.ss:7 / Execute 4 [ ] / Execute 5 [ ]
 
 **Depends on:**
 - D088 §第一性需求 L9-13(Zig 路线 SEMA 目标 evalExpr 吸收 kind dispatch)/ §正模式 L387(渐进拆分 SEMA 模块)
@@ -236,8 +236,8 @@ D102 §规则 R3 / R4 对本 Plan 的具体应用:
 
 ## 下一步
 
-**已完成**:§决策 1-6 全部规划 + 替代方案 6 选 1 + 隐藏假设 10 项验证 + **Execute 1**(check_return.ss,blockAlwaysReturns + stmtAlwaysReturns,check_stmts.ss 1083 → 1020,F1 baseline 同步,GATE PASS)+ **Execute 2**(check_narrow.ss,rejectPrimitiveNullable + extractNullCheckVar + restoreNarrowing,check_stmts.ss 1020 → 987,F1 baseline 同步,GATE PASS)。
+**已完成**:§决策 1-6 全部规划 + 替代方案 6 选 1 + 隐藏假设 10 项验证 + **Execute 1**(check_return.ss,blockAlwaysReturns + stmtAlwaysReturns,check_stmts.ss 1083 → 1020,F1 baseline 同步,GATE PASS)+ **Execute 2**(check_narrow.ss,rejectPrimitiveNullable + extractNullCheckVar + restoreNarrowing,check_stmts.ss 1020 → 987,F1 baseline 同步,GATE PASS)+ **Execute 3**(check_named_args.ss,checkNamedConstructorArgs 单函数 84 行,check_stmts.ss 987 → 907,新增 F1:check_named_args.ss=84 入 baseline,GATE PASS)。
 
-**待执行**:§决策 4 的 Execute 3-5 分步落地。每步执行一轮用户授权,逐轮走 PFV 开工 / 收工 / 收尾 gate。
+**待执行**:§决策 4 的 Execute 4-5 分步落地。每步执行一轮用户授权,逐轮走 PFV 开工 / 收工 / 收尾 gate。
 
-**下一轮**:由用户授权启动 Execute 3(check_named_args.ss 抽出 checkNamedConstructorArgs,check_stmts.ss 987 → ~909),或用户指定其他方向。
+**下一轮**:由用户授权启动 Execute 4(check_thread.ss 抽出 checkThreadClosureCaptures + checkLetCapture + checkThreadCapturesRec,check_stmts.ss 907 → ~849),或用户指定其他方向。
