@@ -99,25 +99,27 @@ function valType(valId: int): string {
 
 **预估指标影响**(相对当前 cur 即 D109 Execute 1 末):
 
-| 指标 | 组 | cur | 预估 | Δ | 判定 |
-|---|---|---|---|---|---|
-| M1 | 累计 | 5138 | 5140~5145 | +2~+7 | OK(DRIFT 窗远内)|
-| M2 | 累计 | 76210 | 76230~76280 | +20~+70 | OK(±380 充裕)|
-| M3a | 累计 | 12124 | 12150~12180 | +26~+56 | OK(±60 压临界,视访问器调用次数)|
-| M3b | 结构 | 1879 | 1879 | 0 | OK |
-| M4 | 结构 | 3035 | 3035~3037 | 0~+2 | **DRIFT 风险**(严格 0 不升,访问器若进入 dispatch 路径可能 +1)|
-| M5 | 累计 | 1747 | 1747 | 0 | OK |
-| M6 | 结构 | 32 | 32 | 0 | OK |
-| M7a | 结构 | 27 | 27 | 0 | OK |
-| M7b | 结构 | 674 | 676 | +2 | **DRIFT 风险**(严格 0 不升,引入 2 新函数 valOf/valType)|
-| N1 | 累计 | 34 | 34 | 0 | OK |
-| N2 | 累计 | 381050 | 381100~381200 | +50~+150 | OK(±1903 充裕)|
-| N3 | 结构 | 514989 | 515000~515050 | +11~+61 | **DRIFT 风险**(严格 0 不升,访问器调用边深度可能微升)|
-| F1 | - | 不变 | 不变 | 0 | OK |
+| 指标 | 组 | cur | 预估 | Δ-from-cur | 判定 | 实测 cc7cc79(Δ vs D101 baseline / Δ-from-cur / 新 cur) | 命中 |
+|---|---|---|---|---|---|---|---|
+| M1 | 累计 | 5138 | 5140~5145 | +2~+7 | OK(DRIFT 窗远内)| n/a(未独立采样) | - |
+| M2 | 累计 | 76210 | 76230~76280 | +20~+70 | OK(±380 充裕)| +97 / +13 / cur 76223 | ✓ 略低于预估下界(Δ-from-cur +13 < 预估 +20)|
+| M3a | 累计 | 12124 | 12150~12180 | +26~+56 | OK(±60 压临界,视访问器调用次数)| +5 / +3 / cur 12127 | ✓✓ 远低于预估(pass-through 成本显著 < 预估假设)|
+| M3b | 结构 | 1879 | 1879 | 0 | OK | n/a | - |
+| M4 | 结构 | 3035 | 3035~3037 | 0~+2 | **DRIFT 风险**(严格 0 不升,访问器若进入 dispatch 路径可能 +1)| -2 / 0 / cur 3035 | ✓ 预估下界命中,未进入 dispatch |
+| M5 | 累计 | 1747 | 1747 | 0 | OK | n/a | - |
+| M6 | 结构 | 32 | 32 | 0 | OK | n/a | - |
+| M7a | 结构 | 27 | 27 | 0 | OK | n/a | - |
+| M7b | 结构 | 674 | 676 | +2 | **DRIFT 风险**(严格 0 不升,引入 2 新函数 valOf/valType)| 0 / +2 / cur 676 | ✓ 精确命中(2 新函数吃尽 bank +2)|
+| N1 | 累计 | 34 | 34 | 0 | OK | n/a | - |
+| N2 | 累计 | 381050 | 381100~381200 | +50~+150 | OK(±1903 充裕)| +485 / +65 / cur 381115 | ✓ 精确落入预估区间 |
+| N3 | 结构 | 514989 | 515000~515050 | +11~+61 | **DRIFT 风险**(严格 0 不升,访问器调用边深度可能微升)| -3085 / +37 / cur 515026 | ✓ 精确落入预估区间 |
+| F1 | - | 不变 | 不变 | 0 | OK | n/a(gen_exprs.ss 1218 不变 / 9 调用点改写未触 F1)| - |
 
 **核心风险点**:M7b / M4 / N3 三结构组 STRICT 指标。M7b 必 +2(新函数),M4 视访问器是否进入 dispatch 路径(改 inline 调用不升),N3 视访问器 body 复杂度(若 body = 1 行 return 则不升)。
 
 **对策**:Execute 1 先跑 Step 0 预削减释放 M7b bank +2,**或者**动用 per-phase bank 升级(§决策 3)先把 Phase B 启动时 M7b/N3 baseline 重置到 cur(674/514989),允许 Phase B 内部增量。
+
+**实测命中率(Execute 1 cc7cc79,2026-04-20)**:6 实测项中 **4 项精确落入预估区间**(M7b/M4/N3/N2)+ **2 项远优于预估**(M2 Δ-from-cur +13 vs 预估 +20~+70 / M3a +3 vs 预估 +26~+56)。M2/M3a 显著低于预估证明访问器作为 pass-through 调用改写**不引入新 token 块 / 新调用边**,仅 9 处改调访问器的 M2(token 数)/ M3a(调用边)成本远低于「每处 +5~+10 token + 调用边」的预估假设。GATE PASS:结构组 M7b=baseline bank 耗尽 / M4/N3 仍 PROGRESS(M4 bank +2 / N3 bank +3085),累计组 4 项全 DRIFT 窗内(M2 +97 ≤ ±380 / M3a +5 ≤ ±60 / N2 +485 ≤ ±1903)。**新 bank 态**:M7b 0(下次新函数即触 DRIFT 风险,需先削减)/ M4 bank +2(Phase B 继续 dispatch 改造空间)/ N3 bank +3085(深窖,Phase B 全程余量充裕)。
 
 **验证**:
 
@@ -226,11 +228,12 @@ function valType(valId: int): string {
 ## 下一步(Plan 下的 Execute 顺序)
 
 1. [x] Done at `aa57864` — **Plan 起草 + §决策 1/2/3 拍板**:本文档写入,D109 §步骤 2 §决策矩阵漏洞修订归 §决策 3,D094 §Q2 收尾 §Phase A 迁移进度 P19 标注 9 kind 全完(D109 Execute 2 同 commit)
-2. [ ] Planned — **Execute 1**(Phase B 访问器引入):
+2. [x] Done at `cc7cc79` — **Execute 1**(Phase B 访问器引入,2026-04-20):
    - 新增 `valOf(valId: int): int` / `valType(valId: int): string` 于 `bootstrap/gen_maybeval.ss`(或新建 `bootstrap/gen_value.ss`)
    - 选取 5-10 个高频 `interp*` 调用点改调访问器(建议:`bootstrap/codegen.ss` L277-500 内 evalExpr 驱动路径调用的 `interpAsInt` / `interpAsStr` / `interpType` 前 5-10 处)
    - 单独 commit + bootstrap 固定点 + 全测 + GATE PASS
    - 预估:M7b +2 / N3 +11~+61 / M2 +20~+70 / N2 +50~+150(Phase B 首轮结构组 +,D101 baseline 仍 bank +2 充裕)
+   - **实测落地(cc7cc79)**:Phase B MaybeVal 类化起步 — `valOf` / `valType` 接口边界函数引入 + 9 处 evalExpr 驱动路径调用点改调访问器示范(选取范围落入预估 5-10 上界)。Bootstrap 固定点 PASS / 全测 PASS / GATE PASS。实测 delta vs D101 baseline:**M7b cur 676 = baseline 0 delta**(bank +2 耗尽,精确命中预估)/ **M4 -2**(cur 3035 不变,预估下界命中未升)/ **N3 -3085**(cur 515026,Δ-from-cur +37 精确落入预估 +11~+61)/ **M2 +97**(cur 76223,Δ-from-cur +13 略低于预估下界 +20)/ **M3a +5**(cur 12127,Δ-from-cur +3 远低于预估下界 +26)/ **N2 +485**(cur 381115,Δ-from-cur +65 精确落入预估 +50~+150)。**命中率:6 项 4 精确 + 2 远优于预估**(M2/M3a 验证访问器 pass-through 成本低于预估假设)。详见 §决策 2 预估表实测列 + 实测命中率段落
 3. [ ] Planned — **Execute 2 及后续**(Phase B InternPool 引入 / Type-as-Value 合并 / 反射 metadata InternPool 承载等):独立 D 文档 D111+(D098 §决策 2 §Phase B / §决策 3 Phase B 对应 Plan)
 
 每 Execute 开始前先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
