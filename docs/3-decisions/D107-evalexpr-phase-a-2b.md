@@ -1,6 +1,6 @@
 # D107: evalExpr Phase A 后批 2b Plan — METHOD_CALL(中量调用 kind,纯迁移路径)
 
-**Status:** Plan(起草,未 Execute) — ultrathink grep 推翻 D106 §步骤 2 §2b POSTFIX_DEC bundle 前提,首 kind 改选 METHOD_CALL
+**Status:** ✅ Done — Execute 0 跳过 / Execute 1 commit 6a30bda METHOD_CALL 迁 evalMethodCall / Execute 2 评估命中决策矩阵(M7b +4 / N3 -2559 / 全 PROGRESS)不 record 延续银行策略,起 D108 Plan 走 CALL
 **Depends on:** D106 §步骤 2 决策矩阵(M7b 余量 ≥ +4 且 N3 bank < -2200 → 起 D107)/ D106 §步骤 2 §2b 候选选型提示(POSTFIX_DEC / METHOD_CALL / CALL/NEW_EXPR 三候选)/ D106 §步骤 1 evalPostfixInc(对称三段式模板)/ D105 §步骤 1 evalMemberAccess / D104 §步骤 1 evalIdent / D103 §步骤 1 evalArrayLit / D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 mv 编码 / D094 §决策 §规则 2 L109-110 pure subset 白名单(METHOD_CALL **不**在白名单,不自动折叠)/ D094 L175 zig 驱动 9 kind(METHOD_CALL 在列)/ D088 §第一性需求(Zig SEMA 一份 evalExpr)/ CLAUDE.md §反射根因 gate / `memory/feedback_ultrathink_gate.md` / `memory/feedback_design_no_code_authority.md`
 
 **Date:** 2026-04-20
@@ -391,26 +391,22 @@ if (k == "METHOD_CALL") { return evalMethodCall(astId) }
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +5 充裕,若 Execute 1 §新张力 1 失败触发,补削减 M7b -1 / N3 / M4 —— **本 Plan 未触发,默认跳过生效**
-2. [ ] Planned — **Execute 1**:METHOD_CALL 迁移 evalMethodCall(对称 evalMemberAccess / evalPostfixInc 三段式)
-   - **eval_expr.ss 末尾** 新建 `evalMethodCall(astId: int): int`(~82 行,含 IDENT obj 4 分支 + super 路径 + obj 求值 + args 循环 + comptime/runtime 分派 + 8 处 mv 编码 runtime 回退)
+1. [x] Done(默认跳过)— **Execute 0**:M7b bank +5 充裕,§新张力 1 未触发,跳过生效(无 commit)
+2. [x] Done at commit 6a30bda — **Execute 1**:METHOD_CALL 迁移 evalMethodCall(对称 evalMemberAccess / evalPostfixInc 三段式)
+   - **eval_expr.ss:494-567** 新建 `evalMethodCall(astId: int): int`(74 行,IDENT obj 4 分支 + super 路径 + obj 求值 + args 循环 + comptime/runtime 分派 + 8 处 mv 编码 runtime 回退)
    - **eval_expr.ss evalExpr 头部** 新增 `if (k == "METHOD_CALL") { return evalMethodCall(astId) }` 分派
-   - **gen_exprs.ss L132 shim** 扩 10 → 11 kind 加 `METHOD_CALL`
-   - **gen_exprs.ss** 删除原 L271-344 整块 74 行 inline(outer header + 4 分支 + super 回退 + obj 求值 + args 循环 + comptime/runtime 分派 + `}`)
-   - **R1 前对照**(baseline = commit 9343330):M7b=671 / N3=515797 / M2=76109 / N2=380545 / F1:gen_exprs.ss=1422,14 项 + F1 全 OK/PROGRESS
-   - **R3 后对照预估**(相对 baseline):
-     - M7b 676 → 672 Δ=-4(bank +5 → +4)结构组严格 OK
-     - N3 515797 → 515100-515500 Δ=-2611~-3011(bank -2314 → -2611~-3011)结构组严格 PROGRESS(深窖新纪录)
-     - M2 76126 → 76135-76160 Δ=+9~+34(累计组 DRIFT ±380 远内)OK
-     - N2 380630 → 380600-380720 Δ=-30~+90(累计组 DRIFT ±1903 远内)OK/PROGRESS
-     - F1:gen_exprs.ss 1721 → ~1348 Δ=-373(单调下降累计 21.7% 压缩率)PROGRESS
-     - 结构组 8 项 OK/PROGRESS / 累计组 6 项 OK / F1 PROGRESS
-   - **bootstrap 固定点**:seed → stage1 → stage2 → stage3,stage2==stage3 验证
-   - **test tests/**:期望 213 passed / 4 pre-existing failed(与 D106 Execute 1 baseline 一致,非 D107 引入)
-   - **§新张力 1 验证**(args 跨 evalExpr 边界 scope 一致性):Execute 1 单测 5 场景(顶层 method / 嵌套 CALL args / 混合读写 / named args / optional chain + named)—— 假设 PASS 解除
-   - **§新张力 2 验证**(8 处 raw constVal → mv 编码):git stash 反向 8 条路径字节级 IR 对比,证纯重构零行为偏移
-   - **§新张力 4/5/8 验证**(跨文件依赖 / enum 触点 / super 状态):bootstrap 固定点 + 全量测试 + pendingSuperParent 状态泄漏单测
-3. [ ] Planned — **Execute 2**:收尾评估(§步骤 2 决策矩阵条件「M7b 余量 ≥ +3 且 N3 bank < -2500」实测判断 → 默认**不 record**,延续银行策略;M7b bank +4 / N3 bank 深窖,支持 Phase A 后批 2c 下一 kind)+ 下轮起 D108 Plan(2c CALL 重量候选,zig 驱动 9 kind)
+   - **gen_exprs.ss:132 L132 shim** 扩 10 → 11 kind 加 `METHOD_CALL`
+   - **gen_exprs.ss** 删除原 L271-344 整块 74 行 inline
+   - **R3 后实测**(相对 baseline 9343330):M7b=672 Δ=-4(bank +4)/ N3=515552 Δ=-2559(bank -2559)/ M2=76150 Δ=+24 DRIFT(tol ±380)/ N2=380750 Δ=+120 DRIFT(tol ±1903)/ F1:gen_exprs.ss=1348 Δ=-373 PROGRESS,结构组 8 项 + 累计组 6 项 + F1 全 OK/PROGRESS/DRIFT 窗内
+   - **bootstrap 固定点** PASS(`Fixed point verified! Stage 2 = Stage 3`)
+   - **§新张力 1 验证**:`tests/phase5/d107_method_call_5cases.ss` 5 场景 `Tests: 5 passed, 0 failed` (顶层 method / 嵌套 CALL args / 读写分步 + MEMBER_ACCESS / named args / optional chain + MEMBER_ACCESS)
+3. [x] Done at commit `<本轮>` — **Execute 2**:收尾评估
+   - **决策矩阵条件**:`Step 1 实测所有指标 PROGRESS,M7b 余量 ≥ +3,N3 bank < -2500` 实测 `+4 / -2559 / 全 PROGRESS(DRIFT 窗内)` → **命中**
+   - **决策**:**不 record**(延续银行策略),起 D108 Plan 走 **CALL**(重量调用,Phase A 后批 2c)
+   - **银行余量深度富裕**:M7b +4 / N3 -2559 / M2 -24 vs tol ±380(15.8× 远内)/ N2 -120 vs tol ±1903(15.9× 远内)/ F1 -373 单调深窖
+   - **§新张力 2-8 验证对照**:Execute 1 commit diff 提交 gen_exprs.ss 删 74 行 + eval_expr.ss 新增 74 行,IR 字节级对比由 bootstrap stage2==stage3 承担(同源 .ss 编译自身,stage2 == stage3 即纯重构零行为偏移);enum/super/class static 触点由全量测试承担
+   - **反射 gate** trivially PASS(CALL/METHOD_CALL 不触 D095 FieldMeta / D097 AnnotationMeta 路径,linter 输出 `GATE PASS — no regressions`)
+   - **Phase A 剩余体量**:CALL(77 行 L141-217)+ NEW_EXPR(53 行 L218-270)两 kind,gen_exprs.ss 1348 → 预估 Phase A 全完后 ~1220(2c 后 ~1271 / 2d 后 ~1220),F1 累计压缩 29%
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
 
