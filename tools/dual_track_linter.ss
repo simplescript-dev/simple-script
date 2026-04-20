@@ -9,8 +9,8 @@
 //
 // 用法: bin/ss run tools/dual_track_linter.ss
 
-import { tokenize } from "@/bootstrap/lexer"
-import { parse, nGetKind, nGetS1, nGetI1, nGetI2, nGetI3, nGetList, nGetLine } from "@/bootstrap/parser"
+import { tokenize } from "@/bootstrap/lexer/lexer"
+import { parse, nGetKind, nGetS1, nGetI1, nGetI2, nGetI3, nGetList, nGetLine } from "@/bootstrap/parse/parser"
 
 // ── Linter state ─────────────────────────────────────────────
 

@@ -1,20 +1,20 @@
 // SimpleScript Bootstrap Compiler — Main Entry Point
 // Usage: ss run bootstrap/main.ss -- <input.ss> -o <output>
 
-import { tokenize } from "./lexer"
-import { parse, initParser } from "./parser"
+import { tokenize } from "./lexer/lexer"
+import { parse, initParser } from "./parse/parser"
 import { check } from "./checker/checker"
 import { generateToFile, initCodegen, initVarAliases } from "./codegen"
-import { initFuncRegistry } from "./gen_registry"
-import { initRcState, detectCyclicOwnership } from "./gen_rc"
+import { initFuncRegistry } from "./gen/gen_registry"
+import { initRcState, detectCyclicOwnership } from "./gen/gen_rc"
 import { genStmt } from "./gen/stmts/stmts"
 import { genExpr, genVal } from "./gen/exprs/exprs"
-import { inferType, ssTypeToLLVM } from "./gen_types"
+import { inferType, ssTypeToLLVM } from "./gen/gen_types"
 import { initClassState, registerClass } from "./gen/class/class"
-import { emitRuntimeDefs } from "./gen_runtime"
-import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./gen_pir"
+import { emitRuntimeDefs } from "./gen/gen_runtime"
+import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./gen/gen_pir"
 import { pirLivenessPass, pirMoveAnalysis } from "./pir_opt"
-import { evalExpr } from "./eval_expr"
+import { evalExpr } from "./eval/eval_expr"
 import { JSON_parse, JsonNode } from "@/lib/json"
 
 // ── Import resolution ─────────────────────────────────────────

@@ -4,7 +4,7 @@
 // Lowering (AST→PIR) and expression scanning are in pir_lower.ss.
 // Optimization passes are in pir_opt.ss.
 
-import { pirLowerBlock, pirRegisterParams } from "./pir_lower"
+import { pirLowerBlock, pirRegisterParams } from "../pir_lower"
 
 // ── PIR node storage (Map-based, same pattern as AST) ────────────
 

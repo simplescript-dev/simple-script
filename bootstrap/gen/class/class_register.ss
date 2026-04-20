@@ -1,7 +1,7 @@
 // gen/class_register.ss — Class/static field 注册 + 继承解析 + struct/ctor/annotation reflection emit
 
-import { splitParentType, preRegisterSpecializedClass } from "../../gen_generic_class"
-import { emitClassCtorBody } from "../../gen_type_ops"
+import { splitParentType, preRegisterSpecializedClass } from "../gen_generic_class"
+import { emitClassCtorBody } from "../gen_type_ops"
 
 // ── D078: Static field support ────────────────────────────────
 

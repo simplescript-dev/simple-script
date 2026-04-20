@@ -1,7 +1,7 @@
 // gen_methods.ss — Method call codegen: dispatcher, class methods, helpers
 // Used by gen_exprs.ss via textual import.
 
-import { genStringMethod, genHigherOrderMethod, genArrayMethod, genMapMethod, genSetMethod } from "./gen_builtins"
+import { genStringMethod, genHigherOrderMethod, genArrayMethod, genMapMethod, genSetMethod } from "../gen_builtins"
 
 // ── Enum methods ────────────────────────────────────────────────
 

@@ -46,17 +46,17 @@ bin/ss clean
                             (liveness / REUSE)               生成所有 ss_* 运行时函数
 ```
 
-`bootstrap/` 内约 35 个 `.ss` 文件是编译器源码，按前缀命名分工：`lex_/parse_/check_/gen_/pir_/gen_rt_/`。`prelude.ss` 在编译时自动注入到源码前。`main.ss` 的 `resolveImports()` 在解析前递归内联所有 `import`；解析顺序（`@/` 项目根、`./` 相对路径、`@scope/name` 走 `ss.json` dependencies、包入口 `main`/`src/index.ss`）见 D085。详细文件清单 `ls bootstrap/`。
+`bootstrap/` 内编译器源码按职能分族入子目录:`lexer/`(2 文件)、`parse/`(3)、`checker/`(6)、`eval/`(~20,含 `eval_expr.ss` + `interp_*` + 10 条子 eval)、`gen/`(根下基础族 14 扁平 + 子族 `class/`/`exprs/`/`stmts/`/`methods/`/`rt/`)、根目录保留非族驱动文件(`main.ss`/`codegen.ss`/`prelude.ss`/`pir_lower.ss`/`pir_opt.ss`/`intern_pool.ss`)。`prelude.ss` 在编译时自动注入到源码前。`main.ss` 的 `resolveImports()` 在解析前递归内联所有 `import`；解析顺序(`@/` 项目根、`./` 相对路径、`@scope/name` 走 `ss.json` dependencies、包入口 `main`/`src/index.ss`)见 D085。详细文件清单 `ls bootstrap/ bootstrap/*/`。
 
 ## 添加新语言特性
 
 按序修改：
 
-1. `bootstrap/lexer.ss` — 新 token / 关键字（加入 `lexIdent()` 分发表）
-2. `bootstrap/parser.ss` 或 `parse_stmts.ss`/`parse_exprs.ss` — 新 AST 节点 kind + parse 函数 + dispatcher case
-3. `bootstrap/checker.ss` 或 `check_stmts.ss` — `checkStmt`/`checkExpr` 加 case
-4. `bootstrap/gen_stmts.ss` 或 `gen_exprs.ss` — `genStmt`/`genExpr` + `inferType` 加 case
-5. `bootstrap/gen_runtime.ss` 或 `gen_rt_*.ss` — 新 builtin 加 `emitIR("define ...")` 块
+1. `bootstrap/lexer/lexer.ss` — 新 token / 关键字（加入 `lexIdent()` 分发表）
+2. `bootstrap/parse/parser.ss` 或 `parse/parse_stmts.ss`/`parse/parse_exprs.ss` — 新 AST 节点 kind + parse 函数 + dispatcher case
+3. `bootstrap/checker/checker.ss` 或 `checker/check_stmts.ss` — `checkStmt`/`checkExpr` 加 case
+4. `bootstrap/gen/stmts/stmts.ss` 或 `gen/exprs/exprs.ss` — `genStmt`/`genExpr` + `inferType` 加 case
+5. `bootstrap/gen/gen_runtime.ss` 或 `gen/rt/gen_rt_*.ss` — 新 builtin 加 `emitIR("define ...")` 块
 6. `bootstrap/codegen.ss` `initFuncRetTypes` — 注册新内置方法返回类型
 
 每次有意义的改动后跑 `./build.sh bootstrap` 验证固定点。

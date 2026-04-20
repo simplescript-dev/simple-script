@@ -24,7 +24,7 @@ D096 Phase 4 L2ζ-L2κ 为反射每增加一个维度(FieldMeta.annotations、a.
 
 ## 指标定义 (不可伪造 — v2 纯图论)
 
-linter 位于 `tools/reflection_health_linter.ss`,通过 `@/bootstrap/lexer` + `@/bootstrap/parser` 复用编译器前端,对 `bootstrap/*.ss` 做 AST 遍历计数。
+linter 位于 `tools/reflection_health_linter.ss`,通过 `@/bootstrap/lexer/lexer` + `@/bootstrap/parse/parser` 复用编译器前端,对 `bootstrap/**/*.ss` 做 AST 遍历计数(`collectSSFiles` 递归扫)。
 
 v1 的 G1-G5(字符串匹配 `nGetS1=="fields"`、变量名前缀 `classXxxAnnotation`、宏入口 `genForInUnrolled`、NEW_EXPR 名匹配)被证明**可伪造** — 改名、拆 helper、藏深嵌套即可规避。2026-04-18 commit `072690f` + `9e20f26` 整体替换为下列 **14 项纯图论物理指标**(称 M1-M7 物理形态 + N1-N5 防规避扩展)。baseline 位于 `tools/linter_baseline.txt`,由 linter `record` 子命令写入,不手工编辑。
 

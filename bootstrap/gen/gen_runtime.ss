@@ -1,13 +1,13 @@
 // gen_runtime.ss — Runtime core: dispatcher, libc declarations, globals, helpers, RC
 
-import { emitRuntimeStringOps, emitRuntimeConversions } from "./gen_rt_string"
-import { emitRuntimeArrayOps } from "./gen_rt_array"
-import { emitRuntimeIO, emitRuntimeProcess, emitRuntimeMath } from "./gen_rt_io"
-import { emitRuntimeMap } from "./gen_rt_map"
-import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeSQLite, emitRuntimeInotify } from "./gen_rt_system"
-import { emitRuntimeRef } from "./gen_rt_ref"
-import { emitRuntimeThread } from "./gen_rt_thread"
-import { emitRuntimeChannel } from "./gen_rt_channel"
+import { emitRuntimeStringOps, emitRuntimeConversions } from "./rt/gen_rt_string"
+import { emitRuntimeArrayOps } from "./rt/gen_rt_array"
+import { emitRuntimeIO, emitRuntimeProcess, emitRuntimeMath } from "./rt/gen_rt_io"
+import { emitRuntimeMap } from "./rt/gen_rt_map"
+import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeSQLite, emitRuntimeInotify } from "./rt/gen_rt_system"
+import { emitRuntimeRef } from "./rt/gen_rt_ref"
+import { emitRuntimeThread } from "./rt/gen_rt_thread"
+import { emitRuntimeChannel } from "./rt/gen_rt_channel"
 
 function emitRuntimeDefs() {
     emitLibcDecls()

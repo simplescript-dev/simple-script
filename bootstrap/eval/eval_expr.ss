@@ -5,18 +5,18 @@
 // D108 §步骤 1: 仅留主 dispatch evalExpr + UNARY/BINARY inline,10 子函数迁 bootstrap/eval/*.ss
 // 本文件承载 10 条 import(main.ss F1=630 baseline 守门,不+import 行)。
 
-import { evalCall } from "./eval/call"
-import { evalTernary } from "./eval/ternary"
-import { evalShortCircuit } from "./eval/short_circuit"
-import { evalIndexAccess } from "./eval/index_access"
-import { evalTemplateLit } from "./eval/template_lit"
-import { evalArrayLit } from "./eval/array_lit"
-import { evalIdent } from "./eval/ident"
-import { evalMemberAccess } from "./eval/member_access"
-import { evalPostfixInc } from "./eval/postfix_inc"
-import { evalMethodCall } from "./eval/method_call"
-import { evalNewExpr } from "./eval/new_expr"
-import { valOf, valType } from "./gen_maybeval"
+import { evalCall } from "./call"
+import { evalTernary } from "./ternary"
+import { evalShortCircuit } from "./short_circuit"
+import { evalIndexAccess } from "./index_access"
+import { evalTemplateLit } from "./template_lit"
+import { evalArrayLit } from "./array_lit"
+import { evalIdent } from "./ident"
+import { evalMemberAccess } from "./member_access"
+import { evalPostfixInc } from "./postfix_inc"
+import { evalMethodCall } from "./method_call"
+import { evalNewExpr } from "./new_expr"
+import { valOf, valType } from "../gen/gen_maybeval"
 
 function evalExpr(astId: int): int {
     const k = nGetKind(astId)

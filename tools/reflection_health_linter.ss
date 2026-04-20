@@ -27,8 +27,8 @@
 // 用法: bin/ss run tools/reflection_health_linter.ss           # 对比基线
 //       bin/ss run tools/reflection_health_linter.ss record    # 把当前值写为新基线
 
-import { tokenize } from "@/bootstrap/lexer"
-import { parse, nGetKind, nGetS1, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine } from "@/bootstrap/parser"
+import { tokenize } from "@/bootstrap/lexer/lexer"
+import { parse, nGetKind, nGetS1, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine } from "@/bootstrap/parse/parser"
 
 // ── 指标累加器 ─────────────────────────────────────────────────
 let m1 = 0

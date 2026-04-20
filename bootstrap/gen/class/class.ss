@@ -5,8 +5,8 @@ import { emitClassStruct, emitClassConstructor } from "./class_register"
 import { emitClassComptimeMethods, runComptimeAnnotationCall } from "./class_annotation"
 import { genClassMethod, genNamedConstructorArgs } from "./class_method"
 import { emitFieldLoad, genMemberAccess, genOptionalMemberAccess } from "./class_member"
-import { emitClassVtableConst, emitClassDropFieldsFn, emitClassConstructorReuse, genAutoToJson, emitClassDtorRegister, emitClassTypeInfo } from "../../gen_type_ops"
-import { genGenericNewExpr } from "../../gen_generic_class"
+import { emitClassVtableConst, emitClassDropFieldsFn, emitClassConstructorReuse, genAutoToJson, emitClassDtorRegister, emitClassTypeInfo } from "../gen_type_ops"
+import { genGenericNewExpr } from "../gen_generic_class"
 
 // ── Class state ──────────────────────────────────────────────
 

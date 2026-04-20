@@ -2,7 +2,7 @@
 // AST node system, parser state, public API, declarations, helpers.
 // Statement parsing in parse_stmts.ss, expression parsing in parse_exprs.ss.
 
-import { tkCol } from "./lexer"
+import { tkCol } from "../lexer/lexer"
 import { parseStmt, parseBlock, parseVarDecl, parseVarDeclNoNL, parseUpdateStmt } from "./parse_stmts"
 import { parseExpr, parseArgs } from "./parse_exprs"
 
