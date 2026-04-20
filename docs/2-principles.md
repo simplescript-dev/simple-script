@@ -62,6 +62,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - 字段 9（Plan vs Execute）若是 Plan，必须在字段 7 的 VCM 填充里把 ④ 边界 替换为「替代方案对比 + 隐藏假设挑战」
 - 字段 10（表面 vs 根）禁止只写「根」不给消除的双轨制 / 架构根因；写「表面」必须同时给出「下一轮如何升级到根」。多产出项任务（如巡检）必须**对每一项**单独标记
 - **字段 3 对 F1 / 文件拆分类任务**的 RED 命令**不许**只用 `wc -l ≤ 600` —— 那只是 F1 下限守护,不是 P10.1 终局判据。必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类数类别,**类别 ≥ 3 → P10.1 不清晰,RED 成立,任务继续;类别 ≤ 2 → GREEN,任务不成立**。仅用 `wc -l ≤ 600` 判 GREEN → §字段 3 失效,PSM 作废重填(P10.1 / feedback_structure_not_linecount.md / D102 §最终目标 配套,2026-04-20 codegen.ss=492 baseline=1166 漂移误判 GREEN 教训)
+- **字段 5 对"创建 bootstrap/X/<prefix>_Y.ss"类任务**的界定阶段必须运行"命名前缀族归位扫描":`filepref=$(basename <new_file> .ss \| cut -d_ -f1-2); find bootstrap -name "${filepref}*" -type f \| awk -F/ 'NR>0{OFS="/"; $NF=""; print}' \| sort -u`。输出 ≥ 1 个族目录 → 新建文件**归同目录**,除非 D 文档**显式写出脱族理由**;输出 0 个 → 按 P10.1 自由决定。Plan 型 D 文档起草 §决策 1(路径规划)同义务,把扫描输出贴进 D 文档;Execute 型轮贴进 PSM 与 D 文档路径对照,不一致 → 先回写 D 文档路径再开工。不做扫描 → Plan 路径决策漂,**任务拒绝**(feedback_subdir_split_style / feedback_naming_family_scan 配套,2026-04-20 D116 §决策 4 Execute 1 首写 `bootstrap/gen/gen_rt_cache.ss` 漏 `gen_rt_*` 前缀归 `gen/rt/` 子族用户手工补正教训)
 
 唯一例外：用户明确说「我知道这不在 Zig 路线上，但本轮就要做 X」→ 接受，回复里显式标记「⚠ 偏离 Zig 路线，用户授权」。
 
