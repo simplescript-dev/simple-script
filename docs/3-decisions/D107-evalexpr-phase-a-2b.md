@@ -400,7 +400,7 @@ if (k == "METHOD_CALL") { return evalMethodCall(astId) }
    - **R3 后实测**(相对 baseline 9343330):M7b=672 Δ=-4(bank +4)/ N3=515552 Δ=-2559(bank -2559)/ M2=76150 Δ=+24 DRIFT(tol ±380)/ N2=380750 Δ=+120 DRIFT(tol ±1903)/ F1:gen_exprs.ss=1348 Δ=-373 PROGRESS,结构组 8 项 + 累计组 6 项 + F1 全 OK/PROGRESS/DRIFT 窗内
    - **bootstrap 固定点** PASS(`Fixed point verified! Stage 2 = Stage 3`)
    - **§新张力 1 验证**:`tests/phase5/d107_method_call_5cases.ss` 5 场景 `Tests: 5 passed, 0 failed` (顶层 method / 嵌套 CALL args / 读写分步 + MEMBER_ACCESS / named args / optional chain + MEMBER_ACCESS)
-3. [x] Done at commit `<本轮>` — **Execute 2**:收尾评估
+3. [x] Done at commit b41fdc8 — **Execute 2**:收尾评估
    - **决策矩阵条件**:`Step 1 实测所有指标 PROGRESS,M7b 余量 ≥ +3,N3 bank < -2500` 实测 `+4 / -2559 / 全 PROGRESS(DRIFT 窗内)` → **命中**
    - **决策**:**不 record**(延续银行策略),起 D108 Plan 走 **CALL**(重量调用,Phase A 后批 2c)
    - **银行余量深度富裕**:M7b +4 / N3 -2559 / M2 -24 vs tol ±380(15.8× 远内)/ N2 -120 vs tol ±1903(15.9× 远内)/ F1 -373 单调深窖
