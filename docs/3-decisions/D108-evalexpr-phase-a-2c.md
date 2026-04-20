@@ -1,6 +1,6 @@
 # D108: evalExpr Phase A 后批 2c Plan — CALL(重量调用 kind,纯迁移路径)
 
-**Status:** **Done**(Execute 1 commit 2c38819 含 §扩展 子目录全拆 + Execute 2 不 record 决策本轮落地 commit ref pending,Phase A 后批 2c CALL 全闭环,起 D109 Plan 走 NEW_EXPR 末轮)
+**Status:** **Done**(Execute 1 commit 2c38819 含 §扩展 子目录全拆 + Execute 2 不 record 决策 commit 04b5f47,Phase A 后批 2c CALL 全闭环,起 D109 Plan 走 NEW_EXPR 末轮)
 **Depends on:** D107 §步骤 2 决策矩阵(M7b 余量 ≥ +3 且 N3 bank < -2500 → 起 D108)/ D107 Execute 1 实测命中 / D107 §步骤 1 evalMethodCall(对称三段式模板,含 callPreRegs save/new/restore 三态)/ D106 §步骤 1 evalPostfixInc / D105 §步骤 1 evalMemberAccess(多触点迁移模板)/ D104 §步骤 1 evalIdent / D103 §步骤 1 evalArrayLit(SPREAD_ELEM 在 Array 字面量已承载)/ D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 MaybeVal mv 编码 / D094 §决策 §规则 2 L109-110 pure subset 白名单(CALL **不**在,不自动折叠)/ D094 L175 zig 驱动 9 kind(CALL 在列)/ D088 §第一性需求(Zig SEMA 一份 evalExpr)/ CLAUDE.md §反射根因 gate / `memory/feedback_ultrathink_gate.md` / `memory/feedback_design_no_code_authority.md`
 
 **Date:** 2026-04-20
