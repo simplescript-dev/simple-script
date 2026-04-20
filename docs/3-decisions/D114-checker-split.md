@@ -1,6 +1,6 @@
 # D114: checker.ss 按职责细分 5 文件(types / scope / func / class / driver)
 
-**Status:** Plan Done / Execute 1 进行中
+**Status:** Plan Done / Execute 1 [x] Done at `bootstrap/check_types.ss` / Execute 2 [x] Done at `bootstrap/check_scope.ss` / Execute 3 [x] Done at `bootstrap/check_func.ss` / Execute 4 [ ] Planned
 **Depends on:**
 - D088 §第一性需求 L9-13(Zig 路线 SEMA 目标 evalExpr 吸收 kind dispatch)/ §正模式 L387(渐进拆分 SEMA 模块)
 - D102 §规则 2.1 R1-R5 L109-113(F1 GATE)/ §规则 2.2 L121 `F1:bootstrap/checker.ss=1299`(已 grep 对照 `tools/linter_baseline.txt:29`)/ §规则 2.4 防规避 L149-155(一拆二 / 分裂伪移硬阻)/ §最终目标 L115"全 ≤ 600"
@@ -133,9 +133,9 @@ P10.1 §"单一文件职责单一"原则:"出现 ≥ 3 职责类别即不清晰"
 
 | Execute | 内容 | 估改动 | 风险 |
 |---|---|---|---|
-| **Execute 1** | 创建 `bootstrap/check_types.ss`(~217 行 9 函数:Nullable 5 + inferType 1 + compat 3)。checker.ss 删 L789-1005,1299 → ~1082(R1 单调 -217 PROGRESS)。types 层函数对 scope/func/class 是**单向消费**(前向调用),无反向依赖,最低风险 | ~217 行 | 低(物理搬运,全局 scope 自动接续;仅 check_stmts.ss `rejectPrimitiveNullable` L95 隔文件调 `isPrimitiveNullable` 需验证)|
-| **Execute 2** | 创建 `bootstrap/check_scope.ss`(~55 行 5 函数)。checker.ss 删 L316-365,~1082 → ~1027(R1 -55)| ~55 行 | 低(5 纯函数,state 读 varNames/varConst/scopeParent/scopeVarNames,写同名 state)|
-| **Execute 3** | 创建 `bootstrap/check_func.ss`(~80 行 7 函数)。checker.ss 删 L519-541 + L705-756,~1027 → ~947(R1 -80)| ~80 行 | 低(7 纯函数,state 读 funcNames/funcParamMin/funcParamMax/allFuncNameList)|
+| **Execute 1** [x] Done | 创建 `bootstrap/check_types.ss`(~217 行 9 函数:Nullable 5 + inferType 1 + compat 3)。checker.ss 删 L789-1005,1299 → ~1082(R1 单调 -217 PROGRESS)。types 层函数对 scope/func/class 是**单向消费**(前向调用),无反向依赖,最低风险 | 219 行实测 | 低(物理搬运,全局 scope 自动接续;仅 check_stmts.ss `rejectPrimitiveNullable` L95 隔文件调 `isPrimitiveNullable` 需验证)|
+| **Execute 2** [x] Done | 创建 `bootstrap/check_scope.ss`(~55 行 5 函数)。checker.ss 删 L316-365,~1082 → ~1027(R1 -55)| 52 行实测 | 低(5 纯函数,state 读 varNames/varConst/scopeParent/scopeVarNames,写同名 state)|
+| **Execute 3** [x] Done | 创建 `bootstrap/check_func.ss`(~80 行 7 函数)。checker.ss 删 defineFunc/lookupFunc/defineFuncParams 三连 + countParamRange/checkArgCount/countArgs/hasSpreadArg 四连,1035 → 962(R1 -73)| 81 行实测 | 低(7 纯函数,state 读 funcNames/funcParamMin/funcParamMax/allFuncNameList)|
 | **Execute 4** | 创建 `bootstrap/check_class.ss`(~500 行 15 函数)。checker.ss 删 L367-517 + L542-703 + L1006-1185,~947 → ~470(**R4 达成**: ≤ 600 → baseline 条目 `F1:bootstrap/checker.ss=1299` **从 linter_baseline.txt 删除**,14 文件清单 → 13 文件)| ~500 行 | 中(15 函数量最大,但均为物理搬运;registerCheckerClassDecl 124 行 + preScanComptimeClasses 56 行跨 L1006-1185 大段迁移需精准 offset)|
 
 **每步后机械 gate**:
@@ -206,12 +206,10 @@ D102 §规则 R3 / R4 对本 Plan 的具体应用:
 
 ## 下一步
 
-**本轮执行**:§决策 4 Execute 1(check_types.ss)。
+**已完成**:§决策 4 Execute 1 / 2 / 3(check_types.ss 219 + check_scope.ss 52 + check_func.ss 81)。
 
 **后续轮次候选**:
 
-- Execute 2(check_scope.ss ~55 行)
-- Execute 3(check_func.ss ~80 行)
-- Execute 4(check_class.ss ~500 行)→ R4 触发 checker.ss baseline 删除
+- Execute 4(check_class.ss ~500 行)→ checker.ss 962 - ~500 = ~462 ≤ 600 → R4 触发 baseline 条目 `F1:bootstrap/checker.ss=1299` 从 `tools/linter_baseline.txt` 删除,14 文件清单 → 13 文件
 
 **F1 13 文件清单(D113 Execute 4 达成 codegen.ss + 本 Plan Execute 4 达成 checker.ss 后)继续压**:gen_exprs.ss 1721 / gen_class.ss 1286 / gen_stmts.ss 1125 / check_stmts.ss 1083 逐个按类似 5 层分层方案拆。
