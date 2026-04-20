@@ -271,10 +271,10 @@ function inferType(id: int): string {
             // SS bool is i32 at IR level
             if (ceType == "bool") {
                 comptimeExprType.set(ceKey, "int")
-                comptimeExprLiteral.set(ceKey, `${interpAsBool(ceRetVal)}`)
+                comptimeExprLiteral.set(ceKey, `${tvIntOf(ceRetVal)}`)
                 return "int"
             }
-            // TypeValue:literal 存 class 名,外层 VAR_DECL 走 comptimeTypeAliases
+            // D112: TypeValue literal 存 class 名,外层 VAR_DECL 走 ctVars(消除独立通道)
             if (ceType == "type") {
                 const ceClass = tvStringOf(ceRetVal)
                 comptimeExprType.set(ceKey, "type")

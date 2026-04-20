@@ -79,17 +79,24 @@ let comptimeExprLiteral = new Map()
 
 // Compile-time constant bindings (D088: for-in unrolling propagates field names)
 let comptimeConsts = new Map()
-// 外层 `const T = comptime { return Foo }` 把 T → "Foo" 的别名记到这里。
-// T 不生成 runtime 存储,只在 comptime 上下文被 IDENT/NEW_EXPR 识别。
-let comptimeTypeAliases = new Map()
 // comptime 块里声明的 CLASS_DECL AST id。flushPendingCtClasses() 消费后清空。
 // 延迟到主 codegen pass 外发射,避免在其他函数体 IR 输出中途插入 class IR。
 let pendingCtClassIds: Array<string> = []
 
-// 若 name 是 `const T = comptime { return X }` 注册的别名,返回真正类名 X;否则原样返回。
+// D112: `const T = comptime { return X }` 的 alias 并入 ctVars(key `${currentFunc}:${name}` / `:${name}`),
+// value = ctVal(interpNewType(X))。ctLookupTypeVal 双 scope 反查 type ctVal,供 resolveCtTypeAlias(string)
+// 与 evalIdent(int) 共用,避免 dual-scope 查询重复实现膨胀 Dispatch 深度。
+function ctLookupTypeVal(name: string): int {
+    const k1 = `${currentFunc}:${name}`
+    const k2 = `:${name}`
+    const key = ctVars.has(k1) == 1 ? k1 : (ctVars.has(k2) == 1 ? k2 : "")
+    const v = key == "" ? 0 : parseInt(ctVars.getString(key))
+    if (v != 0 && isCt(v) == 1 && interpType(payload(v)) == "type") { return v }
+    return 0
+}
 function resolveCtTypeAlias(name: string): string {
-    if (comptimeTypeAliases.has(name) == 1) { return comptimeTypeAliases.getString(name) }
-    return name
+    const v = ctLookupTypeVal(name)
+    return v == 0 ? name : tvStringOf(payload(v))
 }
 
 // Generic function state (monomorphization)
@@ -155,7 +162,7 @@ function materialize(interpValId: int): string {
     const t = interpType(interpValId)
     if (t == "int") { return `${interpAsInt(interpValId)}` }
     if (t == "string") { return addStringConst(interpAsStr(interpValId)) }
-    if (t == "bool") { return interpAsBool(interpValId) == 1 ? "1" : "0" }
+    if (t == "bool") { return tvIntOf(interpValId) == 1 ? "1" : "0" }
     if (t == "double") {
         const dStr = tvD1.getString(interpValId + "")
         if (dStr.indexOf(".") < 0) { return `${dStr}.0` }
@@ -285,10 +292,6 @@ function interpAsInt(id: int): int {
 
 function interpAsStr(id: int): string {
     return tvStringOf(id)
-}
-
-function interpAsBool(id: int): int {
-    return tvIntOf(id)
 }
 
 // interp* value delegate — D092 Phase 2 sub-b / D111 §决策 4 InternPool dedup
@@ -985,8 +988,8 @@ function preScanCodegenCtClassesInStmts(stmtList: string) {
                 }
             }
         }
-        if (returnName != "") {
-            comptimeTypeAliases.set(nGetS1(s), returnName)
+        if (returnName != "" && isKnownClass(returnName) == 1) {
+            ctVars.set(`:${nGetS1(s)}`, `${ctVal(interpNewType(returnName))}`)
         }
     }
 }

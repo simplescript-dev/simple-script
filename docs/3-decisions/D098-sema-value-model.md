@@ -145,11 +145,12 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 
 **决策**:
 
-**Phase A(evalExpr 骨架期)** 保留现状 + 消除独立通道:
+**Phase A(evalExpr 骨架期)** 保留现状 + 消除独立通道:**[x] Done at D112 §步骤 1(2026-04-20)**
 - `interpNewType(className)` 继续发 tagged int,Type 是 ctVal 空间里的一个 tag(由 `interpType(id) == "type"` 识别)
 - **消除 `comptimeTypeAliases` 作为独立查表机制**:`const T = comptime{...}` 产生的 Type alias 改走普通 `ctVars` 路径 —— ctVars 里存的 MaybeVal.val = `interpNewType(actualClassName)`。`gen_exprs.ss:158-163` 的 "genVal IDENT comptime 查 interpClasses + comptimeTypeAliases" 归并为"查 ctVars(已含 type alias MaybeVal)"
 - `bootstrap/codegen.ss:83` `comptimeTypeAliases` 全局 Map 删除,`gen_decls.ss:235` `genGlobalVar 识别 type 写 comptimeTypeAliases` 改为"写 ctVars"
 - 保留 `gen_exprs.ss:160` `isKnownClass(ctIdName) == 1 → return ctVal(interpNewType(ctIdName))`(class 名当作匿名 type literal,不依赖 alias)
+- **落地事实**:`grep -rn comptimeTypeAliases bootstrap/` 0 命中(D112 前 6 命中);`resolveCtTypeAlias` 与 `evalIdent` 全局 fallback 复用 `ctLookupTypeVal(name: string): int` 单点 dual-scope 查询,GATE M4/M7b 零回归
 
 **Phase B(InternPool 引入后)**:
 - Type 句柄的 id 来自 InternPool(`TY|<className>` key 去重)
@@ -191,7 +192,7 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 - **[x] Done(2026-04-18)** 验证 SS 语言能力承载 `class MaybeVal { known: bool, val: int }`:class 带 bool + int 字段 ✓ / class 作函数返回值 ✓ / 字段读写 ✓ / 自动按字段顺序构造器(`new MaybeVal(true, 42)`,无参非法,已纳入 §决策 1 构造形式)。probe `/tmp/maybeval_probe.ss` 跑通 `probe OK`
 - **[ ] Planned** SS 函数重载语义澄清(int vs ptr 同名 dispatch 缺失,见 §新张力 6),不作 Phase A 阻塞项,Phase A 先用 `mvKnownOf/mvValOf` 错名访问器
 - **[ ] Planned** 写 evalExpr Phase A 首批 1a 合并 Plan(5 个 kind:BINARY/UNARY/TERNARY/SHORT_CIRCUIT/COMPTIME_EXPR),对应上轮候选表 §C "首批 1a",引用本 D098 §决策 1 的 MaybeVal 接口 + D094 §决策 §规则 2 的 pure subset 白名单
-- **[ ] Planned** 写 Phase A 末尾 `comptimeTypeAliases` → `ctVars` 合并 Plan(§决策 3 Phase A 收尾项)
+- **[x] Done(2026-04-20)** Phase A 末尾 `comptimeTypeAliases` → `ctVars` 合并 Plan(§决策 3 Phase A 收尾项)—— D112 §步骤 1 Execute 完成,独立通道消除
 - **[ ] Planned** Phase B 启动前单独决策:Map hash 策略 / `STR` key 预 hash / `interp*` 访问器改造范围
 
 **本 D 文档不触发任何 `.ss` 代码改动,不跑 bootstrap。** 代码改动从 evalExpr Phase A 首批 1a Plan 被批准后的 Execute 轮开始。

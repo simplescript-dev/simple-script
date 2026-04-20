@@ -18,6 +18,9 @@ function evalIdent(astId: int): int {
         const ctIdVal = parseInt(ctVars.getString(ctKey))
         if (isCt(ctIdVal) == 1) { return ctIdVal }
     }
+    // D112: 全局 type alias fallback(`const T = comptime{...}` 仅 type ctVal 有效,防污染 int/string runtime)
+    const ctGlobalVal = ctLookupTypeVal(ctIdName)
+    if (ctGlobalVal != 0) { return ctGlobalVal }
     if (comptimeDepth > 0) {
         const ctInterpKey = interpFindScopeKey(ctIdName)
         if (ctInterpKey != "") {
@@ -34,10 +37,6 @@ function evalIdent(astId: int): int {
             if (isKnownClass(ctSubName) == 1) {
                 return ctVal(interpNewType(ctSubName))
             }
-        }
-        const ctAliased = resolveCtTypeAlias(ctIdName)
-        if (ctAliased != ctIdName) {
-            return ctVal(interpNewType(ctAliased))
         }
     }
     return 0 - constVal(genIdent(astId)) - 1

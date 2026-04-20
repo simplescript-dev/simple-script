@@ -450,7 +450,7 @@ function valType(valId: int): string {
 
 3. **valType 改写 substring/indexOf 引入 string ops 成本** — valType 调用极频(eval/* 6 文件 += codegen.ss 多处 = 共 11+ 调用点),每次 substring/indexOf,N3 / N2 微升。**对策**:Phase C 评估 cache valType 结果(`valTypeCache: Map<int, string>` 二级缓存)/ 或抽 `poolLoadTag` 子函数 + 内部 cache(M7b +1 届时承担)
 
-4. **Type-as-Value 与 InternPool 合并(D098 §决策 3 Phase B)未在本 Plan** — 本 Plan 仅做 Value dedup,未消除 `comptimeTypeAliases` 独立通道(`bootstrap/codegen.ss:83`)。Type 句柄虽走 InternPool key `TY|${className}` dedup,但 `comptimeTypeAliases` Map 仍存在 — 双轨残留。**对策**:留 D112 单独 Plan,Phase B 中期推进
+4. **Type-as-Value 与 InternPool 合并(D098 §决策 3 Phase B)未在本 Plan** — 本 Plan 仅做 Value dedup,未消除 `comptimeTypeAliases` 独立通道(`bootstrap/codegen.ss:83`)。Type 句柄虽走 InternPool key `TY|${className}` dedup,但 `comptimeTypeAliases` Map 仍存在 — 双轨残留。**[x] Resolved at D112 §步骤 1(2026-04-20)**:独立 Map 删除,3 个写入点 + 2 个读出点(`resolveCtTypeAlias` / `evalIdent` fallback)全部迁到 `ctVars` dual-scope(`${currentFunc}:${name}` / `:${name}`),value = `ctVal(interpNewType(className))`;`ctLookupTypeVal` helper 复用给两条读路径,GATE 分层零回归
 
 5. **反射 Meta 对象进入 InternPool 时机** — D098 §决策 2 §Phase B 末段 + D097 §后续工作 #4 暗示 Meta 对象 dedup,但本 Plan 范围限 5 标量入口。Meta 对象(`ClassMeta` / `FieldMeta` 等)是 class instance(D096 Phase 4 L1),dedup 需先解 class instance dedup 设计 — 留 Phase C / D113+。**对策**:Plan 不预判,Phase B 完成后实测反射路径 Value.eql 收益再启动
 

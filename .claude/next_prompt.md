@@ -1,1 +1,0 @@
-按 D111 §步骤 0(M7b ≥ -1 预削减,候选 interpAsClassName/interpAsBool inline,grep 实测选)+ §步骤 1(intern_pool.ss 新建 + 5 标量入口 interpNewInt/String/Bool/Null/Type 改走 internPoolGetOrInsert + gen_maybeval.ss valType 改走 internPoolKeyOf 反查 split 取 tag,valOf 注释升级物理不变)落地 Execute 2,bootstrap 固定点 + 全测 + 分层 GATE PASS,实测命中率回写 D111 §决策 1/2/预估表,ultrathink

@@ -231,8 +231,8 @@ function genGlobalVar(id: int) {
             emitIR(`@${name} = global ptr ${ceLit}, align 8`)
             gType = "string"
         } else if (ceType == "type") {
-            // TypeValue 不落 runtime:T 只在 comptime 上下文可见
-            comptimeTypeAliases.set(name, ceLit)
+            // D112: TypeValue 不落 runtime,alias 并入 ctVars(全局 scope key `:${name}`)
+            ctVars.set(`:${name}`, `${ctVal(interpNewType(ceLit))}`)
             return
         } else {
             emitIR(`@${name} = global ptr null, align 8`)
@@ -499,11 +499,10 @@ function genVarDecl(id: int) {
     // Infer type from init expression
     const initType = inferType(initId)
 
-    // COMPTIME_EXPR 返回 TypeValue:在函数体内 `const T = comptime { return Foo }`
-    // 不落 runtime 存储,只在 comptime 上下文 + setObjClass/resolveCtTypeAlias 里消费。
+    // D112: COMPTIME_EXPR 返回 TypeValue,alias 并入 ctVars(函数内 scope `${currentFunc}:${name}`)
     if (initId > 0 && nGetKind(initId) == "COMPTIME_EXPR" && initType == "type") {
         const ceLit = comptimeExprLiteral.getString(`${initId}`)
-        comptimeTypeAliases.set(name, ceLit)
+        ctVars.set(`${currentFunc}:${name}`, `${ctVal(interpNewType(ceLit))}`)
         return
     }
     const llType = ssTypeToLLVM(initType)
