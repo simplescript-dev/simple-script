@@ -61,6 +61,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - 字段 8（对照实验）答 no → 本轮任务降级为 backlog，不做（除非用户授权偏离）
 - 字段 9（Plan vs Execute）若是 Plan，必须在字段 7 的 VCM 填充里把 ④ 边界 替换为「替代方案对比 + 隐藏假设挑战」
 - 字段 10（表面 vs 根）禁止只写「根」不给消除的双轨制 / 架构根因；写「表面」必须同时给出「下一轮如何升级到根」。多产出项任务（如巡检）必须**对每一项**单独标记
+- **字段 3 对 F1 / 文件拆分类任务**的 RED 命令**不许**只用 `wc -l ≤ 600` —— 那只是 F1 下限守护,不是 P10.1 终局判据。必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类数类别,**类别 ≥ 3 → P10.1 不清晰,RED 成立,任务继续;类别 ≤ 2 → GREEN,任务不成立**。仅用 `wc -l ≤ 600` 判 GREEN → §字段 3 失效,PSM 作废重填(P10.1 / feedback_structure_not_linecount.md / D102 §最终目标 配套,2026-04-20 codegen.ss=492 baseline=1166 漂移误判 GREEN 教训)
 
 唯一例外：用户明确说「我知道这不在 Zig 路线上，但本轮就要做 X」→ 接受，回复里显式标记「⚠ 偏离 Zig 路线，用户授权」。
 

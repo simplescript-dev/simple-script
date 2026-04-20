@@ -112,7 +112,7 @@ D097 L102「累积方向严禁更新 baseline」规则**不变**但分层化:
 - **R4**:record 规则: 文件行数下降时 baseline 更新;降到 ≤ 600 时该文件 baseline **删除**(变成 R2 状态,不允许再升至 > 600)
 - **R5**:文件被删除时, record 时该 baseline 条目删除
 
-**最终目标**:所有 bootstrap/*.ss ≤ 600,F1 baseline 全清空。
+**最终目标**:所有 bootstrap/*.ss 满足 **P10.1 结构清晰**(职责 ≤ 2 类 + 依赖单向) + **行数 ≤ 600 下限守护**。行数 gate 和结构 gate **并列**,前者不代替后者。F1 baseline 全清空仅表示下限达标,**不等于** P10.1 达标(参见 `docs/2-principles.md §PFV §字段 3` F1 特例 + `memory/feedback_structure_not_linecount.md`)。
 
 ### §规则 2.2 首次 record baseline 内容
 
