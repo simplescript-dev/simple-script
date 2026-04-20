@@ -1,6 +1,6 @@
 # D108: evalExpr Phase A 后批 2c Plan — CALL(重量调用 kind,纯迁移路径)
 
-**Status:** Execute 1 Done(commit 2c38819,含子目录全拆扩展,见 §扩展)
+**Status:** **Done**(Execute 1 commit 2c38819 含 §扩展 子目录全拆 + Execute 2 不 record 决策本轮落地 commit ref pending,Phase A 后批 2c CALL 全闭环,起 D109 Plan 走 NEW_EXPR 末轮)
 **Depends on:** D107 §步骤 2 决策矩阵(M7b 余量 ≥ +3 且 N3 bank < -2500 → 起 D108)/ D107 Execute 1 实测命中 / D107 §步骤 1 evalMethodCall(对称三段式模板,含 callPreRegs save/new/restore 三态)/ D106 §步骤 1 evalPostfixInc / D105 §步骤 1 evalMemberAccess(多触点迁移模板)/ D104 §步骤 1 evalIdent / D103 §步骤 1 evalArrayLit(SPREAD_ELEM 在 Array 字面量已承载)/ D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 MaybeVal mv 编码 / D094 §决策 §规则 2 L109-110 pure subset 白名单(CALL **不**在,不自动折叠)/ D094 L175 zig 驱动 9 kind(CALL 在列)/ D088 §第一性需求(Zig SEMA 一份 evalExpr)/ CLAUDE.md §反射根因 gate / `memory/feedback_ultrathink_gate.md` / `memory/feedback_design_no_code_authority.md`
 
 **Date:** 2026-04-20
@@ -456,7 +456,20 @@ if (k == "CALL") { return evalCall(astId) }
      - §新张力 5 user function inline:tests/ 泛型 suite 全绿
      - §新张力 6 SPREAD_ELEM 首验:`f(...arr)` / `comptime { f(...[1,2,3]) }` / `f(...obj.arr)` / `f(x, ...rest, y)` 4 场景单测
      - §新张力 7-10 函数攀升 / 跨文件 / DRIFT / 反射:bootstrap 固定点 + 全量测试 + reflection_health_linter GATE PASS
-3. [ ] Planned — **Execute 2**:收尾评估(§步骤 2 决策矩阵条件「M7b 余量 ≥ +2 且 N3 bank < -2900」实测判断:M7b bank +3 ✓ / N3 bank -2952 ✓ → 默认**不 record**,延续银行策略至 Phase A 全完;支持 Phase A 末轮 2d NEW_EXPR)+ 下轮起 D109 Plan(2d NEW_EXPR 中量构造候选,zig 驱动 9 kind 末 1 kind)
+3. [x] Done — **Execute 2**(纯文档 commit,无代码改动):
+   - **不 record 决策落地** — §步骤 2 决策矩阵条件「Step 1 实测所有指标 PROGRESS,M7b 余量 ≥ +2,N3 bank < -2900」实测命中:
+     - M7b bank +3 ≥ +2 ✓(cur 673 ≤ baseline 676)
+     - N3 bank -2952 < -2900 ✓(cur 515159 << baseline 518111,深窖新纪录)
+     - M2 bank +61 / N2 bank +305 累计组 DRIFT 窗内远充裕
+     - F1:gen_exprs.ss bank -450 / F1:eval_expr.ss bank -443 双 PROGRESS
+     - **结论:不 record,延续银行策略至 Phase A 全完(D109 Execute 2 record 一次性释放)**
+   - **D109 Plan 已起草** — `docs/3-decisions/D109-newexpr-phase-a-2d.md`(对称 D108 模板,Phase A 末轮 2d 收尾)
+     - NEW_EXPR 53 行 `bootstrap/gen_exprs.ss:141-193`(CALL 迁出 77 行后整体上移,**非原 Plan §下一步 #2 §2d 候选选型提示 写的 L218-270,以本轮 grep 为准**)
+     - 迁 `bootstrap/eval/new_expr.ss`(对称子目录方案,~60 行 ≤ R3 600 远 OK)
+     - 3 处 raw constVal(L149 泛型 / L154 Map/Set / L190 普通)需 mv 编码,比 D108 CALL 2 处多 1 处(Map/Set 短路)
+     - 跨文件 ~12 符号(genericClassNodes / interpClasses / ctNewExprDispatch / genNewExpr / genGenericNewExpr / interpNewMap / callPreRegs 等),比 D108 CALL 15-20 少 25%
+     - DRIFT 预估 M2 +20~+30 / N2 +115~+265 / N3 -200~-450(均相对 D108 cur),全 OK/PROGRESS
+     - Phase A 末轮 → Execute 2 record baseline 释放余量,启 D110 Phase A 全局收尾 + Phase B MaybeVal 类化
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
 
