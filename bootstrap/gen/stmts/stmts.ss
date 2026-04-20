@@ -1,7 +1,7 @@
 // gen/stmts.ss — Statement codegen dispatcher + barrel。
 
-import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "../gen_decls"
-import { interpShouldStop, interpCheckLoopExit, interpEnumValues, interpEnumTypes, interpEnumNodes, interpAsInt, interpAsStr, interpType, interpNewInt, interpTruthy, interpToStr, interpSetField, interpArraySet } from "../eval/interp_core"
+import { genFuncDeclStmt, genVarDecl, genDestructureArray, genAssign, genMemberAssign, isOwnedExpr, genReturn } from "../../gen_decls"
+import { interpShouldStop, interpCheckLoopExit, interpEnumValues, interpEnumTypes, interpEnumNodes, interpAsInt, interpAsStr, interpType, interpNewInt, interpTruthy, interpToStr, interpSetField, interpArraySet } from "../../eval/interp_core"
 import { emitCondToI1, genBlock, genNestedBlock, runComptimeBlockBody, genBreak, genContinueStmt } from "./stmts_core"
 import { genPostfixStmt, genIndexAssign } from "./stmts_simple"
 import { registerEnum } from "./stmts_enum"

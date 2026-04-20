@@ -1,10 +1,10 @@
 // gen/exprs.ss — 表达式 codegen 分发器 + CT 字符串 idx 辅助 + 共享错误处理。
 // 分发器仅分发,细项实现在 exprs_simple/binary/str_conv/ct_call/ct_obj/ct_enum/ct_builtin。
 
-import { genCall, genTemplateLit, genArrowFunc, flushArrowDefs, genArrayLit } from "../gen_calls"
-import { genMethodCall, genOptionalMethodCall, resolveSuperParent } from "../gen_methods"
-import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpArrayGet, interpNewMap, interpType, interpAsInt, interpAsStr, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCtFieldsArray, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "../eval/interp_core"
-import { interpBuildTypeInfo } from "../gen_reflect"
+import { genCall, genTemplateLit, genArrowFunc, flushArrowDefs, genArrayLit } from "../../gen_calls"
+import { genMethodCall, genOptionalMethodCall, resolveSuperParent } from "../../gen_methods"
+import { interpNewInt, interpNewDouble, interpNewString, interpNewBool, interpNewNull, interpNewVal, interpNewArray, interpArrayPush, interpArrayGet, interpNewMap, interpType, interpAsInt, interpAsStr, interpToStr, interpTruthy, interpGetField, interpSetField, interpFindMethod, interpCollectFields, interpCtFieldsArray, interpCheckLoopExit, interpCompoundOp, interpValEquals, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize } from "../../eval/interp_core"
+import { interpBuildTypeInfo } from "../../gen_reflect"
 import { genThisExpr, genIdent, genUnary, genIndexAccess, genPostfixExpr } from "./exprs_simple"
 import { genBinary, genStringConcat, genStringCompare, genNullCoalesce, genShortCircuit, genDoubleBinary, genIntBinary } from "./exprs_binary"
 import { genExprAsString } from "./exprs_str_conv"

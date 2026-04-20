@@ -1,6 +1,8 @@
 # D114: checker.ss 按职责细分 5 文件(types / scope / func / class / driver)
 
-**Status:** Plan Done / Execute 1 [x] Done at `bootstrap/check_types.ss` / Execute 2 [x] Done at `bootstrap/check_scope.ss` / Execute 3 [x] Done at `bootstrap/check_func.ss` / Execute 4 [ ] Planned
+**Status:** Plan Done / Execute 1 [x] Done at `bootstrap/checker/check_types.ss` / Execute 2 [x] Done at `bootstrap/checker/check_scope.ss` / Execute 3 [x] Done at `bootstrap/checker/check_func.ss` / Execute 4 [ ] Planned
+
+**目录重组(2026-04-20)**: `bootstrap/checker.ss` + `check_*.ss` 5 文件统一迁至 `bootstrap/checker/` 子目录(族成员 ≥ 6 启用子目录风格,见 `feedback_subdir_split_style.md`)。本文档后文 `bootstrap/checker.ss` / `bootstrap/check_*.ss` 路径均指向子目录下同名文件。F1 baseline 条目同步 `bootstrap/checker/checker.ss=1299` / `bootstrap/checker/check_stmts.ss=1083`。
 **Depends on:**
 - D088 §第一性需求 L9-13(Zig 路线 SEMA 目标 evalExpr 吸收 kind dispatch)/ §正模式 L387(渐进拆分 SEMA 模块)
 - D102 §规则 2.1 R1-R5 L109-113(F1 GATE)/ §规则 2.2 L121 `F1:bootstrap/checker.ss=1299`(已 grep 对照 `tools/linter_baseline.txt:29`)/ §规则 2.4 防规避 L149-155(一拆二 / 分裂伪移硬阻)/ §最终目标 L115"全 ≤ 600"

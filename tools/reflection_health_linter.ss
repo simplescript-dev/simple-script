@@ -285,6 +285,7 @@ function collectSSFiles(dir: string) {
     for (entry in entries.split("\n")) {
         if (entry == "") { continue }
         if (entry.endsWith(".ss") == 1) { files.push(`${dir}/${entry}`) }
+        else { collectSSFiles(`${dir}/${entry}`) }
     }
 }
 
@@ -492,8 +493,6 @@ function main() {
         i = i + 1
     }
     collectSSFiles(scanDir)
-    collectSSFiles(`${scanDir}/eval`)
-    collectSSFiles(`${scanDir}/gen`)
     let fi = 0
     while (fi < files.length()) { processFile(files[fi]); fi = fi + 1 }
 

@@ -2,8 +2,8 @@
 // Core: initialization, scope management, function registry, error reporting, entry point.
 // Statement/expression checking logic in check_stmts.ss.
 
-import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine, nGetCol, getLineOffset, classTypeParams } from "./parser"
-import { getSourceLine } from "./lexer"
+import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine, nGetCol, getLineOffset, classTypeParams } from "../parser"
+import { getSourceLine } from "../lexer"
 import { checkStmtList } from "./check_stmts"
 import { isNullableType, isPrimitiveNullable, stripNullable, makeNullable, getNarrowedType, checkerInferType, baseTypeName, extractElemType, isTypeCompatible } from "./check_types"
 import { pushScope, popScope, defineVar, lookupVar, isVarConst } from "./check_scope"
