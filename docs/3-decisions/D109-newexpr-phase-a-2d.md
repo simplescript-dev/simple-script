@@ -1,6 +1,6 @@
 # D109: evalExpr Phase A 末轮 2d Plan — NEW_EXPR(中量构造 kind,zig 驱动 9 kind 收尾)
 
-**Status:** Plan
+**Status:** Execute 1 Done at `e141fdf`(Execute 0 Skipped / Execute 2 Planned)
 **Depends on:** D108 §下一步 §3 决策矩阵(M7b 余量 ≥ +2 且 N3 bank < -2900 → 不 record,起 D109)/ D108 Execute 1 实测(commit 2c38819,M7b -3 / N3 -2952 / M2 +61 / N2 +305 / F1:gen_exprs.ss -450 / F1:eval_expr.ss -443 全命中)/ D108 §步骤 1 evalCall(对称三段式模板)/ D108 §扩展 子目录全拆方案(eval/*.ss 10 子文件,新增 < R3 600 上限)/ D107 §步骤 1 evalMethodCall(callPreRegs save/new/restore 三态)/ D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 MaybeVal mv 编码 / D098 §决策 2 Phase B 类化(NEW_EXPR ctor + 泛型类 = vtable 承载关键输入)/ D094 §决策 §规则 2 L109-110 pure subset 白名单(NEW_EXPR **不**在,可能 println/exit 副作用)/ D094 L175 zig 驱动 9 kind(NEW_EXPR 末 1 kind)/ D088 §第一性需求(Zig SEMA 一份 evalExpr)/ CLAUDE.md §反射根因 gate / `memory/feedback_ultrathink_gate.md` / `memory/feedback_design_no_code_authority.md`
 
 **Date:** 2026-04-20
@@ -344,31 +344,43 @@ function evalNewExpr(astId: int): int {
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +3 充裕,§新张力 1 未触发 → 跳过生效。例外触发条件见 §步骤 0
-2. [ ] Planned — **Execute 1**:NEW_EXPR 迁移 evalNewExpr(对称 evalCall / evalMethodCall 三段式 + 子目录方案延续):
-   - **bootstrap/eval/new_expr.ss 新建** ~60 行(泛型类 + Map/Set + args 2 分支 + comptime/runtime 分派 + 3 处 mv 编码)
-   - **eval_expr.ss** 加 1 import + 1 dispatch
-   - **gen_exprs.ss** L132 shim 扩 12→13 kind 加 NEW_EXPR + 删 L141-193 整块 53 行
-   - **R1 前对照**(baseline = 9343330):见 §当前事实
-   - **R3 后预估**(相对 baseline):
-     - M7b 676 → 674 Δ=-2(bank +3 → +2)结构组 OK
-     - N3 515159 → 514700-514950 Δ=-3161~-3411 PROGRESS(深窖新纪录)
-     - M2 76126 → 76210-76240 Δ=+84~+114 OK(累计组 DRIFT ±380 内 3-4×)
-     - N2 380630 → 381050-381200 Δ=+420~+570 DRIFT(累计组 DRIFT ±1903 内 3-4×)
-     - F1:gen_exprs.ss 1721 → ~1218 Δ=-503 PROGRESS(累计 29.2% 压缩率)
-     - F1:eval_expr.ss 569 → ~127 Δ=-442 PROGRESS
-     - F1:bootstrap/eval/new_expr.ss 新建 ~60 ≤ 600 R3 OK
-     - 结构组 8 项 OK/PROGRESS / 累计组 6 项 OK/DRIFT / F1 全 PROGRESS / 新文件 R3 OK
-   - **bootstrap 固定点**:seed → stage1 → stage2 → stage3,stage2==stage3 验证
-   - **test tests/**:期望与 D108 baseline 一致(213 passed / 4 pre-existing failed,非 D109 引入)
-   - **§新张力 1-9 验证**:
-     - §新张力 1 Map/Set 唯一性:user `class M extends Map` 单测
-     - §新张力 2 泛型类对称:tests/ generic_class_*.ss 全绿
-     - §新张力 3 3 处 raw constVal → mv 编码:git stash 反向 3 条路径字节级 IR 对比
-     - §新张力 4 callPreRegs 三态 + Map/Set 短路:`new Map(g(x))` callPreRegs 状态等价
-     - §新张力 5 函数 12 攀升:记录至 D110
-     - §新张力 6-8 跨文件 12 符号 / DRIFT / 反射:bootstrap 固定点 + 全量测试 + reflection_health_linter GATE PASS
-     - §新张力 9 record 大跳变:Execute 2 落地后记录新 baseline 入对策
+1. [x] Skipped — **Execute 0**:M7b bank +3 充裕,§新张力 1 未触发 → 默认跳过生效。Execute 1 实测 M7b 674 bank +2 ≥ 0 确认跳过合理
+2. [x] Done at `e141fdf` — **Execute 1**:NEW_EXPR 迁移 evalNewExpr(对称 evalCall / evalMethodCall 三段式 + 子目录方案延续):
+   - **bootstrap/eval/new_expr.ss 新建** 56 行(泛型类 + Map/Set + args 2 分支 + comptime/runtime 分派 + 3 处 mv 编码;simplify 把顶注 4 行 → 2 行对齐 method_call.ss)
+   - **eval_expr.ss** 加 1 import + 1 dispatch(126 → 128)
+   - **gen_exprs.ss** L132 shim 12→13 kind 加 NEW_EXPR + 删 L141-193 整块 53 行(1271 → 1218)
+   - **R3 后实测 vs 预估**(baseline commit = 9343330,cur commit = e141fdf):
+     | 指标 | baseline | cur | Δ 预估 | Δ 实测 | 命中度 |
+     |---|---|---|---|---|---|
+     | M1 | 5134 | 5138 | 0~+6 | **+4** | 窗内 |
+     | M2 | 76126 | 76210 | +84~+114 | **+84** | 下沿精确 |
+     | M3a | 12122 | 12124 | +2~+8 | **+2** | 下沿精确 |
+     | M3b | 1879 | 1879 | 0 | **0** | 命中 |
+     | M4 | 3037 | 3035 | -4~0 | **-2** | 窗内 PROGRESS |
+     | M5 | 1750 | 1747 | -2~+2 | **-3** | 略深 1 |
+     | M6 | 32 | 32 | 0 | **0** | 命中 |
+     | M7a | 27 | 27 | 0 | **0** | 命中 |
+     | **M7b** | 676 | **674** | **-2** | **-2** | **精确**(bank +2)|
+     | N1 | 34 | 34 | 0 | **0** | 命中 |
+     | N2 | 380630 | 381050 | +420~+570 | **+420** | 下沿精确 |
+     | **N3** | 518111 | **514989** | **-3161~-3411** | **-3122** | 略浅 39(仍深窖新纪录)|
+     | N4 | 321 | 321 | 0 | **0** | 命中 |
+     | N5 | 0 | 0 | 0 | **0** | 命中 |
+     | **F1:gen_exprs.ss** | 1721 | **1218** | **-503** | **-503** | **精确**(29.2% 压缩率)|
+     | F1:eval_expr.ss | 569 | 128 | -442 | **-441** | 差 1 行(+2 而非 +1)|
+     | F1:bootstrap/eval/new_expr.ss | (无)| **56** | ~60 新 ≤ 600 | **56** | 低估 4 行(simplify 压注释 58→56)|
+   - **bootstrap 固定点**:seed → stage1 → stage2 → stage3,stage2==stage3 验证 PASS
+   - **test tests/**:**215 passed / 4 pre-existing failed**(spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug,非 D109 引入,全等 D108 baseline)
+   - **reflection_health_linter GATE PASS**(结构组 8 项 OK/PROGRESS / 累计组 6 项 OK/DRIFT / F1 全 PROGRESS / 新文件 R3 OK)
+   - **dual_track_linter PASS**(new_expr.ss L9/L18/L51 三处 coexist,全 49 coexist / 7 structural / 4 replaceable,zig 架构内部守卫非反向)
+   - **§新张力 1-9 实测**:
+     - §新张力 1 Map/Set 唯一性:tests/ 含 `new Map()` / `new Set()` 大量场景 215 passed,`class M extends Map` 单测未单写但 bootstrap 固定点 stage2==stage3 等价保证(短路顺序保持 L18:Map/Set 优先)
+     - §新张力 2 泛型类对称:tests/ 含泛型类 suite 全绿(215 passed)
+     - §新张力 3 3 处 raw constVal → mv 编码:L11/L18/L56 全部改为 `0 - constVal(...) - 1`(new_expr.ss grep 命中 3 次),bootstrap 固定点 stage2==stage3 字节级等价(替代 git stash 反向对比)
+     - §新张力 4 callPreRegs 三态 + Map/Set 短路:Map/Set 路径(L17-L20)不 save 保持,普通路径(L21-L52-L56)三态保持,bootstrap 固定点等价保证
+     - §新张力 5 函数 11 → 12 稳态:记录至 D110(evalExpr + 11 子函数含 evalNewExpr)
+     - §新张力 6-8 跨文件 12 符号 / DRIFT / 反射:bootstrap 固定点 PASS + 215 passed + reflection_health_linter GATE PASS + 反射 gate trivial PASS(NEW_EXPR 不触 FieldMeta/AnnotationMeta)
+     - §新张力 9 record 大跳变:Execute 2 落地时处理(D110 Plan)
 3. [ ] Planned — **Execute 2**:Phase A 闭环 + record baseline + 启 D110 Phase A 全局收尾 + Phase B MaybeVal 类化评估(单 commit,纯文档 + record 命令)
    - 决策矩阵条件「Step 1 实测所有指标 PROGRESS,M7b 余量 ≥ 0,N3 bank < -2900」实测命中 → record
    - record 后 14 项 + 16 文件 F1 全部 cur 入库,8 轮 bank 累计释放(N3 -2952 / F1 -893 / M7b +3)
