@@ -6,6 +6,7 @@ import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetL
 import { getSourceLine } from "./lexer"
 import { checkStmtList } from "./check_stmts"
 import { isNullableType, isPrimitiveNullable, stripNullable, makeNullable, getNarrowedType, checkerInferType, baseTypeName, extractElemType, isTypeCompatible } from "./check_types"
+import { pushScope, popScope, defineVar, lookupVar, isVarConst } from "./check_scope"
 
 // ── Scope + function registry ─────────────────────────────────
 
@@ -312,56 +313,6 @@ function initChecker() {
     funcParamMin.set("_ss_inotify_add_watch", "3")
     funcParamMax.set("_ss_inotify_add_watch", "3")
     funcReady = 1
-}
-
-function pushScope() {
-    scopeId = scopeId + 1
-    scopeParent.set(`${scopeId}`, `${currentScope}`)
-    currentScope = scopeId
-}
-
-function popScope() {
-    currentScope = parseInt(scopeParent.getString(`${currentScope}`))
-}
-
-function defineVar(name: string, varType: string, isConst: int) {
-    const key = `${currentScope}:${name}`
-    varNames.set(key, varType)
-    if (isConst == 1) {
-        varConst.set(key, "const")
-    }
-    const scopeKey = `${currentScope}`
-    if (scopeVarNames.has(scopeKey) == 1) {
-        scopeVarNames.set(scopeKey, `${scopeVarNames.getString(scopeKey)},${name}`)
-    } else {
-        scopeVarNames.set(scopeKey, name)
-    }
-}
-
-function lookupVar(name: string): string {
-    let s = currentScope
-    while (s >= 0) {
-        const key = `${s}:${name}`
-        if (varNames.has(key) == 1) {
-            return varNames.getString(key)
-        }
-        if (s == 0) { break }
-        s = parseInt(scopeParent.getString(`${s}`))
-    }
-    return ""
-}
-
-function isVarConst(name: string): int {
-    let s = currentScope
-    while (s >= 0) {
-        const key = `${s}:${name}`
-        if (varNames.has(key) == 1) {
-            return varConst.has(key)
-        }
-        if (s == 0) { break }
-        s = parseInt(scopeParent.getString(`${s}`))
-    }
-    return 0
 }
 
 // Normalize generic type to base class name for method dispatch (Array<int> → Array, Player? → Player)
