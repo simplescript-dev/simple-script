@@ -6,6 +6,7 @@ import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetL
 import { getSourceLine } from "../lexer/lexer"
 import { checkStmtList } from "./check_stmts"
 import { blockAlwaysReturns, stmtAlwaysReturns } from "./check_return"
+import { rejectPrimitiveNullable, extractNullCheckVar, restoreNarrowing } from "./check_narrow"
 import { isNullableType, isPrimitiveNullable, stripNullable, makeNullable, getNarrowedType, checkerInferType, baseTypeName, extractElemType, isTypeCompatible } from "./check_types"
 import { pushScope, popScope, defineVar, lookupVar, isVarConst } from "./check_scope"
 import { defineFunc, lookupFunc, defineFuncParams, countParamRange, checkArgCount, countArgs, hasSpreadArg } from "./check_func"
