@@ -315,10 +315,6 @@ function interpNewType(className: string): int {
     return newTvType(className)
 }
 
-function interpAsClassName(id: int): string {
-    return tvStringOf(id)
-}
-
 function interpNewArray(init: string): int {
     return newTvArray(init)
 }

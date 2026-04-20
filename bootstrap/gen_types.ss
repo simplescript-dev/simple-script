@@ -276,7 +276,7 @@ function inferType(id: int): string {
             }
             // TypeValue:literal 存 class 名,外层 VAR_DECL 走 comptimeTypeAliases
             if (ceType == "type") {
-                const ceClass = interpAsClassName(ceRetVal)
+                const ceClass = tvStringOf(ceRetVal)
                 comptimeExprType.set(ceKey, "type")
                 comptimeExprLiteral.set(ceKey, ceClass)
                 return "type"
