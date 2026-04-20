@@ -1,6 +1,6 @@
 # D114: checker.ss 按职责细分 5 文件(types / scope / func / class / driver)
 
-**Status:** Plan Done / Execute 1 [x] Done at `bootstrap/checker/check_types.ss` / Execute 2 [x] Done at `bootstrap/checker/check_scope.ss` / Execute 3 [x] Done at `bootstrap/checker/check_func.ss` / Execute 4 [ ] Planned
+**Status:** Plan Done / Execute 1 [x] Done at `bootstrap/checker/check_types.ss` / Execute 2 [x] Done at `bootstrap/checker/check_scope.ss` / Execute 3 [x] Done at `bootstrap/checker/check_func.ss` / Execute 4 [x] Done at `bootstrap/checker/check_class.ss:1` (15 函数 511 行,checker.ss 962 → 466 ≤ 600,F1 baseline `F1:bootstrap/checker/checker.ss=1299` 删除)
 
 **目录重组(2026-04-20)**: `bootstrap/checker.ss` + `check_*.ss` 5 文件统一迁至 `bootstrap/checker/` 子目录(族成员 ≥ 6 启用子目录风格,见 `feedback_subdir_split_style.md`)。本文档后文 `bootstrap/checker.ss` / `bootstrap/check_*.ss` 路径均指向子目录下同名文件。F1 baseline 条目同步 `bootstrap/checker/checker.ss=1299` / `bootstrap/checker/check_stmts.ss=1083`。
 **Depends on:**
@@ -138,7 +138,7 @@ P10.1 §"单一文件职责单一"原则:"出现 ≥ 3 职责类别即不清晰"
 | **Execute 1** [x] Done | 创建 `bootstrap/check_types.ss`(~217 行 9 函数:Nullable 5 + inferType 1 + compat 3)。checker.ss 删 L789-1005,1299 → ~1082(R1 单调 -217 PROGRESS)。types 层函数对 scope/func/class 是**单向消费**(前向调用),无反向依赖,最低风险 | 219 行实测 | 低(物理搬运,全局 scope 自动接续;仅 check_stmts.ss `rejectPrimitiveNullable` L95 隔文件调 `isPrimitiveNullable` 需验证)|
 | **Execute 2** [x] Done | 创建 `bootstrap/check_scope.ss`(~55 行 5 函数)。checker.ss 删 L316-365,~1082 → ~1027(R1 -55)| 52 行实测 | 低(5 纯函数,state 读 varNames/varConst/scopeParent/scopeVarNames,写同名 state)|
 | **Execute 3** [x] Done | 创建 `bootstrap/check_func.ss`(~80 行 7 函数)。checker.ss 删 defineFunc/lookupFunc/defineFuncParams 三连 + countParamRange/checkArgCount/countArgs/hasSpreadArg 四连,1035 → 962(R1 -73)| 81 行实测 | 低(7 纯函数,state 读 funcNames/funcParamMin/funcParamMax/allFuncNameList)|
-| **Execute 4** | 创建 `bootstrap/check_class.ss`(~500 行 15 函数)。checker.ss 删 L367-517 + L542-703 + L1006-1185,~947 → ~470(**R4 达成**: ≤ 600 → baseline 条目 `F1:bootstrap/checker.ss=1299` **从 linter_baseline.txt 删除**,14 文件清单 → 13 文件)| ~500 行 | 中(15 函数量最大,但均为物理搬运;registerCheckerClassDecl 124 行 + preScanComptimeClasses 56 行跨 L1006-1185 大段迁移需精准 offset)|
+| **Execute 4** [x] Done | 创建 `bootstrap/check_class.ss`(511 行 15 函数)。checker.ss 删 15 函数段(原 L319-L632 13 函数 + 原 L668-L847 2 函数),962 → 466(**R4 达成**: ≤ 600 → baseline 条目 `F1:bootstrap/checker/checker.ss=1299` 从 `tools/linter_baseline.txt` 删除)| 511 行实测 | 中(15 函数量最大,但均为物理搬运;registerCheckerClassDecl + preScanComptimeClasses 大段迁移已精准 offset)|
 
 **每步后机械 gate**:
 
@@ -208,10 +208,6 @@ D102 §规则 R3 / R4 对本 Plan 的具体应用:
 
 ## 下一步
 
-**已完成**:§决策 4 Execute 1 / 2 / 3(check_types.ss 219 + check_scope.ss 52 + check_func.ss 81)。
+**已完成**:§决策 4 全四步 Execute 1 / 2 / 3 / 4(check_types.ss 219 + check_scope.ss 52 + check_func.ss 78 + check_class.ss 511)。checker.ss 1299 → 466 ≤ 600,baseline 条目删除。
 
-**后续轮次候选**:
-
-- Execute 4(check_class.ss ~500 行)→ checker.ss 962 - ~500 = ~462 ≤ 600 → R4 触发 baseline 条目 `F1:bootstrap/checker.ss=1299` 从 `tools/linter_baseline.txt` 删除,14 文件清单 → 13 文件
-
-**F1 13 文件清单(D113 Execute 4 达成 codegen.ss + 本 Plan Execute 4 达成 checker.ss 后)继续压**:gen_exprs.ss 1721 / gen_class.ss 1286 / gen_stmts.ss 1125 / check_stmts.ss 1083 逐个按类似 5 层分层方案拆。
+**F1 清单(checker.ss / codegen.ss 已降 ≤ 600 但 baseline 条目仍在 linter_baseline.txt 内的累计组 DRIFT 阻 record 问题独立处理)继续压**:check_stmts.ss 1083 / gen_exprs.ss / gen_class.ss / gen_stmts.ss / parser.ss 813 等逐个按类似多层分层方案拆。
