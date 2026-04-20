@@ -1,6 +1,6 @@
 # D115: check_stmts.ss 按职责细分 6 文件(return / narrow / named_args / thread / exprs / stmts driver)
 
-**Status:** Plan Done / Execute 1 [x] Done at bootstrap/checker/check_return.ss:5 / Execute 2 [x] Done at bootstrap/checker/check_narrow.ss:4 / Execute 3 [x] Done at bootstrap/checker/check_named_args.ss:7 / Execute 4 [x] Done at bootstrap/checker/check_thread.ss:6 / Execute 5 [ ]
+**Status:** Plan Done / Execute 1 [x] Done at bootstrap/checker/check_return.ss:5 / Execute 2 [x] Done at bootstrap/checker/check_narrow.ss:4 / Execute 3 [x] Done at bootstrap/checker/check_named_args.ss:7 / Execute 4 [x] Done at bootstrap/checker/check_thread.ss:6 / Execute 5 [x] Done at bootstrap/checker/check_exprs.ss:5
 
 **Depends on:**
 - D088 §第一性需求 L9-13(Zig 路线 SEMA 目标 evalExpr 吸收 kind dispatch)/ §正模式 L387(渐进拆分 SEMA 模块)
@@ -236,8 +236,8 @@ D102 §规则 R3 / R4 对本 Plan 的具体应用:
 
 ## 下一步
 
-**已完成**:§决策 1-6 全部规划 + 替代方案 6 选 1 + 隐藏假设 10 项验证 + **Execute 1**(check_return.ss,blockAlwaysReturns + stmtAlwaysReturns,check_stmts.ss 1083 → 1020,F1 baseline 同步,GATE PASS)+ **Execute 2**(check_narrow.ss,rejectPrimitiveNullable + extractNullCheckVar + restoreNarrowing,check_stmts.ss 1020 → 987,F1 baseline 同步,GATE PASS)+ **Execute 3**(check_named_args.ss,checkNamedConstructorArgs 单函数 84 行,check_stmts.ss 987 → 907,新增 F1:check_named_args.ss=84 入 baseline,GATE PASS)+ **Execute 4**(check_thread.ss,checkThreadClosureCaptures + checkLetCapture + checkThreadCapturesRec 3 函数 65 行,check_stmts.ss 907 → 844,新增 F1:check_thread.ss=65 入 baseline,同步矫正 pre-existing F1:main.ss=628→630 drift,GATE PASS)。
+**已完成**:§决策 1-6 全部规划 + 替代方案 6 选 1 + 隐藏假设 10 项验证 + **Execute 1**(check_return.ss,blockAlwaysReturns + stmtAlwaysReturns,check_stmts.ss 1083 → 1020,F1 baseline 同步,GATE PASS)+ **Execute 2**(check_narrow.ss,rejectPrimitiveNullable + extractNullCheckVar + restoreNarrowing,check_stmts.ss 1020 → 987,F1 baseline 同步,GATE PASS)+ **Execute 3**(check_named_args.ss,checkNamedConstructorArgs 单函数 84 行,check_stmts.ss 987 → 907,新增 F1:check_named_args.ss=84 入 baseline,GATE PASS)+ **Execute 4**(check_thread.ss,checkThreadClosureCaptures + checkLetCapture + checkThreadCapturesRec 3 函数 65 行,check_stmts.ss 907 → 844,新增 F1:check_thread.ss=65 入 baseline,同步矫正 pre-existing F1:main.ss=628→630 drift,GATE PASS)+ **Execute 5**(check_exprs.ss,checkExpr + checkArgList 2 函数 339 行,check_stmts.ss 844 → 506,**R4 触发 baseline 条目 `F1:bootstrap/checker/check_stmts.ss` 删除**,新增 F1:check_exprs.ss=339 入 baseline,F1 GATE 11 文件 → 10 文件,GATE PASS)。
 
-**待执行**:§决策 4 的 Execute 5 分步落地。每步执行一轮用户授权,逐轮走 PFV 开工 / 收工 / 收尾 gate。
+**全部完成**:D115 §决策 4 五步 Execute 全部落地,`bootstrap/checker/check_stmts.ss` 从 1083 降到 506,P10.1 6 职责层物理分离达标,D102 §最终目标"全 ≤ 600"推进 1 大步。
 
-**下一轮**:由用户授权启动 Execute 5(check_exprs.ss 抽出 checkExpr + checkArgList,check_stmts.ss 844 → ~510,R4 触发 baseline 条目删除),或用户指定其他方向。
+**下一轮**:由用户指定新方向(候选:D102 F1 baseline 其余 10 文件清单继续拆分,如 `gen/codegen.ss=1166` / `parse/parser.ss=813` 等)。

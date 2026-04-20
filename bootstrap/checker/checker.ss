@@ -5,6 +5,7 @@
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, nGetLine, nGetCol, getLineOffset, classTypeParams } from "../parse/parser"
 import { getSourceLine } from "../lexer/lexer"
 import { checkStmtList } from "./check_stmts"
+import { checkExpr, checkArgList } from "./check_exprs"
 import { blockAlwaysReturns, stmtAlwaysReturns } from "./check_return"
 import { rejectPrimitiveNullable, extractNullCheckVar, restoreNarrowing } from "./check_narrow"
 import { checkNamedConstructorArgs } from "./check_named_args"
