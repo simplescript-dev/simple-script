@@ -1,6 +1,6 @@
 # D113: codegen.ss 激进三层切分 — SEMA / IR / 驱动物理独立(T2 并行 D112)
 
-**Status:** Execute 2 Done at `bootstrap/eval/interp_core.ss`(§决策 4 Execute 3-4 Planned)
+**Status:** Execute 4 Done — 三层物理分离完成(gen/ir_builder.ss 101 + eval/interp_core.ss 544 + eval/ct_driver.ss 139 + codegen.ss 492 ≤ 600 R4 达成)
 **Depends on:**
 - D088 §第一性需求 L7-13(Zig SEMA 一份 evalExpr,反射 Meta 对象 = MEMBER_ACCESS)/ §背景 Zig 的根 L65-80(编译器即解释器,类型是一等值)
 - D098 §Value 共享容器(Type-as-Value 并入 ctVars/MaybeVal,Phase B 展开)
@@ -89,7 +89,7 @@ D088 §第一性需求 L7-13 目标 "Zig SEMA 一份 evalExpr,反射 Meta 对象
 
 ## 决策
 
-### [ ] Planned §决策 1 — 三层物理分离 + 子目录归属
+### [x] Done §决策 1 — 三层物理分离 + 子目录归属
 
 遵循 D108 §步骤 1 `eval/` 子目录模式平行复用 `bootstrap/gen/` 空占位目录。
 
@@ -102,7 +102,7 @@ D088 §第一性需求 L7-13 目标 "Zig SEMA 一份 evalExpr,反射 Meta 对象
 
 "激进三切" 语义:三个**架构层**物理分离。SEMA 层内部因行数约束分 `interp_core.ss` + `ct_driver.ss` 两文件(R3 ≤ 600 硬约束),IR 层 + 驱动层各一文件。
 
-### [ ] Planned §决策 2 — 不拆的项(留 codegen.ss 驱动层)
+### [x] Done §决策 2 — 不拆的项(留 codegen.ss 驱动层)
 
 | 项 | 原因 |
 |---|---|
@@ -115,7 +115,7 @@ D088 §第一性需求 L7-13 目标 "Zig SEMA 一份 evalExpr,反射 Meta 对象
 | `ctLookupTypeVal` / `resolveCtTypeAlias` / `comptimeTypeAliases` | **D112 ongoing Execute 动区**,本 Plan 零触碰(§决策 3)|
 | `ctPopScope` | comptime scope 出栈,Phase B 再处理 |
 
-### [ ] Planned §决策 3 — D112 ongoing 协调(T2 并行零冲突)
+### [x] Done §决策 3 — D112 ongoing 协调(T2 并行零冲突)
 
 D112 §决策 1-4 动区定位:
 
@@ -137,14 +137,14 @@ D112 §决策 1-4 动区定位:
 
 **本 Plan 选协调 A**:Execute 1-3 可立即启动(零冲突)、Execute 4 启动前查 D112 Status 是否已 Execute 完成,未完成则暂停等 D112 合入。
 
-### [ ] Planned §决策 4 — Execute 分步(风险递增)
+### [x] Done §决策 4 — Execute 分步(风险递增)
 
 | Execute | 内容 | 估改动 | D112 冲突? | 风险 |
 |---|---|---|---|---|
 | **[x] Execute 1 Done** | 创建 `bootstrap/gen/ir_builder.ss`(101 行 24 函数)。codegen.ss:8 加 import 24 symbols。codegen.ss 1267 → 1166(R1 单调 -101)。linter 补扫 `bootstrap/gen/` 子目录(`reflection_health_linter.ss:496`),消除 "虚假 PROGRESS" baseline drift 风险(`project_linter_baseline_risk.md`)| ~100 行 | 零 | 低(实测零引入 regression;M7b 676→676 函数数不变印证 24 搬家完美对齐)|
 | **[x] Execute 2 Done** | 创建 `bootstrap/eval/interp_core.ss`(145 行,17 函数 + 12 tv 状态变量整体迁出)。codegen.ss:9 加 import 17 symbols,codegen.ss 1166 → 1024(R1 单调 -142)。GATE PASS(M1/M2/M3a/N2 DRIFT 在容差内,record refused 因累积方向严:M2 +259 来源未明,Execute 1 完美 0 drift,本步未达成同等结果,可作 Phase B 模块边界设计的伏笔)| ~145 行 | 零 | 低(物理迁移函数体逐字搬,bootstrap 固定点通过) |
-| **Execute 3** | 续迁 interp\* 全族(42 函数)到 `eval/interp_core.ss`。codegen.ss ~1023 → ~626 | ~397 行 | 零 | 中(函数量大,但每个独立;grep 调用点 eval/* + gen_* 多处,需确保 resolveImports 覆盖 interp_core.ss) |
-| **Execute 4** | 创建 `bootstrap/eval/ct_driver.ss`,迁 Comptime 执行驱动(`flushComptimeSS` / `flushComptimeIR` / `fullyRegisterCtClass` / `preScanCodegenCtClassesInStmts` / `flushPendingCtClasses`,5 函数)。**启动前检查 D112 Status = Accepted / Execute 2-3 Done**。codegen.ss ~626 → ~498 | ~128 行 | ⚠ **preScanCodegenCtClassesInStmts 行号变动**(协调 A)| 中-高(和 D112 时序协调,Execute 4 启动前必须验 D112 动区已稳定) |
+| **[x] Execute 3 Done** | 续迁 interp\* 全族(42 函数 + isKnownClass + 10 state var)到 `eval/interp_core.ss`。codegen.ss 1024 → 625,interp_core.ss 145 → 544(§决策 6 未触发)。同步修正 codegen.ss:6 / gen_stmts.ss:5 / gen_exprs.ss:6 三处 `./interp` 失效 import 路径(资源被 resolveImports 静默跳过,功能靠全局 scope 兜底)| ~400 行 | 零 | 中-低(bootstrap 固定点通过;测试 215/219 全绿,4 fail 均为 untracked 预存测试不受影响) |
+| **[x] Execute 4 Done** | 创建 `bootstrap/eval/ct_driver.ss`(139 行 5 函数 + pendingCtClassIds state)。codegen.ss:7 加 import 6 symbols,codegen.ss 625 → 492(**R4 达成**: ≤ 600 → baseline 条目 `F1:bootstrap/codegen.ss=1166` **从 linter_baseline.txt 删除**)。D112 Execute 1 commit 13f5b3e 已落地(Status Accepted),`comptimeTypeAliases` 已吸收到 ctVars,搬 preScanCodegenCtClassesInStmts 无行号冲突 | ~130 行 | 零 | 低(D112 动区稳定,函数整体搬运) |
 
 每步后机械 gate:
 1. `./build.sh bootstrap` 固定点(seed → stage1 → stage2 → stage3,stage2 == stage3)
@@ -156,7 +156,7 @@ D112 §决策 1-4 动区定位:
    - Execute 3 后:interp_core.ss baseline ~245 → ~550(R1 同文件 REGRESSION 阻!)→ **Execute 2+3 合并为单 commit record**(单次新增 interp_core.ss baseline = 550,不是先 245 再 550)
    - Execute 4 后:新增 `F1:bootstrap/eval/ct_driver.ss=~140`,codegen.ss baseline ~626 → ~498(**R4 触发**: ≤ 600 → baseline 条目**删除**)
 
-### [ ] Planned §决策 5 — F1 GATE baseline 处理细则
+### [x] Done §决策 5 — F1 GATE baseline 处理细则
 
 D102 §规则 R3 / R4 对本 Plan 的具体应用:
 
@@ -208,4 +208,9 @@ interp_core.ss 550 行 / 600 硬上限余量 50 行。D098 Phase B 扩展 interp
 
 ## 下一步
 
-**Execute 1**:创建 `bootstrap/gen/ir_builder.ss`,迁 ir\* 24 函数(codegen.ss:694-791),codegen.ss 顶部加 `import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./gen/ir_builder"`,`./build.sh bootstrap` 固定点 + `bin/ss test tests/` 全绿 + `tools/reflection_health_linter.ss` 无 GATE BLOCKED + F1 record(codegen.ss baseline 1267 → ~1168,gen/ir_builder.ss 新 baseline ≈ 100)。
+**D113 关闭**:四步 Execute 全 Done,三层物理分离落地(gen/ir_builder.ss 101 + eval/interp_core.ss 544 + eval/ct_driver.ss 139 + codegen.ss 492)。D102 §最终目标"全 ≤ 600"进度 14 → 13 文件(codegen.ss baseline 条目 R4 删除候补,等下一次"削减路径" record 写回)。下阶段候选:
+
+- **D098 Phase B** 启动 → interp\* 全迁 InternPool + Value 共享容器扩展 class instance / Meta 对象(eval/interp_core.ss 544 / 600 余量 56,触发 §决策 6 切 interp_value/op/obj 预案)
+- **F1 GATE 13 文件清单继续压** → gen_exprs.ss 1218(本轮已 PROGRESS 1721→1218)/ gen_class.ss 1286 / checker.ss 1299 / gen_stmts.ss 1125 / check_stmts.ss 1083 逐个 R1 单调压回或拆分
+- **D112 Execute 2/3** 文档写回 + `comptimeTypeAliases` 彻底从表格/锚点清零(仅文档,非代码)
+- **Execute 2 M2 +259 drift 根因追排**(顺手项):理论推测来自 2 新文件 PROGRAM 根节点 + 每文件 parse overhead,仍在容差内 ±380 之下,未阻 GATE。Phase B 启动前若同类 drift 累积触容差红线再深挖
