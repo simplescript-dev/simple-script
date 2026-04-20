@@ -177,6 +177,24 @@ ARRAY_LIT 因 materialize 不支持数组类型无法在 runtime 自动折叠。
 | simple | 11 | 字面量等无 ct 处理 |
 | **转化率** | **81%** (9/11) | |
 
+##### Phase A 迁移进度(2026-04-20 D109 Execute 1 末轮回写,P19 标注)
+
+zig 驱动 9 kind 全部 [x] Done,evalExpr 子目录方案落地 `bootstrap/eval/*.ss`(11 子文件 + evalExpr 主 dispatch),Phase A `[x] Done`。
+
+| kind | 状态 | 承载文件 | 来源 D 文档 |
+|---|---|---|---|
+| TEMPLATE_LIT | [x] Done | `bootstrap/eval/template_lit.ss` | D101 Execute 1 |
+| ARRAY_LIT | [x] Done | `bootstrap/eval/array_lit.ss` | D103 Execute 1 |
+| IDENT | [x] Done | `bootstrap/eval/ident.ss` | D104 Execute 1 |
+| MEMBER_ACCESS | [x] Done | `bootstrap/eval/member_access.ss` | D105 Execute 1 |
+| INDEX_ACCESS | [x] Done | `bootstrap/eval/index_access.ss` | D105 Execute 1 |
+| POSTFIX_INC | [x] Done | `bootstrap/eval/postfix_inc.ss` | D106 Execute 1 |
+| METHOD_CALL | [x] Done | `bootstrap/eval/method_call.ss` | D107 Execute 1 |
+| CALL | [x] Done | `bootstrap/eval/call.ss` | D108 Execute 1 commit `2c38819` |
+| NEW_EXPR | [x] Done | `bootstrap/eval/new_expr.ss` | D109 Execute 1 commit `e141fdf` |
+
+Phase A 闭环 = 9 kind 全迁。下一阶段 D110 Phase A 全局收尾(12 函数稳态 / vtable 融合评估)+ Phase B MaybeVal 类化(D098 §决策 2)。
+
 #### genStmt 语句处理审计
 
 | 分类 | 数量 |
