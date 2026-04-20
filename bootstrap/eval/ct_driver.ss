@@ -7,6 +7,17 @@
 // 延迟到主 codegen pass 外发射,避免在其他函数体 IR 输出中途插入 class IR。
 let pendingCtClassIds: Array<string> = []
 
+// ct type alias / SEMA scope 状态通道。key = `${currentFunc}:${name}` 或 `:${name}`,
+// value 由 interp_core 的 ctVal / payload 编码。reset 仍归 codegen.ss resetCodegen()
+// (SS 全局 scope 接续),ctLookupTypeVal / resolveCtTypeAlias / ctPopScope 三 op
+// 同族驻留本文件末尾。
+let ctVars = new Map()
+let ctInvalidated = new Map()
+let ctFuncNodes = new Map()
+let ctScopeStack: Array<string> = []
+let ctCallCounter = 0
+let comptimeDepth = 0
+
 // Flush @comptimeEmit SS source: tokenize → parse → multi-pass codegen.
 // Shared by COMPTIME_BLOCK (gen_stmts) and COMPTIME_EXPR (gen_types).
 function flushComptimeSS() {
@@ -136,4 +147,31 @@ function flushPendingCtClasses() {
             if (sid > 0 && nGetKind(sid) == "CLASS_DECL") { genStmt(sid) }
         }
     }
+}
+
+// `const T = comptime { return X }` 的 alias 并入 ctVars(key `${currentFunc}:${name}` / `:${name}`),
+// value = ctVal(interpNewType(X))。双 scope 反查 type ctVal,供 resolveCtTypeAlias(string)
+// 与 evalIdent(int) 共用,避免 dual-scope 查询重复实现膨胀 Dispatch 深度。
+function ctLookupTypeVal(name: string): int {
+    const k1 = `${currentFunc}:${name}`
+    const k2 = `:${name}`
+    const key = ctVars.has(k1) == 1 ? k1 : (ctVars.has(k2) == 1 ? k2 : "")
+    const v = key == "" ? 0 : parseInt(ctVars.getString(key))
+    if (v != 0 && isCt(v) == 1 && interpType(payload(v)) == "type") { return v }
+    return 0
+}
+
+function resolveCtTypeAlias(name: string): string {
+    const v = ctLookupTypeVal(name)
+    return v == 0 ? name : tvStringOf(payload(v))
+}
+
+function ctPopScope() {
+    let ns: Array<string> = []
+    let i = 0
+    while (i < ctScopeStack.length() - 1) {
+        ns = ns.push(ctScopeStack[i])
+        i = i + 1
+    }
+    ctScopeStack = ns
 }

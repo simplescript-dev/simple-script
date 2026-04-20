@@ -4,7 +4,7 @@
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "../parse/parser"
 import { interpClearComptimeIR, interpClearComptimeSS, ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf } from "../eval/interp_core"
-import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds } from "../eval/ct_driver"
+import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds, ctVars, ctFuncNodes, ctScopeStack, ctCallCounter, comptimeDepth } from "../eval/ct_driver"
 import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { internPoolGetOrInsert } from "../lexer/intern_pool"
 import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./ir_builder"
@@ -14,13 +14,9 @@ import { emitIR, nextReg, nextLabel, addStringConst, irBuf, strConsts, strCount,
 
 // ── State ─────────────────────────────────────────────────────
 // IR emit / reg / label / strConsts state + ops moved to gen_emit.ss
+// Comptime SEMA scope state (ctVars/ctInvalidated/ctFuncNodes/ctScopeStack/ctCallCounter/comptimeDepth)
+//   + ops (ctLookupTypeVal/resolveCtTypeAlias/ctPopScope) moved to eval/ct_driver.ss
 
-let ctVars = new Map()
-let ctInvalidated = new Map()
-let ctFuncNodes = new Map()
-let ctScopeStack: Array<string> = []
-let ctCallCounter = 0
-let comptimeDepth = 0
 let varTypes = ""
 let varTypesReady = 0
 let currentFunc = ""
@@ -42,22 +38,6 @@ let comptimeExprLiteral = new Map()
 
 // Compile-time constant bindings (D088: for-in unrolling propagates field names)
 let comptimeConsts = new Map()
-
-// D112: `const T = comptime { return X }` 的 alias 并入 ctVars(key `${currentFunc}:${name}` / `:${name}`),
-// value = ctVal(interpNewType(X))。ctLookupTypeVal 双 scope 反查 type ctVal,供 resolveCtTypeAlias(string)
-// 与 evalIdent(int) 共用,避免 dual-scope 查询重复实现膨胀 Dispatch 深度。
-function ctLookupTypeVal(name: string): int {
-    const k1 = `${currentFunc}:${name}`
-    const k2 = `:${name}`
-    const key = ctVars.has(k1) == 1 ? k1 : (ctVars.has(k2) == 1 ? k2 : "")
-    const v = key == "" ? 0 : parseInt(ctVars.getString(key))
-    if (v != 0 && isCt(v) == 1 && interpType(payload(v)) == "type") { return v }
-    return 0
-}
-function resolveCtTypeAlias(name: string): string {
-    const v = ctLookupTypeVal(name)
-    return v == 0 ? name : tvStringOf(payload(v))
-}
 
 // Generic function state (monomorphization)
 let genericFuncNodes = ""
@@ -337,16 +317,6 @@ function resetCodegen() {
     specClassGenerated = Map()
     // Global var init tracking (gen_stmts.ss)
     globalInitIds = ""
-}
-
-function ctPopScope() {
-    let ns: Array<string> = []
-    let i = 0
-    while (i < ctScopeStack.length() - 1) {
-        ns = ns.push(ctScopeStack[i])
-        i = i + 1
-    }
-    ctScopeStack = ns
 }
 
 function generateToFile(rootId: int, outFile: string) {
