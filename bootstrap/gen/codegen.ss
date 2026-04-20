@@ -9,6 +9,7 @@ import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { internPoolGetOrInsert } from "../lexer/intern_pool"
 import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./ir_builder"
 import { buildRuntimeCache, runtimeCacheObj, runtimeCacheDecls, useRuntimeCache } from "./rt/gen_rt_cache"
+import { initVarAliases, varCounter, varAliasReady } from "./gen_var_alias"
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -30,43 +31,7 @@ let varTypes = ""
 let varTypesReady = 0
 let currentFunc = ""
 let terminated = 0
-let varCounter = 0
-let varAliases = ""
-let globalAliases = ""
-let varAliasReady = 0
-
-function initVarAliases() {
-    if (varAliasReady == 1) { return }
-    varAliases = Map()
-    globalAliases = Map()
-    varAliasReady = 1
-}
-
-function allocVarName(name: string): string {
-    initVarAliases()
-    varCounter = varCounter + 1
-    const llName = `${name}.${varCounter}`
-    varAliases.set(name, llName)
-    return llName
-}
-
-function llVarName(name: string): string {
-    initVarAliases()
-    if (varAliases.has(name) == 1) {
-        return varAliases.getString(name)
-    }
-    if (globalAliases.has(name) == 1) {
-        return globalAliases.getString(name)
-    }
-    return name
-}
-// Returns "%" + name or "@name" for globals
-function varRef(name: string): string {
-    const ln = llVarName(name)
-    if (ln.startsWith("@") == 1) { return ln }
-    return `%${ln}`
-}
-
+// Variable alias state + ops moved to gen_var_alias.ss
 // Function registry moved to gen_registry.ss (funcRetTypes, funcDefaults, funcParamCount, etc.)
 let breakLabel = ""
 let continueLabel = ""

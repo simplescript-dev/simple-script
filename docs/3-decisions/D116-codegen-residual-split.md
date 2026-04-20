@@ -1,6 +1,6 @@
 # D116: codegen.ss 剩余层按职责细分 4 文件(emit / var_alias / rt_cache / ct_alias 归位 + annotation 迁移)
 
-**Status:** Plan Done / Execute 未启动(待用户审阅方案 A-F 选择)
+**Status:** Plan Done / Execute 2/5 完成(Execute 1 at `gen/rt/gen_rt_cache.ss` + Execute 2 at `gen/gen_var_alias.ss`;剩 Execute 3-5)
 
 **Depends on:**
 - D088 §第一性需求 L7-13(Zig SEMA 一份 evalExpr)/ §背景 Zig 的根 L64-80(编译器即解释器)
@@ -132,8 +132,8 @@ codegen.ss 剩余 = **驱动** + **state registry** 两类:
 
 | Execute | 内容 | 估改动 | 冲突 | 风险 |
 |---|---|---|---|---|
-| **Execute 1** | 创建 `bootstrap/gen/rt/gen_rt_cache.ss`(~40 行,buildRuntimeCache + 3 state)。codegen.ss 删 L438-469,492 → ~452(R1 PROGRESS -40;R3 新文件 ≤ 600 PASS)。gen/rt/ 子族 8 → 9 成员,与 gen_rt_io/system/array 等命名一致。| ~35 行迁移 | 零 | 低(独立 CLI 子命令,叶子模块,0 主 pass 调用)|
-| **Execute 2** | 创建 `bootstrap/gen/gen_var_alias.ss`(~45 行,initVarAliases + allocVarName + llVarName + varRef + 4 state)。codegen.ss 删 L32-35 + L37-67,~452 → ~416(R1 -36)| ~35 行迁移 | 零 | 低(叶子模块,SS 全局 scope 自动接续)|
+| **Execute 1** `[x] Done at gen/rt/gen_rt_cache.ss:11` | 创建 `bootstrap/gen/rt/gen_rt_cache.ss`(~40 行,buildRuntimeCache + 3 state)。codegen.ss 删 L438-469,492 → ~452(R1 PROGRESS -40;R3 新文件 ≤ 600 PASS)。gen/rt/ 子族 8 → 9 成员,与 gen_rt_io/system/array 等命名一致。实测 492 → 460(-32;simplify 后微差)。| ~35 行迁移 | 零 | 低(独立 CLI 子命令,叶子模块,0 主 pass 调用)|
+| **Execute 2** `[x] Done at gen/gen_var_alias.ss:12` | 创建 `bootstrap/gen/gen_var_alias.ss`(42 行,initVarAliases + allocVarName + llVarName + varRef + 4 state)。codegen.ss 删 L33-36 + L38-68(4 state + 4 函数),实测 460 → 425(R1 -35)。main.ss L7 去除过时 `initVarAliases` import spec(SS 全局 scope 经 codegen.ss import 自动接续)。P10.1 top-level 63 → 55,职责类别 6 → 5。| ~35 行迁移 | 零 | 低(叶子模块,SS 全局 scope 自动接续)|
 | **Execute 3** | 创建 `bootstrap/gen/gen_emit.ss`(~85 行,emitIR + nextReg + nextLabel + addStringConst + 7 state + labelCount)。codegen.ss 删 L14-20 + L27 + L119-135 + L150-176,~416 → ~355(R1 -61)| ~65 行迁移 | 零 | 中(emitIR 高频调用,跨所有 gen/ 子文件;纯函数 SS 全局 scope 接续;bootstrap 固定点验证)|
 | **Execute 4** | 扩 `bootstrap/eval/ct_driver.ss` 139 → ~170:新增 ctLookupTypeVal + resolveCtTypeAlias + ctPopScope + 6 ctVars state。codegen.ss 删 L21-26 + L89-100 + L428-436,~355 → ~325(R1 -30)| ~32 行迁移 | 零(D112 §Execute 1 稳定)| 中-低(ctVars 跨文件读写 gen_assigns/gen_calls/gen_types 等,SS 全局 scope 自动接续;ct_driver 170 ≤ 600 充裕)|
 | **Execute 5** | 迁 annotation stub 到 `bootstrap/gen/class/class_annotation.ss` 156 → ~167:annClassNodeIds + annClassAnnNames + 3 空函数。codegen.ss 删 L138-148,~325 → ~314。**同步收尾 record 清 `tools/linter_baseline.txt:16` `codegen.ss=1166` 漂移条目**(R4 触发 → baseline 条目删除)| ~11 行迁移 | 零 | 低(空 stub)|
