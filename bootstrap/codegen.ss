@@ -3,11 +3,10 @@
 // Uses SSA registers (%1, %2, ...) and named allocas for variables.
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "./parser"
-import { interpClearComptimeIR, interpClearComptimeSS } from "./eval/interp_core"
+import { interpClearComptimeIR, interpClearComptimeSS, ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf } from "./eval/interp_core"
 import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds } from "./eval/ct_driver"
 import { internPoolGetOrInsert } from "./intern_pool"
 import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./gen/ir_builder"
-import { ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf } from "./eval/interp_core"
 
 // ── State ─────────────────────────────────────────────────────
 
