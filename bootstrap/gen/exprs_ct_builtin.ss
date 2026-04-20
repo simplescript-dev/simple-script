@@ -1,0 +1,248 @@
+// gen/exprs_ct_builtin.ss — Comptime 内置类型方法分发:string / array / map 以及 lambda 调用 (ctCallValue)。
+// ctBuiltinMethod 为 ctMethodCallDispatch 对 string/array/map 的委托入口。
+
+function ctCallValue(fnValId: int, argVals: Array<string>): int {
+    if (interpType(fnValId) != "fn") {
+        println("[comptime] ctCallValue: not a function")
+        return interpNewNull()
+    }
+    const funcNodeId = parseInt(interpAsStr(fnValId))
+    const paramList = nGetList(funcNodeId)
+    const bodyId = nGetI1(funcNodeId)
+
+    const savedFunc = currentFunc
+    const savedBreak = interpBreakFlag
+    const savedContinue = interpContinueFlag
+    const savedTerm = terminated
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    terminated = 0
+
+    ctCallCounter = ctCallCounter + 1
+    currentFunc = `__ct_lambda_${ctCallCounter}`
+    ctScopeStack = ctScopeStack.push(currentFunc)
+
+    let paramNames: Array<string> = []
+    if (paramList != "") {
+        const params = paramList.split(",")
+        let pi = 0
+        while (pi < params.length() && pi < argVals.length()) {
+            const pname = nGetS1(parseInt(params[pi]))
+            ctVars.set(`${currentFunc}:${pname}`, `${ctVal(parseInt(argVals[pi]))}`)
+            paramNames = paramNames.push(pname)
+            pi = pi + 1
+        }
+    }
+
+    if (bodyId > 0) { genBlock(bodyId) }
+
+    let result = interpNewNull()
+    if (interpReturnFlag == 1) {
+        result = interpReturnVal
+        interpReturnFlag = 0
+        interpReturnVal = 0
+    }
+
+    let di = 0
+    while (di < paramNames.length()) {
+        ctVars.delete(`${currentFunc}:${paramNames[di]}`)
+        di = di + 1
+    }
+    ctPopScope()
+    currentFunc = savedFunc
+    interpBreakFlag = savedBreak
+    interpContinueFlag = savedContinue
+    terminated = savedTerm
+    return result
+}
+
+function ctStringMethod(objVal: int, method: string, argVals: Array<string>): int {
+    const s = interpAsStr(objVal)
+    if (method == "length") { return interpNewInt(s.length()) }
+    if (method == "trim") { return interpNewString(s.trim()) }
+    if (method == "toUpperCase") { return interpNewString(s.toUpperCase()) }
+    if (method == "toLowerCase") { return interpNewString(s.toLowerCase()) }
+    if (method == "split") {
+        const sep = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ""
+        const parts = s.split(sep)
+        const arr = interpNewArray("")
+        let i = 0
+        while (i < parts.length()) {
+            interpArrayPush(arr, interpNewString(parts[i]))
+            i = i + 1
+        }
+        return arr
+    }
+    if (method == "indexOf") {
+        const sub = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ""
+        return interpNewInt(s.indexOf(sub))
+    }
+    if (method == "substring") {
+        const start = argVals.length() > 0 ? interpAsInt(parseInt(argVals[0])) : 0
+        const len = argVals.length() > 1 ? interpAsInt(parseInt(argVals[1])) : s.length()
+        return interpNewString(s.substring(start, len))
+    }
+    if (method == "replace") {
+        const old = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ""
+        const rep = argVals.length() > 1 ? interpAsStr(parseInt(argVals[1])) : ""
+        return interpNewString(s.replace(old, rep))
+    }
+    if (method == "startsWith") {
+        const prefix = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ""
+        return interpNewInt(s.startsWith(prefix))
+    }
+    if (method == "endsWith") {
+        const suffix = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ""
+        return interpNewInt(s.endsWith(suffix))
+    }
+    if (method == "charAt") {
+        const idx = argVals.length() > 0 ? interpAsInt(parseInt(argVals[0])) : 0
+        return interpNewString(s.charAt(idx))
+    }
+    if (method == "includes") {
+        const sub = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ""
+        return interpNewInt(s.indexOf(sub) >= 0 ? 1 : 0)
+    }
+    if (method == "repeat") {
+        const n = argVals.length() > 0 ? interpAsInt(parseInt(argVals[0])) : 0
+        let result = ""
+        let i = 0
+        while (i < n) {
+            result = `${result}${s}`
+            i = i + 1
+        }
+        return interpNewString(result)
+    }
+    println(`[comptime] unsupported string method: ${method}`)
+    return interpNewNull()
+}
+
+function ctArrayMethod(objVal: int, method: string, argVals: Array<string>): int {
+    if (method == "push") { return interpArrayPush(objVal, parseInt(argVals[0])) }
+    const len = interpArrayLen(objVal)
+    if (method == "length") { return interpNewInt(len) }
+    if (method == "join") {
+        const sep = argVals.length() > 0 ? interpAsStr(parseInt(argVals[0])) : ","
+        let result = ""
+        let i = 0
+        while (i < len) {
+            if (i > 0) { result = `${result}${sep}` }
+            result = `${result}${interpToStr(interpArrayGet(objVal, i))}`
+            i = i + 1
+        }
+        return interpNewString(result)
+    }
+    if (method == "indexOf") {
+        const target = parseInt(argVals[0])
+        let i = 0
+        while (i < len) {
+            if (interpValEquals(interpArrayGet(objVal, i), target) == 1) {
+                return interpNewInt(i)
+            }
+            i = i + 1
+        }
+        return interpNewInt(-1)
+    }
+    if (method == "slice") {
+        let start = argVals.length() > 0 ? interpAsInt(parseInt(argVals[0])) : 0
+        let end = argVals.length() > 1 ? interpAsInt(parseInt(argVals[1])) : len
+        if (start < 0) { start = len + start }
+        if (end < 0) { end = len + end }
+        if (start < 0) { start = 0 }
+        if (end > len) { end = len }
+        const newArr = interpNewArray("")
+        let i = start
+        while (i < end) {
+            interpArrayPush(newArr, interpArrayGet(objVal, i))
+            i = i + 1
+        }
+        return newArr
+    }
+    if (method == "map") {
+        const fnVal = parseInt(argVals[0])
+        const newArr = interpNewArray("")
+        let i = 0
+        while (i < len) {
+            let callArgs: Array<string> = []
+            callArgs = callArgs.push(`${interpArrayGet(objVal, i)}`)
+            interpArrayPush(newArr, ctCallValue(fnVal, callArgs))
+            i = i + 1
+        }
+        return newArr
+    }
+    if (method == "filter") {
+        const fnVal = parseInt(argVals[0])
+        const newArr = interpNewArray("")
+        let i = 0
+        while (i < len) {
+            const elemId = interpArrayGet(objVal, i)
+            let callArgs: Array<string> = []
+            callArgs = callArgs.push(`${elemId}`)
+            if (interpTruthy(ctCallValue(fnVal, callArgs)) == 1) {
+                interpArrayPush(newArr, elemId)
+            }
+            i = i + 1
+        }
+        return newArr
+    }
+    if (method == "forEach") {
+        const fnVal = parseInt(argVals[0])
+        let i = 0
+        while (i < len) {
+            let callArgs: Array<string> = []
+            callArgs = callArgs.push(`${interpArrayGet(objVal, i)}`)
+            ctCallValue(fnVal, callArgs)
+            i = i + 1
+        }
+        return interpNewNull()
+    }
+    if (method == "reduce") {
+        const fnVal = parseInt(argVals[0])
+        let acc = argVals.length() > 1 ? parseInt(argVals[1]) : interpNewNull()
+        let i = 0
+        while (i < len) {
+            let callArgs: Array<string> = []
+            callArgs = callArgs.push(`${acc}`)
+            callArgs = callArgs.push(`${interpArrayGet(objVal, i)}`)
+            acc = ctCallValue(fnVal, callArgs)
+            i = i + 1
+        }
+        return acc
+    }
+    println(`[comptime] unsupported array method: ${method}`)
+    return interpNewNull()
+}
+
+function ctMapMethod(objVal: int, method: string, argVals: Array<string>): int {
+    if (method == "set") {
+        const key = interpAsStr(parseInt(argVals[0]))
+        interpMapSet(objVal, key, parseInt(argVals[1]))
+        return interpNewNull()
+    }
+    if (method == "get" || method == "getString") {
+        const key = interpAsStr(parseInt(argVals[0]))
+        return interpMapGet(objVal, key)
+    }
+    if (method == "has") {
+        const key = interpAsStr(parseInt(argVals[0]))
+        return interpNewInt(interpMapHas(objVal, key))
+    }
+    if (method == "delete") {
+        const key = interpAsStr(parseInt(argVals[0]))
+        interpMapDelete(objVal, key)
+        return interpNewNull()
+    }
+    if (method == "keys") { return interpMapGetKeys(objVal) }
+    if (method == "size") { return interpNewInt(interpMapGetSize(objVal)) }
+    println(`[comptime] unsupported map method: ${method}`)
+    return interpNewNull()
+}
+
+function ctBuiltinMethod(objPayload: int, methodName: string, argVals: Array<string>): int {
+    const objType = interpType(objPayload)
+    if (objType == "string") { return ctStringMethod(objPayload, methodName, argVals) }
+    if (objType == "array") { return ctArrayMethod(objPayload, methodName, argVals) }
+    if (objType == "map") { return ctMapMethod(objPayload, methodName, argVals) }
+    println(`[comptime] no built-in method '${methodName}' on ${objType}`)
+    return interpNewNull()
+}
