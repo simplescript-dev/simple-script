@@ -154,3 +154,16 @@ function runComptimeAnnotationCall(handlerName: string, className: string, extra
     flushComptimeIR()
     emitClassComptimeMethods(className)
 }
+
+// framework annotation handling 留给 Phase 3 eval core;sub-e 只承接符号
+let annClassNodeIds: Array<string> = []
+let annClassAnnNames: Array<string> = []
+
+function registerAnnotation(annName: string, handlerFuncName: string) {
+}
+
+function collectClassAnnotations(classId: int) {
+}
+
+function emitAnnotationInits() {
+}

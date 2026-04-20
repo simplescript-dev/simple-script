@@ -13,7 +13,6 @@ N2=380630
 N3=518111
 N4=321
 N5=0
-F1:bootstrap/gen/codegen.ss=1166
 F1:bootstrap/parse/parser.ss=813
 F1:bootstrap/main.ss=630
 F1:bootstrap/gen/gen_calls.ss=695
