@@ -4,6 +4,7 @@
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "./parser"
 import { interpClearComptimeIR, interpClearComptimeSS } from "./interp"
+import { internPoolGetOrInsert } from "./intern_pool"
 
 // ── State ─────────────────────────────────────────────────────
 
@@ -290,29 +291,28 @@ function interpAsBool(id: int): int {
     return tvIntOf(id)
 }
 
-// ── interp* value/compound delegate (D092 Phase 2 sub-b) ─────
-// 保留 interp* 前缀让 gen_exprs.ss / gen_assigns.ss / gen_stmts.ss
-// 的调用点自动 resolve，底层走 Phase 0/1 的 TypedValue 存储层。
+// interp* value delegate — D092 Phase 2 sub-b / D111 §决策 4 InternPool dedup
+// 5 标量入口(int/string/bool/null/type)key tag 与 interpType 同名,Array/Map/Double 留 Phase C
 
 function interpNewInt(n: int): int {
-    return newTvInt(n)
+    return internPoolGetOrInsert(`int|${n}`, newTvInt(n))
 }
 
 function interpNewString(s: string): int {
-    return newTvString(s)
+    return internPoolGetOrInsert(`string|${s}`, newTvString(s))
 }
 
 function interpNewBool(b: int): int {
-    return newTvBool(b)
+    return internPoolGetOrInsert(`bool|${b}`, newTvBool(b))
 }
 
 function interpNewNull(): int {
-    return newTvNull()
+    return internPoolGetOrInsert(`null|`, newTvNull())
 }
 
 // comptime TypeValue delegate(kind="type" 时读 tvS1 得 class 名)
 function interpNewType(className: string): int {
-    return newTvType(className)
+    return internPoolGetOrInsert(`type|${className}`, newTvType(className))
 }
 
 function interpNewArray(init: string): int {
