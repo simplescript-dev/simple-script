@@ -1,6 +1,6 @@
 # D113: codegen.ss 激进三层切分 — SEMA / IR / 驱动物理独立(T2 并行 D112)
 
-**Status:** Execute 1 Done at `bootstrap/gen/ir_builder.ss`(§决策 4 Execute 2-4 Planned)
+**Status:** Execute 2 Done at `bootstrap/eval/interp_core.ss`(§决策 4 Execute 3-4 Planned)
 **Depends on:**
 - D088 §第一性需求 L7-13(Zig SEMA 一份 evalExpr,反射 Meta 对象 = MEMBER_ACCESS)/ §背景 Zig 的根 L65-80(编译器即解释器,类型是一等值)
 - D098 §Value 共享容器(Type-as-Value 并入 ctVars/MaybeVal,Phase B 展开)
@@ -142,7 +142,7 @@ D112 §决策 1-4 动区定位:
 | Execute | 内容 | 估改动 | D112 冲突? | 风险 |
 |---|---|---|---|---|
 | **[x] Execute 1 Done** | 创建 `bootstrap/gen/ir_builder.ss`(101 行 24 函数)。codegen.ss:8 加 import 24 symbols。codegen.ss 1267 → 1166(R1 单调 -101)。linter 补扫 `bootstrap/gen/` 子目录(`reflection_health_linter.ss:496`),消除 "虚假 PROGRESS" baseline drift 风险(`project_linter_baseline_risk.md`)| ~100 行 | 零 | 低(实测零引入 regression;M7b 676→676 函数数不变印证 24 搬家完美对齐)|
-| **Execute 2** | 创建 `bootstrap/eval/interp_core.ss`,迁 TypedValue 容器(`ctVal` / `isCt` / `payload` / `constVal` / `reg` / `materialize` / `initTypedValue` / `allocTv` / `newTv*` / `tvKindOf` / `tvIntOf` / `tvStringOf`,15 函数)。codegen.ss ~1168 → ~1023 | ~145 行 | 零(TypedValue 不涉 D112 动区)| 低-中(被 interp* + evalExpr 大量调用,但函数体独立) |
+| **[x] Execute 2 Done** | 创建 `bootstrap/eval/interp_core.ss`(145 行,17 函数 + 12 tv 状态变量整体迁出)。codegen.ss:9 加 import 17 symbols,codegen.ss 1166 → 1024(R1 单调 -142)。GATE PASS(M1/M2/M3a/N2 DRIFT 在容差内,record refused 因累积方向严:M2 +259 来源未明,Execute 1 完美 0 drift,本步未达成同等结果,可作 Phase B 模块边界设计的伏笔)| ~145 行 | 零 | 低(物理迁移函数体逐字搬,bootstrap 固定点通过) |
 | **Execute 3** | 续迁 interp\* 全族(42 函数)到 `eval/interp_core.ss`。codegen.ss ~1023 → ~626 | ~397 行 | 零 | 中(函数量大,但每个独立;grep 调用点 eval/* + gen_* 多处,需确保 resolveImports 覆盖 interp_core.ss) |
 | **Execute 4** | 创建 `bootstrap/eval/ct_driver.ss`,迁 Comptime 执行驱动(`flushComptimeSS` / `flushComptimeIR` / `fullyRegisterCtClass` / `preScanCodegenCtClassesInStmts` / `flushPendingCtClasses`,5 函数)。**启动前检查 D112 Status = Accepted / Execute 2-3 Done**。codegen.ss ~626 → ~498 | ~128 行 | ⚠ **preScanCodegenCtClassesInStmts 行号变动**(协调 A)| 中-高(和 D112 时序协调,Execute 4 启动前必须验 D112 动区已稳定) |
 
