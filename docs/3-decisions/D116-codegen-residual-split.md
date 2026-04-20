@@ -58,7 +58,7 @@
 | 职责类别数 | **7 类** ≥ 3 → P10.1 不清晰 → RED 成立 |
 | `bootstrap/eval/ct_driver.ss` | 139 行,余量 461(承载 D116 Execute 4 扩展 +31 → 170 充裕) |
 | `bootstrap/gen/class/class_annotation.ss` | 156 行,余量 444(承载 D116 Execute 5 迁 annotation stub +11 → 167 充裕) |
-| `bootstrap/gen/` 根扁平现状 | D113 后 15 文件 + 5 子族(class/ exprs/ stmts/ methods/ rt/);本 Plan +3 → 18 文件仍可控 |
+| `bootstrap/gen/` 根扁平现状 | D113 后 15 文件 + 5 子族(class/ exprs/ stmts/ methods/ rt/);本 Plan 在 gen/ 根新增 2(gen_emit + gen_var_alias)→ 17,在 gen/rt/ 扩族 +1(gen_rt_cache,8 → 9)—— 按命名族归位,不破根扁平 |
 
 ### codegen.ss 分段盘点(精确行号 + 归属决策)
 
@@ -84,8 +84,8 @@
 | `emitGlobalsAndCode` | 310-359 | 全局 + 主 pass | 50 | codegen.ss 保留 |
 | `resetCodegen` | 361-426 | 状态重置 | 66 | codegen.ss 保留 |
 | `ctPopScope` | 428-436 | comptime scope 出栈 | 9 | **→ eval/ct_driver.ss** |
-| runtime cache state | 438-440 | 3 个 let | 3 | **→ gen/gen_rt_cache.ss** |
-| `buildRuntimeCache` | 442-469 | 运行时缓存构建 | 28 | **→ gen/gen_rt_cache.ss** |
+| runtime cache state | 438-440 | 3 个 let | 3 | **→ gen/rt/gen_rt_cache.ss** |
+| `buildRuntimeCache` | 442-469 | 运行时缓存构建 | 28 | **→ gen/rt/gen_rt_cache.ss** |
 | `generateToFile` | 471-489 | codegen 主入口 | 19 | codegen.ss 保留 |
 
 ### 行数预算
@@ -94,7 +94,7 @@
 |---|---|---|---|
 | `bootstrap/gen/gen_emit.ss`(新)| 7 state + emitIR + nextReg + nextLabel + addStringConst | **~85** | 515 |
 | `bootstrap/gen/gen_var_alias.ss`(新)| 4 state + initVarAliases + allocVarName + llVarName + varRef | **~45** | 555 |
-| `bootstrap/gen/gen_rt_cache.ss`(新)| 3 state + buildRuntimeCache | **~40** | 560 |
+| `bootstrap/gen/rt/gen_rt_cache.ss`(新)| 3 state + buildRuntimeCache | **~40** | 560 |
 | `bootstrap/eval/ct_driver.ss`(扩)| 139 → **~170**(+31:6 state + ctLookupTypeVal + resolveCtTypeAlias + ctPopScope)| 170 | 430 |
 | `bootstrap/gen/class/class_annotation.ss`(扩)| 156 → **~167**(+11 annotation stub)| 167 | 433 |
 | `bootstrap/gen/codegen.ss`(保留)| initCodegen + registerFuncDeclNode + registerAllDecls + isTopLevelDecl + emitGlobalsAndCode + resetCodegen + generateToFile + state registry 25 let | **目标 ~310** | 290 |
@@ -103,9 +103,12 @@
 
 ## 决策
 
-### §决策 1 — 4 新文件 + 2 现有文件扩 + gen/ 子目录扁平风格
+### §决策 1 — 3 新文件 + 2 现有文件扩 + 按 gen/ 子目录命名族归位
 
-按 P10.1 单一职责 + `feedback_subdir_split_style` "gen/ 根扁平" 共识,新建 3 个 gen/ 根扁平文件(不新建二级子目录),扩 eval/ct_driver.ss + gen/class/class_annotation.ss 各吸收一族。
+按 P10.1 单一职责 + `feedback_subdir_split_style` "按职能归族,族即子目录" 共识:
+- **gen/ 根扁平**新建 2 文件:`gen_emit.ss`(IR 原语 + state)+ `gen_var_alias.ss`(变量别名),归入驱动族
+- **gen/rt/ 扩族**新建 1 文件:`gen_rt_cache.ss`(buildRuntimeCache + 3 state),与现存 `gen_rt_io/system/map/array/string/ref/thread/channel` 八文件同族命名(`gen_rt_*`)
+- 扩 `eval/ct_driver.ss`(吸收 ctVars / ctLookupTypeVal / ctPopScope 等 SEMA scope 族)+ `gen/class/class_annotation.ss`(吸收 annotation stub 族)各一族
 
 ### §决策 2 — codegen.ss 保留项裁决(P10.1 ≤ 2 类)
 
@@ -129,7 +132,7 @@ codegen.ss 剩余 = **驱动** + **state registry** 两类:
 
 | Execute | 内容 | 估改动 | 冲突 | 风险 |
 |---|---|---|---|---|
-| **Execute 1** | 创建 `bootstrap/gen/gen_rt_cache.ss`(~40 行,buildRuntimeCache + 3 state)。codegen.ss 删 L438-469,492 → ~452(R1 PROGRESS -40;R3 新文件 ≤ 600 PASS)| ~35 行迁移 | 零 | 低(独立 CLI 子命令,叶子模块,0 主 pass 调用)|
+| **Execute 1** | 创建 `bootstrap/gen/rt/gen_rt_cache.ss`(~40 行,buildRuntimeCache + 3 state)。codegen.ss 删 L438-469,492 → ~452(R1 PROGRESS -40;R3 新文件 ≤ 600 PASS)。gen/rt/ 子族 8 → 9 成员,与 gen_rt_io/system/array 等命名一致。| ~35 行迁移 | 零 | 低(独立 CLI 子命令,叶子模块,0 主 pass 调用)|
 | **Execute 2** | 创建 `bootstrap/gen/gen_var_alias.ss`(~45 行,initVarAliases + allocVarName + llVarName + varRef + 4 state)。codegen.ss 删 L32-35 + L37-67,~452 → ~416(R1 -36)| ~35 行迁移 | 零 | 低(叶子模块,SS 全局 scope 自动接续)|
 | **Execute 3** | 创建 `bootstrap/gen/gen_emit.ss`(~85 行,emitIR + nextReg + nextLabel + addStringConst + 7 state + labelCount)。codegen.ss 删 L14-20 + L27 + L119-135 + L150-176,~416 → ~355(R1 -61)| ~65 行迁移 | 零 | 中(emitIR 高频调用,跨所有 gen/ 子文件;纯函数 SS 全局 scope 接续;bootstrap 固定点验证)|
 | **Execute 4** | 扩 `bootstrap/eval/ct_driver.ss` 139 → ~170:新增 ctLookupTypeVal + resolveCtTypeAlias + ctPopScope + 6 ctVars state。codegen.ss 删 L21-26 + L89-100 + L428-436,~355 → ~325(R1 -30)| ~32 行迁移 | 零(D112 §Execute 1 稳定)| 中-低(ctVars 跨文件读写 gen_assigns/gen_calls/gen_types 等,SS 全局 scope 自动接续;ct_driver 170 ≤ 600 充裕)|
