@@ -5,6 +5,7 @@
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "./parser"
 import { interpClearComptimeIR, interpClearComptimeSS, ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf } from "./eval/interp_core"
 import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds } from "./eval/ct_driver"
+import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { internPoolGetOrInsert } from "./intern_pool"
 import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./gen/ir_builder"
 
