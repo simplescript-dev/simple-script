@@ -1087,6 +1087,7 @@ function printCtDepthRefAudit() {
 
 function main() {
     collectSSFiles("bootstrap")
+    collectSSFiles("bootstrap/eval")
     println(`Scanning ${fileCount} bootstrap files...`)
     const files = fileList.split("\n")
     for (f in files) {

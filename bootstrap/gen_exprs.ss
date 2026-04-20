@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL" || kind == "CALL") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
         if (comptimeDepth > 0) {
@@ -137,83 +137,6 @@ function genVal(id: int): int {
             return ctVal(interpNewNull())
         }
         return constVal(genThisExpr())
-    }
-    if (kind == "CALL") {
-        const callName = nGetS1(id)
-        const callArgList = nGetList(id)
-        if (genericFuncNodes.has(callName) == 1) {
-            if (comptimeDepth > 0) {
-                if (ctFuncNodes.has(callName) == 0) {
-                    ctFuncNodes.set(callName, genericFuncNodes.getString(callName))
-                }
-            } else {
-                return constVal(genGenericCall(id, callName, callArgList))
-            }
-        }
-        const savedCallPreRegs = callPreRegs
-        callPreRegs = new Map()
-        let callCtArgVals: Array<string> = []
-        let callCtNamedArgs = new Map()
-        let callCtHasNamed = 0
-        if (callArgList != "") {
-            const callArgParts = callArgList.split(",")
-            for (cap in callArgParts) {
-                const callArgId = parseInt(cap)
-                if (callArgId > 0) {
-                    if (nGetKind(callArgId) == "NAMED_ARG") {
-                        callCtHasNamed = 1
-                        const nav = genVal(nGetI1(callArgId))
-                        if (isCt(nav) == 1) {
-                            callCtNamedArgs.set(nGetS1(callArgId), `${payload(nav)}`)
-                        } else {
-                            callCtNamedArgs.set(nGetS1(callArgId), `${interpNewNull()}`)
-                            callPreRegs.set(`${callArgId}`, reg(nav))
-                        }
-                    } else if (nGetKind(callArgId) == "SPREAD_ELEM") {
-                        const srcVal = genVal(nGetI1(callArgId))
-                        if (isCt(srcVal) == 1) {
-                            const srcPayload = payload(srcVal)
-                            if (interpType(srcPayload) != "array") {
-                                if (comptimeDepth > 0) {
-                                    println(`error: [comptime] cannot spread non-array value at line ${nGetLine(callArgId)}:${nGetCol(callArgId)}`)
-                                    exit(1)
-                                }
-                                callPreRegs.set(`${nGetI1(callArgId)}`, reg(srcVal))
-                            } else {
-                                const srcLen = interpArrayLen(srcPayload)
-                                let srcI = 0
-                                while (srcI < srcLen) {
-                                    const srcElemId = interpArrayGet(srcPayload, srcI)
-                                    if (srcElemId > 0) { callCtArgVals = callCtArgVals.push(`${srcElemId}`) }
-                                    srcI = srcI + 1
-                                }
-                            }
-                        } else {
-                            if (comptimeDepth > 0) {
-                                println(`error: [comptime] cannot spread runtime value at line ${nGetLine(callArgId)}:${nGetCol(callArgId)}`)
-                                exit(1)
-                            }
-                            callPreRegs.set(`${nGetI1(callArgId)}`, reg(srcVal))
-                        }
-                    } else {
-                        const av = genVal(callArgId)
-                        if (isCt(av) == 1) {
-                            callCtArgVals = callCtArgVals.push(`${payload(av)}`)
-                        } else {
-                            callCtArgVals = callCtArgVals.push(`${interpNewNull()}`)
-                            callPreRegs.set(`${callArgId}`, reg(av))
-                        }
-                    }
-                }
-            }
-        }
-        if (comptimeDepth > 0) {
-            callPreRegs = savedCallPreRegs
-            return ctCallDispatch(id, callName, callCtArgVals, callCtNamedArgs, callCtHasNamed)
-        }
-        const callResult = constVal(genCall(id))
-        callPreRegs = savedCallPreRegs
-        return callResult
     }
     if (kind == "NEW_EXPR") {
         const newClassName = nGetS1(id)

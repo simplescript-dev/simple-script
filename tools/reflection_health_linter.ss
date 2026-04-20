@@ -492,6 +492,7 @@ function main() {
         i = i + 1
     }
     collectSSFiles(scanDir)
+    collectSSFiles(`${scanDir}/eval`)
     let fi = 0
     while (fi < files.length()) { processFile(files[fi]); fi = fi + 1 }
 
