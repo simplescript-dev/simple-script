@@ -4,7 +4,7 @@
 import { tokenize } from "./lexer/lexer"
 import { parse, initParser } from "./parse/parser"
 import { check } from "./checker/checker"
-import { generateToFile, initCodegen, initVarAliases } from "./codegen"
+import { generateToFile, initCodegen, initVarAliases } from "./gen/codegen"
 import { initFuncRegistry } from "./gen/gen_registry"
 import { initRcState, detectCyclicOwnership } from "./gen/gen_rc"
 import { genStmt } from "./gen/stmts/stmts"
@@ -12,8 +12,8 @@ import { genExpr, genVal } from "./gen/exprs/exprs"
 import { inferType, ssTypeToLLVM } from "./gen/gen_types"
 import { initClassState, registerClass } from "./gen/class/class"
 import { emitRuntimeDefs } from "./gen/gen_runtime"
-import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./gen/gen_pir"
-import { pirLivenessPass, pirMoveAnalysis } from "./pir_opt"
+import { initPir, pirAnalyzeFunc, pirEmitScheduled, pirEmitReturnCleanup, pirIsManaged, pirMarkManaged, pirIsClass, pirIsMoveStmt, pirActive } from "./pir/pir"
+import { pirLivenessPass, pirMoveAnalysis } from "./pir/pir_opt"
 import { evalExpr } from "./eval/eval_expr"
 import { JSON_parse, JsonNode } from "@/lib/json"
 
@@ -624,7 +624,7 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
 }
 
 function findPrelude(): string {
-    if (fileExists("bootstrap/prelude.ss") == 1) { return "bootstrap/prelude.ss" }
-    if (fileExists("../bootstrap/prelude.ss") == 1) { return "../bootstrap/prelude.ss" }
+    if (fileExists("bootstrap/parse/prelude.ss") == 1) { return "bootstrap/parse/prelude.ss" }
+    if (fileExists("../bootstrap/parse/prelude.ss") == 1) { return "../bootstrap/parse/prelude.ss" }
     return ""
 }
