@@ -16,6 +16,7 @@ import { evalMemberAccess } from "./eval/member_access"
 import { evalPostfixInc } from "./eval/postfix_inc"
 import { evalMethodCall } from "./eval/method_call"
 import { evalNewExpr } from "./eval/new_expr"
+import { valOf, valType } from "./gen_maybeval"
 
 function evalExpr(astId: int): int {
     const k = nGetKind(astId)
@@ -24,8 +25,8 @@ function evalExpr(astId: int): int {
         if (comptimeDepth > 0) {
             const ctUv = genVal(nGetI1(astId))
             if (isCt(ctUv) == 0) { return ctVal(interpNewNull()) }
-            const ctUp = payload(ctUv)
-            const ctUt = interpType(ctUp)
+            const ctUp = valOf(ctUv)
+            const ctUt = valType(ctUv)
             if (uOp == "Neg") {
                 if (ctUt == "double") { return ctVal(interpNewDouble(0.0 - parseDouble(interpAsStr(ctUp)))) }
                 return ctVal(interpNewInt(0 - interpAsInt(ctUp)))
@@ -80,7 +81,7 @@ function evalExpr(astId: int): int {
     if (comptimeDepth > 0) {
         if (op == "NullCoalesce") {
             const ctNcL = genVal(nGetI1(astId))
-            if (isCt(ctNcL) == 1 && interpType(payload(ctNcL)) != "null") { return ctNcL }
+            if (isCt(ctNcL) == 1 && valType(ctNcL) != "null") { return ctNcL }
             return genVal(nGetI2(astId))
         }
         if (op == "Instanceof" || op == "As") {
@@ -91,10 +92,10 @@ function evalExpr(astId: int): int {
         if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) {
             return comptimeError(`binary '${op}' operand is not compile-time known`, astId)
         }
-        const ctBlp = payload(ctBlv)
-        const ctBrp = payload(ctBrv)
-        const ctBlt = interpType(ctBlp)
-        const ctBrt = interpType(ctBrp)
+        const ctBlp = valOf(ctBlv)
+        const ctBrp = valOf(ctBrv)
+        const ctBlt = valType(ctBlv)
+        const ctBrt = valType(ctBrv)
         if (op == "Add" && (ctBlt == "string" || ctBrt == "string")) {
             return ctVal(interpNewString(`${interpToStr(ctBlp)}${interpToStr(ctBrp)}`))
         }

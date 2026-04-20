@@ -5,8 +5,8 @@ function evalIndexAccess(astId: int): int {
     const obj = genVal(nGetI1(astId))
     const idx = genVal(nGetI2(astId))
     if (isCt(obj) == 1 && isCt(idx) == 1) {
-        const objP = payload(obj)
-        const ot = interpType(objP)
+        const objP = valOf(obj)
+        const ot = valType(obj)
         if (ot == "array") { return ctVal(interpArrayGet(objP, interpAsInt(payload(idx)))) }
         if (ot == "object" || ot == "map") { return ctVal(interpGetField(objP, interpAsStr(payload(idx)))) }
         if (ot == "string") {
