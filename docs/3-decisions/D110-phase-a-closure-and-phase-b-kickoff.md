@@ -234,7 +234,8 @@ function valType(valId: int): string {
    - 单独 commit + bootstrap 固定点 + 全测 + GATE PASS
    - 预估:M7b +2 / N3 +11~+61 / M2 +20~+70 / N2 +50~+150(Phase B 首轮结构组 +,D101 baseline 仍 bank +2 充裕)
    - **实测落地(cc7cc79)**:Phase B MaybeVal 类化起步 — `valOf` / `valType` 接口边界函数引入 + 9 处 evalExpr 驱动路径调用点改调访问器示范(选取范围落入预估 5-10 上界)。Bootstrap 固定点 PASS / 全测 PASS / GATE PASS。实测 delta vs D101 baseline:**M7b cur 676 = baseline 0 delta**(bank +2 耗尽,精确命中预估)/ **M4 -2**(cur 3035 不变,预估下界命中未升)/ **N3 -3085**(cur 515026,Δ-from-cur +37 精确落入预估 +11~+61)/ **M2 +97**(cur 76223,Δ-from-cur +13 略低于预估下界 +20)/ **M3a +5**(cur 12127,Δ-from-cur +3 远低于预估下界 +26)/ **N2 +485**(cur 381115,Δ-from-cur +65 精确落入预估 +50~+150)。**命中率:6 项 4 精确 + 2 远优于预估**(M2/M3a 验证访问器 pass-through 成本低于预估假设)。详见 §决策 2 预估表实测列 + 实测命中率段落
-3. [ ] Planned — **Execute 2 及后续**(Phase B InternPool 引入 / Type-as-Value 合并 / 反射 metadata InternPool 承载等):独立 D 文档 D111+(D098 §决策 2 §Phase B / §决策 3 Phase B 对应 Plan)
+3. [x] Done at `32a8f6d` — **Execute 2 Phase B InternPool 起步**:D111 单独 Plan 承载(D111 §步骤 0 commit `47cdbf7` + §步骤 1 commit `32a8f6d`)。InternPool 双 Map + 5 标量 dedup + valType 走 pool 反查 + fallback interpType。Phase B §决策 3 Type-as-Value 合并 / 反射 Meta InternPool 承载留 D112/D113+
+4. [ ] Planned — **后续 D 文档**:D112(Type-as-Value 合并)/ D113+(Array/Map dedup / evalExpr `==` id-eq / 反射 Meta InternPool)
 
 每 Execute 开始前先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
 

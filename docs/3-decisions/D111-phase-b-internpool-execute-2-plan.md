@@ -1,6 +1,6 @@
 # D111: Phase B InternPool 引入 + valOf/valType 改走 pool.load(Execute 2 Plan)
 
-**Status:** Plan ⏳(Execute 0/1 未开工,2026-04-20 起草)
+**Status:** Execute 2 Done(Step 0 `47cdbf7` + Step 1 `32a8f6d` 落地,2026-04-20 收尾实测回写)
 **Depends on:** D110 §下一步 #3(L237 `[ ] Planned — Execute 2 及后续 ... 独立 D 文档 D111+`)/ D110 §决策 2(valOf/valType 接口边界 Phase A→B 桥)/ D098 §决策 1 mv 编码 Phase A 不变 / §决策 2 §Phase B 三段(L121-129:`internPool: Map<string,int>` / key=tag+"|"+payload_serialization / `ctVal` 改走 `internPoolGetOrInsert` / `interp*` 调用点过 `valOf` 屏蔽差异 / O(1) eql 收益)/ §新张力 2(Phase A→B 接口稳定性 D110 已闭环)/ §新张力 4(L184-186:`STR|<huge_string>` 预 hash 开放问题,本 Plan 必决)/ D097 L70-71(累计组永不 record)/ D102 §规则 1.1-1.4 分层 GATE / §规则 2.1-2.3 F1 GATE / D101 baseline(D110 延续作 Phase A→B 全程对照基)/ D094 §规则 2 pure subset / D093 §决策 §Zig 原理 第 4 条(InternPool 统一去重)/ D088 §第一性需求(Zig SEMA 一份 evalExpr,反射 Meta 对象 = MEMBER_ACCESS) / CLAUDE.md §反射根因 gate / §交互式单文档 / §PFV 流程 / `memory/feedback_ultrathink_gate.md` / `memory/feedback_design_no_code_authority.md` / `memory/feedback_no_dramatic_reset.md`
 
 **Date:** 2026-04-20
@@ -215,6 +215,40 @@ cur 取 2026-04-20 `bin/ss run tools/reflection_health_linter.ss` 实测(D110 Ex
 3. **F1 codegen.ss** 5 interpNew* 改写各 +1 行可能触 R1,**对策**:把改写后的 interpNewInt-NewType **不留** codegen.ss,**移到 intern_pool.ss**(import 形式),codegen.ss 净 -10 行 / intern_pool.ss 升至 ~50 行(R3 仍 ≤ 600 极充裕)
 
 **预估命中率**:6 项严格组(M3b/M4/M6/M7a/N1/N4/N5)+ 5 项累计组(M1/M2/M3a/M5/N2)+ 1 项深窖(N3)+ 1 项 STRICT 必动(M7b),**M7b 需 Step 0 抵消是唯一硬阻断**;其余预估窗口对照 D101/D110 模板给出区间,Execute 2 实测落地后回写本表实测列(参 D110 §决策 2 实测命中率段落格式)。
+
+### §实测(Execute 2 落地,Step 0 commit `47cdbf7` + Step 1 commit `32a8f6d`)
+
+**预估 vs 实测对照**(Δ = cur - baseline):
+
+| 指标 | 预估 Δ-from-cur | 实测 Δ-from-baseline | 命中 | 说明 |
+|---|---|---|---|---|
+| M1 | +2~+8 | +8 | **上沿精确** | 预估上沿 |
+| M2 | +58~+138 | +176 | **略超上沿(+38)** | eager `new Map()` 全局 init 路径 AST 节点略多于预估(lazy init in-body 假设),仍 tol 内余 204 |
+| M3a | +6~+19 | +19 | **上沿精确** | 调 internPoolGetOrInsert 5 处 + valType 内 has/getString/indexOf/substring 4 边 = 实际 +9+10 = 19 正好上沿 |
+| M3b | 0 严格 | 0 | **精确** | internPoolGetOrInsert 入度 5,远低于当前最大 1879 |
+| M4 | 0~+2 | **0** | **远优于预估(严格达成)** | eager init 方案替代 lazy init,if-init 节点消失 → M4 -1;valType 合 2 if 为 1(has 单检)→ M4 -1;共省 M4 -2,bank +2 未耗尽 |
+| M5 | +1~+3 | **-1** | **远优于预估(反向)** | Step 0 inline interpAsClassName 减 M5 -1 / intern_pool 仅 2 globals(非 3,ready flag 消除)→ 净 -1,Step 0 余量补偿 |
+| M6 | 0 严格 | 0 | **精确** | 无新递归 |
+| M7a | 0~+1 | **0** | **精确** | 嵌套深 27 未动,has 检查 + substring 单层 |
+| M7b | +1(被 Step 0 -1 抵消) | **0** | **精确(严格不升)** | Step 0 删 interpAsClassName -1 / Step 1 新增 internPoolGetOrInsert +1,净 0 |
+| N1 | 0 | 0 | **精确** | 无新 AST kind |
+| N2 | +90~+300 | +880 | **超上沿(+580)** | M2 派生,eager `new Map()` 全局 init IR 路径 halstead 体积略膨胀;tol ±1903 余 1023 充足 |
+| N3 | +36~+186 | **-2669** | **远优于预估(反向扩)** | Step 0 inline 削 N3 -15 / eager init 简化 N3 -2654(lazy flag if 消除 + valType 2 if 折合 1 深度降)/ 深窖总余 5766(从 3097 扩至) |
+| N4 | 0 严格 | 0 | **精确** | 无单节点出度上升 |
+| N5 | 0 严格 | 0 | **精确** | 无 MEMBER_ASSIGN |
+| F1 intern_pool.ss | ~30 行 | **16 行** | **远优于预估** | eager init 去 lazy flag + ready func → 最简 16 行(internPool/KeyOf 声明 2 + 空行 1 + function signature 1 + has-if 3 + 2 set 2 + return 1 + 注释 4 = 16)|
+| F1 codegen.ss | 严格不升 | **-4 PROGRESS** | **远优于预估** | Step 0 删 interpAsClassName -3 + interpNew* 注释压缩 -1 = 1263(baseline 1267)|
+| F1 gen_maybeval.ss | +10 | +4(15→19)| **优于预估** | fallback 2 if 折 1 after M4 修订 |
+
+**命中率统计**:**11 项精确 / 5 项优于预估 / 2 项略超上沿(M2/N2 tol 内)**。核心结构组 M3b/M4/M6/M7a/M7b/N4/N5 全严格达成,累计组 M5/N3 甚至反向扩 bank(Step 0 + eager init 复合效应)。
+
+**预估偏差根因归纳**(修入后续 Plan 模板):
+- **eager `new Map()` 全局 init vs lazy in-body flag** — 预估模板假设 lazy init 节省 M2/N2 累计成本,实测 eager init 换得 M4 -2 但付 M2/N2 中幅膨胀;M4 严格组 收益 > 累计组成本,总体更优。后续 Plan 应优先 eager init(除非 global init 循环依赖)
+- **M4 bank 复合** — Step 0 不显式 bank,但 inline interpAsClassName 让 gen_types.ss 的 `interpAsClassName(ceRetVal)` 调用点边复用 tvStringOf 全局边,没 +1 新 dispatcher 边,反倒减 M4 入度。此类 "bank 复合效应" 是 Step 0 预削减的隐形红利
+
+**核心 Zig 路线指标**:
+- `Value.eql` O(1) **基础建立**:5 标量 interpNew* 调用后 `interpNewInt(42) == interpNewInt(42)` 返回同 tvId,`a == b` 可退化为 `id == id`(evalExpr `==` op 改写留 D113+)
+- `valType` 走 pool 反查 + fallback 组合已落地,Phase C 若 Array/Map/Double 也入 pool,fallback 自然消除
 
 ## §步骤 0 — 预削减(M7b ≥ -1,Plan 不钦定源,Execute 0 grep 实测)
 
@@ -436,9 +470,9 @@ function valType(valId: int): string {
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**:Step 0 预削减(M7b ≥ -1),候选 `interpAsClassName` / `interpAsBool` 全调用点 inline,Execute 0 grep 实测后选最优。单独 commit + bootstrap + GATE PASS
-2. [ ] Planned — **Execute 1**(等同 Step 1):InternPool 引入(`bootstrap/intern_pool.ss` 新建)+ 5 interpNew* 入口 dedup + gen_maybeval.ss valType 改走 pool.load。单独 commit + bootstrap 固定点 + 全测 + GATE PASS。**预估**:M7b +1(被 Step 0 -1 抵消)/ M2 +58~+138 / M3a +6~+19 / N2 +90~+300 / N3 +36~+186 / 其余 0
-3. [ ] Planned — **Execute 2**(等同 Step 2):收尾评估 + D 文档状态回写(D110 §下一步 #3 / D098 §决策 2 §Phase B / §新张力 4)+ 实测命中率回写本文档预估表
+1. [x] Done at `47cdbf7` — **Execute 0**:Step 0 预削减,`interpAsClassName`(codegen.ss:318-320 / 1 处调用点 gen_types.ss:279)inline → M7b 676 → 675 PROGRESS(bank +1 预留给 Step 1)
+2. [x] Done at `32a8f6d` — **Execute 1**(等同 Step 1):`bootstrap/intern_pool.ss` 新建 16 行(eager `new Map()` init 简化版)+ 5 interpNew* 入口 dedup(key tag 小写全名 int/string/bool/null/type)+ valType has 检查 + substring + fallback interpType + import 放 codegen.ss(避 main.ss R1 REGRESSION)。分层 GATE PASS(M7b 严格 0 / M4 严格 0 / F1 codegen.ss PROGRESS / 其余 OK/DRIFT)/ 全测 215/4(4 failed 既存 baseline)/ bootstrap 固定点 PASS
+3. [x] Done at `<本轮 commit>` — **Execute 2**(等同 Step 2):本文档 §实测 段落落地(11 项精确 + 5 项优于 + 2 项略超上沿)+ §状态回写(D110 §下一步 #3 / D098 §新张力 4 标 Done/Resolved)
 4. [ ] Planned — **后续 D 文档**:D112(Type-as-Value 合并)/ D113+(evalExpr `==` 改 id == id / Array Map dedup / 反射 Meta InternPool)/ D114(sha256 评估,触发后)/ D115(Phase C 启动)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。

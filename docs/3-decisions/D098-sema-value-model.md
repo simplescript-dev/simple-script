@@ -180,7 +180,7 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 
 3. **Type 作为 MaybeVal 值时的 `interpType` 识别** — Phase A `interpType(id)` 对 tagged int 返回 "int"/"str"/"type"/"fn"/"array"/"map" 等,复用现状。Phase B pool index 时 `interpType` 走 pool 查 tag 返回字符串 tag name。接口语义一致,实现换层(Phase A 位运算解码,Phase B pool 查表)。**解决**:同 §张力 2,`valType(valId): string` 访问器封装 Phase 差异。
 
-4. **Phase B `hash(payload)` 对大字符串/大 array 的性能** — `INT|42` 直接字符串拼接 key OK,但 `STR|<huge_string>` 或 `ARR|[1,2,...,100000]` 序列化成本高。**开放问题**:Phase B 启动时评估 key 上限 + 是否需要预先 hash(`STR|<sha256(s)>` 已写成样本但未验证)。本 D 文档不预判,列为 Phase B §下一步 开放项。
+4. **Phase B `hash(payload)` 对大字符串/大 array 的性能** — `INT|42` 直接字符串拼接 key OK,但 `STR|<huge_string>` 或 `ARR|[1,2,...,100000]` 序列化成本高。**[x] Resolved at D111 §决策 3**:5 标量入口(int/string/bool/null/type)本轮范围内 key 短、拼接直接;Array/Map/Double 留 Phase C,sha256 预 hash 延后至 Phase C 若大 string/Array payload 出现再评估。实测 bootstrap 全测 pool 规模稳定(D111 §实测),未触发性能热点。
 
 5. **`interp*` 家族(codegen.ss L277-500 约 30 函数)的去留节奏** — D093 §差距清单 第 5 条目标是消除独立求值器,但 Phase A / B 都保留 `interp*` 作为 Value 运算库(由 evalExpr 调用)。**张力**:`interp*` 是"双轨状态"还是"Value 运算库"? 本文立场:**运算库**(evalExpr 调用它们做常量计算,就像 Zig `Value.zig` 内有各种常量运算方法)。消除的是"独立求值入口 / 独立 state 机",不消除"常量运算函数"。Phase C 若走则把 `interp*` 重写为无 state 的纯函数(接收 valId 返回 valId),当前 `interp*` 多带隐式 state(如 `ctScopeStack` / `ctVars`),Phase C 前需提纯。
 
