@@ -129,7 +129,7 @@ function genVal(id: int): int {
     if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
     if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
     if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL" || kind == "CALL") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL" || kind == "CALL" || kind == "NEW_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
         if (comptimeDepth > 0) {
@@ -137,59 +137,6 @@ function genVal(id: int): int {
             return ctVal(interpNewNull())
         }
         return constVal(genThisExpr())
-    }
-    if (kind == "NEW_EXPR") {
-        const newClassName = nGetS1(id)
-        if (genericClassNodes.has(newClassName) == 1) {
-            if (comptimeDepth > 0) {
-                if (interpClasses.has(newClassName) == 0) {
-                    interpClasses.set(newClassName, genericClassNodes.getString(newClassName))
-                }
-            } else {
-                return constVal(genGenericNewExpr(id, newClassName))
-            }
-        }
-        if (newClassName == "Map" || newClassName == "Set") {
-            if (comptimeDepth > 0) { return ctVal(interpNewMap()) }
-            return constVal(genNewExpr(id))
-        }
-        const savedNewPreRegs = callPreRegs
-        callPreRegs = new Map()
-        let newCtArgVals: Array<string> = []
-        let newCtNamedArgs = new Map()
-        const newArgList = nGetList(id)
-        if (newArgList != "") {
-            const newArgParts = newArgList.split(",")
-            for (nap in newArgParts) {
-                const newArgId = parseInt(nap)
-                if (newArgId > 0) {
-                    if (nGetKind(newArgId) == "NAMED_ARG") {
-                        const nav = genVal(nGetI1(newArgId))
-                        if (isCt(nav) == 1) {
-                            newCtNamedArgs.set(nGetS1(newArgId), `${payload(nav)}`)
-                        } else {
-                            newCtNamedArgs.set(nGetS1(newArgId), `${interpNewNull()}`)
-                            callPreRegs.set(`${nGetI1(newArgId)}`, reg(nav))
-                        }
-                    } else {
-                        const av = genVal(newArgId)
-                        if (isCt(av) == 1) {
-                            newCtArgVals = newCtArgVals.push(`${payload(av)}`)
-                        } else {
-                            newCtArgVals = newCtArgVals.push(`${interpNewNull()}`)
-                            callPreRegs.set(`${newArgId}`, reg(av))
-                        }
-                    }
-                }
-            }
-        }
-        if (comptimeDepth > 0) {
-            callPreRegs = savedNewPreRegs
-            return ctNewExprDispatch(newClassName, newCtArgVals, newCtNamedArgs)
-        }
-        const newResult = constVal(genNewExpr(id))
-        callPreRegs = savedNewPreRegs
-        return newResult
     }
     if (kind == "ARROW_FUNC") {
         if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }

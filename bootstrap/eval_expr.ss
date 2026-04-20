@@ -15,6 +15,7 @@ import { evalIdent } from "./eval/ident"
 import { evalMemberAccess } from "./eval/member_access"
 import { evalPostfixInc } from "./eval/postfix_inc"
 import { evalMethodCall } from "./eval/method_call"
+import { evalNewExpr } from "./eval/new_expr"
 
 function evalExpr(astId: int): int {
     const k = nGetKind(astId)
@@ -73,6 +74,7 @@ function evalExpr(astId: int): int {
     if (k == "POSTFIX_INC") { return evalPostfixInc(astId) }
     if (k == "METHOD_CALL") { return evalMethodCall(astId) }
     if (k == "CALL") { return evalCall(astId) }
+    if (k == "NEW_EXPR") { return evalNewExpr(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (comptimeDepth > 0) {
