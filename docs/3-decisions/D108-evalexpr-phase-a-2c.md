@@ -1,6 +1,6 @@
 # D108: evalExpr Phase A 后批 2c Plan — CALL(重量调用 kind,纯迁移路径)
 
-**Status:** Plan(起草,未 Execute)
+**Status:** Execute 1 Done(commit 2c38819,含子目录全拆扩展,见 §扩展)
 **Depends on:** D107 §步骤 2 决策矩阵(M7b 余量 ≥ +3 且 N3 bank < -2500 → 起 D108)/ D107 Execute 1 实测命中 / D107 §步骤 1 evalMethodCall(对称三段式模板,含 callPreRegs save/new/restore 三态)/ D106 §步骤 1 evalPostfixInc / D105 §步骤 1 evalMemberAccess(多触点迁移模板)/ D104 §步骤 1 evalIdent / D103 §步骤 1 evalArrayLit(SPREAD_ELEM 在 Array 字面量已承载)/ D101 §新张力 1 mv 编码 / D100 §坑 Q 银行余量不 record / D102 §规则 1.1-1.4 分层 GATE + ±0.5% DRIFT / D102 §规则 2.1-2.3 F1 文件行数 GATE / D098 §决策 1 MaybeVal mv 编码 / D094 §决策 §规则 2 L109-110 pure subset 白名单(CALL **不**在,不自动折叠)/ D094 L175 zig 驱动 9 kind(CALL 在列)/ D088 §第一性需求(Zig SEMA 一份 evalExpr)/ CLAUDE.md §反射根因 gate / `memory/feedback_ultrathink_gate.md` / `memory/feedback_design_no_code_authority.md`
 
 **Date:** 2026-04-20
@@ -422,8 +422,18 @@ if (k == "CALL") { return evalCall(astId) }
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**(默认跳过):M7b bank +4 充裕,若 Execute 1 §新张力 1 失败触发,补削减 M7b -1 / N3 / M4 —— **本 Plan 未触发,默认跳过生效**
-2. [ ] Planned — **Execute 1**:CALL 迁移 evalCall(对称 evalMethodCall / evalMemberAccess / evalPostfixInc 三段式)
+1. [x] Done — **Execute 0**(默认跳过):M7b bank +4 充裕,§新张力 1 未触发 → 跳过生效
+2. [x] Done(commit 2c38819) — **Execute 1**:CALL 迁移 evalCall(对称 evalMethodCall / evalMemberAccess / evalPostfixInc 三段式) **+ 用户追加子目录全拆扩展(见 §扩展)**
+   - **实测对照预估**(baseline = 9343330):
+     - M7b 676 → 673 Δ=-3 实测命中(预估 -3)结构组 OK
+     - N3 518111 → 515159 Δ=-2952 实测命中(预估 -2961~-3411 略偏浅)PROGRESS
+     - M2 76126 → 76187 Δ=+61 实测命中(预估 +54~+94 中段)DRIFT
+     - N2 380630 → 380935 Δ=+305 实测命中(预估 +270~+470)DRIFT
+     - F1:gen_exprs.ss 1721 → 1271 Δ=-450 实测精确命中(预估 -450)PROGRESS
+     - F1:eval_expr.ss 569 → 126 Δ=-443(子目录全拆扩展引入)
+     - 14 项 + F1 全 OK/PROGRESS/DRIFT 窗内,GATE PASS
+   - bootstrap stage2==stage3 PASS
+   - 4 测试 pre-existing failed(spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug),非 D108 引入(stash baseline 同样失败已验证)
    - **eval_expr.ss 末尾** 新建 `evalCall(astId: int): int`(~85 行,含 泛型 2 分支 + callPreRegs 三态 + args 循环 NAMED_ARG/SPREAD_ELEM/普通 3 分支 + comptime/runtime 分派 + 2 处 mv 编码 runtime 回退)
    - **eval_expr.ss evalExpr 头部** 新增 `if (k == "CALL") { return evalCall(astId) }` 分派
    - **gen_exprs.ss L132 shim** 扩 11 → 12 kind 加 `CALL`
@@ -446,9 +456,44 @@ if (k == "CALL") { return evalCall(astId) }
      - §新张力 5 user function inline:tests/ 泛型 suite 全绿
      - §新张力 6 SPREAD_ELEM 首验:`f(...arr)` / `comptime { f(...[1,2,3]) }` / `f(...obj.arr)` / `f(x, ...rest, y)` 4 场景单测
      - §新张力 7-10 函数攀升 / 跨文件 / DRIFT / 反射:bootstrap 固定点 + 全量测试 + reflection_health_linter GATE PASS
-3. [ ] Planned — **Execute 2**:收尾评估(§步骤 2 决策矩阵条件「M7b 余量 ≥ +2 且 N3 bank < -2900」实测判断 → 默认**不 record**,延续银行策略至 Phase A 全完;M7b bank +3 / N3 bank 深窖,支持 Phase A 末轮 2d NEW_EXPR)+ 下轮起 D109 Plan(2d NEW_EXPR 中量构造候选,zig 驱动 9 kind 末 1 kind)
+3. [ ] Planned — **Execute 2**:收尾评估(§步骤 2 决策矩阵条件「M7b 余量 ≥ +2 且 N3 bank < -2900」实测判断:M7b bank +3 ✓ / N3 bank -2952 ✓ → 默认**不 record**,延续银行策略至 Phase A 全完;支持 Phase A 末轮 2d NEW_EXPR)+ 下轮起 D109 Plan(2d NEW_EXPR 中量构造候选,zig 驱动 9 kind 末 1 kind)
 
 每 Execute 开始前必须先填 PSM 十问;完成前过五验 VCM;单步 bootstrap 失败 → 定位根因不越步;单步分层 GATE 结构组 REGRESSION → 先削减再推进,累计组 DRIFT PASS 即可。
+
+## 扩展 — 子目录全拆(用户追加,Execute 1 同 commit 落地)
+
+**触发**:Execute 1 首尝(单文件方案 evalCall 写到 `eval_expr.ss` 末尾)实测 `F1 bootstrap/eval_expr.ss cur=646 baseline=-1 → REGRESSION`(D102 §规则 2.1 R3 新文件 > 600 硬阻断)。Plan 设计漏估 evalCall 80 行加到 567 行 eval_expr.ss 后突破 R3 600 上限。
+
+**用户追加方向**(message verbatim):
+- "我认为应该改将eval_expr 里的每个大函数都独立为子目录的小文件 你觉得呢ultrathink"
+- "子目录 / 一次全拆"
+
+**实施**(同 commit 2c38819):
+
+1. 新建 `bootstrap/eval/` 子目录,10 子函数各一文件:
+   - `call.ss`(82 行,evalCall)/ `ternary.ss`(33)/ `short_circuit.ss`(32)/ `index_access.ss`(20)/ `template_lit.ss`(46)/ `array_lit.ss`(61)/ `ident.ss`(44)/ `member_access.ss`(126)/ `postfix_inc.ss`(32)/ `method_call.ss`(78)
+   - 最大子文件 = 126,远低 R3 600 上限
+2. `eval_expr.ss` 仅留 evalExpr 主 dispatch + UNARY/BINARY inline + 10 条 import,569 → 126 行
+3. import 由 `eval_expr.ss`(non-baseline)承载,**不动 main.ss F1=630 baseline**(R1 守门规避)
+4. `tools/dual_track_linter.ss` + `tools/reflection_health_linter.ss` 各 +1 行 `collectSSFiles("bootstrap/eval")` 扫子目录(`collectSSFiles` 用 `listDir` 平铺过滤 `.endsWith(".ss")`,子目录条目不含 `.ss` 被自动跳过,需显式追加调用)
+
+**收益对照**:
+
+| 项 | 单文件方案 | 子目录全拆方案 |
+|---|---|---|
+| eval_expr.ss F1 | 646(R3 阻断)| **126**(继续 ≤ 600 不入 baseline)|
+| 子文件数 | 0 | 10 |
+| 单文件最大 F1 | 646 | 126(member_access)|
+| 后续单 kind 迁移空间 | 600 - 646 = 阻断 | 600 - 126 = **474 行余量**|
+| Phase A 末轮 NEW_EXPR(53 行)落点 | 阻断 | 子目录新建 `eval/new_expr.ss` 一行不挤主文件 |
+| 阅读熟悉度 | 1 文件 1271 行 | 11 文件均 < 130 行 |
+
+**遗留(留 D109 或后续)**:
+
+- `runtimeMv(s)` helper 抽取(Agent 2 #6,21 处 `0 - constVal(...) - 1` 散落,不在本次范围)
+- `findCtVarKey(name)` helper 抽取(Agent 1 #1,4-5 处 ctScopeStack lookup 重复,预存在债务)
+- `evalCallArgs` 抽取(Agent 1 #2,call.ss / method_call.ss 镜像 args 处理 ~30 行,留 D109)
+- `collectSSFiles` 改递归(Agent 1 #4,需 `isDir` runtime API 或安全 `.ss` 后缀策略,留独立小 Plan)
 
 ## 参考
 
