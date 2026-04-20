@@ -225,7 +225,7 @@ function valType(valId: int): string {
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [x] Done at `<本轮 commit ref>` — **Plan 起草 + §决策 1/2/3 拍板**:本文档写入,D109 §步骤 2 §决策矩阵漏洞修订归 §决策 3,D094 §Q2 收尾 §Phase A 迁移进度 P19 标注 9 kind 全完(D109 Execute 2 同 commit)
+1. [x] Done at `aa57864` — **Plan 起草 + §决策 1/2/3 拍板**:本文档写入,D109 §步骤 2 §决策矩阵漏洞修订归 §决策 3,D094 §Q2 收尾 §Phase A 迁移进度 P19 标注 9 kind 全完(D109 Execute 2 同 commit)
 2. [ ] Planned — **Execute 1**(Phase B 访问器引入):
    - 新增 `valOf(valId: int): int` / `valType(valId: int): string` 于 `bootstrap/gen_maybeval.ss`(或新建 `bootstrap/gen_value.ss`)
    - 选取 5-10 个高频 `interp*` 调用点改调访问器(建议:`bootstrap/codegen.ss` L277-500 内 evalExpr 驱动路径调用的 `interpAsInt` / `interpAsStr` / `interpType` 前 5-10 处)

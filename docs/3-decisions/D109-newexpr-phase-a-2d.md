@@ -381,7 +381,7 @@ function evalNewExpr(astId: int): int {
      - §新张力 5 函数 11 → 12 稳态:记录至 D110(evalExpr + 11 子函数含 evalNewExpr)
      - §新张力 6-8 跨文件 12 符号 / DRIFT / 反射:bootstrap 固定点 PASS + 215 passed + reflection_health_linter GATE PASS + 反射 gate trivial PASS(NEW_EXPR 不触 FieldMeta/AnnotationMeta)
      - §新张力 9 record 大跳变:Execute 2 落地时处理(D110 Plan)
-3. [x] Done — **Execute 2**:Phase A 闭环宣告 + D094 L175 P19 标注 + D110 Plan 起草(单 commit,纯文档,**未跑 record — 见 §步骤 2 §决策矩阵漏洞 修订**)
+3. [x] Done at `aa57864` — **Execute 2**:Phase A 闭环宣告 + D094 L175 P19 标注 + D110 Plan 起草(单 commit,纯文档,**未跑 record — 见 §步骤 2 §决策矩阵漏洞 修订**)
    - **§步骤 2 §决策矩阵 漏洞实测发现**:`bin/ss run tools/reflection_health_linter.ss record` 实测被 D097 L70-71 / D102 §规则 1.4 L101-103 阻断,因累计组 M1/M2/M3a/N2 全部 +(M1=5138 vs 5134 / M2=76210 vs 76126 / M3a=12124 vs 12122 / N2=381050 vs 380630)。Phase A 子目录拆 = 物理上 AST 节点 / 函数数 / 引用数 必然累计 +,**累计组永远无法 PROGRESS**,§决策矩阵 L283「所有指标 PROGRESS」条件本质上不可达。
    - **真实路径**:不 record(尊重机械约束),只做文档回写 + D110 起草。银行策略升级 per-phase bank 累积 — 累计组 baseline **永不 record**(语义即「跨 phase 漂移容忍 + 结构组削减压缩」),结构组 baseline **保留 D101 Execute 0 commit `9343330`** 作为 Phase A 全程对照基。Phase B 启动时另立独立 baseline 子文件或在 D110 §银行策略升级 中详定。
    - **D094 L175 zig 驱动 9 kind 全部 [x] Done 标注** — 已写入 D094 §Q2 收尾 §genVal 操作数驱动审计 §Phase A 迁移进度 段落(9 kind 表 + 承载文件 + 源 D 文档)
