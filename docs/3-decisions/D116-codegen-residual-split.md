@@ -168,8 +168,8 @@ D102 §规则 R1 / R3 / R4 对本 Plan 的具体应用:
    - 下限 gate:`linter_baseline.txt` 10 条 F1 主清单 → 9 条(与 D114 删 checker.ss / D115 删 check_stmts.ss 并列)
    - 结构 gate:codegen.ss 职责 7 → 2 类达标
 5. **不在本 Plan 处理的 baseline 漂移**(留独立轮):
-   - L23 `gen_decls.ss=691` vs wc 690 差 -1(A 类微,下次 bootstrap record 自然修)
-   - L25-30 6 条 B 类语义漂移(新文件 ≤ 600 误挂 baseline,是 R3 "入库" vs R4 "降到 600 删除" 的规则冲突,本 Plan 不碰,待 D102 §规则 clarification 独立轮)
+   - L23 `gen_decls.ss=691` vs wc 690 差 -1(A 类微,下次 bootstrap record 自然修)`[ ] Planned` 留 record 轮
+   - L25-30 6 条 B 类语义漂移(新文件 ≤ 600 误挂 baseline,是 R3 "入库" vs R4 "降到 600 删除" 的规则冲突,本 Plan 不碰,待 D102 §规则 clarification 独立轮)`[x] Done at commit 1e06cf1`(D102 §规则 2.1 4 状态矩阵 S1-S4 重写,R4 "cur ≤ 600 不入库/删除" 单条自愈覆盖 S2 graduate + S4 新文件 + 历史残留;6 条 L25-30 僵尸手动清,F1 主清单 **14 → 8** 条)
 
 ### §决策 7 — codegen.ss 后续细分预案(若 state registry 膨胀触 R1)
 
@@ -237,16 +237,16 @@ codegen.ss 目标 ~310,余量 290 充裕。若 D098 Phase B 扩 state 触 R1 阻
 | 7 | L22 | `F1:bootstrap/gen/methods/gen_methods.ss=709` | 709 | 0 | OK | — |
 | 8 | L23 | `F1:bootstrap/gen/gen_decls.ss=691` | **690** | **-1** | **A 数值(微)** | ❌ 不处理,下次 record 自然修 |
 | 9 | L24 | `F1:bootstrap/gen/gen_runtime.ss=621` | 621 | 0 | OK | — |
-| 10 | L25 | `F1:bootstrap/checker/check_return.ss=63` | 63 | 0 | **B 语义** | ❌ 不处理,留 D102 R3/R4 clarification 轮 |
-| 11 | L26 | `F1:bootstrap/checker/check_narrow.ss=35` | 35 | 0 | **B 语义** | ❌ 同上 |
-| 12 | L27 | `F1:bootstrap/checker/check_named_args.ss=84` | 84 | 0 | **B 语义** | ❌ 同上 |
-| 13 | L28 | `F1:bootstrap/checker/check_thread.ss=65` | 65 | 0 | **B 语义** | ❌ 同上 |
-| 14 | L29 | `F1:bootstrap/checker/check_exprs.ss=339` | 339 | 0 | **B 语义** | ❌ 同上 |
-| 15 | L30 | `F1:bootstrap/gen/ir_builder.ss=101` | 101 | 0 | **B 语义** | ❌ 同上 |
+| 10 | L25 | `F1:bootstrap/checker/check_return.ss=63` | 63 | 0 | **B 语义** | ✅ `[x] Done at commit 1e06cf1` (D102 4 状态矩阵清) |
+| 11 | L26 | `F1:bootstrap/checker/check_narrow.ss=35` | 35 | 0 | **B 语义** | ✅ 同上 |
+| 12 | L27 | `F1:bootstrap/checker/check_named_args.ss=84` | 84 | 0 | **B 语义** | ✅ 同上 |
+| 13 | L28 | `F1:bootstrap/checker/check_thread.ss=65` | 65 | 0 | **B 语义** | ✅ 同上 |
+| 14 | L29 | `F1:bootstrap/checker/check_exprs.ss=339` | 339 | 0 | **B 语义** | ✅ 同上 |
+| 15 | L30 | `F1:bootstrap/gen/ir_builder.ss=101` | 101 | 0 | **B 语义** | ✅ 同上 |
 
 **漂移分类总结**:
 - **A 类(数值漂移)2 条** — L16(-674 巨)+ L23(-1 微):record 流程遗漏 update。本 Plan Execute 5 收尾清 L16;L23 下次 bootstrap record 自然修
-- **B 类(语义漂移)6 条** — L25-30:新建文件 ≤ 600 却误挂 baseline。根因是 `reflection_health_linter.ss` `writeBaseline` L276-278 对 D102 §规则 2.1 R3 "入库" 语义的实现选择——`cur <= F1_LIMIT` 时是否写 baseline 二选一。当前选了 "不写" 的实现,但 linter_baseline.txt 里还有 L25-30 残留,可能是历史 record 时某次 buggy 写入。**本 Plan 不处理**,需 D102 §规则 R3/R4 clarification 独立轮
+- **B 类(语义漂移)6 条** — L25-30:新建文件 ≤ 600 却误挂 baseline。根因是 `reflection_health_linter.ss` `writeBaseline` L276-278 对 D102 §规则 2.1 R3 "入库" 语义的实现选择——`cur <= F1_LIMIT` 时是否写 baseline 二选一。当前选了 "不写" 的实现,但 linter_baseline.txt 里还有 L25-30 残留,可能是历史 record 时某次 buggy 写入。**本 Plan 不处理**,需 D102 §规则 R3/R4 clarification 独立轮 → `[x] Done at commit 1e06cf1` (D102 §规则 2.1 改为 S1-S4 4 状态矩阵,R4 "cur ≤ 600 不入库/删除" 单条自愈覆盖 S2 graduate + S4 新文件 + 历史残留;6 条僵尸手动清,F1 主清单 14→8)
 - **C 类(职责混堆漂移)1 条** — codegen.ss 492 ≤ 600 外观过 F1,但 P10.1 结构不清晰。**本 D116 核心消除对象**
 
 ---
