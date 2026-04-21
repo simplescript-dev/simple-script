@@ -12,7 +12,7 @@
 
 import { ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf, interpType, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpNewBool, interpNewNull, interpNewType, interpNewArray, interpNewDouble } from "./interp_value"
 import { interpCompoundOp, interpTruthy, interpToStr, interpIntOp, interpDoubleOp, interpValEquals } from "./interp_op"
-import { interpGetField, interpSetField, interpArrayPush, interpArraySet, interpArrayLen, interpArrayGet, interpNewMap, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize, interpNewVal, interpBuildTypeInfo, interpCollectFields, isKnownClass, interpCtFieldsArray, interpFindMethod } from "./interp_obj"
+import { interpGetField, interpSetField, interpArrayPush, interpArraySet, interpArrayLen, interpArrayGet, interpNewMap, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize, interpNewVal, interpBuildTypeInfo, isKnownClass, interpFindMethod } from "./interp_obj"
 
 // ── 控制流 flag (D092 Phase 2 sub-c) ─────────────────────────
 // tvI3[id] 锁定为 object/map 的 field/entry 个数(Phase 0 第二次锁定)。

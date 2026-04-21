@@ -194,6 +194,7 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 - **[ ] Planned** 写 evalExpr Phase A 首批 1a 合并 Plan(5 个 kind:BINARY/UNARY/TERNARY/SHORT_CIRCUIT/COMPTIME_EXPR),对应上轮候选表 §C "首批 1a",引用本 D098 §决策 1 的 MaybeVal 接口 + D094 §决策 §规则 2 的 pure subset 白名单
 - **[x] Done(2026-04-20)** Phase A 末尾 `comptimeTypeAliases` → `ctVars` 合并 Plan(§决策 3 Phase A 收尾项)—— D112 §步骤 1 Execute 完成,独立通道消除
 - **[ ] Planned** Phase B 启动前单独决策:Map hash 策略 / `STR` key 预 hash / `interp*` 访问器改造范围
+- **[x] Done at D117 Execute 5(2026-04-21)** — **Meta 对象 InternPool 承载**(§决策 2 §Phase B L123-128):ClassMeta / FieldMeta / MethodMeta / AnnotationMeta 五类 Meta 对象走 `internPoolGetOrInsert` name-based dedup,key schema `CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>` / `ANN|{CLS|FLD|MTH}|<...>`,**O(1) eql** 兑现。`interpCollectFields` / `interpCtFieldsArray` 字符串拼接 + 字符串数组双轨路径消除,反射路径单入口经 `interpBuildTypeInfo` + `interpGetField(meta, field)` Meta 对象 MEMBER_ACCESS。详情见 D117 §下一步 Execute 5 Done 条目
 
 **本 D 文档不触发任何 `.ss` 代码改动,不跑 bootstrap。** 代码改动从 evalExpr Phase A 首批 1a Plan 被批准后的 Execute 轮开始。
 

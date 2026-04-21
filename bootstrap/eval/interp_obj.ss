@@ -115,20 +115,50 @@ function interpNewVal(kind: string, payload: string): int {
     return newTvNull()
 }
 
-// D117 §决策 2-4 — ClassMeta 实例 + InternPool name-based dedup +
-// .fields/.annotations 填充(走 ClassMeta object → MEMBER_ACCESS interpGetField 统一 read)。
-// hit-check pre-guard 避免 dedup miss 路径浪费 tvIds + 节点数(填充 array 远大于 .name).
-// .methods 字段留 Execute 5 补(当前无 evalExpr 上下文用例,for-in 走 stmts_loop_forin 反射分支)。
-// FieldMeta/AnnotationMeta inline 构造 + InternPool dedup,key schema 走 §决策 3
-// FLD|<className>.<fName> / ANN|CLS|<className>.<annName>。inline 不抽 helper(M7b strict 0)。
+// ClassMeta 实例 + InternPool name-based dedup,FieldMeta/MethodMeta/AnnotationMeta inline 构造。
+// Key schema:CLS|<cls> / FLD|<cls>.<fld> / MTH|<cls>.<mth> / ANN|{CLS|FLD|MTH}|<...>。
+// hit-check pre-guard 避免 miss 路径浪费 tvIds。fields 父类链 prepend parent first;
+// fromIC=0 走 classFields CSV(interpClasses 未注册场景,fp 直接是 fName string)。
 function interpBuildTypeInfo(typeName: string): int {
     const poolKey = `CLS|${typeName}`
     if (internPool.has(poolKey) == 1) { return parseInt(internPool.getString(poolKey)) }
     const id = interpNewVal("object", typeName)
     tvMap.set(`${id}|name`, `${interpNewString(typeName)}`)
-    tvMap.set(`${id}|fields`, `${interpCtFieldsArray(typeName)}`)
-    // D117 Execute 4 — .methods 填充:MethodMeta(.name/.annotations);params/returnType
-    // 占位 Execute 5。method-level AnnotationMeta.args 无 sidecar,未 set(.args 访问返 null)。
+    const fArr = interpNewArray("")
+    const fromIC = interpClasses.has(typeName) == 1
+    let fStr = fromIC ? "" : classFields.getString(typeName)
+    let cur = fromIC ? typeName : ""
+    while (cur != "") {
+        const paramList = nGetList(parseInt(interpClasses.getString(cur)))
+        if (paramList != "") { fStr = fStr == "" ? paramList : `${paramList},${fStr}` }
+        cur = interpClassParents.getString(cur)
+    }
+    for (fp in fStr.split(",")) {
+        if (fp == "") { continue }
+        const fName = fromIC ? nGetS1(parseInt(fp)) : fp
+        const ftKey = `${typeName}.${fName}`
+        const fmId = interpNewVal("object", "FieldMeta")
+        tvMap.set(`${fmId}|name`, `${interpNewString(fName)}`)
+        tvMap.set(`${fmId}|type`, `${interpNewString(classFieldTypes.getString(ftKey))}`)
+        const fAnnArr = interpNewArray("")
+        for (fann in classFieldAnnotations.getString(ftKey).split(",")) {
+            if (fann == "") { continue }
+            const famId = interpNewVal("object", "AnnotationMeta")
+            tvMap.set(`${famId}|name`, `${interpNewString(fann)}`)
+            const faArgsArr = interpNewArray("")
+            const faArgKey = `${ftKey}.${fann}`
+            for (faarg in classFieldAnnotationArgs.getString(faArgKey).split(",")) {
+                if (faarg != "") { interpArrayPush(faArgsArr, interpNewString(faarg)) }
+            }
+            tvMap.set(`${famId}|args`, `${faArgsArr}`)
+            interpArrayPush(fAnnArr, internPoolGetOrInsert(`ANN|FLD|${faArgKey}`, famId))
+        }
+        tvMap.set(`${fmId}|annotations`, `${fAnnArr}`)
+        interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
+    }
+    tvMap.set(`${id}|fields`, `${fArr}`)
+    // methods 段:MethodMeta(.name/.annotations)。params/returnType 未填,
+    // method-level AnnotationMeta.args 无 sidecar(不 set → .args 访问返 null)。
     const mArr = interpNewArray("")
     for (mp in classMethods.getString(typeName).split(",")) {
         if (mp == "") { continue }
@@ -168,60 +198,8 @@ function interpBuildTypeInfo(typeName: string): int {
     return internPoolGetOrInsert(poolKey, id)
 }
 
-function interpCollectFields(className: string): string {
-    if (interpClasses.has(className) != 1) { return "" }
-    let fields = ""
-    let cur = className
-    while (cur != "") {
-        const paramList = nGetList(parseInt(interpClasses.getString(cur)))
-        if (paramList != "") {
-            fields = fields == "" ? paramList : `${paramList},${fields}`
-        }
-        cur = interpClassParents.getString(cur)
-    }
-    return fields
-}
-
 function isKnownClass(name: string): int {
     return (classFields.has(name) == 1 || interpClasses.has(name) == 1) ? 1 : 0
-}
-
-// D117 §决策 3-4 — fp 从 fName string 升级为 FieldMeta object(InternPool dedup
-// FLD|<className>.<fName>),f.name/.type 经 MEMBER_ACCESS object-kind interpGetField
-// 统一 read。依赖 internPoolGetOrInsert hit-check 直接接管,不做外层 if/else 双重
-// dedup(M4/M2 根因:重复 IF chain + AST 双分支)。
-function interpCtFieldsArray(className: string): int {
-    const fArr = interpNewArray("")
-    const fromIC = interpClasses.has(className) == 1
-    const fStr = fromIC ? interpCollectFields(className) : classFields.getString(className)
-    if (fStr == "") { return fArr }
-    for (fp in fStr.split(",")) {
-        const fName = fromIC ? nGetS1(parseInt(fp)) : fp
-        const ftKey = `${className}.${fName}`
-        const fmId = interpNewVal("object", "FieldMeta")
-        tvMap.set(`${fmId}|name`, `${interpNewString(fName)}`)
-        const fType = classFieldTypes.getString(ftKey)
-        tvMap.set(`${fmId}|type`, `${interpNewString(fType)}`)
-        // D117 Execute 4 — FieldMeta.annotations 填充,AnnotationMeta.args 走
-        // classFieldAnnotationArgs(key=<cls>.<field>.<ann>)。空 annotation 时
-        // 写入空 array tv。
-        const fAnnArr = interpNewArray("")
-        for (fann in classFieldAnnotations.getString(ftKey).split(",")) {
-            if (fann == "") { continue }
-            const famId = interpNewVal("object", "AnnotationMeta")
-            tvMap.set(`${famId}|name`, `${interpNewString(fann)}`)
-            const faArgsArr = interpNewArray("")
-            const faArgKey = `${ftKey}.${fann}`
-            for (faarg in classFieldAnnotationArgs.getString(faArgKey).split(",")) {
-                if (faarg != "") { interpArrayPush(faArgsArr, interpNewString(faarg)) }
-            }
-            tvMap.set(`${famId}|args`, `${faArgsArr}`)
-            interpArrayPush(fAnnArr, internPoolGetOrInsert(`ANN|FLD|${faArgKey}`, famId))
-        }
-        tvMap.set(`${fmId}|annotations`, `${fAnnArr}`)
-        interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
-    }
-    return fArr
 }
 
 function interpFindMethod(className: string, methodName: string): int {

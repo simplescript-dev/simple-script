@@ -8,24 +8,23 @@ function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedA
         return ctVal(interpNewNull())
     }
     const objId = interpNewVal("object", realName)
-    const allFields = interpCollectFields(realName)
+    // parent chain walk,父类字段 prepend 在前 — 与 interpBuildTypeInfo 同构但这里消费 fId 取 defaultId。
+    let allFields = ""
+    let cur = realName
+    while (cur != "") {
+        const paramList = nGetList(parseInt(interpClasses.getString(cur)))
+        if (paramList != "") { allFields = allFields == "" ? paramList : `${paramList},${allFields}` }
+        cur = interpClassParents.getString(cur)
+    }
     let ctFieldNames: Array<string> = []
-    if (allFields != "") {
-        const fieldParts = allFields.split(",")
-        let fi = 0
-        while (fi < fieldParts.length()) {
-            const fId = parseInt(fieldParts[fi])
-            const fName = nGetS1(fId)
-            ctFieldNames = ctFieldNames.push(fName)
-            const defaultId = nGetI1(fId)
-            if (defaultId > 0) {
-                const dv = genVal(defaultId)
-                interpSetField(objId, fName, isCt(dv) == 1 ? payload(dv) : interpNewNull())
-            } else {
-                interpSetField(objId, fName, interpNewNull())
-            }
-            fi = fi + 1
-        }
+    for (fp in allFields.split(",")) {
+        if (fp == "") { continue }
+        const fId = parseInt(fp)
+        const fName = nGetS1(fId)
+        ctFieldNames = ctFieldNames.push(fName)
+        const defaultId = nGetI1(fId)
+        const dv = defaultId > 0 ? genVal(defaultId) : 0
+        interpSetField(objId, fName, defaultId > 0 && isCt(dv) == 1 ? payload(dv) : interpNewNull())
     }
     let posIdx = 0
     while (posIdx < ctArgVals.length()) {
@@ -51,7 +50,7 @@ function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctAr
     // TypeValue: T.fields()/T.name — read off the underlying class name
     if (objType == "type") {
         const typeName = interpAsStr(objPayload)
-        if (methodName == "fields") { return ctVal(interpCtFieldsArray(typeName)) }
+        if (methodName == "fields") { return ctVal(interpGetField(interpBuildTypeInfo(typeName), "fields")) }
         if (methodName == "name") { return ctVal(interpNewString(typeName)) }
         return comptimeError(`method '${methodName}' not supported on type value`, id)
     }
@@ -61,7 +60,7 @@ function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctAr
     }
     const className = interpAsStr(objPayload)
     if (methodName == "fields") {
-        return ctVal(interpCtFieldsArray(className))
+        return ctVal(interpGetField(interpBuildTypeInfo(className), "fields"))
     }
     let lookupStart = className
     if (pendingSuperParent != "") {
