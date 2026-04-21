@@ -26,6 +26,26 @@ class AnnotationMeta {
     args: Array<string>
 }
 
+// D117 §决策 1 — 补齐 5 类 Meta。
+class ParamMeta {
+    name: string
+    type: string
+}
+
+class MethodMeta {
+    name: string
+    params: Array<ParamMeta>
+    returnType: string
+    annotations: Array<AnnotationMeta>
+}
+
+class ClassMeta {
+    name: string
+    fields: Array<FieldMeta>
+    methods: Array<MethodMeta>
+    annotations: Array<AnnotationMeta>
+}
+
 // ── Higher-order array methods ────────────────────────────────
 
 function _ss_map(arr: List<int>, callback: fn): List<int> {

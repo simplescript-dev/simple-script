@@ -1,6 +1,6 @@
 # D117: 反射 Meta 对象完整化 + class instance dedup 设计 — Phase B 延展
 
-**Status:** Plan ⏳(Execute 0 Done 2026-04-21 / Execute 1-5 未开工)
+**Status:** Plan ⏳(Execute 0-1 Done 2026-04-21 / Execute 2-5 未开工)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / D097 §后续工作 1-4(五类 Meta + evalExpr 扩展 + Meta 数组通用 iteration + L2ζ-L2κ Map migrate) / D098 §决策 2 §Phase B L123-128(Meta 对象/反射迁移后引入 InternPool) / D111 §新张力 5 L455(Meta 对象 dedup 前置 class instance dedup 设计,留 D113+)/ D094 §规则 2(pure subset 白名单)/ D096 Phase 4 L1(comptime class 能在 runtime 实例化)
 **Date:** 2026-04-21
 
@@ -154,7 +154,7 @@ D111 §新张力 5 明言 "Meta 对象 dedup 前置 class instance dedup 设计,
 ## 下一步(Plan 下的 Execute 顺序)
 
 1. [x] Done at docs/3-decisions/D117-*.md §新张力 2 对策段(2026-04-21) — **Execute 0**:预削减探底 + 新张力 2 (className 分隔符) 验证完成。**两项结论**:(a) 削减候选 **0 个** — `interpCollectFields` / `interpCtFieldsArray` 调用点共 9 处(真调用 5 处 + imports 2 处 + 定义 2 处,外加 tests 注释 1 处),全部在生产路径上,无"无争议死代码可立即删":`interp_obj.ss:126/148/152`(定义+内部紧耦合,Execute 5 整体删)、`member_access.ss:92`(`cls.fields` → Execute 3 MEMBER_ACCESS on Meta 迁走)、`exprs_ct_obj.ss:11`(实例构造父类字段枚举,**非反射路径**,Execute 5 需解耦至 `nGetList` 父类链直枚举)、`exprs_ct_obj.ss:54/64`(TypeValue/object `.fields()` 方法,Execute 3 迁走)、`interp_core.ss:15` + `exprs.ss:6`(import 转发,随函数删);§新张力 1 补偿证据由 Execute 5 整体删两函数 + 5 真调用迁移承载,**不是** Execute 0 先删。(b) §新张力 2 **闭合**,见该张力段末结论(`[A-Za-z_][A-Za-z0-9_]*`,无 "."),5 条 InternPool key schema 无冲突。**classXxxAnnotations Map** 13 处集中 4 文件(`member_access.ss` / `class/class.ss` / `stmts/stmts_loop_forin.ss` / `class/class_register.ss`),§决策 2 Execute 2 自然复用,无需 Execute 0 预删
-2. [ ] Planned — **Execute 1**:补齐 ClassMeta / MethodMeta / ParamMeta prelude.ss 定义 + reflection_health_linter baseline 对照(§新张力 1 验证 § 决策 5 通用 iteration 削减是否到位;若不够 Execute 1 内先做部分删除)
+2. [x] Done at bootstrap/parse/prelude.ss:30-47(2026-04-21)— **Execute 1**:补齐 ClassMeta / MethodMeta / ParamMeta prelude.ss 定义 + reflection_health_linter baseline 对照 **GATE PASS no regressions**。**实测 delta**(3 类加入 vs pre-delta):M2 +16 / N2 +80 / N3 +29,其余 10 指标全 0。vs baseline 全部在 tol 内(M1 +15/tol 25 / M2 +353/tol 380 / M3a +29/tol 60 / N2 +1765/tol 1903 DRIFT) + 结构组 strict 全 OK / N3 -1976 PROGRESS + F1 GATE PASS(gen_decls.ss 690→690 baseline=691 PROGRESS)。**§新张力 1 "三加必配三删"抵消证据由 Execute 4-5 承载**:Execute 4 删 stmts_loop_forin.ss 反射专用分支(§决策 5 通用 fold 迁移)+ Execute 5 删 interpCollectFields / interpCtFieldsArray 字符串路径。本 Execute 1 不动,因 Execute 0 L156 探底结论"削减候选 0,全部在生产路径"—— 删任一分支/函数必破 tests,§决策 4 evalExpr MEMBER_ACCESS on Meta 前置。bootstrap 固定点通过 + tests 215 passed / 4 failed (pre-existing: spring_web_params / d096_p4_l2_reactive / harness_bug / harness_task,vs commit `90091df` 相同,**无新回归**)。
 3. [ ] Planned — **Execute 2**:interpBuildTypeInfo 实现 ClassMeta 实例构造 + name-based dedup(InternPool key `CLS|<className>`)+ reflection_health_linter GATE PASS
 4. [ ] Planned — **Execute 3**:evalExpr MEMBER_ACCESS on Meta 识别(`bootstrap/eval/member_access.ss` 扩)+ 返 MaybeVal.known=true + pure subset 白名单扩
 5. [ ] Planned — **Execute 4**:genForIn Meta 数组走通用 fold(`bootstrap/gen/stmts/stmts_loop_forin.ss` 删反射专用分支)
