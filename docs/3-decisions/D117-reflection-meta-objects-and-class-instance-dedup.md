@@ -1,6 +1,6 @@
 # D117: 反射 Meta 对象完整化 + class instance dedup 设计 — Phase B 延展
 
-**Status:** Plan ⏳(Execute 0-5 未开工)
+**Status:** Plan ⏳(Execute 0 Done 2026-04-21 / Execute 1-5 未开工)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / D097 §后续工作 1-4(五类 Meta + evalExpr 扩展 + Meta 数组通用 iteration + L2ζ-L2κ Map migrate) / D098 §决策 2 §Phase B L123-128(Meta 对象/反射迁移后引入 InternPool) / D111 §新张力 5 L455(Meta 对象 dedup 前置 class instance dedup 设计,留 D113+)/ D094 §规则 2(pure subset 白名单)/ D096 Phase 4 L1(comptime class 能在 runtime 实例化)
 **Date:** 2026-04-21
 
@@ -146,14 +146,14 @@ D111 §新张力 5 明言 "Meta 对象 dedup 前置 class instance dedup 设计,
 ## 新张力(D117 引出)
 
 1. **prelude.ss 新增 3 class 触 reflection_health_linter M/N 累积** — class 定义 = M5 +N 字段 state + N1 可能 +1(若引入新 kind)。**对策**:Execute 轮 baseline 对照,§决策 5 通用 iteration 削减(删反射专用分支/删 interpCtFieldsArray 字符串数组/删 interpCollectFields 字符串拼接路径)必须抵消三加。**D097 L70 "累积方向严禁更新 baseline"** — 新加三类必须给出三删证据,不允许"调高 baseline 让 gate 过"
-2. **Meta key 含 "." 分隔符可能与 className 冲突** — 若 className 含 "."(如 nested class)会碰撞。**对策**:Execute 0 先 grep `bootstrap/parse/parser.ss` 确认 SS className 是否允许 ".",若允许需换分隔符(如 `\0` 或 `|`)
+2. **Meta key 含 "." 分隔符可能与 className 冲突** — 若 className 含 "."(如 nested class)会碰撞。**对策**:Execute 0 先 grep `bootstrap/parse/parser.ss` 确认 SS className 是否允许 ".",若允许需换分隔符(如 `\0` 或 `|`)。**Execute 0 结论(2026-04-21):闭合** — `lexer.ss:418-426` `lexIdent()` 仅吃 `isAlphaNum(peek())`,`lexer.ss:163-169` `isAlpha=[A-Za-z_]` + `isDigit=[0-9]`,故 SS className 字符集 = `[A-Za-z_][A-Za-z0-9_]*` **不含 "."**,`CLS|<className>.<fieldName>` / `FLD|<className>.<fieldName>` / `MTH|<className>.<methodName>` / `PRM|<className>.<methodName>.<paramName>` / `ANN|<ownerKey>.<annotationName>` 5 条 key schema 全部**无冲突风险**,§决策 3 方案 A 无需换分隔符
 3. **name-based dedup 限制 structural-different same-name** — 两个 class 字段完全不同但 className 相同(如用户跨 import 重定义)会被 dedup 成同一 Meta。**对策**:SS 当前不允许 class name 重复(checker 检查),本轮范围内非问题;未来允许时 D098 §Phase C 重评
 4. **interpBuildTypeInfo 从 newTvNull() 占位到 ClassMeta 实现引发 M7b +1 + 调用链扩** — interpBuildTypeInfo 现为 3 行空函数,改成 ~20 行实际构造 M2 / N2 / M3a 全升。**对策**:§决策 5 通用 iteration 删 hardcoded 分支节省 M4 + M2 抵消,Execute 轮实测 delta 定。若单项紧张,Execute 拆多轮(Execute 1 先 prelude.ss 加 3 class / Execute 2 再改 interpBuildTypeInfo)
 5. **Meta 对象生命周期 vs class instance RC** — Meta 对象是 InternPool 承载的常驻对象,不应走 Perceus RC drop。**对策**:Execute 3 时 interpBuildTypeInfo 构造的 ClassMeta 实例不进入 RC 管理(与 D111 InternPool 标量一致);若触 RC 路径需在 pir_lower.ss 加例外或 Meta class 不参与 RC 设计
 
 ## 下一步(Plan 下的 Execute 顺序)
 
-1. [ ] Planned — **Execute 0**:预削减探底 + 新张力 2 (className 分隔符) 验证 —— grep `interpCollectFields` / `interpCtFieldsArray` / `classXxxAnnotations` Map 调用点,找削减候选;grep parser.ss 验 className 是否允许 "."(参 D099 §步骤 0 骨架期 + D100 §步骤 0 预削减 pattern)
+1. [x] Done at docs/3-decisions/D117-*.md §新张力 2 对策段(2026-04-21) — **Execute 0**:预削减探底 + 新张力 2 (className 分隔符) 验证完成。**两项结论**:(a) 削减候选 **0 个** — `interpCollectFields` / `interpCtFieldsArray` 调用点共 9 处(真调用 5 处 + imports 2 处 + 定义 2 处,外加 tests 注释 1 处),全部在生产路径上,无"无争议死代码可立即删":`interp_obj.ss:126/148/152`(定义+内部紧耦合,Execute 5 整体删)、`member_access.ss:92`(`cls.fields` → Execute 3 MEMBER_ACCESS on Meta 迁走)、`exprs_ct_obj.ss:11`(实例构造父类字段枚举,**非反射路径**,Execute 5 需解耦至 `nGetList` 父类链直枚举)、`exprs_ct_obj.ss:54/64`(TypeValue/object `.fields()` 方法,Execute 3 迁走)、`interp_core.ss:15` + `exprs.ss:6`(import 转发,随函数删);§新张力 1 补偿证据由 Execute 5 整体删两函数 + 5 真调用迁移承载,**不是** Execute 0 先删。(b) §新张力 2 **闭合**,见该张力段末结论(`[A-Za-z_][A-Za-z0-9_]*`,无 "."),5 条 InternPool key schema 无冲突。**classXxxAnnotations Map** 13 处集中 4 文件(`member_access.ss` / `class/class.ss` / `stmts/stmts_loop_forin.ss` / `class/class_register.ss`),§决策 2 Execute 2 自然复用,无需 Execute 0 预删
 2. [ ] Planned — **Execute 1**:补齐 ClassMeta / MethodMeta / ParamMeta prelude.ss 定义 + reflection_health_linter baseline 对照(§新张力 1 验证 § 决策 5 通用 iteration 削减是否到位;若不够 Execute 1 内先做部分删除)
 3. [ ] Planned — **Execute 2**:interpBuildTypeInfo 实现 ClassMeta 实例构造 + name-based dedup(InternPool key `CLS|<className>`)+ reflection_health_linter GATE PASS
 4. [ ] Planned — **Execute 3**:evalExpr MEMBER_ACCESS on Meta 识别(`bootstrap/eval/member_access.ss` 扩)+ 返 MaybeVal.known=true + pure subset 白名单扩
