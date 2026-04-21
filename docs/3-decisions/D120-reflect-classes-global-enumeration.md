@@ -1,6 +1,6 @@
 # D120: `reflect.classes()` 全局类枚举 comptime API — Spring Boot 注解根因路径
 
-**Status:** Plan 起草中(Execute 未启动,本文档产出即 Plan 落地)
+**Status:** Accepted(Execute 1 Phase 1 Done at `a364e4b`;Phase 2 `AnnotationMeta.args` Map 形态 + annotation 命名参数 parser → Deferred to D121;Phase 3 Spring Boot E2E → Deferred to D122)
 **Depends on:**
 - D088 §第一性需求 L7-13(给定对象遍历字段 → 扩展:给定编译单元遍历所有类)/ §Phase 5 L137-148(obj.fields() + obj[name] + for-in 编译期展开,本 Plan 复用)/ §过渡策略 L304-310(@derive 降为便捷层,不是主线)/ §反模式 L377-386(禁 @comptimeEmit 字符串 mixin / ct* 辅助 / runtime 反射)
 - D117 §决策 1-2(五类 Meta 对象 Done:ClassMeta/FieldMeta/MethodMeta/AnnotationMeta/ParamMeta,`interpBuildTypeInfo(className)` @ `bootstrap/eval/interp_obj.ss:151` 按名字查单类)
@@ -441,22 +441,113 @@ Phase 2 / Phase 3 各自独立 D 文档兜底判据,本 D120 不承载。
 
 # 附录 B: 实施日志
 
-### Plan(本轮起草) ⏳
+### Plan(起草轮) [x] Done
 
 - 2026-04-21:起草 D120 Plan,范围锁定 Phase 1 `reflect.classes()` 最小可用 + Array<ClassMeta> 返回 + comptime-only 约束。Phase 2 `AnnotationMeta.args` 形态决策 + Phase 3 Spring Boot E2E 独立 D 文档承接
 - 2026-04-21(§A.4 #3 实测轮):probe `tests/phase5/d120_probe_array_lit_obj.ss` 跑 `--emit-ir`,确认 ARRAY_LIT<class IDENT> / METHOD_CALL 均走 `stmts_loop_forin.ss:118-176` runtime 分支(IR 含 `forin.cond/body/update/after` + `ss_arrayLen/ss_arrayGet`)。§A.4 #3 验证小节 + Phase 1 §范围 for-in unroll 入口扩展追补 + Execute 1 预估 LOC 60-100 + §A.5 IR grep 判据追加。未推 Execute 1 实现(遵循 §交互式单文档 / §范围锁定)
 
-### Execute 1(Phase 1): `reflect.classes()` 最小可用 [ ] Planned
+### Execute 1(Phase 1): `reflect.classes()` 最小可用 [x] Done at `a364e4b` (2026-04-21)
 
-- 待下轮启动 PSM 十问 + 五验 VCM
-- 预估 LOC(**2026-04-21 重估,依据 §A.4 #3 实测**):~60-100(新文件 `exprs_ct_reflect.ss` + `exprs_ct_builtin.ss` dispatch case + prelude `reflect` 预声明 + **`stmts_loop_forin.ss:74-97` ctProbe 入口扩 +15-20 LOC**)
-- 预估度量影响:M7b +1 须 Step 0 预削减抵消;M2/N2 累计组 +50~150;M3a/M4 结构组 0 或微降(复用 interpBuildTypeInfo);**stmts_loop_forin.ss 现 177 行 → 预估 +20 LOC ≈ 197 行,仍远低于 600 F1 上限**
-- 依赖假设挑战 §A.4 #3(for-in unroll Meta 对象数组)**已于 2026-04-21 实测**:probe `tests/phase5/d120_probe_array_lit_obj.ss` IR 证明 ARRAY_LIT<class IDENT>/METHOD_CALL 返回 ctVal 均走 runtime for-in → §A.4 #3 验证小节见上,Execute 1 范围追补 for-in unroll 入口扩展
+**实施内容**(diff 93 insertions / 8 deletions,7 文件):
 
-### Phase 2 / Phase 3 [→] Deferred to D121+ / D122+
+- `bootstrap/gen/exprs/exprs_ct_reflect.ss`(新建,44 行):`ctReflectMethodDispatch(astId, methodName)` 入口 + `genValCtReflectClasses(astId)` 工厂 — 枚举 `interpClasses` + `classFields` 合集 → 字典序稳定排序 → 逐个调 `interpBuildTypeInfo(name)` 装 Array<ClassMeta>,返回 ctVal
+- `bootstrap/eval/method_call.ss`(+3):IDENT obj 分派入口,当 obj 解析为 `reflect`(IDENT name == "reflect")→ 派发到 `ctReflectMethodDispatch`(comptime only,runtime context 不可达)
+- `bootstrap/parse/prelude.ss`(+6):`class Reflect {}` + `const reflect = new Reflect()`(checker resolve `reflect` 为已知 IDENT;空实例仅做 sigil,实际 method 走 comptime dispatch)
+- `bootstrap/gen/stmts/stmts_loop_forin.ss`(+15/-8):ctProbe 入口根因扩展 — 从原"iterableId kind == MEMBER_ACCESS 白名单"扩到"**字面量 short-circuit** + **任意 kind** + **`genVal(iterableId)` 返回 `isCt && interpType == array`**"三重分支,不再依赖 MEMBER_ACCESS / "fields" 方法名等白名单。`ctIterReady` cache runtime path reg 复用,避免第二次 genVal 副作用
+- `bootstrap/gen/exprs/exprs.ss`(+1):`#include` exprs_ct_reflect.ss
+- `tests/phase5/d120_reflect_classes.ss`(新建,24 行):3 class Alpha/Beta/Gamma,ct block `for (c in reflect.classes())` 累加 name 到 string,assertEqual `"Alpha;Beta;Gamma;"`,验证字典序稳定
 
-- `AnnotationMeta.args` Map 形态决策 → D121 承接
-- Spring Boot E2E(`SpringApplication` + `dispatcherServlet` 实现 + `spring_web_params.ss` GREEN)→ D122 承接
+**判据兑现**(对照 §5 Evaluation,逐条):
+
+| # | 判据 | 实测 |
+|---|---|---|
+| 1 | `./build.sh bootstrap` stage2==stage3 固定点 | ✅ PASS |
+| 2 | `bin/ss test tests/phase5/` 不新增 fail | ✅ tests 159 PASS(+1 vs 158 baseline),4 pre-existing fail 保持 |
+| 3 | `grep -rn "reflect\.classes" bootstrap/` ≥ 1 | ✅ 入口 + impl 双命中 |
+| 4 | `bin/ss run tests/phase5/d120_reflect_classes.ss` 含 3 个 class name 字典序输出 | ✅ GREEN:`Alpha;Beta;Gamma;` |
+| 5 | `reflection_health_linter.ss` GATE + M1/M2/M3a/M4/M5 结构组不升 | ✅ GATE PASS;**M4=3000**(baseline 3037,-37 **PROGRESS**);**M7b=676**(baseline 676,+0 **预算耗尽**);**N3=514527**(baseline 518111,-3584 **PROGRESS**);M1/M2/M3a/M5 累计组在 tol 内 DRIFT |
+| 6 | `grep @comptimeEmit\|comptimeEmitString` bootstrap/ 不新增 | ✅ 零 workaround 调用引入 |
+| §A.5 IR | `d120_reflect_classes.ll` `forin.(cond\|body\|update\|after)` + `@ss_arrayLen(...@\.ct\.cls_arr)` wc -l | ✅ **0 命中**(ct-array 完全 unroll,runtime for-in 分支全消) |
+
+**关键 insight**(§A.4 #3 根因确认):for-in ct-array unroll 入口改造不走"白名单方法名"路线(会催生"每加 reflect.X 就补 case"的双轨制),而是"返回 ct-array 的表达式任意 kind 均 unroll"——`MEMBER_ACCESS cls.fields` / `METHOD_CALL reflect.classes()` / `IDENT ctBound` / `ARRAY_LIT` 全部收敛到同一 ctProbe 入口。单一根因路径,与 D088 §反模式(双轨制) 对齐。
+
+### Execute 1 收尾 → D121 Plan 起草触发点实测(2026-04-21)
+
+**目的**:D120 §决策 2 L329-337 指"Phase 2 `AnnotationMeta.args` 形态决策 D121+ 承接,触发点 = `spring_web_params.ss` ct 路径访问 args 挡路"。§A.4 #2 挑战写的是**推演**("@RequestMapping 单参 / @GetMapping 多参 Array<string> 如何承载")。收尾轮跑**实测 probe**(`spring_web_params.ss` 本身因 `dispatcherServlet` 未定义挡 Phase 3,不是 args 挡路),定位 D121 真实根因范围。
+
+**Probe A**(单字面量位置参数,已工作)
+
+```ss
+@RequestMapping("/api") class TestController {}
+function main() {
+    const v = comptime {
+        let acc = ""
+        for (c in reflect.classes()) for (ann in c.annotations)
+            if (ann.name == "RequestMapping") acc = ann.args[0]
+        return acc
+    }
+    println(v)
+}
+```
+
+**IR 实测**(main body 完全展开,无 runtime for-in / arrayGet 痕迹):
+
+```llvm
+define i32 @main(...) {
+entry:
+  ...
+  %4 = call ptr @Reflect_new()
+  store ptr %4, ptr @reflect, align 8
+  %firstArg.79 = alloca ptr, align 8
+  store ptr @.str.76, ptr %firstArg.79, align 8  ; ← "/api" 字符串常量直接 store
+  ...
+  ret i32 0
+}
+```
+
+→ `ann.args[0]` Array index **ct 路径已通**(Execute 1 Phase 1 的 ct-array unroll 泛化覆盖)。stdout 输出 `/api`。
+
+**Probe B**(Spring Boot 期望形态 Map.get — 挡路 1)
+
+```ss
+acc = ann.args.get("value")  // ← 用户期望形态
+```
+
+**实测**:`[comptime] unsupported array method: get`(stdout 实测)。根因:`AnnotationMeta.args: Array<string>` @ `prelude.ss:27`,ct 路径 array method dispatch 无 `.get` 入口。Spring Boot `ann.args.get("value")` 形态**必须** args 改 Map 或提供 dual API。
+
+**Probe C**(Array iteration — 已工作)
+
+```ss
+for (arg in ann.args) { acc = acc + ann.name + "=" + arg + ";" }
+```
+
+**实测**:`RequestMapping=/api;GetMapping=/search;` GREEN(顺序注解声明序)。→ `for arg in ann.args` ct 展开**已通**。
+
+**Probe D**(命名参数语法 — 挡路 2)
+
+```ss
+@GetMapping(path="/search", method="GET") class TestController {}
+```
+
+**实测**:`parse error at line 3: expected RPAREN, found ASSIGN '='`。根因:注解参数 parser 只接受位置参数(`@Ann("str")` / `@Ann(1, 2)`),不支持 `key=value` 语法。Spring Boot `@GetMapping(path="/x", method="GET")` / `@RequestMapping(value="/api", consumes="application/json")` 形态**必须** parser 扩展命名参数支持。
+
+**D121 真实范围**(相比 §A.4 #2 推演,实测给出更精准的两条根因):
+
+1. **R1**: `AnnotationMeta.args` 形态升级 — Array<string> → Map<string,string>(或 dual),ct 路径 `.get(key)` dispatch 入口补齐。影响 `prelude.ss:25-28` + `interpBuildTypeInfo` annotation 构造 + comptime array/map method 分派
+2. **R2**: 注解参数 parser 支持命名参数 — `@Ann(key="val", key2="val2")`。影响 `parse_decls.ss` / `parse_annotation.ss` 的 `parseAnnotationArgs`
+3. **R3**(已 Done,无需动作):`ann.args` iteration / index(单字面量)ct 展开已工作,D121 不需处理
+
+相比 §A.4 #2 "args 形态 Phase 2 阻塞"的单点推演,实测把 D121 分解为 R1(形态)+ R2(parser)双根因,且排除了 R3(iteration)—— D121 Plan 起草可直接按 R1 / R2 双范围铺设,不必再做一次探路实测。
+
+### Phase 2 [→] Deferred to D121
+
+- D121 范围(实测驱动):R1 `AnnotationMeta.args` Array→Map(或 dual)+ ct `.get()` dispatch;R2 注解参数 parser 命名参数语法;R3 已 Done 不承接
+- 触发点:本附录 §Execute 1 收尾实测证据已充分,D121 Plan 直接从 R1 / R2 起草
+
+### Phase 3 [→] Deferred to D122
+
+- D122 范围:`SpringApplication` + `dispatcherServlet` 实现(`lib/spring/boot/`)+ `tests/phase5/spring_web_params.ss` E2E GREEN
+- 触发点:D121 Phase 2 完成(ann.args.get 可用 + 命名参数可 parse)+ `dispatcherServlet` 用 `reflect.classes()` + comptime for-in unroll 生成路由
 
 ---
 
