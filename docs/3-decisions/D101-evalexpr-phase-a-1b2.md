@@ -1,6 +1,6 @@
 # D101: evalExpr Phase A 中批 1b 第 2 kind Plan — TEMPLATE_LIT
 
-**Status:** Plan ⏳(Execute 0/1/2 未开工)
+**Status:** Execute 0 Done at commit 9343330,Execute 1 Done at commit 3f0da11,Execute 2 未开工(Step 2 决策点由 D103 1b-3 选型 ARRAY_LIT 吸收)
 **Depends on:** D100 §Rejected A(TEMPLATE_LIT 作 1b 第 2 轮铺垫)/ D100 §步骤 1 evalIndexAccess 对称 pattern / D102 §规则 1.1-1.4(分层 GATE)/ D102 §规则 2.1-2.3(F1 文件行数 GATE)/ D098 §决策 1 mv 编码 / D094 §规则 2 pure subset
 **Date:** 2026-04-19
 
