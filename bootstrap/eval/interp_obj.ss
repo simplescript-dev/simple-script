@@ -127,9 +127,27 @@ function interpBuildTypeInfo(typeName: string): int {
     const id = interpNewVal("object", typeName)
     tvMap.set(`${id}|name`, `${interpNewString(typeName)}`)
     tvMap.set(`${id}|fields`, `${interpCtFieldsArray(typeName)}`)
+    // D117 Execute 4 — .methods 填充:MethodMeta(.name/.annotations);params/returnType
+    // 占位 Execute 5。method-level AnnotationMeta.args 无 sidecar,未 set(.args 访问返 null)。
+    const mArr = interpNewArray("")
+    for (mp in classMethods.getString(typeName).split(",")) {
+        if (mp == "") { continue }
+        const mmId = interpNewVal("object", "MethodMeta")
+        tvMap.set(`${mmId}|name`, `${interpNewString(mp)}`)
+        const mAnnArr = interpNewArray("")
+        const mAnnKey = `${typeName}.${mp}`
+        for (mann in classMethodAnnotations.getString(mAnnKey).split(",")) {
+            if (mann == "") { continue }
+            const mamId = interpNewVal("object", "AnnotationMeta")
+            tvMap.set(`${mamId}|name`, `${interpNewString(mann)}`)
+            interpArrayPush(mAnnArr, internPoolGetOrInsert(`ANN|MTH|${mAnnKey}.${mann}`, mamId))
+        }
+        tvMap.set(`${mmId}|annotations`, `${mAnnArr}`)
+        interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${typeName}.${mp}`, mmId))
+    }
+    tvMap.set(`${id}|methods`, `${mArr}`)
     const aArr = interpNewArray("")
-    const annListId = classNodeIds.has(typeName) == 1 ? nGetI4(parseInt(classNodeIds.getString(typeName))) : 0
-    for (ap in nGetList(annListId).split(",")) {
+    for (ap in nGetList(nGetI4(parseInt(classNodeIds.getString(typeName)))).split(",")) {
         const aId = parseInt(ap)
         if (aId > 0) {
             const annName = nGetS1(aId)
@@ -184,6 +202,23 @@ function interpCtFieldsArray(className: string): int {
         tvMap.set(`${fmId}|name`, `${interpNewString(fName)}`)
         const fType = classFieldTypes.getString(ftKey)
         tvMap.set(`${fmId}|type`, `${interpNewString(fType)}`)
+        // D117 Execute 4 — FieldMeta.annotations 填充,AnnotationMeta.args 走
+        // classFieldAnnotationArgs(key=<cls>.<field>.<ann>)。空 annotation 时
+        // 写入空 array tv。
+        const fAnnArr = interpNewArray("")
+        for (fann in classFieldAnnotations.getString(ftKey).split(",")) {
+            if (fann == "") { continue }
+            const famId = interpNewVal("object", "AnnotationMeta")
+            tvMap.set(`${famId}|name`, `${interpNewString(fann)}`)
+            const faArgsArr = interpNewArray("")
+            const faArgKey = `${ftKey}.${fann}`
+            for (faarg in classFieldAnnotationArgs.getString(faArgKey).split(",")) {
+                if (faarg != "") { interpArrayPush(faArgsArr, interpNewString(faarg)) }
+            }
+            tvMap.set(`${famId}|args`, `${faArgsArr}`)
+            interpArrayPush(fAnnArr, internPoolGetOrInsert(`ANN|FLD|${faArgKey}`, famId))
+        }
+        tvMap.set(`${fmId}|annotations`, `${fAnnArr}`)
         interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
     }
     return fArr

@@ -9,7 +9,7 @@ function TagFields(cls: string) {
         let acc = ""
         for (f in cls.fields) {
             for (a in f.annotations) {
-                acc = acc + f.name + "@" + a + ";"
+                acc = acc + f.name + "@" + a.name + ";"
             }
         }
         return acc

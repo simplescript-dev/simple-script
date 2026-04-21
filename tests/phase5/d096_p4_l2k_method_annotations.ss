@@ -11,9 +11,9 @@ function ListMethodAnnotations(cls: string) {
     @methodOf(cls) function listAll(): string {
         let acc = ""
         for (m in cls.methods) {
-            acc = acc + m + ":"
+            acc = acc + m.name + ":"
             for (a in m.annotations) {
-                acc = acc + a + ";"
+                acc = acc + a.name + ";"
             }
             acc = acc + "|"
         }

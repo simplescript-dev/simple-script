@@ -435,10 +435,10 @@ function inferType(id: int): string {
         const mObj = nGetI1(id)
         // D095: STRING_LIT.name → string (cls.name after fold)
         if (nGetKind(mObj) == "STRING_LIT" && nGetS1(id) == "name") { return "string" }
-        // D095 FieldMeta: f.name / f.type when f is in comptimeConsts (loop var) → "string"
-        if (nGetKind(mObj) == "IDENT" && comptimeConsts.has(nGetS1(mObj)) == 1) {
-            const fmm = nGetS1(id)
-            if (fmm == "name" || fmm == "type") { return "string" }
+        // D095 / D117 Execute 4 — IDENT 绑定 comptime-loop-string / ctVars-Meta-object 时 Meta .name/.type/.returnType → "string"
+        if (nGetKind(mObj) == "IDENT") {
+            const mctfk = `${currentFunc}:${nGetS1(mObj)}`
+            if ((comptimeConsts.has(nGetS1(mObj)) == 1 || (ctVars.has(mctfk) == 1 && ctInvalidated.has(mctfk) == 0 && interpType(payload(parseInt(ctVars.getString(mctfk)))) == "object")) && (nGetS1(id) == "name" || nGetS1(id) == "type" || nGetS1(id) == "returnType")) { return "string" }
         }
         // D082: Ref<T>.value → element type T
         if (nGetS1(id) == "value" && nGetKind(mObj) == "IDENT") {

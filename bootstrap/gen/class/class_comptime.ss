@@ -127,6 +127,10 @@ function resolveComptimeString(id: int): string {
 // In-place AST rewrite: walk tree, fold every IDENT whose name resolves to
 // a comptime value in the outer handler's scope. Recurses through I1..I4 and
 // the list slot. Non-node ints are filtered by nGetKind == "" check.
+// D117 Execute 4 — IDENT 绑定 Meta object 时 rewriteIdentToLit 无法 fold
+// (tvKind=object),需在 MEMBER_ACCESS 层 interpGetField 取 scalar field 重写。
+// 失败(field 非 scalar,如 FieldMeta.annotations array)则 fall-through,交由
+// ct-probe 路径处理。
 function foldComptimeIdentsInTree(rootId: int) {
     if (rootId <= 0) { return }
     const k = nGetKind(rootId)
@@ -136,6 +140,13 @@ function foldComptimeIdentsInTree(rootId: int) {
         const tagged = lookupComptimeBinding(name)
         if (tagged > 0) { rewriteIdentToLit(rootId, tagged) }
         return
+    }
+    if (k == "MEMBER_ACCESS") {
+        const mo = nGetI1(rootId)
+        if (nGetKind(mo) == "IDENT") {
+            const mt = lookupComptimeBinding(nGetS1(mo))
+            if (interpType(payload(mt)) == "object" && rewriteIdentToLit(rootId, ctVal(interpGetField(payload(mt), nGetS1(rootId)))) == 1) { return }
+        }
     }
     foldComptimeIdentsInTree(nGetI1(rootId))
     foldComptimeIdentsInTree(nGetI2(rootId))

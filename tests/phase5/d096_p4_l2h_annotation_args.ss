@@ -11,7 +11,7 @@ function TagArgs(cls: string) {
         for (f in cls.fields) {
             for (a in f.annotations) {
                 for (v in a.args) {
-                    acc = acc + f.name + "@" + a + "(" + v + ");"
+                    acc = acc + f.name + "@" + a.name + "(" + v + ");"
                 }
             }
         }

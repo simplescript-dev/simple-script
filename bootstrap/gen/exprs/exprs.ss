@@ -12,20 +12,23 @@ import { ctNewExprDispatch, ctMethodCallDispatch } from "./exprs_ct_obj"
 import { ctEnumListMethod, ctEnumValueOfMethod } from "./exprs_ct_enum"
 import { ctCallValue, ctStringMethod, ctArrayMethod, ctMapMethod, ctBuiltinMethod } from "./exprs_ct_builtin"
 
-// D095: resolve a node to its compile-time string value, honoring:
-//   STRING_LIT             → nGetS1
-//   IDENT in comptimeConsts → bound value (loop var)
-//   IDENT.name where IDENT in comptimeConsts → bound value (FieldMeta.name)
-// Returns 1 if resolvable, else 0. Companion resolveCtString returns the string.
+// D095 / D117 Execute 4 — resolve a node to its compile-time string value:
+//   STRING_LIT → nGetS1
+//   IDENT in comptimeConsts → bound value (legacy obj.fields() unroll)
+//   IDENT.member where IDENT binds Meta object tv → interpGetField → string tv
+// 反射 method gen 内 ctVars binding 生效(currentFunc = emitted method),
+// handler 层 fold-time 已把 `f.name` 重写成 STRING_LIT,两路径互补不重叠。
 function isCtStringIdx(nodeId: int): int {
     const k = nGetKind(nodeId)
     if (k == "STRING_LIT") { return 1 }
     if (k == "IDENT" && comptimeConsts.has(nGetS1(nodeId)) == 1) { return 1 }
     if (k == "MEMBER_ACCESS" && nGetS1(nodeId) == "name") {
         const mObj = nGetI1(nodeId)
-        const mk = nGetKind(mObj)
-        if (mk == "STRING_LIT") { return 1 }
-        if (mk == "IDENT" && comptimeConsts.has(nGetS1(mObj)) == 1) { return 1 }
+        if (nGetKind(mObj) == "STRING_LIT") { return 1 }
+        if (nGetKind(mObj) == "IDENT") {
+            const ifk = `${currentFunc}:${nGetS1(mObj)}`
+            if (comptimeConsts.has(nGetS1(mObj)) == 1 || (ctVars.has(ifk) == 1 && ctInvalidated.has(ifk) == 0 && interpType(payload(parseInt(ctVars.getString(ifk)))) == "object")) { return 1 }
+        }
     }
     return 0
 }
@@ -37,7 +40,13 @@ function resolveCtString(nodeId: int): string {
     if (k == "MEMBER_ACCESS") {
         const mObj = nGetI1(nodeId)
         if (nGetKind(mObj) == "STRING_LIT") { return nGetS1(mObj) }
-        return comptimeConsts.getString(nGetS1(mObj))
+        if (nGetKind(mObj) == "IDENT") {
+            if (comptimeConsts.has(nGetS1(mObj)) == 1) { return comptimeConsts.getString(nGetS1(mObj)) }
+            const rfk = `${currentFunc}:${nGetS1(mObj)}`
+            if (ctVars.has(rfk) == 1 && ctInvalidated.has(rfk) == 0 && interpType(payload(parseInt(ctVars.getString(rfk)))) == "object") {
+                return interpAsStr(interpGetField(payload(parseInt(ctVars.getString(rfk))), nGetS1(nodeId)))
+            }
+        }
     }
     return ""
 }

@@ -19,6 +19,7 @@ class ExecResult {
 class FieldMeta {
     name: string
     type: string
+    annotations: Array<AnnotationMeta>
 }
 
 class AnnotationMeta {
