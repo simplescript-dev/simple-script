@@ -1,6 +1,6 @@
 # D119: evalExpr `==` 改 id==id — Value.eql O(1) 度量基线
 
-**Status:** draft (Plan)
+**Status:** Accepted
 **Depends on:** D088 §第一性需求、D093 §Zig 原理 #4、D098 §决策 2 §Phase B、D111 §下一步 #4
 **Date:** 2026-04-21
 **Last Updated:** 2026-04-21
@@ -390,7 +390,24 @@ Execute 完成后:
   }
   ```
 
-### Execute 3 (可选): BINARY Eq/Ne 统一入口 [ ] Planned
+### Execute 3 (可选): BINARY Eq/Ne 统一入口 [→] Deferred to D120+
+
+- 2026-04-21:§第 3 节 Step 3 触发条件(Step 1+2 合计 **LOC ↓ ≥ 15 且 M4 ↓ ≥ 10**)本轮实测对照:
+  | 维度 | Step 1 Δ-from-pre | Step 2 Δ-from-pre | 合计 | 阈值 | 命中 |
+  |---|---|---|---|---|---|
+  | M4 | -3(分支 Dispatch 去 3) | 0(中间变量方案保 M3a/M4 持平) | **-3** | ↓ ≥ 10 | ❌ |
+  | LOC | -3(interpValEquals 10→5 +2 WHY) | ≈ +4(+2 lp/rp 中间变量 +2 WHY) | **≈ +1** | ↓ ≥ 15 | ❌ |
+- 两条件均未触发 → Execute 3 不启动。Execute 3 本质是"BINARY Eq/Ne 三分散入口合并到单 interpValEquals 调用"的**代码清洁度**优化(§A.4 假设 2 自证三路径**语义等价,成立**),**不是** Value.eql O(1) 兑现路径
+- D119 §第一性需求(5 标量 comptime Value 相等 → `tvId == tvId` O(1))由 Execute 1+2 + §A.5 两条 grep 0 命中 + GATE PASS 完整兑现
+
+### §闭合段 D119 Accepted
+
+- **第一性需求兑现状态**:✅ 100%(§A.5 单一判据兜底全通过)
+- **范围内 Execute**:Execute 1 [x] Done + Execute 2 [x] Done
+- **范围外 Execute**:Execute 3 [→] Deferred to D120+(清洁工性质,阈值成本门槛不达,且不属 Value.eql 兑现)
+- **D119 纸合上**:Status: draft (Plan) → **Accepted**;交互式单文档原则要求"每轮一个确权文档",draft 纸未闭会污染下轮任务挑选视野,合纸是消除"已完成第一性需求 vs Status 仍 draft"双态矛盾的根因
+- **Execute 3 承接**:"BINARY Eq/Ne 三入口归一"作为独立清洁工决策,待满足触发条件(或有新 M4 下降刚需)时另起 D120+ 承接,**不挂 D119**。避免把"已兑现第一性需求"与"未触发的清洁工活儿"混在同一张纸
+- **路线位置**:本决策在 D088 Zig 路线 §Phase B 收束节点上,Phase C(double/array/map InternPool)未启动,独立决策承接
 
 ---
 
