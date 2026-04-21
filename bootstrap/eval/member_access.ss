@@ -4,34 +4,6 @@
 function evalMemberAccess(astId: int): int {
     const member = nGetS1(astId)
     const objNode = nGetI1(astId)
-    // D095 FieldMeta: f.name / f.type when f is a for-in-unroll bound comptime const
-    if (nGetKind(objNode) == "IDENT" && comptimeConsts.has(nGetS1(objNode)) == 1) {
-        const fmName = nGetS1(objNode)
-        if (member == "name") {
-            const nmStr = comptimeConsts.getString(fmName)
-            return comptimeDepth > 0 ? ctVal(interpNewString(nmStr)) : constVal(addStringConst(nmStr))
-        }
-        const fmClsKey = `${fmName}.__class`
-        if (member == "type" && comptimeConsts.has(fmClsKey) == 1) {
-            const ftKey = `${comptimeConsts.getString(fmClsKey)}.${comptimeConsts.getString(fmName)}`
-            if (classFieldTypes.has(ftKey) == 1) {
-                const tStr = classFieldTypes.getString(ftKey)
-                return comptimeDepth > 0 ? ctVal(interpNewString(tStr)) : constVal(addStringConst(tStr))
-            }
-        }
-        // D118 Execute 1: f.annotations → FieldMeta.annotations (AnnotationMeta 数组)。
-        // 经 interpBuildTypeInfo 填充 InternPool FLD|key 后 interpGetField 读。
-        // ctVars 绑 string 暂留 Execute 3 根治(仅 f.annotations 迁 Meta object read)。
-        if (member == "annotations" && comptimeDepth > 0 && comptimeConsts.has(fmClsKey) == 1) {
-            const faClsName = comptimeConsts.getString(fmClsKey)
-            interpBuildTypeInfo(faClsName)
-            const fldKey = `FLD|${faClsName}.${comptimeConsts.getString(fmName)}`
-            if (internPool.has(fldKey) == 1) {
-                return ctVal(interpGetField(parseInt(internPool.getString(fldKey)), "annotations"))
-            }
-            return ctVal(interpNewArray(""))
-        }
-    }
     if (nGetKind(objNode) == "IDENT") {
         const eName = nGetS1(objNode)
         const enumKey = `${eName}.${member}`

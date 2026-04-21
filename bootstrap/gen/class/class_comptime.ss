@@ -95,16 +95,12 @@ function cloneAstNode(id: int): int {
 // Resolve an AST node (after fold) to its compile-time string literal.
 // STRING_LIT → its text; TEMPLATE_LIT → concat of fragments where TMPL_FRAG_EXPR
 // inner node is recursively resolved (folded IDENTs now appear as STRING_LIT).
+// Precondition: foldComptimeIdentsInTree has run, so IDENT / MEMBER_ACCESS
+// bindings have been rewritten to literals — no branch needed for them here.
 function resolveComptimeString(id: int): string {
     if (id <= 0) { return "" }
     const k = nGetKind(id)
     if (k == "STRING_LIT") { return nGetS1(id) }
-    // D095 FieldMeta: `f.name` where f has been folded to STRING_LIT — .name
-    // on a string literal is self (the field name itself).
-    if (k == "MEMBER_ACCESS" && nGetS1(id) == "name") {
-        const mObj = nGetI1(id)
-        if (nGetKind(mObj) == "STRING_LIT") { return nGetS1(mObj) }
-    }
     if (k == "TEMPLATE_LIT") {
         const list = nGetList(id)
         if (list == "") { return "" }

@@ -1,7 +1,7 @@
 // gen/stmts_loop_forin.ss — for-in / for-of 循环。
-// D117 Execute 4 后:保留 comptime ct-array unroll、obj.fields() runtime
-// unroll(Execute 5 迁)、ARRAY_LIT unroll、runtime for-in。反射 sidecar Map
-// 分支(cls.methods / f.annotations / m.annotations / a.args)全删,走
+// 路径:ct-array unroll(comptime iterable 数组)、obj.fields() runtime unroll
+// (METHOD_CALL 绑 string 供 obj[name] bracket)、ARRAY_LIT unroll、runtime
+// for-in。cls.fields MEMBER_ACCESS 走 ct-probe 绑 Meta object ctVars,经
 // evalMemberAccess interpGetField 统一 Meta object read。
 
 import { genBlock, genNestedBlock } from "./stmts_core"
@@ -9,7 +9,7 @@ import { genBlock, genNestedBlock } from "./stmts_core"
 // Compile-time for-in unroll. itemCsv is a comma-separated list of the values
 // the loop variable takes on each iteration — from classFields when iterating
 // obj.fields(), or from stringLitArrayCsv when iterating a string-literal array.
-function genForInUnrolled(id: int, itemCsv: string, classContext: string = "") {
+function genForInUnrolled(id: int, itemCsv: string) {
     const itemName = nGetS1(id)
     const bodyId = nGetI2(id)
 
@@ -29,10 +29,6 @@ function genForInUnrolled(id: int, itemCsv: string, classContext: string = "") {
     const savedLoopStack = loopBlockStackSaved
     breakLabel = afterLabel
     loopBlockStackSaved = blockPtrVarStack
-
-    // D095 FieldMeta: when looping over cls.fields, bind class context so
-    // f.name / f.type can resolve per iteration.
-    if (classContext != "") { comptimeConsts.set(`${itemName}.__class`, classContext) }
 
     let i = 0
     for (itemVal in items) {
@@ -61,7 +57,6 @@ function genForInUnrolled(id: int, itemCsv: string, classContext: string = "") {
     }
 
     comptimeConsts.delete(itemName)
-    if (classContext != "") { comptimeConsts.delete(`${itemName}.__class`) }
 
     emitIR(`${afterLabel}:`)
     terminated = 0
@@ -107,7 +102,7 @@ function genForIn(id: int) {
         const fieldsClass = resolveObjClass(fieldsObjId)
         if (fieldsClass != "" && classFields.has(fieldsClass) == 1) {
             const fsStr = classFields.getString(fieldsClass)
-            genForInUnrolled(id, fsStr, fieldsClass)
+            genForInUnrolled(id, fsStr)
             return
         }
     }

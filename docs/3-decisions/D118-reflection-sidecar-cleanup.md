@@ -1,6 +1,6 @@
 # D118: 反射 Sidecar 彻底清理 — D097 §后续工作 5 承接
 
-**Status:** Executing (Execute 0-2 Done,3-5 待执行,2026-04-21 Plan 起草 + Execute 1-2 Done)
+**Status:** Executing (Execute 0-3 Done,4-5 待执行,2026-04-21 Plan 起草 + Execute 1-3 Done)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / **D097 §后续工作 5 "逐步删除 classXxxAnnotation* Map、__* sidecar、nGetS1(x)== 字符串分支"** / D117 Execute 5 Done(interpCollectFields / interpCtFieldsArray 两函数已删,commit `6e264fd`)/ D098 §Phase B(Meta 对象 InternPool 承载)/ D111 §决策 1 internPoolGetOrInsert / D095 Stage C(FieldMeta reflection 源头)/ D096 L2κ(m.annotations reflection 源头)
 **Date:** 2026-04-21
 
@@ -181,14 +181,15 @@ for (ap in nGetList(nGetI4(parseInt(classNodeIds.getString(typeName)))).split(",
    - ✓ §决策 5 spot-check:`grep interpBuildTypeInfo\|AnnotationMeta\|FieldMeta\|MethodMeta bootstrap/pir/` 零命中,Meta 构造路径不经 PIR liveness,RC 误判风险 = 0
    - ✓ §新张力 2 **消解**:accessor get+set 两个独立 FUNC_DECL 通过 `.get`/`.set` 后缀独立 MethodMeta,原 CSV collapse 形态永久消除
 
-3. [ ] Planned — **Execute 3 (member_access.ss 22-32 for-in 边界根治 Class C + 收敛 Class B 2 处)**:
-   - `stmts_loop_forin.ss` for-in unroll 绑 f 为 FieldMeta object tvId(非 string name),ctVars entry type=object
-   - `class_comptime.ss:104` `MEMBER_ACCESS && nGetS1 == "name"` 合并至 Meta object ctVars fold 路径统一处理(Class B 点位 1)
-   - `exprs.ss:25` `MEMBER_ACCESS && nGetS1 == "name"` isCtStringIdx 合并同上(Class B 点位 2)
-   - 删 `member_access.ss:22-32` f.name/.type/.annotations string-ctVars 三分支
-   - 跑 d095/d096 全系列 + Meta fold 测试回归
-   - linter 预期:M2 -40 / M4 -4 / N2 -225
-   - RED 命令:`grep -rn "classFieldAnnotations\|classFieldAnnotationArgs\|classMethodAnnotations" bootstrap/ \| wc -l` 全 0
+3. [x] Done at `bootstrap/eval/member_access.ss:4-8` + `bootstrap/gen/stmts/stmts_loop_forin.ss:12-67,108` + `bootstrap/gen/class/class_comptime.ss:98-108` + `bootstrap/gen/exprs/exprs.ss:15-50`(2026-04-21) — **Execute 3 (member_access for-in 边界根治 Class C + 收敛 Class B 2 处)**:
+   - ✓ `stmts_loop_forin.ss:12-67` genForInUnrolled 签名 `classContext: string = ""` 参数整删,L35+L64 `comptimeConsts.set/delete(${itemName}.__class, ...)` sidecar 两处整删,L108 METHOD_CALL `obj.fields()` 调用点 `genForInUnrolled(id, fsStr)` 2 参数形态(原 3 参数)。cls.fields MEMBER_ACCESS 走 L80-102 ct-probe 绑 FieldMeta object 到 `ctVars[${currentFunc}:${itemName}]`,已在 L94 具备;obj.fields() METHOD_CALL 继续绑 string comptimeConsts 供 `obj[name]` bracket access(无 class context 语义)
+   - ✓ `class_comptime.ss:98-108` resolveComptimeString 删 `MEMBER_ACCESS.name && mObj=STRING_LIT → nGetS1(mObj)` 4 行分支(Class B 点位 1)—— foldComptimeIdentsInTree L144-149 Meta object 路径已整体 rewrite MEMBER_ACCESS 为 STRING_LIT,不再出现 mObj=STRING_LIT 的未 fold 残骸
+   - ✓ `exprs.ss:15-50` isCtStringIdx + resolveCtString 删 `MEMBER_ACCESS.name && mObj=STRING_LIT` 子分支 + 删 `comptimeConsts.has(mObj)` 子条件(Class B 点位 2)—— 保留 `mObj=IDENT + ctVars-object` Meta object ctVars fold 路径,`this[f.name]` d095_stage_b method gen 期依赖此分支
+   - ✓ `member_access.ss:4-8` evalMemberAccess 删 L7-33 整段 `comptimeConsts.has(fmName) && member==name/type/annotations` 三分支 + `fmClsKey=${fmName}.__class` sidecar 读取(Class C 整个根治)—— genForInUnrolled L39 `comptimeConsts.set(itemName, itemVal)` 仍保留(obj.fields() METHOD_CALL 路径),但 L14-32 的 `__class` sidecar 读 + classFieldTypes/classFieldAnnotations Map 查询全随 Class A 删除后同步消失
+   - ✓ bootstrap 固定点 + tests 215 passed / 4 pre-existing failed(spring_web_params/harness_task/d096_p4_l2_reactive/harness_bug)一致
+   - ✓ 反射 5 测试全绿:d095_getter / d095_setter / d095_stage_b(ToString + dual @methodOf)/ d096_p4_l2z(f.annotations mixed + all-empty)/ d096_p4_l2h(嵌套 annotation_args)
+   - ✓ `bin/ss run tools/reflection_health_linter.ss` **GATE PASS — no regressions**:本轮 delta(vs Execute 2 后 baseline `76438/3009/382190`)M2 -222 / M4 -13 / N2 -1110 / M1 -21 / M3a -44 / N3 -1818 **全方向 PROGRESS**(超 L190 预期 M2 -40/M4 -4/N2 -225);累计 vs 全 baseline M4 -41 / M5 -11 / M7b -2 / F1 gen_decls.ss 690 / N3 -4796 PROGRESS;M2/N2 仍在 tol 内(M2 +90/tol ±380,N2 +450/tol ±1903)
+   - ✓ RED 校验:`grep -rn '__class\|comptimeConsts.has(nGetS1' bootstrap/eval/member_access.ss \| wc -l` **2→0**
 
 4. [ ] Planned — **Execute 4 (D097 §后续工作 5 Status 回写 + baseline record + D118 Status Done)**:
    - D097 §后续工作 5 段落(L74-L84)各条回写 `[x] Done at <file:line>`
