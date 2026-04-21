@@ -90,13 +90,11 @@ function interpDoubleOp(op: string, a: double, b: double): int {
     return newTvNull()
 }
 
+// 5 标量(int/bool/string/null/type)依赖 InternPool dedup 不变量,lid==rid 即 Value.eql
+// double 未入 InternPool(NaN/精度边界留 Phase C),保 Map 深比较
 function interpValEquals(lid: int, rid: int): int {
     const lk = tvKindOf(lid)
-    const rk = tvKindOf(rid)
-    if (lk != rk) { return 0 }
-    if (lk == "int" || lk == "bool") { return tvIntOf(lid) == tvIntOf(rid) ? 1 : 0 }
-    if (lk == "string") { return tvStringOf(lid) == tvStringOf(rid) ? 1 : 0 }
-    if (lk == "null") { return 1 }
+    if (lk != tvKindOf(rid)) { return 0 }
     if (lk == "double") { return tvD1.getString(lid + "") == tvD1.getString(rid + "") ? 1 : 0 }
     return lid == rid ? 1 : 0
 }

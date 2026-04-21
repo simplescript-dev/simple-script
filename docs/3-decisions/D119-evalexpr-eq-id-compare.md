@@ -326,9 +326,37 @@ Execute 完成后:
 - 2026-04-21:起草 D119 Plan,baseline linter 快照 M1=5126 / M2=76215 / M3a=12107 / M4=2997 / M5=1739 / F1 gen_decls=690 (PROGRESS vs baseline 691) GATE PASS
 - Execute 1/2/3 Planned,下轮启动
 
-### Execute 1: interpValEquals 塌缩 [ ]
-### Execute 2: genValStringCompare comptime 分支塌缩 [ ]
-### Execute 3 (可选): BINARY Eq/Ne 统一入口 [ ]
+### Execute 1: interpValEquals 塌缩 [x] Done at `bootstrap/eval/interp_op.ss:93-99`
+
+- 2026-04-21:`interpValEquals` 10 行(5 标量分支 + fallback)塌缩为 5 行(double 1 分支 + `lid==rid` fallback)。加 2 行 WHY 注释声明 InternPool dedup 不变量依赖。
+- **实测 vs 预估**(Δ from baseline D101):
+  | 指标 | 预估 Δ-from-cur | 实测 Δ-from-baseline | 实测 Δ-from-pre-change | 命中 |
+  |---|---|---|---|---|
+  | M1 | -6 | -14(cur=5120)| **-6** | **精确** |
+  | M2 | 下降 | +48(cur=76174)| -41 | 优于预估(pre-change +89 → post-change +48)|
+  | M3a | 下降 | -19(cur=12103)| **-4** | **精确**(去 2 个深比较分支调用)|
+  | M3b | 0 严格 | 0 | 0 | **精确** |
+  | M4 | 下降 | -43(cur=2994)| **-3** | **精确**(去 3 个分支 Dispatch)|
+  | M5 | 0 或下降 | -11 | 0 | **精确** |
+  | M6 | 0 严格 | 0 | 0 | **精确** |
+  | M7a | 0 严格 | 0 | 0 | **精确** |
+  | M7b | 0 严格 | -2 | 0 | **精确**(未抽新函数)|
+  | N2 | 下降 | +240 | -205 | 优于预估 |
+  | N3 | 下降 | -5058 | **-236** | **精确** |
+- **验证**:`./build.sh bootstrap` 固定点 PASS / `bin/ss test tests/phase5/` 158/4(4 pre-existing,stash 前后一致)/ linter GATE PASS,全 OK/PROGRESS 零 REGRESSION
+- **收敛判据**:`grep "tvStringOf(lid) == tvStringOf(rid)\|tvIntOf(lid) == tvIntOf(rid)" bootstrap/eval/interp_op.ss` 0 命中 ✓
+- **当前形态**:
+  ```ss
+  function interpValEquals(lid: int, rid: int): int {
+      const lk = tvKindOf(lid)
+      if (lk != tvKindOf(rid)) { return 0 }
+      if (lk == "double") { return tvD1.getString(lid + "") == tvD1.getString(rid + "") ? 1 : 0 }
+      return lid == rid ? 1 : 0
+  }
+  ```
+
+### Execute 2: genValStringCompare comptime 分支塌缩 [ ] Planned
+### Execute 3 (可选): BINARY Eq/Ne 统一入口 [ ] Planned
 
 ---
 
