@@ -162,7 +162,8 @@ function dispatcherServlet(req, resp) {
 - 新建 `bootstrap/gen/exprs/exprs_ct_reflect.ss`(命名前缀族归位扫描:`filepref=exprs_ct; find bootstrap -name "exprs_ct*"` 命中 `exprs_ct_builtin.ss` / `exprs_ct_call.ss` / `exprs_ct_enum.ss` @ `bootstrap/gen/exprs/`,**归同族**)
 - `genValCtReflectClasses(astId: int): int`:遍历 `interpClasses` + `classFields` Map keys(去重合集)→ 对每个 name 调 `interpBuildTypeInfo(name)` → 走 `interpArrayPush` 进 `interpNewArray("")` → 返回 `ctVal(arrId)`
 - `exprs_ct_builtin.ss` dispatch 入口识别 `MEMBER_ACCESS reflect + METHOD_CALL classes`(特殊内置 namespace `reflect.classes`)→ 派发到 `genValCtReflectClasses`
-- **验证**:`tests/phase5/d120_reflect_classes.ss` 最小 test(3 个 class,for-in 打印 `cls.name`)固定点 + GREEN
+- **(§A.4 #3 实测追补,不可省)** 扩 `bootstrap/gen/stmts/stmts_loop_forin.ss:74-97` ct-array unroll 入口:ctProbe trigger 从"iterableId kind ∈ {MEMBER_ACCESS}"扩至"任意 kind,只要 `genVal(iterableId)` 返回 `isCt == 1 && interpType(payload) == "array"`"。这样 `reflect.classes()` 的 METHOD_CALL 返回 ctVal Array<ClassMeta> 自然进入 ct-array 展开路径,不需在 for-in 入口白名单加 "classes" method name case
+- **验证**:`tests/phase5/d120_reflect_classes.ss` 最小 test(3 个 class,for-in 打印 `cls.name`)固定点 + GREEN + IR grep 无 `ss_arrayLen/ss_arrayGet/forin.cond` 即未命中 runtime 分支
 - **单一判据命中**(2) 兑现
 
 ### Phase 2 (独立 D 文档 D121+): `AnnotationMeta.args` Map 形态
@@ -377,7 +378,48 @@ function collectAllClassNames(): string {
 
 1. **假设**:`interpClasses` + `classFields` 双注册表在 codegen 阶段 `reflect.classes()` 被调时已全部填充。**挑战**:若 codegen 仍在生成中(某个 CLASS_DECL 的字段分析触发 comptime 块,此时其他 class 未注册),枚举返回**部分**集合。**验证**:grep `reflect.classes` 调用栈,确认必须在 **Pass 2 codegen 后期** 或**主函数 codegen**(所有全局声明已处理完)才可调。若不满足 → Phase 1 需加 codegen pass-order 检查并在 comptime 块早期调用时 `comptimeError`。
 2. **假设**:`AnnotationMeta.args: Array<string>` 当前对 `@RestController`(无参注解)已足够,`ann.name` 可用。**挑战**:`@RequestMapping("/api")` 单参数 / `@GetMapping(path="/search", method="GET")` 多参数,Array<string> 如何承载?Phase 1 只用 `ann.name` 可跑最小 test,`ann.args` 等值访问**必然**触 Phase 2 阻塞。**对策**:Phase 2 D121+ 独立承接,Phase 1 不强塞。
-3. **假设**:`for cls in reflect.classes()` 能被 D088 Phase 5 `for-in unroll` 编译期展开。**挑战**:D088 Phase 5 展开入口是 `obj.fields()` 和"字符串字面量数组"(@ `gen_stmts.ss:666,677`)。`reflect.classes()` 返回的是 Array<ClassMeta>(Meta 对象数组),**不是字符串数组**。展开路径需扩展到 Meta 对象数组。**验证**:Phase 1 Execute 时必须跑 `bin/ss run --emit-ir` 确认生成的 IR 是**完全展开**(逐个 `cls.name` 静态 load)还是**保留循环**(runtime iterate Array)。若后者 → Phase 1 范围扩到 for-in unroll 入口增强,工程量 +30%。
+3. **假设**:`for cls in reflect.classes()` 能被 D088 Phase 5 `for-in unroll` 编译期展开。**挑战**:D088 Phase 5 展开入口是 `obj.fields()` 和"字符串字面量数组"(@ `bootstrap/gen/stmts/stmts_loop_forin.ss:68-177`,旧引用 `gen_stmts.ss:666,677` 已随 D116 物理拆分迁此)。`reflect.classes()` 返回的是 Array<ClassMeta>(Meta 对象数组),**不是字符串数组**。展开路径需扩展到 Meta 对象数组。
+
+   **Execute 前实测(2026-04-21,本 D 文档 Plan 轮)**:
+
+   - **Probe**: `tests/phase5/d120_probe_array_lit_obj.ss`(ARRAY_LIT<class IDENT> 在 runtime 上下文):
+
+     ```ss
+     class Item { name: string }
+     function main() {
+         const a = new Item(name: "first")
+         const b = new Item(name: "second")
+         for (m in [a, b]) { print(m.name) }
+     }
+     ```
+
+   - **命令**: `bin/ss build tests/phase5/d120_probe_array_lit_obj.ss --emit-ir` → `tests/phase5/d120_probe_array_lit_obj.ll:5093-5142`(main 全体)
+
+   - **IR 实测结果**(runtime 分支标志逐条命中):
+     - L5109 `%8 = call ptr @ss_newArrayPtr(i32 2)` + L5110-5113 两次 `ss_arraySet` — ARRAY_LIT 运行时构造(未展开成 2 条 inline body)
+     - L5114 `%11 = call i32 @ss_arrayLen(ptr %8)` — 对应 `stmts_loop_forin.ss:119` 的 runtime 分支入口 `lenReg = nextReg(); emitIR(...@ss_arrayLen...)`
+     - L5115-5116 `alloca i32` + `store i32 0` — 对应 `:122-123` 的 idx alloca
+     - L5118-5135 `br label %forin.cond.153` + `forin.cond.153:` / `forin.body.154:` / `forin.update.156:` / `forin.after.155:` — 标准 runtime for-in 四 label 结构(对应 `:132-134` 生成),**label 后缀是 `.153/.154/.156/.155` 非 `.unroll.*`**(后者是 `genForInUnrolled :24,:42,:61` 的展开标志)
+     - L5124 `%15 = call i64 @ss_arrayGet(ptr %8, i32 %13)` — 对应 `:153` runtime 分支 `ss_arrayGet`
+     - **未观察到**: `alloca ptr` ( `:17` unroll 展开 itemLL 标志) / `store ptr ${strConst}, ptr %${itemLLName}` (`:38`) / `forin.unroll.after` label (`:24`)
+
+   - **展开路径判定**:命中 `stmts_loop_forin.ss:118-176` **runtime 分支**;三条 unroll 入口全部 miss:
+     - ct-array unroll(`:74-97`): `iterableId kind == "MEMBER_ACCESS"` 不成立(本 probe 是 `ARRAY_LIT`),且 runtime 上下文 `comptimeDepth == 0`
+     - obj.fields unroll(`:100-108`): `getMethodName(iterableId) == "fields"` 不成立(本 probe iterable 不是 METHOD_CALL)
+     - ARRAY_LIT unroll(`:110-116`): `stringLitArrayCsv(iterableId)` @ `bootstrap/checker/check_stmts.ss:22` 硬约束"每个元素 kind == STRING_LIT"拒绝 IDENT 元素 → 返回 "" → L112 `if (litCsv != "")` 跳过展开
+
+   - **附带观察(非 §A.4 #3 核心,但 Execute 1 range out 记录)**: IR L5117 `alloca i64` / L5127 `call ptr @ss_int_to_string(i32 %16)` — `inferArrayElemType(ARRAY_LIT<class>)` 回退 i64 default,`m.name` 字段访问丢失(转字面的 int→string)。展开路径走 ctVal 绑定后自然绕开,不是 §A.4 #3 阻塞项。
+
+   - **对 `reflect.classes()` 的外推**:`reflect.classes()` AST kind 为 METHOD_CALL。三条入口 hit 判定:
+     - L76 MEMBER_ACCESS trigger: **miss**(METHOD_CALL ≠ MEMBER_ACCESS)
+     - L100 method name "fields": **miss**(method name 是 "classes")
+     - L110 ARRAY_LIT: **miss**(METHOD_CALL ≠ ARRAY_LIT)
+
+     → 即使 `genValCtReflectClasses` 返回 ctVal Array<ClassMeta>,当前 for-in unroll 入口**不会认**,for-in 走 runtime 循环 → 违 §核心原则 3(comptime-only / runtime 消除反射)。
+
+   - **结论**:§A.4 #3 挑战**成立**(假设"现有 for-in unroll 覆盖 Meta 对象数组"为假)。
+
+   **对 Execute 1 范围的影响**:Execute 1 **必须**同批次扩展 for-in unroll 入口,不能只加 `genValCtReflectClasses`。根因路径(优先):将 L74-97 ct-array unroll 的 ctProbe trigger 从"iterableId kind 白名单"扩到"`genVal(iterableId)` 返回 `ctVal + interpType == "array"`",即任意返回 ct-array 的表达式(MEMBER_ACCESS / METHOD_CALL / IDENT comptime bound)均进入 ct-array 展开路径。这比在每个 comptime callable 处白名单加 method name / kind case 更收敛(避免 "每加一个 reflect.*() 就要在 for-in 入口加配套 case" 的双轨制)。工程量重估:+ 一个 genVal 触发路径 ≈ +15-20 LOC,低于原估 +30%。
 4. **假设**:`reflect.classes()` 读 `interpClasses` + `classFields` 双注册表合集不破 `feedback_reflection_root_cause_gate`。**挑战**:本 Plan 触碰反射路径,必须跑 `tools/reflection_health_linter.ss`,M1-M7 + N1-N5 全部不升。**对策**:Execute 轮按 D111 §步骤 0 模板预削减 M7b ≥ -1 抵消新 `genValCtReflectClasses` 函数 +1,其他组 bank check。
 5. **假设**:`d120_reflect_classes.ss` 最小 test 写好后能触发 `reflect.classes()` dispatch。**挑战**:`reflect` 作为 IDENT 是否需要 prelude 预声明 / 新 top-level symbol?**对策**:Execute 时若 `reflect` IDENT 未知 → 在 prelude.ss 加 `const reflect = new Reflect()` 样式声明(或内置 namespace sigil,grep 现有 `Map` / `Set` namespace 看约定)。
 
@@ -388,6 +430,7 @@ function collectAllClassNames(): string {
 Execute Phase 1 完成后:
 - `grep -rn "reflect\.classes\|genValCtReflectClasses" bootstrap/` → ≥ 2 命中(入口 + impl)
 - `bin/ss run tests/phase5/d120_reflect_classes.ss` → 输出 3 个 class names(顺序字典序稳定)
+- **IR 证展开(§A.4 #3 实测配套)**:`bin/ss build tests/phase5/d120_reflect_classes.ss --emit-ir 2>&1 | grep -E "forin\.(cond|body|update|after)\.\d+|@ss_arrayLen\(ptr .*@\.ct\.cls_arr" | wc -l` → `0`(`reflect.classes()` 在 main 中的 for-in 完全展开,runtime 分支 label 和 ss_arrayLen 调用均不出现)
 - `./build.sh bootstrap` → stage2 == stage3 固定点
 - `bin/ss test tests/phase5/` → 不新增 fail
 - `bin/ss run tools/reflection_health_linter.ss` → GATE PASS + 结构组 M3b/M4/M6/M7a/M7b/N4/N5 不升
@@ -401,13 +444,14 @@ Phase 2 / Phase 3 各自独立 D 文档兜底判据,本 D120 不承载。
 ### Plan(本轮起草) ⏳
 
 - 2026-04-21:起草 D120 Plan,范围锁定 Phase 1 `reflect.classes()` 最小可用 + Array<ClassMeta> 返回 + comptime-only 约束。Phase 2 `AnnotationMeta.args` 形态决策 + Phase 3 Spring Boot E2E 独立 D 文档承接
+- 2026-04-21(§A.4 #3 实测轮):probe `tests/phase5/d120_probe_array_lit_obj.ss` 跑 `--emit-ir`,确认 ARRAY_LIT<class IDENT> / METHOD_CALL 均走 `stmts_loop_forin.ss:118-176` runtime 分支(IR 含 `forin.cond/body/update/after` + `ss_arrayLen/ss_arrayGet`)。§A.4 #3 验证小节 + Phase 1 §范围 for-in unroll 入口扩展追补 + Execute 1 预估 LOC 60-100 + §A.5 IR grep 判据追加。未推 Execute 1 实现(遵循 §交互式单文档 / §范围锁定)
 
 ### Execute 1(Phase 1): `reflect.classes()` 最小可用 [ ] Planned
 
 - 待下轮启动 PSM 十问 + 五验 VCM
-- 预估 LOC:~40-80(新文件 `exprs_ct_reflect.ss` + `exprs_ct_builtin.ss` dispatch case + prelude `reflect` 预声明)
-- 预估度量影响:M7b +1 须 Step 0 预削减抵消;M2/N2 累计组 +50~150;M3a/M4 结构组 0 或微降(复用 interpBuildTypeInfo)
-- 依赖假设挑战 §A.4 #3(for-in unroll Meta 对象数组)必须先 Execute 前实测证
+- 预估 LOC(**2026-04-21 重估,依据 §A.4 #3 实测**):~60-100(新文件 `exprs_ct_reflect.ss` + `exprs_ct_builtin.ss` dispatch case + prelude `reflect` 预声明 + **`stmts_loop_forin.ss:74-97` ctProbe 入口扩 +15-20 LOC**)
+- 预估度量影响:M7b +1 须 Step 0 预削减抵消;M2/N2 累计组 +50~150;M3a/M4 结构组 0 或微降(复用 interpBuildTypeInfo);**stmts_loop_forin.ss 现 177 行 → 预估 +20 LOC ≈ 197 行,仍远低于 600 F1 上限**
+- 依赖假设挑战 §A.4 #3(for-in unroll Meta 对象数组)**已于 2026-04-21 实测**:probe `tests/phase5/d120_probe_array_lit_obj.ss` IR 证明 ARRAY_LIT<class IDENT>/METHOD_CALL 返回 ctVal 均走 runtime for-in → §A.4 #3 验证小节见上,Execute 1 范围追补 for-in unroll 入口扩展
 
 ### Phase 2 / Phase 3 [→] Deferred to D121+ / D122+
 
