@@ -469,6 +469,79 @@ function parseArgs(): string {
 5. **假设**:`tests/phase5/d120_reflect_classes.ss`(D120 Execute 1 test)当前不访问 `ann.args` —— 是的,D120 test 只遍历 `cls.name`,未触 args,所以 R1-A 升级不影响 D120 test 兼容。**验证**:Execute 2 前 `grep -n "args" tests/phase5/d120_reflect_classes.ss` 确认
 6. **假设**:Execute 2 升级 `buildAnnotationMetaArray` 会触发反射 baseline linter 的 M 组/N 组指标变化。**挑战**:此函数在 interp_obj.ss(eval family),不在反射统计口径内 / 在(待实测);Map tvId 分配可能增 M7b / N4(TypedValue 容器计数)。**对策**:Step 0 预削减 M7b ≥ -1 抵消 1 个新函数 / 新 Map 分配 + Execute 2 后跑 linter 确认无 REGRESSION
 
+   **实测追补**(2026-04-21 第四轮 Plan 轮,Plan 型不动代码,M/N 组指标定义 grep + buildAnnotationMetaArray R1-A 伪代码静态 AST delta 推演 + Step 0 预削减候选函数定位,见附录 B Plan 第四轮):
+
+   - **认知更正**:linter = **静态 AST 图论指标**扫 `bootstrap/*.ss`,**不是运行时 tvId 计数**。原推演"Map tvId 分配可能增 M7b / N4"基于错误认知 —— Map tvId 是编译器运行时 `allocTv("map")` 的状态,linter 代码 `collectSSFiles("bootstrap")` @ `tools/reflection_health_linter.ss:497` + `processFile` L292-311 读源码 tokenize/parse/visit,只看 bootstrap 源码本身的 FUNC_DECL / FOR_IN / IF / MEMBER_ASSIGN 等 AST 节点,不挂 eval 运行时分配
+   - **M/N 组指标定义 grep 证据** @ `tools/reflection_health_linter.ss:6-23`(文件头注释):
+     - M1=CC 总和(每函数 IF/WHILE/FOR/TERNARY/SWITCH_CASE/CATCH_CLAUSE/&&/|| +1)
+     - M2=AST 节点总数 / M3a=CALL+METHOD_CALL+NEW_EXPR callsite / M3b=最大入度
+     - M4=IF else-chain 长度和 + SWITCH case 数 / M5=VAR_DECL + 赋值节点
+     - M6=递归函数数 / M7a=单函数最大 IF 嵌套 / **M7b=FUNC_DECL+ARROW_FUNC 总数**
+     - N1=不同 AST kind 数 / N2=M2×floor(log2(N1)) / N3=所有节点深度累加
+     - N4=单节点 list 最大长度 / N5=MEMBER_ASSIGN 节点数
+   - **分层阈值**(`reflection_health_linter.ss:461-464` §规则 1.2):
+     - 累计组 6 项(M1/M2/M3a/M5/N1/N2)tol = baseline/200 ±0.5%,N1 保底 tol=1
+     - **结构组 8 项(M3b/M4/M6/M7a/M7b/N3/N4/N5)tol = 0 严格**
+   - **baseline 实读**(`tools/linter_baseline.txt` 2026-04-21):M1=5134 / M2=76126 / M3a=12122 / M3b=1879 / M4=3037 / M5=1750 / M6=32 / M7a=27 / M7b=676 / N1=34 / N2=380630 / N3=518111 / N4=321 / N5=0
+   - **累计组余量**(tol=baseline/200):M1 tol=±25 / M2 tol=±380 / M3a tol=±60 / M5 tol=±8 / N1 tol=±1 / N2 tol=±1903
+   - **R1-A 伪代码结构**(不抽 helper,单函数内两 pass):
+     ```
+     // pass1: 数 STRING_LIT 位置参数个数(用于单参→"value" / 多参→"0"/"1")
+     let posCount = 0
+     for (cp in nGetList(aId).split(",")) {
+         const cId = parseInt(cp)
+         if (cId > 0 && nGetKind(cId) == "STRING_LIT") { posCount = posCount + 1 }
+     }
+     // pass2: 写入 argsMap
+     let posIdx = 0
+     for (arp in nGetList(aId).split(",")) {
+         const argId = parseInt(arp)
+         if (argId <= 0) { continue }
+         const k = nGetKind(argId)
+         if (k == "STRING_LIT") {
+             const key = posCount == 1 ? "value" : `${posIdx}`
+             interpMapSet(argsMap, key, interpNewString(nGetS1(argId)))
+             posIdx = posIdx + 1
+         } else if (k == "NAMED_ARG") {
+             const nm = nGetS1(argId)
+             const vId = nGetI1(argId)
+             if (nGetKind(vId) == "STRING_LIT") {
+                 interpMapSet(argsMap, nm, interpNewString(nGetS1(vId)))
+             }
+         }
+     }
+     ```
+   - **R1-A 静态 AST delta 逐项推演**(相对原版 L134-139 `if argId>0 && STRING_LIT` 14 行内循环):
+     | 指标 | tol | delta 估 | 风险 | 原因 |
+     |---|---|---|---|---|
+     | M1 | ±25 | **+5** | 低 | 新 for pass1(+1)+ 新 if else-chain(+2)+ TERNARY(+1)+ 嵌套 if(+1)- 原 `&&` 合并(-1)+ `argId<=0 continue` IF(+1)|
+     | M2 | ±380 | **+20~+30** | 低 | 新 for pass1 约 10 节点 + 主循环新分支结构约 15-20 节点 |
+     | M3a | ±60 | **+2~+4** | 低 | interpNewMap / interpMapSet(替换 interpArrayPush/interpNewArray,净增 2-3)|
+     | M3b | 0 | **0** | 0 | ANN key schema 不变,入度分布不变 |
+     | M4 | 0 | **+1~+2** | **高** | 新 `if STRING_LIT / else if NAMED_ARG` chain=2 替换原单 if chain=1,净 +1;若嵌套内 if STRING_LIT 算 chain 顶层再 +1 |
+     | M5 | ±8 | **+4** | 低-中 | 新 let posCount + let posIdx(2 VAR_DECL)+ 2 ASSIGN |
+     | M6 | 0 | **0** | 0 | 不涉递归 |
+     | M7a | 0 | **+0~+1** | 中 | 新嵌套 NAMED_ARG 内层 if STRING_LIT = 内层 IF 深 2 层(外 for_in 内 2 层 IF)→ 若 buildAnnotationMetaArray 当前不是 baseline M7a=27 的贡献者则不影响;baseline M7a=27 需 Execute 2 前 single-file linter spot 查 |
+     | M7b | 0 | **0** | 0 | 不抽 helper 函数,`buildAnnotationMetaArray` FUNC_DECL 计数保留 1 个 |
+     | N1 | ±1 | **0** | 0 | 不引入新 AST kind(全复用 IF/FOR_IN/CALL/STRING_LIT/NAMED_ARG/TERNARY 等已存在 kind)|
+     | N2 | ±1903 | **+派生** | 0 | M2×log2(N1) 派生,N1 不变时跟随 M2 delta ×5 = +100~+150,余量 1903 充足 |
+     | N3 | 0 | **+20~+40** | **高** | 新节点深度累加(每新节点贡献其深度,嵌套更深节点贡献更多)|
+     | N4 | 0 | **0** | 0 | 无单个大 list fanout,baseline N4=321 来自远大 list |
+     | N5 | 0 | **0** | 0 | 无 `obj.field = val` 形式新增,baseline N5=0 维持 |
+   - **关键结构组风险清单**:
+     - ⚠ **M4 +1~+2**:tol=0 严格,必须 Step 0 削减 ≥2
+     - ⚠ **N3 +20~+40**:tol=0 严格,必须找等量削减
+     - ⚠ **M7a +0~+1**:tol=0 严格,Execute 2 前需单文件 probe 确认 buildAnnotationMetaArray 当前 IF 深贡献
+     - 其他均在累计组余量内或零增(≤0),低风险
+   - **Step 0 预削减候选函数定位**(bootstrap 全库范围内任一削减均可抵消 Execute 2 增量):
+     - **候选 A — `interpBuildTypeInfo` 方法段合并** @ `interp_obj.ss:196-232`:两段 for(AST own 扫 `classMethodsBlock` + CSV 尾部 skip `ownCount` 扫 handler-generated)可合并为**单 pass + 索引状态机**。预估削 1 FOR_IN(-1 M1 / -1 M4 chain / -~15 N3)+ 1 IF(-1 M1 / -1 M4 chain)+ 1 ownCount++ ASSIGN(-1 M5),**综合 -2 M4 / -~20 N3**。**收益最高**候选
+     - **候选 B — `interpMapDelete` CSV 重建循环** @ `interp_obj.ss:68-82`:while + TERNARY + IF 循环改 for_in + filter-join 等价写法。预估削 1 WHILE(-1 M1)+ 1 TERNARY(-1 M1)+ 1 let i / i++(-2 M5 / -3 节点)+ N3 -~5-10
+     - **候选 C — `interpMapGetKeys` while→for_in** @ `interp_obj.ss:84-95`:`while (i<parts.length()) { ... i=i+1 }` 改 `for (p in parts) { ... }`。预估削 let i + i=i+1(-2 M5)+ while→for CC 等价(M1=0)+ 节点压缩 -~5 N3
+     - **候选 D — buildAnnotationMetaArray 原版 `if argId>0 && STRING_LIT`** @ `interp_obj.ss:136`:升级时自然合并入主 if-chain(改成 `if argId<=0 continue` 早出),删 1 && -1 M1。已计入上方 R1-A delta
+   - **Step 0 打包推荐(A + C)**:-2 M4 / -1 M1 / -2 M5 / -~25 N3,覆盖 R1-A 核心风险 M4 和 N3;M7a 通过 Execute 2 前单文件 probe 确认后决定是否追加 B
+   - **结论落地**:假设 #6 挑战被实测**化解**,原"此函数在 interp_obj.ss(eval family),不在反射统计口径内 / 在(待实测)"二义 → 结论为**在**(interp_obj.ss 是 bootstrap/*.ss,linter scan 覆盖);"Map tvId 分配可能增 M7b / N4(TypedValue 容器计数)"**纠正为 0**(linter 只看源码静态 AST,不挂运行时 tvMap)。**Execute 2 预算锁定**:M4 ≤ 3037、N3 ≤ 518111、M7b ≤ 676、M7a ≤ 27 保底;Step 0 打包 A+C 兑现后 R1-A 升级可一次性 GATE PASS
+   - **Execute 2 落地约束补充**:(1)不抽 helper 函数(M7b 零增);(2)不引入新 AST kind(N1 零增);(3)不写 `obj.field = val` 形式(N5 零增保守);(4)Step 0 打包 A+C 在 Execute 2 同 commit 兑现,避免分轮 linter 中间态 REGRESSION
+
 ---
 
 ## A.4 单一判据兜底
@@ -521,6 +594,25 @@ Phase 3(D122 范围)单一判据不本 Plan 承载。
 - dedup 等价性核查:同 prefix 同 annName dedup 到同一 amId 是 Phase B 预存在行为(miss 分支 orphan tvId 亦预存在);实际 Spring Boot 场景不同方法 prefix 不同 → key 不冲突,args 独立存储,R1-A 升级后边界行为与 Phase B 等价
 - 结论落地 §A.3 #2 L435 后追补段 —— 无新 Execute 2 动作项,L141 调用表达式文本零改动,amId 分配 / tvMap key 写入顺序全保留
 - R1-A 方案隐藏假设 #1(§A.3 #1 Plan 第二轮化解)+ 假设 #2(本轮化解)**双清零**,Execute 2 入场零阻塞
+
+### Plan(第四轮:§A.3 #6 M7b 预算实测 + Step 0 预削减候选定位) [x] Done at 2026-04-21
+
+- 2026-04-21:Plan 型不动代码,化解 §A.3 #6 假设"Execute 2 升级 buildAnnotationMetaArray 会触发反射 baseline linter M/N 组指标变化 / 对策 Step 0 预削减 M7b ≥ -1"的实测评估 —— M/N 组指标定义 grep + buildAnnotationMetaArray R1-A 伪代码静态 AST delta 逐项推演 + Step 0 候选削减函数定位
+- **认知更正**(#6 原推演 bug 纠正):linter = 静态 AST 图论指标扫 `bootstrap/*.ss`(`tools/reflection_health_linter.ss:497` collectSSFiles("bootstrap")+ L292 processFile tokenize/parse/visit),**不是运行时 tvId 计数**。原"Map tvId 分配可能增 M7b / N4(TypedValue 容器计数)"基于错误认知,Map tvId 是编译器运行时状态,不进入 linter 源码静态 AST 口径
+- M/N 组指标定义 + 分层阈值证据链:
+  - `reflection_health_linter.ss:6-23` 文件头 M1-M7b / N1-N5 14 项定义(M7b=FUNC_DECL+ARROW_FUNC 总数 / N3=AST 深度累加 / N4=单节点 list 最大长度 / N5=MEMBER_ASSIGN)
+  - `reflection_health_linter.ss:461-464` 分层阈值:累计组 M1/M2/M3a/M5/N1/N2 tol=baseline/200 / **结构组 M3b/M4/M6/M7a/M7b/N3/N4/N5 tol=0 严格**
+- baseline 实读(`tools/linter_baseline.txt` 2026-04-21):M1=5134 / M2=76126 / M3a=12122 / M3b=1879 / M4=3037 / M5=1750 / M6=32 / M7a=27 / M7b=676 / N1=34 / N2=380630 / N3=518111 / N4=321 / N5=0
+- R1-A 静态 AST delta 逐项推演(不抽 helper,两 pass 伪代码):M1 +5 / M2 +20-30 / M3a +2-4 / M3b 0 / **M4 +1-2 (高风险 tol=0)** / M5 +4 / M6 0 / **M7a +0-1 (中风险 tol=0)** / **M7b 0 (不抽 helper)** / N1 0 / N2 +派生 / **N3 +20-40 (高风险 tol=0)** / N4 0 / N5 0
+- 关键结构组风险清单:(1)M4 +1-2 必削 ≥2;(2)N3 +20-40 必找等量削减;(3)M7a +0-1 需 Execute 2 前单文件 probe 确认 buildAnnotationMetaArray 当前 IF 深贡献;其他均在累计组余量内或零增低风险
+- Step 0 预削减候选函数定位:
+  - **候选 A — `interpBuildTypeInfo` 方法段合并** @ `interp_obj.ss:196-232`:两段 for(AST own + CSV 尾部)合并为单 pass + 索引状态机,估 -2 M4 / -1 M1 / -~20 N3 / -1 M5,**收益最高**
+  - 候选 B — `interpMapDelete` CSV 重建 while + TERNARY 改 for_in + filter-join,估 -2 M1 / -2 M5 / -~10 N3
+  - 候选 C — `interpMapGetKeys` while→for_in,估 -2 M5 / -~5 N3
+  - 候选 D — `buildAnnotationMetaArray` 原 `if argId>0 && STRING_LIT` 自然合并入主 if-chain,已计入上方 delta
+- Step 0 打包推荐 A+C:-2 M4 / -1 M1 / -2 M5 / -~25 N3,覆盖 R1-A 核心风险 M4 + N3;M7a 通过 Execute 2 前单文件 probe 确认后决定是否追加候选 B
+- 结论落地 §A.3 #6 L470 后追补段 —— #6 原"此函数是否在反射统计口径内(待实测)"澄清为**在**,"M7b / N4 受 Map tvId 影响"纠正为**零增**;Execute 2 预算锁定 + Step 0 打包 A+C 同 commit 兑现约束补充(避免分轮 linter 中间态 REGRESSION)
+- R1-A 方案隐藏假设 #1 + #2 + #6 **三大核心隐藏假设全清零**,Execute 2 入场约束链完整(#3 单参 value 惯例 / #4 数字 key 冲突 / #5 D120 test 不触 args 三条为 Java/Spring 领域约定,非 Execute 2 阻断项)
 
 ### Execute 1(Phase 2a): R2 注解参数 parser 命名语法 [ ] Planned
 
