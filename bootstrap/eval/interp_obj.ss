@@ -118,9 +118,13 @@ function interpNewVal(kind: string, payload: string): int {
     return newTvNull()
 }
 
-// TypeInfo 注册表由 Phase 3 建立;sub-d 阶段返回 null 占位
+// D117 §决策 2 — ClassMeta 实例 + InternPool name-based dedup。
+// tvS1 存 typeName 兼作 .name 语义载体;tvMap 直 set 绕 interpSetField 冗余层。
+// .fields/.methods/.annotations 填充留 Execute 3(member_access.ss on Meta)。
 function interpBuildTypeInfo(typeName: string): int {
-    return newTvNull()
+    const id = interpNewVal("object", typeName)
+    tvMap.set(`${id}|name`, `${interpNewString(typeName)}`)
+    return internPoolGetOrInsert(`CLS|${typeName}`, id)
 }
 
 function interpCollectFields(className: string): string {
