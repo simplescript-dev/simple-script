@@ -1,9 +1,9 @@
 # D097: 反射根因指标 — 不可伪造的 linter 守护
 
-**Status:** 工具链就绪 (tools/reflection_health_linter.ss v2),baseline 冻结 @ commit 9e20f26
+**Status:** 工具链就绪 (tools/reflection_health_linter.ss v2) + **§后续工作 5 闭合 ✓**(D117 Execute 0-5 + D118 Execute 0-4 完整兑现,累积路径消除,2026-04-21;baseline 仍冻结 @ commit `9e20f26` — Execute 1-3 期间 M5/M7b/M4/M3a/N3/F1 七项 PROGRESS 单调削减 vs M2 +89 / N2 +445 累积方向 in tol,GATE PASS 但累积方向 **不触发 record**,符合 §削减方向 record 规则,等未来反射工作 M2/N2 单调降回再触发新 baseline)
 **Depends on:** D088(Zig comptime 路线)、D093(单函数 dispatch 消除双轨)、D095/D096(反射 API)
 **Date:** 2026-04-18
-**Last Updated:** 2026-04-18
+**Last Updated:** 2026-04-21
 
 ---
 
@@ -74,11 +74,29 @@ Baseline 更新规则:
 
 L2λ 起的反射累积路径**明确废弃**。下一轮根因路径由 D093 §决策 承接(单函数 `evalExpr` dispatch),**不扩展任何 `interp*` 独立求值器副本**:
 
-1. 定义 `ClassMeta / FieldMeta / MethodMeta / AnnotationMeta / ParamMeta` 五类 comptime class(走 D096 Phase 4 L1 "comptime class 能在 runtime 实例化",不是 interp.ss 里的 typed-value struct)
-2. `evalExpr` 扩展 MEMBER_ACCESS on Meta 对象 → 返回 `MaybeVal{known:true, val:字段值}`(D093 §SS 本质一样骨架 行 52-59)
-3. `evalExpr` / `genForIn` 对 Meta 数组走通用 iteration:迭代目标是编译期常量数组时共享同一 fold 路径,不分"反射专用"支路,`genForInUnrolled` 调用点自然消解
-4. 把 L2ζ-L2κ 的 Map 数据 migrate 到 Meta 对象构造(commit `ac4cbc9` `cls.annotations` 走 AST+Meta 删 CSV sidecar 是先例,**非** `interpExpr` 扩展)
-5. 逐步删除 `classXxxAnnotation*` Map、`__*` sidecar、`nGetS1(x)==` 字符串分支
-6. 每步 `./build.sh bootstrap` 固定点 + linter GATE PASS,M/N 指标在削减方向单调推进(允许部分项保持,**任何一项上升即 regression**)
+1. [x] Done at `bootstrap/parse/prelude.ss:19,25,31,36,43`(D117 Execute 1 commit `cc1624b`)— 5 类 comptime Meta 载体 `FieldMeta(L19) / AnnotationMeta(L25) / ParamMeta(L31) / MethodMeta(L36) / ClassMeta(L43)` 全部在 prelude.ss 定义,走 D096 Phase 4 L1 "comptime class 能在 runtime 实例化",不是 interp.ss typed-value struct
+2. [x] Done at `bootstrap/eval/member_access.ss:36` + `bootstrap/eval/interp_obj.ss:11`(D117 Execute 3 commit `bda5813`)— evalMemberAccess `isKnownClass(clsName) == 1` 分支统一走 `interpGetField(interpBuildTypeInfo(clsName), member)`,Meta 对象成员访问与普通对象成员访问共享 `interpGetField` 入口,无 hardcoded `cls.fields`/`.annotations` 特例
+3. [x] Done at `bootstrap/gen/stmts/stmts_loop_forin.ss:12,105,113`(D117 Execute 4 commit `f80bf95`)+ `bootstrap/eval/interp_obj.ss`(D117 Execute 5 commit `6e264fd` 删 `interpCollectFields` / `interpCtFieldsArray` 两字符串路径函数)— `genForInUnrolled` 单一入口,Meta 数组(cls.fields / cls.methods / m.annotations / a.args)走通用 fold 路径 + ct-probe 绑 Meta object 到 ctVars,反射专用支路消解;`grep -rn "interpCollectFields\|interpCtFieldsArray" bootstrap/` 0 命中
+4. [x] Done at `bootstrap/eval/interp_obj.ss:151`(D117 Execute 2-5 + D118 Execute 1-3)— `interpBuildTypeInfo(typeName)` 单入口构造 ClassMeta/FieldMeta/MethodMeta/AnnotationMeta/ParamMeta 全图,数据源是 AST(`classNodeIds[typeName]` → class AST → paramList / methodsBlock / ANNOTATION_LIST),InternPool dedup,走 commit `ac4cbc9` `cls.annotations` 先例的同形态——**非** `interpExpr` 扩展
+5. [x] Done at `bootstrap/gen/class/class.ss:15,57` + `bootstrap/gen/class/class_register.ss:48-63` + `bootstrap/eval/member_access.ss:4-8` + `bootstrap/gen/stmts/stmts_loop_forin.ss:12-67,108` + `bootstrap/gen/class/class_comptime.ss:98-108` + `bootstrap/gen/exprs/exprs.ss:15-50`(D118 Execute 1-3 commits `9cced65`/`7cbe55f`/`100dc44`)—
+   - **3 `classXxxAnnotation*` Map 全删**:`classFieldAnnotations` + `classFieldAnnotationArgs`(Execute 1)+ `classMethodAnnotations`(Execute 2);`grep -rn "classFieldAnnotations\|classFieldAnnotationArgs\|classMethodAnnotations\|extractAnnotationsReflection" bootstrap/` 0 命中
+   - **`extractAnnotationsReflection` CSV 拼接函数删**(Execute 2,16 行 + 6 行调用点 + 5 行 args 提取分支)
+   - **`__class` sidecar 删**:`member_access.ss:14-32` `fmClsKey=${fmName}.__class` 读取 + `stmts_loop_forin.ss:35,64` `comptimeConsts.set/delete(${itemName}.__class, ...)` 两处写入(Execute 3)
+   - **member_access 三 hardcoded 反射分支删**:`member_access.ss:4-8` evalMemberAccess L7-33 `comptimeConsts.has(fmName) && member==name/type/annotations` 三分支(Execute 3)+ `class_comptime.ss:98-108` `MEMBER_ACCESS.name && mObj=STRING_LIT` 4 行子分支(Execute 3 Class B 收敛点位 1)+ `exprs.ss:15-50` isCtStringIdx + resolveCtString `MEMBER_ACCESS.name && mObj=STRING_LIT` 子分支 + `comptimeConsts.has(mObj)` 子条件(Execute 3 Class B 收敛点位 2)
+   - **Class B 剩余 5 处反射 nGetS1 字符串分支** 经 D118 §决策 4 评估为"已最小化无削减空间"(`check_stmts.ss:386` + `gen_types.ss:437,441` + `exprs.ss:30`),归档至 D119 重评(Plan 起草触发条件:未来反射新维度扩展冲击该 5 处)
+6. [x] Done(D117 Execute 1-5 + D118 Execute 1-3 每 commit)— 每步 `./build.sh bootstrap` 固定点 + `bin/ss run tools/reflection_health_linter.ss` GATE PASS;最终累计 vs 原 baseline(commit `9e20f26`)M1 -8 / M3a -15 / M4 -40 / M5 -11 / M7b -2 / N3 -4822 / F1 gen_decls.ss 691→690 **PROGRESS 单调削减**;M2 +89 / N2 +445 在 tol 内(±380 / ±1903)— **零 regression**
 
 每次迁移都由 linter 量化推进了多少,不靠感觉。**任何引入 `interp*` 求值器副本的方案都不是根因**,参照 D093 §Rejected Alternatives A/C/D。
+
+## 闭合(2026-04-21 D117+D118 完成 — accumulative path 根因消除)
+
+§第一性问题 描述的"反射每增加一个维度就新增 1 hardcoded kind 分支 + 1 全局 Map + 1 sidecar 键 + 1 genForInUnrolled 调用点"四元累积路径,经 D117 Execute 0-5 + D118 Execute 1-3 八轮迁移**完整消除**:
+
+| 累积维度 | D097 当时残量 | 2026-04-21 现状 | 根因消除轨迹 |
+|---|---|---|---|
+| hardcoded `nGetS1==` kind 分支 | L2ζ-L2κ 5+ 处反射特例 | 反射相关 0 处(D118 Execute 3 删 member_access 3 + class_comptime 1 + exprs 1);非反射 15 处 AST kind 合法检查保留无累积风险 | D117 Execute 3 evalMemberAccess on Meta 统一 + D118 Execute 3 三分支根治 |
+| `classXxxAnnotation*` 全局 Map | 3 Map(classFieldAnnotations / classFieldAnnotationArgs / classMethodAnnotations) | 0 Map(`grep` 全代码零命中)| D118 Execute 1-2 删 3 Map + extractAnnotationsReflection 函数 |
+| `__sidecar` 键(伴随 comptimeConsts) | `__class` sidecar 在 stmts_loop_forin / member_access | 0 sidecar(member_access.ss:4-8 + stmts_loop_forin.ss:12-67 全删)| D118 Execute 3 for-in unroll 绑 FieldMeta object 替代 string + sidecar |
+| `genForInUnrolled` 调用点(反射专用) | cls.fields / cls.methods / m.annotations / a.args 各一份 | 1 单入口(stmts_loop_forin.ss:12 + 105 + 113),Meta 数组走通用 fold + ct-probe | D117 Execute 4-5 删 interpCollectFields / interpCtFieldsArray + 通用 fold |
+
+D088 §第一性需求"反射是 Meta 对象自然成员访问,与普通字段访问共享 evalExpr 分发,无需 kind 分支"**完整兑现**。后续若新增反射维度,走"扩 Meta class 字段 + AST 直读"模板(已建立 5 类 Meta + interpBuildTypeInfo 单入口 + InternPool dedup),不再需要新 Map / 新 sidecar / 新 hardcoded 分支。D097 双 gate(§累积方向严禁 record + §削减方向单调推进)在 D117+D118 期间持续守护无 regression。

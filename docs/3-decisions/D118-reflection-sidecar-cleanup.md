@@ -1,6 +1,6 @@
 # D118: 反射 Sidecar 彻底清理 — D097 §后续工作 5 承接
 
-**Status:** Executing (Execute 0-3 Done,4-5 待执行,2026-04-21 Plan 起草 + Execute 1-3 Done)
+**Status:** **Done ✓** (Execute 0-4 全 Done + Execute 5 Archived 至 D119,2026-04-21 一日完成 Plan 起草 + Execute 1-4)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / **D097 §后续工作 5 "逐步删除 classXxxAnnotation* Map、__* sidecar、nGetS1(x)== 字符串分支"** / D117 Execute 5 Done(interpCollectFields / interpCtFieldsArray 两函数已删,commit `6e264fd`)/ D098 §Phase B(Meta 对象 InternPool 承载)/ D111 §决策 1 internPoolGetOrInsert / D095 Stage C(FieldMeta reflection 源头)/ D096 L2κ(m.annotations reflection 源头)
 **Date:** 2026-04-21
 
@@ -191,18 +191,18 @@ for (ap in nGetList(nGetI4(parseInt(classNodeIds.getString(typeName)))).split(",
    - ✓ `bin/ss run tools/reflection_health_linter.ss` **GATE PASS — no regressions**:本轮 delta(vs Execute 2 后 baseline `76438/3009/382190`)M2 -222 / M4 -13 / N2 -1110 / M1 -21 / M3a -44 / N3 -1818 **全方向 PROGRESS**(超 L190 预期 M2 -40/M4 -4/N2 -225);累计 vs 全 baseline M4 -41 / M5 -11 / M7b -2 / F1 gen_decls.ss 690 / N3 -4796 PROGRESS;M2/N2 仍在 tol 内(M2 +90/tol ±380,N2 +450/tol ±1903)
    - ✓ RED 校验:`grep -rn '__class\|comptimeConsts.has(nGetS1' bootstrap/eval/member_access.ss \| wc -l` **2→0**
 
-4. [ ] Planned — **Execute 4 (D097 §后续工作 5 Status 回写 + baseline record + D118 Status Done)**:
-   - D097 §后续工作 5 段落(L74-L84)各条回写 `[x] Done at <file:line>`
-   - D097 §第一性问题 L13-17 追加 "2026-04-21 D117+D118 后累积路径清除" 闭合段
-   - `bin/ss run tools/reflection_health_linter.ss record` 写入新 baseline(M2 -120 / M4 -4 / M5 -3 / M7b -1 / N2 -625 削减方向合规)
-   - commit message 显式标削减路径与 baseline delta
-   - D118 Status: Planned → **Done ✓**
+4. [x] Done at `docs/3-decisions/D097-reflection-root-cause-metrics.md:73-118` + `docs/3-decisions/D118-*.md` Header(2026-04-21)— **Execute 4 (D097 §后续工作 5 Status 回写 + baseline record 评估 + D118 Status Done)**:
+   - ✓ D097 §后续工作 5 段(L75-82)6 条全部回写 `[x] Done at <file:line>`,每条带 commit hash + 实证位置;item 5 子分项 4 行细化(3 Map 全删 / extractAnnotationsReflection / `__class` sidecar / member_access 三分支)各带子证据
+   - ✓ D097 追加 §闭合 段(2026-04-21 题头),四元累积路径(`nGetS1==` 分支 / `classXxxAnnotation*` Map / `__sidecar` 键 / 反射专用 `genForInUnrolled` 调用点)三列对照表(D097 当时残量 vs 现状 vs 根因消除轨迹),宣告 D088 §第一性需求 完整兑现 + D097 双 gate 期间无 regression
+   - ✓ D097 Header Status 追加 "§后续工作 5 闭合 ✓" + Last Updated 2026-04-18 → 2026-04-21
+   - ✗ **`bin/ss run tools/reflection_health_linter.ss record` 被 linter 拒**(2026-04-21)— `record 拒绝: M2 76126 → 76215 累积方向 / N2 380630 → 381075 累积方向`。D097 L102 + D102 §规则 2.1 R4 严守"累积方向严禁 record"(in tol 仅允 GATE PASS,**不允** record)。Plan L197 预期"M2 -120 / N2 -625 削减方向合规"是错估 — Execute 1-3 AST 直读 inline 比 CSV split 多节点(M2 +89 / N2 +445),M5 -11 / M7b -2 / M4 -40 / M3a -15 / N3 -4822 等 7 项 PROGRESS 单调削减**抵不过** M2 / N2 累积。**结论**:baseline 保留 commit `9e20f26` 原值不动,GATE PASS 即合规终态(任一指标 > baseline → exit(1) 阻 commit,**所有 ≤ → exit(0) GATE PASS** = 当前实际状态),M2 / N2 累积是 D118 §新张力 1 已预判的"加法在前削减在后"形态,Execute 1-3 三 commit 已净削减,本轮无需 record;若未来需 record,等 D119 / 未来反射工作 M2 / N2 单调降回 baseline 再触发
+   - ✓ RED 校验:`grep -n '\[ \]' docs/3-decisions/D097-reflection-root-cause-metrics.md` §后续工作 5 段 6→0(原段无标注违 P19,本轮加 [x] 后零残);`grep -n '\[ \]' docs/3-decisions/D118-reflection-sidecar-cleanup.md` Execute 4-5 段 2→0
+   - ✓ Execute 5 转 Archived 至 D119 Plan 触发条件,本轮无残留待办
 
-5. [ ] Optional / 延至 D119 — **Execute 5 (Class B 剩余 5 处 nGetS1 评估归档)**:
-   - `check_stmts.ss:386 / gen_types.ss:437, 441 / exprs.ss:30` 5 处 §决策 4 评估"保留"
-   - D118 §决策 4 结论文字化:**"D097 §后续工作 5 范围内已最小化"** 归档到 D118 §决策 4 补充段
-   - 若未来出现反射新维度扩展冲击这 5 处,启 D119 重评
-   - 本 Execute 仅文档整理,零代码改动
+5. [x] Archived at D119 Plan 触发条件文字化(2026-04-21)— **Execute 5 (Class B 剩余 5 处 nGetS1 评估归档)**:
+   - **归档结论**:`check_stmts.ss:386` METHOD_CALL `nGetS1=="fields"` for-in 入口检查 / `gen_types.ss:437` STRING_LIT `name` / `gen_types.ss:441` Meta 字段三元组 inferType / `exprs.ss:30` ctVars Meta object 判别(§决策 3 基础设施)— **5 处经 §决策 4 评估为"D097 §后续工作 5 范围内已最小化"**,无削减空间(物理收益 ≤ tol 或本身是 §决策 3 复用基础设施)
+   - **D119 触发条件**(Plan 起草):反射新维度扩展(如 ParamMeta 二级反射 / Generic 参数化 Meta / @derive 主线兑现等)冲击该 5 处的任何一处 → 启 D119 Plan 重评 Class B 削减空间;触发前**本项不展开**
+   - 本 Execute 仅文档整理,零代码改动,与 §决策 4 评估表一致
 
 ---
 
