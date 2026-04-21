@@ -433,6 +433,37 @@ function parseArgs(): string {
      - 不在 D121 范围:runtime 路径 `genIndexAccess` 对 Map 的分派补齐(需加 `inferType startsWith "Map<"` 走 `ss_map_get`)—— D122 Spring Boot 路由若需要 runtime Map 索引访问则另起独立 D 文档(D126+?)承接;D121 Phase 2b comptime-only 范围**不依赖** runtime Map 索引
    - **结论落地**(2026-04-21 第二轮更新):假设 #1 挑战被实测**化解**,原"若无 → 同步改 D120 test 或评估 Map 索引语法补齐(独立 D 文档)"路径 **不触发** —— D120 test 不触 args 不需改 / Map 索引语法在 comptime 维度已具备不需独立 D 文档。**动作项 (a) 已兑现**:`interpAsStr(INT)` 不字符串化(`tvS1` 无 entry),R1-A 位置参数访问约定**锁定 STRING_LIT key**(`.get("0")` / `.get("value")`),旧 Array `args[0]` 等价保留承诺**部分下调**但对 D120 已 GREEN 测试零影响。Execute 2 遗留单点**清零**,R1-A 方案锁定成立
 2. **假设**:`buildAnnotationMetaArray` 升级后 args InternPool dedup(`ANN|<prefix>.<name>` key)不破。**挑战**:R1-A 形态从 Array tvId → Map tvId,`tvMap["${amId}|args"]` 值类型变,但 key schema 未变 → InternPool dedup 仍按 ANN 名维度工作,不受影响。**验证**:Execute 2 后跑 reflection_health_linter M3b(ANN pool dedup 计数)确认
+
+   **实测追补**(2026-04-21 第三轮 Plan 轮,Plan 型不动代码,3 路 grep + read 证据链,见附录 B Plan 第三轮):
+
+   - **ANN key 构造位点**:`bootstrap/eval/interp_obj.ss:141` = `interpArrayPush(arr, internPoolGetOrInsert(`ANN|${annPoolPrefix}.${annName}`, amId))` —— key 纯 2-component 字符串拼接(`annPoolPrefix` ∈ {`CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>[.get|.set]`} + `annName` = `nGetS1(aId)` 注解名)—— **零 args 依赖**,bootstrap 全库该 `ANN|` key 构造仅此一处(grep `ANN\|` 命中 `interp_obj.ss:121` 注释 + `:141` 构造 + `:147` key schema 注释共 3 行,无其他 key 构造点)
+   - **tvMap "${amId}|args" 读写链**:
+     - **写入唯一点** `interp_obj.ss:140` `tvMap.set(`${amId}|args`, `${argsArr}`)` —— key 由 `amId`(来自 L131 `interpNewVal("object","AnnotationMeta")` 分配的新 tvId)+ 固定后缀 `|args` 组成,与 args **内容无关**
+     - R1-A 升级后 `argsArr` 类型 Array tvId → Map tvId,`${argsArr}` 字符串化结果形式不变(仍是 `${tvId}` 数字串),tvMap value **仍是 string `${tvId}`**,只是指向对象 kind 不同
+     - key schema `${amId}|args` **bit-by-bit 等价**,读路径(反射 API `ann.args` 字段读)按相同 key 查 —— R1-A 升级**不触碰** tvMap key 空间
+   - **InternPool 实现**:`bootstrap/lexer/intern_pool.ss:9-16`:
+     ```
+     function internPoolGetOrInsert(key: string, ifMissAlloc: int): int {
+         if (internPool.has(key) == 1) { return parseInt(internPool.getString(key)) }
+         internPool.set(key, `${ifMissAlloc}`)
+         internPoolKeyOf.set(`${ifMissAlloc}`, key)
+         return ifMissAlloc
+     }
+     ```
+     - 函数签名 `(key: string, ifMissAlloc: int): int` —— **仅 2 参**,函数体全部语句只操作 `key` 和 `ifMissAlloc`,**无任何 tvMap / tvI1 / tvS1 访问点**
+     - hit 路径:`internPool.getString(key)` 仅按 key 查值,返回 existing tvId
+     - miss 路径:`internPool.set(key, `${ifMissAlloc}`)` + `internPoolKeyOf.set(`${ifMissAlloc}`, key)` 写入双向映射,返回新 tvId
+     - **dedup 机制物理上不可能因 args 形态变化而漂移** —— InternPool 是纯 key-value 池,不感知 value 对应 tvMap 字段内容
+   - **R1-A 升级后行为推演**:
+     - ①ANN key 字符串 **仍由 annPoolPrefix + annName 两个 string 拼成**(L141 表达式 `` `ANN|${annPoolPrefix}.${annName}` `` bit-by-bit 等价),key 空间完全保留
+     - ②InternPool hit/miss 决策 **仅看 key 字符串**,不看 `tvMap["${amId}|args"]` value 类型 —— Array tvId 还是 Map tvId 对 dedup 零影响
+     - ③hit 分支返回 existing amId,其关联的 `tvMap["${amId}|args"]` 值已是 R1-A 升级后统一 Map tvId 形态;miss 分支新建 amId + 新 Map tvId 写入 `tvMap["${amId}|args"]` —— **两分支 post-condition 都兑现 args 单一 Map 形态**,不回退到 Array
+   - **dedup 等价性核查**:
+     - 现 Phase B 机制下"同 annPoolPrefix + 同 annName"dedup 到同一 amId(miss 分支 L131-140 分配的 amId + argsArr + tvMap entries 被 arr 不再引用 →  orphan tvId,Phase B 引入时预存在行为,不归 R1-A)
+     - 实际 Spring Boot 场景:不同方法 `@GetMapping(...)` 的 annPoolPrefix 不同(`MTH|Ctrl.getA` vs `MTH|Ctrl.getB`)→ `ANN|MTH|Ctrl.getA.GetMapping` vs `ANN|MTH|Ctrl.getB.GetMapping` **key 不冲突**,不 dedup,args 独立存储
+     - 同 prefix 同 annName 不同 args 的语义风险(eg 同方法两个 `@GetMapping`)在 Java/Spring 本身也不合法或需 repeatable annotation 机制(SS 不支持)→ R1-A 升级后此边界行为**与 Phase B 现状等价**
+   - **综合结论**:假设 #2 **证成** —— R1-A 升级 InternPool ANN dedup **不破**;Execute 2 后 reflection_health_linter M3b(ANN pool dedup 计数)预期值 = 同等 annotation 集场景下 Execute 2 前的基线计数(若 M3b 变化必定另有根因 —— 如 Execute 2 附带重构 annPoolPrefix 拼接 / 新增 annotation 源,不归 R1-A 形态升级)
+   - **Execute 2 落地无新约束**:R1-A 实现范围 = `prelude.ss:27` `args: Array<string>` → `args: Map<string,string>` + `interp_obj.ss:123-144` 内部 `argsArr` 从 `interpNewArray("")` 改 `interpNewMap()` + L134-139 循环读 NAMED_ARG(key) + STRING_LIT(value) / 位置映射 `value|0|1|2` key —— **L141 `internPoolGetOrInsert` 调用表达式文本零改动**,amId 分配顺序(L131)/ tvMap key 写入顺序(L132, L140)**全保留**,假设 #2 不引出任何 Execute 2 额外动作项
 3. **假设**:`@RequestMapping` 单参映射到 `"value"` key 符合 Java 惯例 + Spring Boot 用户期望。**挑战**:部分注解的位置参数不叫 `value`,如 `@Autowired` 无参、`@Qualifier("beanName")` 位置参数是 `value`(Java spec)—— 大部分情况确实叫 `value`,但存在反例(罕见)。**对策**:R1-A 方案接受"单参 → value" 惯例,罕见反例留独立 edge case D 文档;对反例注解用户可写 `@Custom(actualKey="val")` 显式命名
 4. **假设**:多参位置参数映射 `"0"/"1"/"2"` 索引字符串化不与命名参数 key 冲突。**挑战**:若用户写 `@Ann("a", "b", k: "c")`,按 R1-A 会生成 `{"0": "a", "1": "b", "k": "c"}` → 混合形态可行,但若用户命名参数 key 取名 "0" / "1" 会冲突。**对策**:Execute 轮在 buildAnnotationMetaArray 内检测 key 冲突,comptimeError `annotation arg name conflicts with positional index "0"`;用户极少用数字字符串作 key,实际冲突近乎不会出现
 5. **假设**:`tests/phase5/d120_reflect_classes.ss`(D120 Execute 1 test)当前不访问 `ann.args` —— 是的,D120 test 只遍历 `cls.name`,未触 args,所以 R1-A 升级不影响 D120 test 兼容。**验证**:Execute 2 前 `grep -n "args" tests/phase5/d120_reflect_classes.ss` 确认
@@ -478,6 +509,18 @@ Phase 3(D122 范围)单一判据不本 Plan 承载。
 - 结论落地 §A.3 #1 L422 "**动作项 (a) 实测落盘**" 子项 + L424 结论落地同步更新:R1-A 位置参数访问约定**锁定 STRING_LIT key**(`.get("0")` / `.get("value")`),旧 Array `args[0]` 等价保留承诺**部分下调** — 对 D120 已 GREEN 测试零影响(`grep args\[ tests/phase5/d120_reflect_classes.ss` 0 命中)
 - 拒绝备选路径:"修 `interpAsStr` 对 INT 返回 `${tvI1[id]}`" = 改 54 处 callsite 全局语义换 D121 单点兼容 = workaround(违反 feedback_no_workaround + callsite 语义双轨隐患);"扩 `index_access.ss:11` 对 INT payload 隐式转换" = ct 路径白名单(违反 D088 §反模式)
 - R1-A 方案锁定成立,Execute 2 遗留单点**清零**,可直接入场(用户确认方案后触发)
+
+### Plan(第三轮:§A.3 #2 InternPool dedup R1-A 升级不破实测) [x] Done at 2026-04-21
+
+- 2026-04-21:Plan 型不动代码,化解 §A.3 #2 假设"R1-A 升级后 args InternPool dedup(`ANN|<prefix>.<name>` key)不破"的 3 路证据实测(ANN key 构造位点 + tvMap `${amId}|args` 读写链 + InternPool 实现 key schema 不依赖 args 内容)
+- 实测证据链:
+  - ANN key 构造位点唯一 @ `bootstrap/eval/interp_obj.ss:141` = `` `ANN|${annPoolPrefix}.${annName}` `` 纯 2-component 字符串拼接,bootstrap 全库 `ANN\|` grep 仅 3 行(L121 注释 + L141 构造 + L147 注释),**零 args 依赖**
+  - tvMap `${amId}|args` 写入唯一点 @ `interp_obj.ss:140`:key 由 `amId`(来自 L131 `interpNewVal("object","AnnotationMeta")`)+ 固定后缀组成,**与 args 内容解耦**;R1-A 升级 value 类型 Array tvId → Map tvId,key schema bit-by-bit 等价
+  - InternPool 实现 @ `bootstrap/lexer/intern_pool.ss:9-16`:`internPoolGetOrInsert(key, ifMissAlloc)` 仅 2 参,函数体**无任何 tvMap / tvI1 / tvS1 访问**,纯 key-value 池 —— dedup 机制物理上不可能因 args 形态变化而漂移
+- 推演:①key 字符串等价 ②InternPool 仅看 key ③hit/miss 两分支 post-condition 都兑现 R1-A 单一 Map 形态 → 假设 #2 证成,R1-A 升级 InternPool ANN dedup **不破**
+- dedup 等价性核查:同 prefix 同 annName dedup 到同一 amId 是 Phase B 预存在行为(miss 分支 orphan tvId 亦预存在);实际 Spring Boot 场景不同方法 prefix 不同 → key 不冲突,args 独立存储,R1-A 升级后边界行为与 Phase B 等价
+- 结论落地 §A.3 #2 L435 后追补段 —— 无新 Execute 2 动作项,L141 调用表达式文本零改动,amId 分配 / tvMap key 写入顺序全保留
+- R1-A 方案隐藏假设 #1(§A.3 #1 Plan 第二轮化解)+ 假设 #2(本轮化解)**双清零**,Execute 2 入场零阻塞
 
 ### Execute 1(Phase 2a): R2 注解参数 parser 命名语法 [ ] Planned
 
