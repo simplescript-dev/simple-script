@@ -19,16 +19,17 @@ function evalMemberAccess(astId: int): int {
                 return comptimeDepth > 0 ? ctVal(interpNewString(tStr)) : constVal(addStringConst(tStr))
             }
         }
-        // D095 Stage C: f.annotations → comptime string array of annotation
-        // names. Empty array when no annotations. Only valid in comptimeDepth>0.
+        // D118 Execute 1: f.annotations → FieldMeta.annotations (AnnotationMeta 数组)。
+        // 经 interpBuildTypeInfo 填充 InternPool FLD|key 后 interpGetField 读。
+        // ctVars 绑 string 暂留 Execute 3 根治(仅 f.annotations 迁 Meta object read)。
         if (member == "annotations" && comptimeDepth > 0 && comptimeConsts.has(fmClsKey) == 1) {
-            const faKey = `${comptimeConsts.getString(fmClsKey)}.${comptimeConsts.getString(fmName)}`
-            const fmAnnArr = interpNewArray("")
-            const fmAnnCsv = classFieldAnnotations.getString(faKey)
-            if (fmAnnCsv != "") {
-                for (fap in fmAnnCsv.split(",")) { interpArrayPush(fmAnnArr, interpNewString(fap)) }
+            const faClsName = comptimeConsts.getString(fmClsKey)
+            interpBuildTypeInfo(faClsName)
+            const fldKey = `FLD|${faClsName}.${comptimeConsts.getString(fmName)}`
+            if (internPool.has(fldKey) == 1) {
+                return ctVal(interpGetField(parseInt(internPool.getString(fldKey)), "annotations"))
             }
-            return ctVal(fmAnnArr)
+            return ctVal(interpNewArray(""))
         }
     }
     if (nGetKind(objNode) == "IDENT") {

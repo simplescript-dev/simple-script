@@ -47,10 +47,9 @@ function emitStaticFieldInits() {
 
 // ── Class support ─────────────────────────────────────────────
 
-// L2ζ/L2η: fill namesMap[keyPrefix] with annotation name CSV. When withArgs=1,
-// also fill argsMap["${keyPrefix}.${annName}"] with STRING_LIT arg CSV.
-// withArgs=0 path ignores argsMap entirely — safe to pass namesMap as placeholder.
-function extractAnnotationsReflection(annListId: int, namesMap: Map, argsMap: Map, keyPrefix: string, withArgs: int) {
+// L2κ: fill namesMap[keyPrefix] with annotation name CSV。D118 Execute 1 后
+// field 路径改 AST 直读,本函数仅服务 method annotations(无 args 反射)。
+function extractAnnotationsReflection(annListId: int, namesMap: Map, keyPrefix: string) {
     if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return }
     const anns = nGetList(annListId)
     if (anns == "") { return }
@@ -58,19 +57,7 @@ function extractAnnotationsReflection(annListId: int, namesMap: Map, argsMap: Ma
     for (ap in anns.split(",")) {
         const aId = parseInt(ap)
         if (aId <= 0 || nGetKind(aId) != "ANNOTATION") { continue }
-        const annName = nGetS1(aId)
-        names = listAppendStr(names, annName)
-        if (withArgs == 0) { continue }
-        const argsCsv = nGetList(aId)
-        if (argsCsv == "") { continue }
-        let argVals = ""
-        for (arp in argsCsv.split(",")) {
-            const argId = parseInt(arp)
-            if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
-                argVals = listAppendStr(argVals, nGetS1(argId))
-            }
-        }
-        if (argVals != "") { argsMap.set(`${keyPrefix}.${annName}`, argVals) }
+        names = listAppendStr(names, nGetS1(aId))
     }
     if (names != "") { namesMap.set(keyPrefix, names) }
 }
@@ -135,11 +122,6 @@ function registerClass(id: int) {
                 } else {
                     fieldNames = listAppendStr(fieldNames, fName)
                     classFieldTypes.set(`${name}.${fName}`, strippedType)
-                    // D095 Stage C: PARAM.list holds ANNOTATION_LIST id as string (parser.ss:437).
-                    const fAnnListRaw = nGetList(pId)
-                    if (fAnnListRaw != "") {
-                        extractAnnotationsReflection(parseInt(fAnnListRaw), classFieldAnnotations, classFieldAnnotationArgs, `${name}.${fName}`, 1)
-                    }
                 }
             }
         }
@@ -168,7 +150,7 @@ function registerClass(id: int) {
                         // L2κ: non-abstract FUNC_DECL's I4 holds ANNOTATION_LIST id
                         // (parser.ss:273 via attachAnnotations); abstract overwrites
                         // I4 with 1, so abstract method annotations cannot be read here.
-                        extractAnnotationsReflection(nGetI4(mId), classMethodAnnotations, classMethodAnnotations, `${name}.${mName}`, 0)
+                        extractAnnotationsReflection(nGetI4(mId), classMethodAnnotations, `${name}.${mName}`)
                     }
                     let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }

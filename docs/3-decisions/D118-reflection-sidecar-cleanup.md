@@ -1,6 +1,6 @@
 # D118: 反射 Sidecar 彻底清理 — D097 §后续工作 5 承接
 
-**Status:** Planned (Execute 0-5 待执行,2026-04-21 Plan 起草)
+**Status:** Executing (Execute 0-1 Done,2-5 待执行,2026-04-21 Plan 起草 + Execute 1 Done)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / **D097 §后续工作 5 "逐步删除 classXxxAnnotation* Map、__* sidecar、nGetS1(x)== 字符串分支"** / D117 Execute 5 Done(interpCollectFields / interpCtFieldsArray 两函数已删,commit `6e264fd`)/ D098 §Phase B(Meta 对象 InternPool 承载)/ D111 §决策 1 internPoolGetOrInsert / D095 Stage C(FieldMeta reflection 源头)/ D096 L2κ(m.annotations reflection 源头)
 **Date:** 2026-04-21
 
@@ -159,14 +159,15 @@ for (ap in nGetList(nGetI4(parseInt(classNodeIds.getString(typeName)))).split(",
 
 0. [x] Done at `docs/3-decisions/D118-*.md`(2026-04-21) — **Execute 0 (Plan 起草)**:grep 盘点 3 类残余(Class A 13 处 + Class B 7 反射 nGetS1 + Class C 1 处 member_access 边界 + Class D 闭合)+ 架构对比(`interp_obj.ss:180-196` class-level annotations 纯 AST 直读作 field/method 模板)+ §决策 5 项 + §Rejected 6 项 + §新张力 5 项。linter 削减空间估算:M2 -135 / M4 -4 / M5 -5 / M7b -1 / N2 -675
 
-1. [ ] Planned — **Execute 1 (field annotations AST 直读 + 删 classFieldAnnotations/Args Map)**:
-   - 改 `interp_obj.ss:140-158` FieldMeta block — annotations 段从 classNodeIds[typeName] + 父类链遍历 PARAM.list(ANNOTATION_LIST id),inline 构造 AnnotationMeta(复用 L180-195 class-level annotations AST 模板)
-   - 删 `class.ss:15-16, 61-62` `classFieldAnnotations` + `classFieldAnnotationArgs` Map 定义与初始化
-   - 改 `class_register.ss:141` — 删 `extractAnnotationsReflection(..., classFieldAnnotations, classFieldAnnotationArgs, ...)` 调用
-   - 若 `class_register.ss:171` method annotations 仍用,extractAnnotationsReflection 函数保留至 Execute 2
-   - 改 `member_access.ss:22-32` — for-in unroll f.annotations 走 FieldMeta object interpGetField(§决策 3 方案 A 前半 — 仅 f.annotations 读改走 Meta,ctVars 绑定 string 暂留 Execute 4)或临时降级改查 FieldMeta.annotations via InternPool key
-   - linter 预期:M2 -35 / M5 -2 / N2 -175
-   - RED 命令:`grep -rn "classFieldAnnotations\|classFieldAnnotationArgs" bootstrap/ \| wc -l` 必须降至 0
+1. [x] Done at `bootstrap/eval/interp_obj.ss:140-175` + `class.ss:12-15,54-57` + `class_register.ss:50-63,122-125` + `member_access.ss:22-33`(2026-04-21) — **Execute 1 (field annotations AST 直读 + 删 classFieldAnnotations/Args Map)**:
+   - ✓ `interp_obj.ss:144-174` FieldMeta annotations AST 直读 — fromIC 路径 `nGetList(parseInt(fp))` / 非 fromIC `classFieldList(classNodeIds[typeName])` + `paramName(npId) == fName` 查 PARAM → `nGetList(npId)` 取 ANNOTATION_LIST id;inline AnnotationMeta 构造 + STRING_LIT args 遍历 + `ANN|FLD|${ftKey}.${annName}` InternPool dedup
+   - ✓ 删 `class.ss:15-16, 61-62` 2 Map(`classFieldAnnotations` + `classFieldAnnotationArgs`)定义与初始化
+   - ✓ 删 `class_register.ss` registerClass 内 field annotations 分支调用(原 L138-142 5 行)+ `extractAnnotationsReflection` 函数签名收敛 5→3 参数(删 `argsMap` + `withArgs`,删 args 提取 14 行分支)+ L153 调用点 method-only 3 参数形态(保留至 Execute 2 删函数)
+   - ✓ `member_access.ss:22-33` — f.annotations 走 `interpBuildTypeInfo` 填 `FLD|${cls}.${fld}` InternPool → `interpGetField(fieldMetaTvId, "annotations")`;ctVars 绑 string 暂留 Execute 3 Class C 根治
+   - ✓ bootstrap 固定点 + tests 215 passed / 4 pre-existing failed 一致
+   - ✓ `bin/ss run tools/reflection_health_linter.ss` GATE PASS:M1 +14 / M2 +349 / M3a +52 / N2 +1745 DRIFT 全在 tol 内;M4 -27 / M5 -11 / M7b -2 / N3 -2419 PROGRESS;F1 gen_decls.ss 691→690 PROGRESS。**Execute 2-3 未合并前短暂加法方向,Execute 2-3 完成后削减方向 record**
+   - ✓ RED 校验:`grep -rn "classFieldAnnotations\|classFieldAnnotationArgs" bootstrap/` 5→0
+   - ✓ simplify 审:Agent 1 Finding 3 应用(interp_obj.ss:148-152 改用 `classFieldList` + `paramName` 已存在 helper,与 class_register.ss:105-113 / gen_generic_class.ss:70-77 风格一致);Finding 1 field/class annotation block 复制粘贴延至 Execute 2 方法 annotations 迁时共抽 `buildAnnotationMetaArray` helper
 
 2. [ ] Planned — **Execute 2 (method annotations AST 直读 + 删 classMethodAnnotations Map + 删 extractAnnotationsReflection)**:
    - 改 `interp_obj.ss:162-177` MethodMeta block — annotations 段从 classNodeIds[typeName] + 父类链遍历 methodsBlock FUNC_DECL.I4,inline 构造 AnnotationMeta

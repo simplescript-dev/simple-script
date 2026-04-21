@@ -141,17 +141,34 @@ function interpBuildTypeInfo(typeName: string): int {
         tvMap.set(`${fmId}|name`, `${interpNewString(fName)}`)
         tvMap.set(`${fmId}|type`, `${interpNewString(classFieldTypes.getString(ftKey))}`)
         const fAnnArr = interpNewArray("")
-        for (fann in classFieldAnnotations.getString(ftKey).split(",")) {
-            if (fann == "") { continue }
-            const famId = interpNewVal("object", "AnnotationMeta")
-            tvMap.set(`${famId}|name`, `${interpNewString(fann)}`)
-            const faArgsArr = interpNewArray("")
-            const faArgKey = `${ftKey}.${fann}`
-            for (faarg in classFieldAnnotationArgs.getString(faArgKey).split(",")) {
-                if (faarg != "") { interpArrayPush(faArgsArr, interpNewString(faarg)) }
+        // AST 直读 annotations:fromIC fp 即 PARAM id;非 fromIC 在 classNodeIds[typeName] 按 fName 查 PARAM
+        let fpAnn = ""
+        if (fromIC) {
+            fpAnn = nGetList(parseInt(fp))
+        } else if (classNodeIds.has(typeName) == 1) {
+            for (np in classFieldList(parseInt(classNodeIds.getString(typeName))).split(",")) {
+                const npId = parseInt(np)
+                if (npId > 0 && paramName(npId) == fName) { fpAnn = nGetList(npId); break }
             }
-            tvMap.set(`${famId}|args`, `${faArgsArr}`)
-            interpArrayPush(fAnnArr, internPoolGetOrInsert(`ANN|FLD|${faArgKey}`, famId))
+        }
+        if (fpAnn != "") {
+            for (fap in nGetList(parseInt(fpAnn)).split(",")) {
+                const faId = parseInt(fap)
+                if (faId > 0) {
+                    const annName = nGetS1(faId)
+                    const famId = interpNewVal("object", "AnnotationMeta")
+                    tvMap.set(`${famId}|name`, `${interpNewString(annName)}`)
+                    const argsArr = interpNewArray("")
+                    for (arp in nGetList(faId).split(",")) {
+                        const argId = parseInt(arp)
+                        if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
+                            interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
+                        }
+                    }
+                    tvMap.set(`${famId}|args`, `${argsArr}`)
+                    interpArrayPush(fAnnArr, internPoolGetOrInsert(`ANN|FLD|${ftKey}.${annName}`, famId))
+                }
+            }
         }
         tvMap.set(`${fmId}|annotations`, `${fAnnArr}`)
         interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
