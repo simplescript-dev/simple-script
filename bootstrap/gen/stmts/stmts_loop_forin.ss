@@ -70,16 +70,23 @@ function genForIn(id: int) {
     const iterableId = nGetI1(id)
     const bodyId = nGetI2(id)
 
-    // D089 Phase 4 / D117 Execute 4 — 通用 ct-array unroll:iterable ct-resolve 到 array 则 body 走
-    // evalMemberAccess interpGetField(反射 sidecar Map 分支全删);ct-probe 过滤 runtime IDENT 避免 genVal IR 浪费。
+    // D089 Phase 4 / D117 Execute 4 / D120 §A.4 #3 — 通用 ct-array unroll:
+    // ctProbe 不依赖 kind 白名单,改按 "genVal 返回 ctVal array" 决定;
+    // 字面量短路(INT/STRING/DOUBLE/BOOL/NULL/ARRAY_LIT 由其他入口处理);
+    // 非字面量 kind 尝试 genVal,cache 供 runtime path 复用 reg,避免双重 IR。
     let ctProbe = comptimeDepth > 0 ? 1 : 0
-    if (ctProbe == 0 && nGetKind(iterableId) == "MEMBER_ACCESS") {
-        const mObj = nGetI1(iterableId)
-        const cpfk = `${currentFunc}:${nGetS1(mObj)}`
-        if (nGetKind(mObj) == "STRING_LIT" || (nGetKind(mObj) == "IDENT" && ctVars.has(cpfk) == 1 && ctInvalidated.has(cpfk) == 0 && interpType(payload(parseInt(ctVars.getString(cpfk)))) == "object")) { ctProbe = 1 }
+    let ctIterVal = 0
+    let ctIterReady = 0
+    if (ctProbe == 0) {
+        const iterKind = nGetKind(iterableId)
+        if (iterKind != "INT_LIT" && iterKind != "STRING_LIT" && iterKind != "DOUBLE_LIT" && iterKind != "TRUE_LIT" && iterKind != "FALSE_LIT" && iterKind != "NULL_LIT" && iterKind != "ARRAY_LIT") {
+            ctIterVal = genVal(iterableId)
+            ctIterReady = 1
+            if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") { ctProbe = 1 }
+        }
     }
     if (ctProbe == 1) {
-        const ctIterVal = genVal(iterableId)
+        if (ctIterReady == 0) { ctIterVal = genVal(iterableId); ctIterReady = 1 }
         if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") {
             const ctArrId = payload(ctIterVal)
             const ctArrLen = interpArrayLen(ctArrId)
@@ -115,7 +122,7 @@ function genForIn(id: int) {
         }
     }
 
-    const arr = genExpr(iterableId)
+    const arr = ctIterReady == 1 ? reg(ctIterVal) : genExpr(iterableId)
     const lenReg = nextReg(); emitIR(`  ${lenReg} = call i32 @ss_arrayLen(ptr ${arr})`)
 
     // Index variable

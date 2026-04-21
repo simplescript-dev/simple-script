@@ -11,6 +11,7 @@ import { ctCallDispatch } from "./exprs_ct_call"
 import { ctNewExprDispatch, ctMethodCallDispatch } from "./exprs_ct_obj"
 import { ctEnumListMethod, ctEnumValueOfMethod } from "./exprs_ct_enum"
 import { ctCallValue, ctStringMethod, ctArrayMethod, ctMapMethod, ctBuiltinMethod } from "./exprs_ct_builtin"
+import { ctReflectMethodDispatch } from "./exprs_ct_reflect"
 
 // Resolve a node to its compile-time string value:
 //   STRING_LIT → nGetS1

@@ -47,6 +47,12 @@ class ClassMeta {
     annotations: Array<AnnotationMeta>
 }
 
+// D120 Execute 1 Phase 1 — reflect namespace:checker 接受 `reflect.classes()` 语法,
+// comptime 在 method_call.ss 分派到 ctReflectMethodDispatch;runtime 入口不可达
+// (所有调用点需在 comptime block 内)。空实例仅为 checker IDENT resolve。
+class Reflect {}
+const reflect = new Reflect()
+
 // ── Higher-order array methods ────────────────────────────────
 
 function _ss_map(arr: List<int>, callback: fn): List<int> {

@@ -12,6 +12,9 @@ function evalMethodCall(astId: int): int {
             if (mcMethod == "names") { return ctVal(ctEnumListMethod(mcObjName, 1)) }
             if (mcMethod == "valueOf") { return ctVal(ctEnumValueOfMethod(mcObjName, astId)) }
         }
+        if (comptimeDepth > 0 && mcObjName == "reflect") {
+            return ctReflectMethodDispatch(astId, mcMethod)
+        }
         if (comptimeDepth == 0 && enumReady == 1 && enumDeclNodes.has(mcObjName) == 1) {
             if (mcMethod == "values") { return 0 - constVal(genEnumValues(mcObjName)) - 1 }
             if (mcMethod == "names") { return 0 - constVal(genEnumNames(mcObjName)) - 1 }
