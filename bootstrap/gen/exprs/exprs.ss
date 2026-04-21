@@ -96,11 +96,15 @@ function genVal(id: int): int {
 function genValStringCompare(op: string, id: int): int {
     const lv = genVal(nGetI1(id))
     const rv = genVal(nGetI2(id))
+    // InternPool dedup: 相同 string 同 payload id,与 interpValEquals string 分支对称
+    // 字典序无法从 id 推,Lt/Gt/Le/Ge 保深比较
     if (isCt(lv) == 1 && isCt(rv) == 1) {
-        const ls = interpAsStr(payload(lv))
-        const rs = interpAsStr(payload(rv))
-        if (op == "Eq") { return ctVal(interpNewBool(ls == rs ? 1 : 0)) }
-        if (op == "Ne") { return ctVal(interpNewBool(ls != rs ? 1 : 0)) }
+        const lp = payload(lv)
+        const rp = payload(rv)
+        if (op == "Eq") { return ctVal(interpNewBool(lp == rp ? 1 : 0)) }
+        if (op == "Ne") { return ctVal(interpNewBool(lp != rp ? 1 : 0)) }
+        const ls = interpAsStr(lp)
+        const rs = interpAsStr(rp)
         if (op == "Lt") { return ctVal(interpNewBool(ls < rs ? 1 : 0)) }
         if (op == "Gt") { return ctVal(interpNewBool(ls > rs ? 1 : 0)) }
         if (op == "Le") { return ctVal(interpNewBool(ls <= rs ? 1 : 0)) }

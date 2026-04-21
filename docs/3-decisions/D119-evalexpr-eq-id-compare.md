@@ -355,7 +355,41 @@ Execute 完成后:
   }
   ```
 
-### Execute 2: genValStringCompare comptime 分支塌缩 [ ] Planned
+### Execute 2: genValStringCompare comptime 分支塌缩 [x] Done at `bootstrap/gen/exprs/exprs.ss:99-111`
+
+- 2026-04-21:`genValStringCompare` comptime 分支塌缩。Eq/Ne 2 行从 `interpAsStr(payload(lv)) == interpAsStr(payload(rv))` 深 string 比较改为 `payload(lv) == payload(rv)` tvId 比较;Lt/Gt/Le/Ge 保深比较(字典序);加 `lp/rp` 中间变量解耦 payload 调用,`const ls/rs` 下移仅 Lt/Gt/Le/Ge 路径计算;加 2 行 WHY 注释声明 InternPool dedup 不变量依赖。
+- **方案演进**:初稿直接 inline `payload(lv) == payload(rv)` 导致 M3a +4(Eq/Ne 两条分支各复制 2 次 payload 调用);切换 `const lp = payload(lv); const rp = payload(rv)` 中间变量方案,payload 只 hoist 一次,M3a 回到持平。
+- **实测 vs 预估**(Δ from pre-change / Δ from baseline):
+  | 指标 | 预估 Δ-from-pre | 实测 Δ-from-pre | 实测 Δ-from-baseline | 命中 |
+  |---|---|---|---|---|
+  | M1 | -4(乐观) | **0** | -14(pre=-14,持平) | **偏差**(静态 linter 看不到 lazy eval 收益;但不回升) |
+  | M2 | 0 或轻微+ | +4 | +52 | 预期内(2 行 WHY 注释+中间变量) |
+  | M3a | 下降 | **0** | -19(pre=-19,持平) | **达成**(中间变量方案避免复制 payload 调用) |
+  | M3b | 0 严格 | 0 | 0 | **精确** |
+  | M4 | 下降 | **0** | -43(pre=-43,持平) | **偏差但不回升** |
+  | M5 | 0 严格 | **0** | -11(pre=-11,持平) | **精确** |
+  | M6 | 0 严格 | 0 | 0 | **精确** |
+  | M7a | 0 严格 | 0 | 0 | **精确** |
+  | M7b | 0 严格 | 0 | -2 | **精确** |
+  | N2 | 0 或轻微+ | +20 | +260 | 轻微增(注释 token) |
+  | N3 | 0 或轻微+ | +20 | -5038(pre=-5058,仍 PROGRESS) | 轻微增但 vs baseline 仍 PROGRESS |
+- **验证**:`./build.sh bootstrap` 固定点 PASS / `bin/ss test tests/phase5/` 158 passed / 4 failed(spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug 皆 pre-existing,stash 前后一致)/ linter GATE PASS,全 OK/PROGRESS 零 REGRESSION
+- **收敛判据**:`grep -n "ls == rs\|ls != rs" bootstrap/gen/exprs/exprs.ss` 0 命中 ✓
+- **M1/M3a/M4/M5 单调不回升**(用户硬约束):M1=0 / M3a=0 / M4=0 / M5=0,全部 ✓
+- **当前形态**:
+  ```ss
+  if (isCt(lv) == 1 && isCt(rv) == 1) {
+      const lp = payload(lv)
+      const rp = payload(rv)
+      if (op == "Eq") { return ctVal(interpNewBool(lp == rp ? 1 : 0)) }
+      if (op == "Ne") { return ctVal(interpNewBool(lp != rp ? 1 : 0)) }
+      const ls = interpAsStr(lp)
+      const rs = interpAsStr(rp)
+      if (op == "Lt") { return ctVal(interpNewBool(ls < rs ? 1 : 0)) }
+      ...
+  }
+  ```
+
 ### Execute 3 (可选): BINARY Eq/Ne 统一入口 [ ] Planned
 
 ---
