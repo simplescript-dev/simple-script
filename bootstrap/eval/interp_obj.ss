@@ -115,8 +115,37 @@ function interpNewVal(kind: string, payload: string): int {
     return newTvNull()
 }
 
+// 从 ANNOTATION_LIST AST 节点构造 AnnotationMeta 数组,inline 取 args(STRING_LIT only)。
+// annListId 非 ANNOTATION_LIST kind 或 <=0 返空数组(abstract FUNC_DECL.I4=1 走此分支)。
+// annPoolPrefix 形如 "FLD|<cls>.<fld>" / "MTH|<cls>.<mth>[.get|.set]" / "CLS|<cls>",
+// 最终 ANN InternPool key = `ANN|${annPoolPrefix}.${annName}`。D118 Execute 2 抽出,
+// 统一 field/method/class 三处 AnnotationMeta 构造(simplify Finding 1)。
+function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
+    const arr = interpNewArray("")
+    if (annListId <= 0) { return arr }
+    if (nGetKind(annListId) != "ANNOTATION_LIST") { return arr }
+    for (ap in nGetList(annListId).split(",")) {
+        const aId = parseInt(ap)
+        if (aId <= 0) { continue }
+        const annName = nGetS1(aId)
+        const amId = interpNewVal("object", "AnnotationMeta")
+        tvMap.set(`${amId}|name`, `${interpNewString(annName)}`)
+        const argsArr = interpNewArray("")
+        for (arp in nGetList(aId).split(",")) {
+            const argId = parseInt(arp)
+            if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
+                interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
+            }
+        }
+        tvMap.set(`${amId}|args`, `${argsArr}`)
+        interpArrayPush(arr, internPoolGetOrInsert(`ANN|${annPoolPrefix}.${annName}`, amId))
+    }
+    return arr
+}
+
 // ClassMeta 实例 + InternPool name-based dedup,FieldMeta/MethodMeta/AnnotationMeta inline 构造。
-// Key schema:CLS|<cls> / FLD|<cls>.<fld> / MTH|<cls>.<mth> / ANN|{CLS|FLD|MTH}|<...>。
+// Key schema:CLS|<cls> / FLD|<cls>.<fld> / MTH|<cls>.<mth>[.get|.set] / ANN|{CLS|FLD|MTH}|<...>。
+// accessor get/set 共用 mName,MTH key 加 .get/.set 后缀分离(D118 §新张力 2)。
 // hit-check pre-guard 避免 miss 路径浪费 tvIds。fields 父类链 prepend parent first;
 // fromIC=0 走 classFields CSV(interpClasses 未注册场景,fp 直接是 fName string)。
 function interpBuildTypeInfo(typeName: string): int {
@@ -126,6 +155,8 @@ function interpBuildTypeInfo(typeName: string): int {
     tvMap.set(`${id}|name`, `${interpNewString(typeName)}`)
     const fArr = interpNewArray("")
     const fromIC = interpClasses.has(typeName) == 1
+    const hasNode = classNodeIds.has(typeName) == 1
+    const clsNodeId = hasNode ? parseInt(classNodeIds.getString(typeName)) : 0
     let fStr = fromIC ? "" : classFields.getString(typeName)
     let cur = fromIC ? typeName : ""
     while (cur != "") {
@@ -140,76 +171,68 @@ function interpBuildTypeInfo(typeName: string): int {
         const fmId = interpNewVal("object", "FieldMeta")
         tvMap.set(`${fmId}|name`, `${interpNewString(fName)}`)
         tvMap.set(`${fmId}|type`, `${interpNewString(classFieldTypes.getString(ftKey))}`)
-        const fAnnArr = interpNewArray("")
         // AST 直读 annotations:fromIC fp 即 PARAM id;非 fromIC 在 classNodeIds[typeName] 按 fName 查 PARAM
         let fpAnn = ""
         if (fromIC) {
             fpAnn = nGetList(parseInt(fp))
-        } else if (classNodeIds.has(typeName) == 1) {
-            for (np in classFieldList(parseInt(classNodeIds.getString(typeName))).split(",")) {
+        } else if (hasNode) {
+            for (np in classFieldList(clsNodeId).split(",")) {
                 const npId = parseInt(np)
                 if (npId > 0 && paramName(npId) == fName) { fpAnn = nGetList(npId); break }
             }
         }
-        if (fpAnn != "") {
-            for (fap in nGetList(parseInt(fpAnn)).split(",")) {
-                const faId = parseInt(fap)
-                if (faId > 0) {
-                    const annName = nGetS1(faId)
-                    const famId = interpNewVal("object", "AnnotationMeta")
-                    tvMap.set(`${famId}|name`, `${interpNewString(annName)}`)
-                    const argsArr = interpNewArray("")
-                    for (arp in nGetList(faId).split(",")) {
-                        const argId = parseInt(arp)
-                        if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
-                            interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
-                        }
-                    }
-                    tvMap.set(`${famId}|args`, `${argsArr}`)
-                    interpArrayPush(fAnnArr, internPoolGetOrInsert(`ANN|FLD|${ftKey}.${annName}`, famId))
-                }
-            }
-        }
+        const fAnnId = fpAnn == "" ? 0 : parseInt(fpAnn)
+        const fAnnArr = buildAnnotationMetaArray(fAnnId, `FLD|${ftKey}`)
         tvMap.set(`${fmId}|annotations`, `${fAnnArr}`)
         interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
     }
     tvMap.set(`${id}|fields`, `${fArr}`)
-    // methods 段:MethodMeta(.name/.annotations)。params/returnType 未填,
-    // method-level AnnotationMeta.args 无 sidecar(不 set → .args 访问返 null)。
+    // methods 段:AST 直读 methodsBlock → FUNC_DECL.I4 ANNOTATION_LIST + handler-generated 尾部补齐。
+    // accessor get/set 共用 mName → MTH key 加 .get/.set 后缀分离(D118 §新张力 2);
+    // abstract method I4=1 被 buildAnnotationMetaArray kind 校验自动返空。
+    // classMethods CSV = [own FUNC_DECL 按声明序] + [@methodOf handler-appended 尾部],
+    // AST 只含 own 部分(class_annotation.ss:107 handler 只往 CSV push);本段先 AST 遍历 own,
+    // 再 skip 前 ownCount 取 CSV 尾部 handler-generated,空 annotations。
+    // built-in 类(Map/Set 等)classNodeIds 缺失 → ownCount=0,CSV 全部按 handler-generated 建。
     const mArr = interpNewArray("")
-    for (mp in classMethods.getString(typeName).split(",")) {
-        if (mp == "") { continue }
-        const mmId = interpNewVal("object", "MethodMeta")
-        tvMap.set(`${mmId}|name`, `${interpNewString(mp)}`)
-        const mAnnArr = interpNewArray("")
-        const mAnnKey = `${typeName}.${mp}`
-        for (mann in classMethodAnnotations.getString(mAnnKey).split(",")) {
-            if (mann == "") { continue }
-            const mamId = interpNewVal("object", "AnnotationMeta")
-            tvMap.set(`${mamId}|name`, `${interpNewString(mann)}`)
-            interpArrayPush(mAnnArr, internPoolGetOrInsert(`ANN|MTH|${mAnnKey}.${mann}`, mamId))
+    let ownCount = 0
+    if (hasNode) {
+        const mbId = classMethodsBlock(clsNodeId)
+        if (mbId > 0) {
+            for (mp in nGetList(mbId).split(",")) {
+                const mId = parseInt(mp)
+                if (mId <= 0 || nGetKind(mId) != "FUNC_DECL") { continue }
+                const mName = funcName(mId)
+                const mKind = nGetI2(mId)
+                const keySuffix = mKind == 2 ? ".get" : (mKind == 3 ? ".set" : "")
+                const mKey = `${typeName}.${mName}${keySuffix}`
+                const mmId = interpNewVal("object", "MethodMeta")
+                tvMap.set(`${mmId}|name`, `${interpNewString(mName)}`)
+                const mAnnArr = buildAnnotationMetaArray(nGetI4(mId), `MTH|${mKey}`)
+                tvMap.set(`${mmId}|annotations`, `${mAnnArr}`)
+                interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${mKey}`, mmId))
+                ownCount = ownCount + 1
+            }
         }
-        tvMap.set(`${mmId}|annotations`, `${mAnnArr}`)
-        interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${typeName}.${mp}`, mmId))
+    }
+    const mCsv = classMethods.getString(typeName)
+    if (mCsv != "") {
+        let mIdx = 0
+        for (mp in mCsv.split(",")) {
+            if (mIdx >= ownCount && mp != "") {
+                const mmId = interpNewVal("object", "MethodMeta")
+                tvMap.set(`${mmId}|name`, `${interpNewString(mp)}`)
+                const emptyAnn = interpNewArray("")
+                tvMap.set(`${mmId}|annotations`, `${emptyAnn}`)
+                interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${typeName}.${mp}`, mmId))
+            }
+            mIdx = mIdx + 1
+        }
     }
     tvMap.set(`${id}|methods`, `${mArr}`)
-    const aArr = interpNewArray("")
-    for (ap in nGetList(nGetI4(parseInt(classNodeIds.getString(typeName)))).split(",")) {
-        const aId = parseInt(ap)
-        if (aId > 0) {
-            const annName = nGetS1(aId)
-            const amId = interpNewVal("object", "AnnotationMeta")
-            tvMap.set(`${amId}|name`, `${interpNewString(annName)}`)
-            const argsArr = interpNewArray("")
-            for (arp in nGetList(aId).split(",")) {
-                const argId = parseInt(arp)
-                if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
-                    interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
-                }
-            }
-            tvMap.set(`${amId}|args`, `${argsArr}`)
-            interpArrayPush(aArr, internPoolGetOrInsert(`ANN|CLS|${typeName}.${annName}`, amId))
-        }
+    let aArr = interpNewArray("")
+    if (hasNode) {
+        aArr = buildAnnotationMetaArray(nGetI4(clsNodeId), `CLS|${typeName}`)
     }
     tvMap.set(`${id}|annotations`, `${aArr}`)
     return internPoolGetOrInsert(poolKey, id)

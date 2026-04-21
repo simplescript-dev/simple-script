@@ -47,21 +47,6 @@ function emitStaticFieldInits() {
 
 // ── Class support ─────────────────────────────────────────────
 
-// L2κ: fill namesMap[keyPrefix] with annotation name CSV。D118 Execute 1 后
-// field 路径改 AST 直读,本函数仅服务 method annotations(无 args 反射)。
-function extractAnnotationsReflection(annListId: int, namesMap: Map, keyPrefix: string) {
-    if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return }
-    const anns = nGetList(annListId)
-    if (anns == "") { return }
-    let names = ""
-    for (ap in anns.split(",")) {
-        const aId = parseInt(ap)
-        if (aId <= 0 || nGetKind(aId) != "ANNOTATION") { continue }
-        names = listAppendStr(names, nGetS1(aId))
-    }
-    if (names != "") { namesMap.set(keyPrefix, names) }
-}
-
 function registerClass(id: int) {
     // Generic classes: skip registration (unresolved type params).
     // Will be registered with concrete types at specialization time.
@@ -143,14 +128,9 @@ function registerClass(id: int) {
                 if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
                     const mName = funcName(mId)
                     methodNames = listAppendStr(methodNames, mName)
-                    // D071: track abstract methods
+                    // D071: track abstract methods (I4=1 sentinel, overwrites ANNOTATION_LIST)
                     if (nGetI4(mId) == 1) {
                         abstractMethodsCG.set(`${name}.${mName}`, "1")
-                    } else {
-                        // L2κ: non-abstract FUNC_DECL's I4 holds ANNOTATION_LIST id
-                        // (parser.ss:273 via attachAnnotations); abstract overwrites
-                        // I4 with 1, so abstract method annotations cannot be read here.
-                        extractAnnotationsReflection(nGetI4(mId), classMethodAnnotations, `${name}.${mName}`)
                     }
                     let mRet = stripNullableCG(funcRetType(mId))
                     if (mRet == "") { mRet = "void" }
@@ -166,9 +146,8 @@ function registerClass(id: int) {
                             exit(1)
                         }
                     }
-                    // L2κ: accessor get/set share the same mName, so their
-                    // annotations collapse onto one classMethodAnnotations key.
-                    // Per-kind annotation reflection for accessors remains future work.
+                    // D118 §新张力 2: accessor get/set 在 interpBuildTypeInfo 经
+                    // MTH|<cls>.<mth>.get / .set 后缀分离,两 FUNC_DECL 独立 MethodMeta。
                     if (mKind == 2) {
                         const getMangled = `${name}_get_${mName}`
                         classAccessorGetters.set(`${name}.${mName}`, getMangled)

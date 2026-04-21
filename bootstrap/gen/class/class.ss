@@ -13,7 +13,6 @@ import { genGenericNewExpr } from "../gen_generic_class"
 let classFields = ""     // "ClassName" -> "field1,field2,..."
 let classFieldTypes = "" // "ClassName.field" -> "type"
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
-let classMethodAnnotations = ""    // "ClassName.method" -> "Ann1,Ann2" CSV (D096 L2κ — m.annotations reflection)
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
 let classConstFields = "" // "ClassName.field" -> "1" (if field is const)
@@ -57,7 +56,6 @@ function initClassState() {
     classFields = Map()
     classFieldTypes = Map()
     classMethods = Map()
-    classMethodAnnotations = Map()
     objClasses = Map()
     classParents = Map()
     classConstFields = Map()

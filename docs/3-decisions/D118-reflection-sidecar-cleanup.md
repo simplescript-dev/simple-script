@@ -1,6 +1,6 @@
 # D118: 反射 Sidecar 彻底清理 — D097 §后续工作 5 承接
 
-**Status:** Executing (Execute 0-1 Done,2-5 待执行,2026-04-21 Plan 起草 + Execute 1 Done)
+**Status:** Executing (Execute 0-2 Done,3-5 待执行,2026-04-21 Plan 起草 + Execute 1-2 Done)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / **D097 §后续工作 5 "逐步删除 classXxxAnnotation* Map、__* sidecar、nGetS1(x)== 字符串分支"** / D117 Execute 5 Done(interpCollectFields / interpCtFieldsArray 两函数已删,commit `6e264fd`)/ D098 §Phase B(Meta 对象 InternPool 承载)/ D111 §决策 1 internPoolGetOrInsert / D095 Stage C(FieldMeta reflection 源头)/ D096 L2κ(m.annotations reflection 源头)
 **Date:** 2026-04-21
 
@@ -169,15 +169,17 @@ for (ap in nGetList(nGetI4(parseInt(classNodeIds.getString(typeName)))).split(",
    - ✓ RED 校验:`grep -rn "classFieldAnnotations\|classFieldAnnotationArgs" bootstrap/` 5→0
    - ✓ simplify 审:Agent 1 Finding 3 应用(interp_obj.ss:148-152 改用 `classFieldList` + `paramName` 已存在 helper,与 class_register.ss:105-113 / gen_generic_class.ss:70-77 风格一致);Finding 1 field/class annotation block 复制粘贴延至 Execute 2 方法 annotations 迁时共抽 `buildAnnotationMetaArray` helper
 
-2. [ ] Planned — **Execute 2 (method annotations AST 直读 + 删 classMethodAnnotations Map + 删 extractAnnotationsReflection)**:
-   - 改 `interp_obj.ss:162-177` MethodMeta block — annotations 段从 classNodeIds[typeName] + 父类链遍历 methodsBlock FUNC_DECL.I4,inline 构造 AnnotationMeta
-   - accessor get/set InternPool key 冲突张力 2 检查:MethodMeta key 增加 `.get`/`.set` 后缀或确认 SS checker 已拒绝同名(执行 spot-check)
-   - 删 `class.ss:18, 64` `classMethodAnnotations` Map 定义 + 初始化
-   - 改 `class_register.ss:171` — 删 extractAnnotationsReflection 调用
-   - 删 `class_register.ss:53-76` — `extractAnnotationsReflection` 函数(30 行)
-   - linter 预期:M2 -45 / M5 -1 / M7b -1 / N2 -225
-   - RED 命令:`grep -rn "classMethodAnnotations\|extractAnnotationsReflection" bootstrap/ \| wc -l` 必须降至 0
-   - spot-check:pir_lower.ss 不经 interpBuildTypeInfo Meta 构造路径(§决策 5 承接)
+2. [x] Done at `bootstrap/eval/interp_obj.ss:118-222` + `class.ss:15,57` + `class_register.ss:48-50,145-147,168-169`(2026-04-21) — **Execute 2 (method annotations AST 直读 + 删 classMethodAnnotations Map + 删 extractAnnotationsReflection + Finding 1 抽 helper)**:
+   - ✓ `interp_obj.ss:118-144` 抽 `buildAnnotationMetaArray(annListId, annPoolPrefix)` helper,统一 field/method/class 三处 AnnotationMeta 构造(simplify Finding 1 延期项兑现)。annListId<=0 / 非 ANNOTATION_LIST kind 返空数组,abstract FUNC_DECL.I4=1 自动走空分支
+   - ✓ `interp_obj.ss:186-222` MethodMeta block AST 直读 — classNodeIds[typeName] → classMethodsBlock → FUNC_DECL.I4 ANNOTATION_LIST;accessor get/set `MTH|<cls>.<mth>.get`/`.set` 后缀分离(**张力 2 根治**,`MTH|`/`ANN|MTH|` 零外部读者 spot-check 确认);handler-generated 方法(`emitClassComptimeMethods` L107 append 到 classMethods CSV 但不进 methodsBlock AST)通过 CSV tail skip ownCount 补齐,空 annotations
+   - ✓ `interp_obj.ss:182` + class-level L217-220 field / class-level 两处 inline 复用 helper 替换(simplify Finding 1 三处统一)
+   - ✓ 删 `class.ss:15,57` `classMethodAnnotations` Map 定义 + 初始化(2 行)
+   - ✓ 删 `class_register.ss:48-63` `extractAnnotationsReflection` 函数(16 行 含注释)+ L150-155 调用点(6 行,保留 abstract I4=1 sentinel check)+ L169-171 历史"collapse"注释改述为张力 2 分离记录(3 行替换)
+   - ✓ bootstrap 固定点 + tests 215 passed / 4 pre-existing failed(spring_web_params/harness_task/d096_p4_l2_reactive/harness_bug)一致,d096_p4_l2i_class_methods + d096_p4_l2k_method_annotations 中间一度 regression(handler-generated listAll 丢失)→ 补 CSV tail 合并后 PASS
+   - ✓ `bin/ss run tools/reflection_health_linter.ss` **GATE PASS — no regressions**:M4 -28 / M5 -11 / M7b -2 / N3 -2871 / F1 gen_decls.ss 691→690 **PROGRESS**;M1/M2/M3a/N2 DRIFT 全在 tol 内(M2 +319/tol ±380,N2 +1595/tol ±1903);helper 净增+method AST 直读复杂分支补偿后,削减仍兑现主方向
+   - ✓ RED 校验:`grep -rn "classMethodAnnotations\|extractAnnotationsReflection" bootstrap/ \| wc -l` **6→0**
+   - ✓ §决策 5 spot-check:`grep interpBuildTypeInfo\|AnnotationMeta\|FieldMeta\|MethodMeta bootstrap/pir/` 零命中,Meta 构造路径不经 PIR liveness,RC 误判风险 = 0
+   - ✓ §新张力 2 **消解**:accessor get+set 两个独立 FUNC_DECL 通过 `.get`/`.set` 后缀独立 MethodMeta,原 CSV collapse 形态永久消除
 
 3. [ ] Planned — **Execute 3 (member_access.ss 22-32 for-in 边界根治 Class C + 收敛 Class B 2 处)**:
    - `stmts_loop_forin.ss` for-in unroll 绑 f 为 FieldMeta object tvId(非 string name),ctVars entry type=object
