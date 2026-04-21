@@ -9,58 +9,38 @@ function evalMemberAccess(astId: int): int {
         const fmName = nGetS1(objNode)
         if (member == "name") {
             const nmStr = comptimeConsts.getString(fmName)
-            if (comptimeDepth > 0) { return ctVal(interpNewString(nmStr)) }
-            return constVal(addStringConst(nmStr))
+            return comptimeDepth > 0 ? ctVal(interpNewString(nmStr)) : constVal(addStringConst(nmStr))
         }
-        if (member == "type") {
-            const fmClsKey = `${fmName}.__class`
-            if (comptimeConsts.has(fmClsKey) == 1) {
-                const fmCls = comptimeConsts.getString(fmClsKey)
-                const fmFld = comptimeConsts.getString(fmName)
-                if (classFieldTypes.has(`${fmCls}.${fmFld}`) == 1) {
-                    const tStr = classFieldTypes.getString(`${fmCls}.${fmFld}`)
-                    if (comptimeDepth > 0) { return ctVal(interpNewString(tStr)) }
-                    return constVal(addStringConst(tStr))
-                }
+        const fmClsKey = `${fmName}.__class`
+        if (member == "type" && comptimeConsts.has(fmClsKey) == 1) {
+            const ftKey = `${comptimeConsts.getString(fmClsKey)}.${comptimeConsts.getString(fmName)}`
+            if (classFieldTypes.has(ftKey) == 1) {
+                const tStr = classFieldTypes.getString(ftKey)
+                return comptimeDepth > 0 ? ctVal(interpNewString(tStr)) : constVal(addStringConst(tStr))
             }
         }
         // D095 Stage C: f.annotations → comptime string array of annotation
-        // names. Empty array when no annotations attached. Only valid in
-        // comptimeDepth>0 since handlers consume it via for-in unroll.
-        if (member == "annotations" && comptimeDepth > 0) {
-            const fmClsKey = `${fmName}.__class`
-            if (comptimeConsts.has(fmClsKey) == 1) {
-                const fmCls = comptimeConsts.getString(fmClsKey)
-                const fmFld = comptimeConsts.getString(fmName)
-                const fmAnnArr = interpNewArray("")
-                const fmAnnKey = `${fmCls}.${fmFld}`
-                if (classFieldAnnotations.has(fmAnnKey) == 1) {
-                    const fmAnnCsv = classFieldAnnotations.getString(fmAnnKey)
-                    if (fmAnnCsv != "") {
-                        const fmAnnParts = fmAnnCsv.split(",")
-                        for (fap in fmAnnParts) {
-                            interpArrayPush(fmAnnArr, interpNewString(fap))
-                        }
-                    }
-                }
-                return ctVal(fmAnnArr)
+        // names. Empty array when no annotations. Only valid in comptimeDepth>0.
+        if (member == "annotations" && comptimeDepth > 0 && comptimeConsts.has(fmClsKey) == 1) {
+            const faKey = `${comptimeConsts.getString(fmClsKey)}.${comptimeConsts.getString(fmName)}`
+            const fmAnnArr = interpNewArray("")
+            const fmAnnCsv = classFieldAnnotations.getString(faKey)
+            if (fmAnnCsv != "") {
+                for (fap in fmAnnCsv.split(",")) { interpArrayPush(fmAnnArr, interpNewString(fap)) }
             }
+            return ctVal(fmAnnArr)
         }
     }
     if (nGetKind(objNode) == "IDENT") {
         const eName = nGetS1(objNode)
         const enumKey = `${eName}.${member}`
         if (interpEnumValues.has(enumKey) == 1) {
-            if (interpEnumTypes.has(eName) == 1) {
-                return ctVal(interpNewString(interpEnumValues.getString(enumKey)))
-            }
-            return ctVal(interpNewInt(parseInt(interpEnumValues.getString(enumKey))))
+            const ieVal = interpEnumValues.getString(enumKey)
+            return ctVal(interpEnumTypes.has(eName) == 1 ? interpNewString(ieVal) : interpNewInt(parseInt(ieVal)))
         }
         if (enumReady == 1 && enumValues.has(enumKey) == 1) {
-            if (enumTypes.has(eName) == 1) {
-                return ctVal(interpNewString(enumValues.getString(enumKey)))
-            }
-            return ctVal(interpNewInt(parseInt(enumValues.getString(enumKey))))
+            const eVal = enumValues.getString(enumKey)
+            return ctVal(enumTypes.has(eName) == 1 ? interpNewString(eVal) : interpNewInt(parseInt(eVal)))
         }
         if (comptimeDepth == 0 && getVarType(eName) == "" && classFields.has(eName) == 1) {
             return 0 - constVal(genMemberAccess(astId)) - 1
@@ -69,53 +49,19 @@ function evalMemberAccess(astId: int): int {
     const obj = genVal(objNode)
     if (isCt(obj) == 1) {
         const objPayload = payload(obj)
-        if (interpType(objPayload) == "object") {
-            return ctVal(interpGetField(objPayload, member))
-        }
-        if (member == "length" && interpType(objPayload) == "string") {
-            return ctVal(interpNewInt(interpAsStr(objPayload).length()))
-        }
-        if (member == "length" && interpType(objPayload) == "array") {
-            const items = interpAsStr(objPayload)
-            if (items == "") { return ctVal(interpNewInt(0)) }
-            return ctVal(interpNewInt(items.split(",").length()))
-        }
-        // string / TypeValue 都当作 class 句柄,支持 .name / .fields 属性式访问
         const mpKind = interpType(objPayload)
-        if (member == "name" && (mpKind == "string" || mpKind == "type")) {
-            if (mpKind == "type") { return ctVal(interpNewString(interpAsStr(objPayload))) }
-            return obj
+        if (mpKind == "object") { return ctVal(interpGetField(objPayload, member)) }
+        if (member == "length" && (mpKind == "string" || mpKind == "array")) {
+            const items = interpAsStr(objPayload)
+            return ctVal(interpNewInt(mpKind == "string" ? items.length() : (items == "" ? 0 : items.split(",").length())))
         }
-        if (member == "fields" && (mpKind == "string" || mpKind == "type")) {
+        // D117 §决策 4 — string/TypeValue 当作 class 句柄 .name/.fields/.methods/
+        // .annotations 全部统一经 ClassMeta interpGetField read,消除 hardcoded 字符串
+        // 数组 + AST 构造 AnnotationMeta 两条特例。未知 class 时 .name 回落 string tvId。
+        if ((member == "name" || member == "fields" || member == "methods" || member == "annotations") && (mpKind == "string" || mpKind == "type")) {
             const clsName = interpAsStr(objPayload)
-            if (isKnownClass(clsName) == 1) {
-                return ctVal(interpCtFieldsArray(clsName))
-            }
-        }
-        // D097: cls.annotations → comptime Array<AnnotationMeta>, AST-sourced.
-        if (member == "annotations" && (mpKind == "string" || mpKind == "type")) {
-            const arr = interpNewArray("")
-            const clsAnnName = interpAsStr(objPayload)
-            if (classNodeIds.has(clsAnnName) == 1) {
-                const annListId = nGetI4(parseInt(classNodeIds.getString(clsAnnName)))
-                if (annListId > 0) {
-                    for (ap in nGetList(annListId).split(",")) {
-                        const aId = parseInt(ap)
-                        const metaTv = interpNewVal("object", "AnnotationMeta")
-                        interpSetField(metaTv, "name", interpNewString(nGetS1(aId)))
-                        const argsArr = interpNewArray("")
-                        for (arp in nGetList(aId).split(",")) {
-                            const argId = parseInt(arp)
-                            if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
-                                interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
-                            }
-                        }
-                        interpSetField(metaTv, "args", argsArr)
-                        interpArrayPush(arr, metaTv)
-                    }
-                }
-            }
-            return ctVal(arr)
+            if (isKnownClass(clsName) == 1) { return ctVal(interpGetField(interpBuildTypeInfo(clsName), member)) }
+            if (member == "name") { return mpKind == "type" ? ctVal(interpNewString(clsName)) : obj }
         }
     }
     if (comptimeDepth > 0) {

@@ -93,11 +93,15 @@ function genForIn(id: int) {
             const ctArrLen = interpArrayLen(ctArrId)
             let ctFi = 0
             while (ctFi < ctArrLen) {
-                const ctCurVal = interpArrayGet(ctArrId, ctFi)
+                const ctCurRaw = interpArrayGet(ctArrId, ctFi)
+                // D117 Execute 3/4 边界: cls.fields 现返回 FieldMeta 对象数组。
+                // foldComptimeIdentsInTree 只能 fold scalar tvKind,所以在 field-loop
+                // 场景 unwrap 成 string tv(f.name),让 FUNC_DECL clone 路径里的
+                // `get_${f.name}` 模板 fold → resolveComptimeString 仍然走 STRING_LIT。
+                // sidecar comptimeConsts[f]/[f.__class] 承接 f.type/f.annotations 求值(D095 path)。
+                const ctCurVal = (ctFieldsClass != "" && interpType(ctCurRaw) == "object") ? interpNewString(interpAsStr(interpGetField(ctCurRaw, "name"))) : ctCurRaw
                 ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(ctCurVal)}`)
-                if (ctFieldsClass != "" && interpType(ctCurVal) == "string") {
-                    comptimeConsts.set(itemName, interpAsStr(ctCurVal))
-                }
+                if (ctFieldsClass != "") { comptimeConsts.set(itemName, interpAsStr(ctCurVal)) }
                 genBlock(bodyId)
                 if (interpCheckLoopExit() == 1) { break }
                 ctFi = ctFi + 1

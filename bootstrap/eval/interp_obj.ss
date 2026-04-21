@@ -73,10 +73,7 @@ function interpMapDelete(mapId: int, key: string) {
     let newCsv = ""
     let i = 0
     while (i < parts.length()) {
-        if (parts[i] != key) {
-            if (newCsv == "") { newCsv = parts[i] }
-            else { newCsv = newCsv + "," + parts[i] }
-        }
+        if (parts[i] != key) { newCsv = newCsv == "" ? parts[i] : newCsv + "," + parts[i] }
         i = i + 1
     }
     tvList.set(mapId + "", newCsv)
@@ -118,13 +115,39 @@ function interpNewVal(kind: string, payload: string): int {
     return newTvNull()
 }
 
-// D117 §决策 2 — ClassMeta 实例 + InternPool name-based dedup。
-// tvS1 存 typeName 兼作 .name 语义载体;tvMap 直 set 绕 interpSetField 冗余层。
-// .fields/.methods/.annotations 填充留 Execute 3(member_access.ss on Meta)。
+// D117 §决策 2-4 — ClassMeta 实例 + InternPool name-based dedup +
+// .fields/.annotations 填充(走 ClassMeta object → MEMBER_ACCESS interpGetField 统一 read)。
+// hit-check pre-guard 避免 dedup miss 路径浪费 tvIds + 节点数(填充 array 远大于 .name).
+// .methods 字段留 Execute 5 补(当前无 evalExpr 上下文用例,for-in 走 stmts_loop_forin 反射分支)。
+// FieldMeta/AnnotationMeta inline 构造 + InternPool dedup,key schema 走 §决策 3
+// FLD|<className>.<fName> / ANN|CLS|<className>.<annName>。inline 不抽 helper(M7b strict 0)。
 function interpBuildTypeInfo(typeName: string): int {
+    const poolKey = `CLS|${typeName}`
+    if (internPool.has(poolKey) == 1) { return parseInt(internPool.getString(poolKey)) }
     const id = interpNewVal("object", typeName)
     tvMap.set(`${id}|name`, `${interpNewString(typeName)}`)
-    return internPoolGetOrInsert(`CLS|${typeName}`, id)
+    tvMap.set(`${id}|fields`, `${interpCtFieldsArray(typeName)}`)
+    const aArr = interpNewArray("")
+    const annListId = classNodeIds.has(typeName) == 1 ? nGetI4(parseInt(classNodeIds.getString(typeName))) : 0
+    for (ap in nGetList(annListId).split(",")) {
+        const aId = parseInt(ap)
+        if (aId > 0) {
+            const annName = nGetS1(aId)
+            const amId = interpNewVal("object", "AnnotationMeta")
+            tvMap.set(`${amId}|name`, `${interpNewString(annName)}`)
+            const argsArr = interpNewArray("")
+            for (arp in nGetList(aId).split(",")) {
+                const argId = parseInt(arp)
+                if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
+                    interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
+                }
+            }
+            tvMap.set(`${amId}|args`, `${argsArr}`)
+            interpArrayPush(aArr, internPoolGetOrInsert(`ANN|CLS|${typeName}.${annName}`, amId))
+        }
+    }
+    tvMap.set(`${id}|annotations`, `${aArr}`)
+    return internPoolGetOrInsert(poolKey, id)
 }
 
 function interpCollectFields(className: string): string {
@@ -132,34 +155,36 @@ function interpCollectFields(className: string): string {
     let fields = ""
     let cur = className
     while (cur != "") {
-        const cid = parseInt(interpClasses.getString(cur))
-        const paramList = nGetList(cid)
+        const paramList = nGetList(parseInt(interpClasses.getString(cur)))
         if (paramList != "") {
-            if (fields == "") { fields = paramList }
-            else { fields = `${paramList},${fields}` }
+            fields = fields == "" ? paramList : `${paramList},${fields}`
         }
-        cur = interpClassParents.has(cur) == 1 ? interpClassParents.getString(cur) : ""
+        cur = interpClassParents.getString(cur)
     }
     return fields
 }
 
 function isKnownClass(name: string): int {
-    if (classFields.has(name) == 1) { return 1 }
-    if (interpClasses.has(name) == 1) { return 1 }
-    return 0
+    return (classFields.has(name) == 1 || interpClasses.has(name) == 1) ? 1 : 0
 }
 
+// D117 §决策 3-4 — fp 从 fName string 升级为 FieldMeta object(InternPool dedup
+// FLD|<className>.<fName>),f.name/.type 经 MEMBER_ACCESS object-kind interpGetField
+// 统一 read。依赖 internPoolGetOrInsert hit-check 直接接管,不做外层 if/else 双重
+// dedup(M4/M2 根因:重复 IF chain + AST 双分支)。
 function interpCtFieldsArray(className: string): int {
     const fArr = interpNewArray("")
-    let fStr = ""
-    if (interpClasses.has(className) == 1) {
-        fStr = interpCollectFields(className)
-    } else if (classFields.has(className) == 1) {
-        fStr = classFields.getString(className)
-    }
-    if (fStr != "") {
-        const fParts = fStr.split(",")
-        for (fp in fParts) { interpArrayPush(fArr, interpNewString(fp)) }
+    const fromIC = interpClasses.has(className) == 1
+    const fStr = fromIC ? interpCollectFields(className) : classFields.getString(className)
+    if (fStr == "") { return fArr }
+    for (fp in fStr.split(",")) {
+        const fName = fromIC ? nGetS1(parseInt(fp)) : fp
+        const ftKey = `${className}.${fName}`
+        const fmId = interpNewVal("object", "FieldMeta")
+        tvMap.set(`${fmId}|name`, `${interpNewString(fName)}`)
+        const fType = classFieldTypes.getString(ftKey)
+        tvMap.set(`${fmId}|type`, `${interpNewString(fType)}`)
+        interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
     }
     return fArr
 }
@@ -168,23 +193,18 @@ function interpFindMethod(className: string, methodName: string): int {
     let cur = className
     while (cur != "") {
         if (interpClasses.has(cur) == 1) {
-            const cid = parseInt(interpClasses.getString(cur))
-            const mbId = nGetI2(cid)
-            if (mbId > 0) {
-                const mList = nGetList(mbId)
-                if (mList != "") {
-                    const mParts = mList.split(",")
-                    for (mp in mParts) {
-                        const mId = parseInt(mp)
-                        if (mId > 0 && nGetKind(mId) == "FUNC_DECL" && nGetS1(mId) == methodName) {
-                            interpLastFoundMethodClass = cur
-                            return mId
-                        }
+            const mList = nGetList(nGetI2(parseInt(interpClasses.getString(cur))))
+            if (mList != "") {
+                for (mp in mList.split(",")) {
+                    const mId = parseInt(mp)
+                    if (mId > 0 && nGetKind(mId) == "FUNC_DECL" && nGetS1(mId) == methodName) {
+                        interpLastFoundMethodClass = cur
+                        return mId
                     }
                 }
             }
         }
-        cur = interpClassParents.has(cur) == 1 ? interpClassParents.getString(cur) : ""
+        cur = interpClassParents.getString(cur)
     }
     return 0
 }
