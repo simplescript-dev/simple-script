@@ -1,6 +1,6 @@
 # D117: 反射 Meta 对象完整化 + class instance dedup 设计 — Phase B 延展
 
-**Status:** Plan ⏳(Execute 0-4 Done 2026-04-21 / Execute 5 未开工)
+**Status:** Done ✓(Execute 0-5 全 Done 2026-04-21)
 **Depends on:** D088 §第一性需求(obj.fields() + obj[name]) / D093 §决策(evalExpr 单函数 dispatch) / D097 §后续工作 1-4(五类 Meta + evalExpr 扩展 + Meta 数组通用 iteration + L2ζ-L2κ Map migrate) / D098 §决策 2 §Phase B L123-128(Meta 对象/反射迁移后引入 InternPool) / D111 §新张力 5 L455(Meta 对象 dedup 前置 class instance dedup 设计,留 D113+)/ D094 §规则 2(pure subset 白名单)/ D096 Phase 4 L1(comptime class 能在 runtime 实例化)
 **Date:** 2026-04-21
 
