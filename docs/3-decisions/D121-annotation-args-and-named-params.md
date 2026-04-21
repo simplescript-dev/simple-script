@@ -404,6 +404,24 @@ function parseArgs(): string {
 ### 隐藏假设挑战
 
 1. **假设**:SS Map 支持 `m[k]` 索引语法访问。**挑战**:若不支持 → R1-A 升级后 `ann.args[0]` 必须改为 `ann.args.get("0")`,破坏 D120 已有 test `d120_reflect_classes.ss` 兼容(若该 test 有 `args[0]` 访问)。**验证**:Execute 轮第一步 `grep -n 'args\[' tests/phase5/d120_reflect_classes.ss` + `grep -n "m\[key\]\|map\[key\]\|Map.*\[" bootstrap/`,确认 SS 是否有 Map 索引语法;若无 → 同步改 D120 test 或评估 Map 索引语法补齐(独立 D 文档,不属 D121 范围)
+
+   **迁移路径**(2026-04-21 实测追补,Plan 轮 5 族 INDEX_ACCESS grep + D120 test `args[` 核验 + `ann.args` 全库使用点扫描):
+
+   - **5 族 INDEX_ACCESS 实测分布**:
+     - Lexer:`LBRACKET`/`RBRACKET` token 已发射(`bootstrap/lexer/lexer.ss:72-73`)
+     - Parser:`INDEX_ACCESS` 节点构造 `nSetI1=obj / nSetI2=idx`(`bootstrap/parse/parse_exprs.ss:199`)
+     - Checker:`bootstrap/checker/check_exprs.ss:218-236` 仅对 **class 实例**非 STRING_LIT dynamic field name 报错(`dynamic field name on class 'X'`),**Map 对象不进此 branch**,通行无障
+     - Comptime eval:`bootstrap/eval/index_access.ss:11` 明确分派 `ot == "object" || ot == "map"` → `interpGetField(objP, interpAsStr(payload(idx)))` —— **Map `m[k]` comptime 已支持**,按 string-key 查
+     - Runtime codegen:`bootstrap/gen/exprs/exprs_simple.ss:42-65` `genIndexAccess` 仅两分支 — class 实例 field(`emitFieldLoad`)+ 一律 `ss_arrayGet` —— **runtime Map 分派缺失**
+   - **D120 兼容核验**:`grep "args\[" tests/phase5/d120_reflect_classes.ss` 0 命中;该 test(24 行)仅遍历 `reflect.classes()` 读 `c.name`,不触 `ann.args` 任何形态 → **R1-A 升级对 D120 已有 test 零破坏**
+   - **全库 `ann.args` 使用点**:`grep -rn "ann\.args" tests/ bootstrap/ lib/` 0 命中(除 D 文档自身)→ D120 Phase 1 Done 之后暂无真实用户代码消费 args,D121 Execute 2 新建的 `d121_annotation_named_args.ss` 是首个消费者,兼容面干净
+   - **综合结论**:SS Map 索引语法 **comptime 支持 / runtime 未支持**,假设 #1 在 R1-A 所需的 **comptime 路径维度** = **真**
+   - **对 R1-A 的影响**:
+     - D121 §核心原则 5 "所有 `ann.args.get(...)` 访问必须在 comptime block 内展开" → runtime 未支持**不影响** R1-A 可行性
+     - R1-A 升级后 comptime 访问 `ann.args["path"]`(STRING_LIT key)走 `ot==map` 分支 → `interpGetField(argsMap, "path")` 自然兑现
+     - R1-A 升级后 comptime 访问 `ann.args[0]`(INT_LIT key)依赖 `interpAsStr(payload(idx))` 对 int `0` 是否字符串化为 `"0"` —— 若是 → 自动命中 R1-A 位置参数 key `"0"/"1"/...`,旧 Array 语义 `args[0]` 等价保留;若否 → 用户需写 `args.get("0")`,或 R1-A 位置 key 随 `interpAsStr(INT)` 实际形态调整。**Execute 2 轮动作项 (a)**:`grep -n "function interpAsStr" bootstrap/eval/` 读实现或 comptime probe `{ const m=new Map(); m.set("0","x"); return m[0] }` 实测
+     - 不在 D121 范围:runtime 路径 `genIndexAccess` 对 Map 的分派补齐(需加 `inferType startsWith "Map<"` 走 `ss_map_get`)—— D122 Spring Boot 路由若需要 runtime Map 索引访问则另起独立 D 文档(D126+?)承接;D121 Phase 2b comptime-only 范围**不依赖** runtime Map 索引
+   - **结论落地**:假设 #1 挑战被实测**化解**,原"若无 → 同步改 D120 test 或评估 Map 索引语法补齐(独立 D 文档)"路径 **不触发** —— D120 test 不触 args 不需改 / Map 索引语法在 comptime 维度已具备不需独立 D 文档。Execute 2 遗留单点:`interpAsStr(INT)` 字符串化行为(动作项 (a))
 2. **假设**:`buildAnnotationMetaArray` 升级后 args InternPool dedup(`ANN|<prefix>.<name>` key)不破。**挑战**:R1-A 形态从 Array tvId → Map tvId,`tvMap["${amId}|args"]` 值类型变,但 key schema 未变 → InternPool dedup 仍按 ANN 名维度工作,不受影响。**验证**:Execute 2 后跑 reflection_health_linter M3b(ANN pool dedup 计数)确认
 3. **假设**:`@RequestMapping` 单参映射到 `"value"` key 符合 Java 惯例 + Spring Boot 用户期望。**挑战**:部分注解的位置参数不叫 `value`,如 `@Autowired` 无参、`@Qualifier("beanName")` 位置参数是 `value`(Java spec)—— 大部分情况确实叫 `value`,但存在反例(罕见)。**对策**:R1-A 方案接受"单参 → value" 惯例,罕见反例留独立 edge case D 文档;对反例注解用户可写 `@Custom(actualKey="val")` 显式命名
 4. **假设**:多参位置参数映射 `"0"/"1"/"2"` 索引字符串化不与命名参数 key 冲突。**挑战**:若用户写 `@Ann("a", "b", k: "c")`,按 R1-A 会生成 `{"0": "a", "1": "b", "k": "c"}` → 混合形态可行,但若用户命名参数 key 取名 "0" / "1" 会冲突。**对策**:Execute 轮在 buildAnnotationMetaArray 内检测 key 冲突,comptimeError `annotation arg name conflicts with positional index "0"`;用户极少用数字字符串作 key,实际冲突近乎不会出现
