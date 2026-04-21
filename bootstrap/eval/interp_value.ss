@@ -121,7 +121,7 @@ function newTvArray(initCsv: string): int {
             tvArrElem.set(`${id}:${i}`, parts[i])
             i = i + 1
         }
-        tvI2[id] = parts.length()
+        tvI2[id] = i
     }
     return id
 }

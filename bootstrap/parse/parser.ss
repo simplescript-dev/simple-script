@@ -254,7 +254,7 @@ function parseAnnotationList(): string {
         let aArgs = ""
         if (curKind() == "LPAREN") {
             pAdvance()
-            aArgs = parseArgs()
+            aArgs = parseArgs(1)
             pExpect("RPAREN")
         }
         const aId = newNode("ANNOTATION")
@@ -713,7 +713,7 @@ function parseParams(): string {
             let pAnnArgs = ""
             if (curKind() == "LPAREN") {
                 pAdvance()
-                pAnnArgs = parseArgs()
+                pAnnArgs = parseArgs(1)
                 pExpect("RPAREN")
             }
             paramAnn = newNode("ANNOTATION")

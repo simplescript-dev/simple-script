@@ -64,6 +64,9 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **字段 3 对 F1 / 文件拆分类任务**的 RED 命令**不许**只用 `wc -l ≤ 600` —— 那只是 F1 下限守护,不是 P10.1 终局判据。必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类数类别,**类别 ≥ 3 → P10.1 不清晰,RED 成立,任务继续;类别 ≤ 2 → GREEN,任务不成立**。仅用 `wc -l ≤ 600` 判 GREEN → §字段 3 失效,PSM 作废重填(P10.1 / feedback_structure_not_linecount.md / D102 §最终目标 配套,2026-04-20 codegen.ss=492 baseline=1166 漂移误判 GREEN 教训)
 - **字段 5 对"创建 bootstrap/X/<prefix>_Y.ss"类任务**的界定阶段必须运行"命名前缀族归位扫描":`filepref=$(basename <new_file> .ss \| cut -d_ -f1-2); find bootstrap -name "${filepref}*" -type f \| awk -F/ 'NR>0{OFS="/"; $NF=""; print}' \| sort -u`。输出 ≥ 1 个族目录 → 新建文件**归同目录**,除非 D 文档**显式写出脱族理由**;输出 0 个 → 按 P10.1 自由决定。Plan 型 D 文档起草 §决策 1(路径规划)同义务,把扫描输出贴进 D 文档;Execute 型轮贴进 PSM 与 D 文档路径对照,不一致 → 先回写 D 文档路径再开工。不做扫描 → Plan 路径决策漂,**任务拒绝**(feedback_subdir_split_style / feedback_naming_family_scan 配套,2026-04-20 D116 §决策 4 Execute 1 首写 `bootstrap/gen/gen_rt_cache.ss` 漏 `gen_rt_*` 前缀归 `gen/rt/` 子族用户手工补正教训)
 
+- **字段 5 对"反射路径形态升级"类任务**的界定阶段必须识别"扩容判定":任务是否触及反射路径(`bootstrap/gen/class.ss` / `gen_stmts.ss` `.fields/.methods/.annotations/.args` / `genForInUnrolled` / `classXxxAnnotation*` / `comptimeConsts __*` sidecar)**形态升级**(容器类型如 Array→Map / AST 字段扩 / Meta kind 变更)?若是,**强制列全 14 指标 delta 预估**(M1/M2/M3a/M3b/M4/M5/M6/M7a/M7b/N1/N2/N3/N4/N5,不允许只列结构组漏累计组)→ 结构组任一 >0 或累计组任一超 tol → 三选一:(a) 本地抵消(列具体削减点,限 `feedback_no_distant_offset` 半径内);(b) 升 baseline + D 文档 §扩容申报;(c) 拆 commit(除非用户明确拒绝分轮)。D 文档 §扩容申报段**必含**扩容理由(引用 §第一性需求)/ 预期 14 指标 delta 对齐 PSM / 本地抵消路径 + 具体函数 / 新 baseline 预期值(=实测预估)/ VCM 实测 vs 预估对照槽(Execute 后回填)。不做扩容判定 → PSM 只强制结构组(M4/N3/M7b)预估漏累计组(M1/M2/M3a/M5/N1/N2)→ Execute 爆 tol → 被迫远距离榨指标(八股)。(`feedback_reflection_expansion_protocol` 配套,2026-04-21 D121 R1-A Execute 2 M1/M2/M5/N2 累计组预估漏掉被迫改 newTvArray 远距离榨指标教训)
+- **八股自检(元规则,贯穿开工/执行/收尾,不绑 PSM/VCM 固定槽)** —— 任意即将编辑代码/文档/测试之前,**每次**先过一遍:**"如果去掉这个改动,任务的核心产出会少什么?"** 答"不会少任何东西"→ 停手,**这是八股,禁止落盘**;答"XYZ 功能/验证/说明缺一块"→ 继续。八股 = 形式上满足某规则/gate 但对任务核心产出零贡献,典型形态:远距离榨指标(linter BLOCKED 后改无关代码压 CC/M5)/ 凑 VCM 仪式(逐项 ✓ 但没真对照)/ grep 摆样子(跑命令不为知道结果只为满足字段 1 槽)/ 编造 D 文档段(为让引用有物现起草)/ 文档膨胀(500 字解释其实一句话够)/ checklist 表演(TaskCreate 把微步骤拆成 task 进度条好看但产出 ≈ 0)。不通过时**不许改**,回根因:扩容超 tol → 走 `feedback_reflection_expansion_protocol`;规则假命中 → 质疑规则向用户报告,不是绕规则;其他 → 停手想清楚,不要用八股填补。这是 `feedback_no_distant_offset` / `feedback_reflection_expansion_protocol` 等具体禁令的**上位元规则**,具体规则是对症治疗八股会以新形式钻过去,"是不是八股"覆盖所有变种。(`feedback_bagu_self_check` 配套,2026-04-21 D121 R1-A Execute 2 newTvArray while→for_in 远距离榨指标事件)
+
 唯一例外：用户明确说「我知道这不在 Zig 路线上，但本轮就要做 X」→ 接受，回复里显式标记「⚠ 偏离 Zig 路线，用户授权」。
 
 #### 十问 PSM (Problem Statement Module)
@@ -97,7 +100,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 | 2 | 行为 | 写一段最小新能力代码，**前 ≠ 后**。前一段必须复现失败 / 不存在的能力，后一段 demo 新能力 | 不许引用现有测试 |
 | 3 | 反向 | 删除新实现 → 必须看到失败 | 强制证明因果 |
 | 4 | 边界 | 极限 / 异常 / 空 / 类型边界输入 | 防 happy path bias |
-| 5 | 路线 | (a) 对照 D088 §正模式 / §反模式 / §验证标准 §核心验证 逐条打勾；(b) **第一性需求距离**：本轮产出和 D088 §第一性需求 的实现路径间距（用 phase 数衡量）。距离 ≥2 phase → 警告"可能绕道"，必须给出"为何先做 phase X 而非更靠近 §第一性需求 的工作"的论证；(c) **表面 vs 根复检**：对照 PSM 字段 10 的标记，确认本轮**没有把表面解决伪装成根解决** | 防离开主线 |
+| 5 | 路线 | (a) 对照 D088 §正模式 / §反模式 / §验证标准 §核心验证 逐条打勾；(b) **第一性需求距离**：本轮产出和 D088 §第一性需求 的实现路径间距（用 phase 数衡量）。距离 ≥2 phase → 警告"可能绕道"，必须给出"为何先做 phase X 而非更靠近 §第一性需求 的工作"的论证；(c) **表面 vs 根复检**：对照 PSM 字段 10 的标记，确认本轮**没有把表面解决伪装成根解决**；(d) **八股沉积复盘**：本轮**所有**改动回放一遍,每项过"去掉它核心产出会少什么"元规则 —— 答"不会少"→ 本项是八股,当场 revert 或 commit message 显式点名(禁止藏在"顺手重构"里);对扩容申报类任务同时做"预估 vs 实测"对账,累计组任一指标预估偏差 >50% → 写入 D 文档 §扩容申报 §预估失准段,下轮 PSM 开工前必读(`feedback_bagu_self_check` / `feedback_reflection_expansion_protocol` 配套) | 防离开主线 + 防八股跨轮沉积 |
 
 ### 收尾 gate（强制，五验 VCM 通过之后）
 

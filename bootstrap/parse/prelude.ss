@@ -24,7 +24,7 @@ class FieldMeta {
 
 class AnnotationMeta {
     name: string
-    args: Array<string>
+    args: Map<string, string>
 }
 
 // D117 §决策 1 — 补齐 5 类 Meta。

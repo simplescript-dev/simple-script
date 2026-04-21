@@ -511,7 +511,7 @@ function parseAssignOrExpr(): int {
             const mem = pExpectIdent()
             if (curKind() == "LPAREN") {
                 pAdvance()
-                const args = parseArgs()
+                const args = parseArgs(0)
                 pExpect("RPAREN")
                 const mc = newNode("METHOD_CALL")
                 nSetS1(mc, mem)

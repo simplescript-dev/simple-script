@@ -68,13 +68,9 @@ function interpMapHas(mapId: int, key: string): int {
 function interpMapDelete(mapId: int, key: string) {
     const fullKey = mapId + "|" + key
     if (tvMap.has(fullKey) == 0) { return }
-    const cur = tvList.getString(mapId + "")
-    const parts = cur.split(",")
     let newCsv = ""
-    let i = 0
-    while (i < parts.length()) {
-        if (parts[i] != key) { newCsv = newCsv == "" ? parts[i] : newCsv + "," + parts[i] }
-        i = i + 1
+    for (p in tvList.getString(mapId + "").split(",")) {
+        if (p != key) { newCsv = newCsv == "" ? p : newCsv + "," + p }
     }
     tvList.set(mapId + "", newCsv)
     tvMap.delete(fullKey)
@@ -85,12 +81,7 @@ function interpMapGetKeys(mapId: int): int {
     const arrId = newTvArray("")
     const cur = tvList.getString(mapId + "")
     if (cur == "") { return arrId }
-    const parts = cur.split(",")
-    let i = 0
-    while (i < parts.length()) {
-        interpArrayPush(arrId, newTvString(parts[i]))
-        i = i + 1
-    }
+    for (p in cur.split(",")) { interpArrayPush(arrId, newTvString(p)) }
     return arrId
 }
 
@@ -115,30 +106,54 @@ function interpNewVal(kind: string, payload: string): int {
     return newTvNull()
 }
 
-// 从 ANNOTATION_LIST AST 节点构造 AnnotationMeta 数组,inline 取 args(STRING_LIT only)。
-// annListId 非 ANNOTATION_LIST kind 或 <=0 返空数组(abstract FUNC_DECL.I4=1 走此分支)。
-// annPoolPrefix 形如 "FLD|<cls>.<fld>" / "MTH|<cls>.<mth>[.get|.set]" / "CLS|<cls>",
-// 最终 ANN InternPool key = `ANN|${annPoolPrefix}.${annName}`。D118 Execute 2 抽出,
-// 统一 field/method/class 三处 AnnotationMeta 构造(simplify Finding 1)。
+// D121 R1-A:args 形态 Array<string> → Map<string, string>,value 通用化
+// (STRING/INT/DOUBLE/TRUE/FALSE/MEMBER_ACCESS enum)。位置参数 Java 惯例:
+// 单参 → key "value",多参 → key "0"/"1"/...;命名参数(NAMED_ARG COLON 或
+// R2-B ASSIGN)→ key = S1, value = inline kind dispatch on nGetI1(argId)。
+// 非 comptime-evaluable value kind silently skip(保兼容 d096 非 STRING 原行为)。
+// annListId 非 ANNOTATION_LIST kind 或 <=0 返空数组(abstract FUNC_DECL.I4=1)。
+// ANN InternPool key = `ANN|${annPoolPrefix}.${annName}`(D118 Execute 2 抽出)。
+// D121 R1-A value kind 通用化:STRING/INT/DOUBLE/BOOL/enum MEMBER_ACCESS 字面化;
+// sentinel "\0" 判非合法值(区别合法 "" 空串,D121 test 无空串用例)。enum 双 map 回退
+// (comptimeDepth=0 注册 enumValues / >0 注册 interpEnumValues,见 member_access.ss:10-16)。
 function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
     const arr = interpNewArray("")
-    if (annListId <= 0) { return arr }
-    if (nGetKind(annListId) != "ANNOTATION_LIST") { return arr }
+    if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return arr }
     for (ap in nGetList(annListId).split(",")) {
         const aId = parseInt(ap)
         if (aId <= 0) { continue }
-        const annName = nGetS1(aId)
         const amId = interpNewVal("object", "AnnotationMeta")
-        tvMap.set(`${amId}|name`, `${interpNewString(annName)}`)
-        const argsArr = interpNewArray("")
+        tvMap.set(`${amId}|name`, `${interpNewString(nGetS1(aId))}`)
+        const argsMap = interpNewMap()
+        let posCount = 0
         for (arp in nGetList(aId).split(",")) {
-            const argId = parseInt(arp)
-            if (argId > 0 && nGetKind(argId) == "STRING_LIT") {
-                interpArrayPush(argsArr, interpNewString(nGetS1(argId)))
-            }
+            const acId = parseInt(arp)
+            if (acId > 0 && nGetKind(acId) != "NAMED_ARG") { posCount = posCount + 1 }
         }
-        tvMap.set(`${amId}|args`, `${argsArr}`)
-        interpArrayPush(arr, internPoolGetOrInsert(`ANN|${annPoolPrefix}.${annName}`, amId))
+        let posIdx = 0
+        for (arp2 in nGetList(aId).split(",")) {
+            const argId = parseInt(arp2)
+            if (argId <= 0) { continue }
+            let key = ""
+            let valId = 0
+            if (nGetKind(argId) == "NAMED_ARG") {
+                key = nGetS1(argId); valId = nGetI1(argId)
+            } else {
+                key = posCount == 1 ? "value" : `${posIdx}`; valId = argId; posIdx = posIdx + 1
+            }
+            const vKind = nGetKind(valId)
+            let valStr = "\0"
+            if (vKind == "STRING_LIT" || vKind == "INT_LIT" || vKind == "DOUBLE_LIT") { valStr = nGetS1(valId) }
+            else if (vKind == "TRUE_LIT" || vKind == "FALSE_LIT") { valStr = vKind == "TRUE_LIT" ? "true" : "false" }
+            else if (vKind == "MEMBER_ACCESS" && nGetKind(nGetI1(valId)) == "IDENT") {
+                const eKey = `${nGetS1(nGetI1(valId))}.${nGetS1(valId)}`
+                if (interpEnumValues.has(eKey) == 1) { valStr = interpEnumValues.getString(eKey) }
+                else if (enumReady == 1 && enumValues.has(eKey) == 1) { valStr = enumValues.getString(eKey) }
+            }
+            if (valStr != "\0") { interpMapSet(argsMap, key, interpNewString(valStr)) }
+        }
+        tvMap.set(`${amId}|args`, `${argsMap}`)
+        interpArrayPush(arr, internPoolGetOrInsert(`ANN|${annPoolPrefix}.${nGetS1(aId)}`, amId))
     }
     return arr
 }
@@ -195,7 +210,6 @@ function interpBuildTypeInfo(typeName: string): int {
     // 再 skip 前 ownCount 取 CSV 尾部 handler-generated,空 annotations。
     // built-in 类(Map/Set 等)classNodeIds 缺失 → ownCount=0,CSV 全部按 handler-generated 建。
     const mArr = interpNewArray("")
-    let ownCount = 0
     if (hasNode) {
         const mbId = classMethodsBlock(clsNodeId)
         if (mbId > 0) {
@@ -211,10 +225,10 @@ function interpBuildTypeInfo(typeName: string): int {
                 const mAnnArr = buildAnnotationMetaArray(nGetI4(mId), `MTH|${mKey}`)
                 tvMap.set(`${mmId}|annotations`, `${mAnnArr}`)
                 interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${mKey}`, mmId))
-                ownCount = ownCount + 1
             }
         }
     }
+    const ownCount = interpArrayLen(mArr)
     const mCsv = classMethods.getString(typeName)
     if (mCsv != "") {
         let mIdx = 0

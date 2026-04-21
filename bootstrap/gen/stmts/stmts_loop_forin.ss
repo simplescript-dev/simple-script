@@ -82,7 +82,10 @@ function genForIn(id: int) {
         if (iterKind != "INT_LIT" && iterKind != "STRING_LIT" && iterKind != "DOUBLE_LIT" && iterKind != "TRUE_LIT" && iterKind != "FALSE_LIT" && iterKind != "NULL_LIT" && iterKind != "ARRAY_LIT") {
             ctIterVal = genVal(iterableId)
             ctIterReady = 1
-            if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") { ctProbe = 1 }
+            if (isCt(ctIterVal) == 1) {
+                const probeType = interpType(payload(ctIterVal))
+                if (probeType == "array" || probeType == "map") { ctProbe = 1 }
+            }
         }
     }
     if (ctProbe == 1) {
@@ -97,6 +100,20 @@ function genForIn(id: int) {
                 genBlock(bodyId)
                 if (interpCheckLoopExit() == 1) { break }
                 ctFi = ctFi + 1
+            }
+            return
+        }
+        if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "map") {
+            const ctMapId = payload(ctIterVal)
+            const keysArr = interpMapGetKeys(ctMapId)
+            const mapLen = interpArrayLen(keysArr)
+            if (mapLen > 0 && interpType(interpGetField(ctMapId, interpAsStr(interpArrayGet(keysArr, 0)))) == "string") { setVarType(itemName, "string") }
+            let ctMi = 0
+            while (ctMi < mapLen) {
+                ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(interpGetField(ctMapId, interpAsStr(interpArrayGet(keysArr, ctMi))))}`)
+                genBlock(bodyId)
+                if (interpCheckLoopExit() == 1) { break }
+                ctMi = ctMi + 1
             }
             return
         }

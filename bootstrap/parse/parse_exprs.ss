@@ -208,7 +208,7 @@ function parsePrimary(): int {
         const member = pExpectIdent()
         if (curKind() == "LPAREN") {
             pAdvance()
-            const argsStr = parseArgs()
+            const argsStr = parseArgs(0)
             pExpect("RPAREN")
             const id = newNode("METHOD_CALL")
             nSetS1(id, member)
@@ -391,7 +391,7 @@ function parseAtom(): int {
             newExplicitTypes = parseTypeArgList()
         }
         pExpect("LPAREN")
-        const argsStr = parseArgs()
+        const argsStr = parseArgs(0)
         pExpect("RPAREN")
         const id = newNode("NEW_EXPR")
         nSetS1(id, className)
@@ -431,7 +431,7 @@ function parseAtom(): int {
         if (curKind() == "LT" && isGenericCallSite() == 1) {
             const callTypeArgs = parseTypeArgList()
             pExpect("LPAREN")
-            const argsStr = parseArgs()
+            const argsStr = parseArgs(0)
             pExpect("RPAREN")
             const id = newNode("CALL")
             nSetLine(id, identLine)
@@ -443,7 +443,7 @@ function parseAtom(): int {
         }
         if (curKind() == "LPAREN") {
             pAdvance()
-            const argsStr = parseArgs()
+            const argsStr = parseArgs(0)
             pExpect("RPAREN")
             const id = newNode("CALL")
             nSetLine(id, identLine)
@@ -553,7 +553,11 @@ function parseTemplateLit(): int {
     return id
 }
 
-function parseArgs(): string {
+// D121 R2-B:allowAssign=1 时 `IDENT = expr` 等同 `IDENT : expr` 作 NAMED_ARG
+// 构造,Java/Spring `@RequestMapping(value = "/x", method = RequestMethod.GET)`
+// byte-identical 复刻。范围限 annotation parser 两 callsite(parser.ss:257/716),
+// 函数调用 parseArgs(0) 不受污染(SS / TS 函数 named arg 统一 COLON)。
+function parseArgs(allowAssign: int): string {
     skipNL()
     if (curKind() == "RPAREN") { return "" }
     let args = ""
@@ -566,8 +570,8 @@ function parseArgs(): string {
             const spreadNode = newNode("SPREAD_ELEM")
             nSetI1(spreadNode, spreadExpr)
             args = listAppend(args, spreadNode)
-        // Named arg: IDENT followed by COLON → NAMED_ARG node
-        } else if (curKind() == "IDENT" && kindAt(tPos + 1) == "COLON") {
+        // Named arg: IDENT followed by COLON (or ASSIGN under allowAssign) → NAMED_ARG
+        } else if (curKind() == "IDENT" && (kindAt(tPos + 1) == "COLON" || (allowAssign == 1 && kindAt(tPos + 1) == "ASSIGN"))) {
             const naName = curValue()
             pAdvance()
             pAdvance()
