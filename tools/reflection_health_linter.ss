@@ -429,10 +429,12 @@ function compareAndReport(): int {
     return regressions
 }
 
-// D102 §规则 2.1 F1 文件行数 GATE:
-//   R1 已知 > 600 文件: cur > baseline → REGRESSION;cur < baseline → PROGRESS;== → OK
-//   R2 已知 ≤ 600 文件: 默认无 F1: 条目,cur > 600 → REGRESSION (回升阻断)
-//   R3 新文件(baseline 无): cur > F1_LIMIT → REGRESSION;否则不报告(record 时入库)
+// D102 §规则 2.1 F1 4 状态矩阵:
+//   S1 base 有 + cur > 600 → R1 monotonic (cur > base REGRESSION / < PROGRESS / == OK)
+//   S2 base 有 + cur ≤ 600 → R1 PROGRESS;record 时 R4 graduate 删条目
+//   S3 base 无 + cur > 600 → R3 REGRESSION 阻断
+//   S4 base 无 + cur ≤ 600 → R2 默认 OK(cur 升 > 600 触 R3);record 时 R4 不入库
+// 下方合并实现:base >= 0 分 S1/S2,else cur > F1_LIMIT 分 S3/S4
 function checkF1(): int {
     let regs = 0
     println("--- F1 文件行数 GATE (R1 超标单调下降 / R2+R3 新增 > 600 硬阻) ---")

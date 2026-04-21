@@ -104,13 +104,30 @@ D097 L102「累积方向严禁更新 baseline」规则**不变**但分层化:
 
 ## 决策 2:F1 文件行数 GATE
 
-### §规则 2.1 F1 规则集
+### §规则 2.1 F1 规则集(4 状态矩阵)
 
-- **R1**:已知 > 600 文件: per-file baseline 记录当前值,cur > baseline → REGRESSION 阻断;cur < baseline → PROGRESS;cur == baseline → OK
-- **R2**:已知 ≤ 600 文件: cur > 600 → REGRESSION 阻断
-- **R3**:新文件(baseline 无): cur > 600 → REGRESSION 阻断;否则 record 时入库
-- **R4**:record 规则: 文件行数下降时 baseline 更新;降到 ≤ 600 时该文件 baseline **删除**(变成 R2 状态,不允许再升至 > 600)
-- **R5**:文件被删除时, record 时该 baseline 条目删除
+F1 守护 **2×2 状态矩阵** {baseline 有无 × cur > 600 / ≤ 600} 全 4 状态,每状态规则明示:
+
+| 状态 | baseline | cur | 监督(`checkF1`) | 记录(`writeBaseline`) |
+|---|---|---|---|---|
+| **S1** | 有 | > 600 | **R1** monotonic | **R4** 更新 baseline 为 cur |
+| **S2** | 有 | ≤ 600 | R1 PROGRESS | **R4 graduate**:删除 baseline 条目(一次性,进入 S4 自动状态) |
+| **S3** | 无 | > 600 | **R3** REGRESSION 阻断 | 不触发(compareAndReport 已 exit) |
+| **S4** | 无 | ≤ 600 | **R2** 默认 OK;cur 升至 > 600 触 R3 REGRESSION | **R4 不入库**(S4 自动状态保持) |
+
+- **R1(S1 监督)**:既有 baseline 条目, cur > baseline → REGRESSION 阻断;cur < baseline → PROGRESS;cur == baseline → OK
+- **R2(S4 监督)**:baseline 无条目的文件(新文件 or S2 graduated), cur > 600 → REGRESSION 阻断(回升防腐)
+- **R3(S3 监督)**:新文件(baseline 无), cur > 600 → REGRESSION 阻断。R2/R3 实现层合并(`base < 0 && cur > 600`),区分仅在概念层(新增 vs graduated)
+- **R4(所有 S 的 record 规则)**:
+  - S1 `cur > 600` → baseline 更新为 cur
+  - S2 `cur ≤ 600` → **删除** baseline 条目(graduate,一次性,进入 S4)
+  - S3 阻断在 R3, record 不触发
+  - **S4 `cur ≤ 600` → 不入库**(S4 自动状态保持)
+- **R5(文件删除)**:文件被删除时, record 时该 baseline 条目删除
+
+**核心语义**:R4 "`cur ≤ 600` → 不入库/删除" 单条覆盖 **S2 graduate** + **S4 新文件** + **历史残留**三种情况(自愈)。实现层 `tools/reflection_health_linter.ss:368` `if (cur > F1_LIMIT) { text = ... }` 即 R4 单行落地。`checkF1` 函数 `base >= 0` 分 S1/S2,`cur > F1_LIMIT` 分 S3/S4。
+
+**历史残留处理**:R4 "≤ 600 不入库/删除" 语义下,历史遗留的 ≤ 600 baseline 条目视作 S2 一次性 graduate,下次 record 自动清;或 clarification 轮手动清。本 clarification 轮手动清 L25-30 6 条(check_return=63 / check_narrow=35 / check_named_args=84 / check_thread=65 / check_exprs=339 / ir_builder=101),以立即兑现 "F1 baseline 仅 > 600 条目" 纯净化。
 
 **最终目标**:所有 bootstrap/*.ss 满足 **P10.1 结构清晰**(职责 ≤ 2 类 + 依赖单向) + **行数 ≤ 600 下限守护**。行数 gate 和结构 gate **并列**,前者不代替后者。F1 baseline 全清空仅表示下限达标,**不等于** P10.1 达标(参见 `docs/2-principles.md §PFV §字段 3` F1 特例 + `memory/feedback_structure_not_linecount.md`)。
 
