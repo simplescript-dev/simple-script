@@ -36,6 +36,12 @@
 - 档位自报错档 → After Code 发现实际超自报档 → 回写档位 + 补齐缺省 gate,**不许**宣告完成
 - 纯文档 / 纯配置改动仍按档位判(simplify 豁免细则见 §After Done §1 例外)
 - 纯审阅 / 纯问答 / 0 文件 0 代码改动任务 → 档位低于微改,PSM / N / K 全豁免,仅输出答案;用户若明示要求流程反思(如"列候选"),按要求执行
+- **多 issue 串跑判定**(与 feedback_interactive_one_doc 协同):
+  - 一轮内允许跑 **≥ 2 个 issue** 的唯一条件:全部命中**微改**档位(LOC ≤ 5 + 1 文件 + 无签名变)
+  - 全微改 → After Done simplify / 流程反思豁免;**commit 可合并**,但 message 里每个 issue 一项对照 `docs/4-issues/IXXX-*.md` 的 "去掉少什么"(commit_footer Q1)
+  - 任一 issue 触及**标准改 / 大改** → 一轮**只做一个 issue**,其余 issue 立项推迟到下轮 next_prompt
+  - `bin/ss run /loop-planner`(若未来实装)或手工规划时必须先按上表判每个 issue 档位,不许靠"感觉这轮能全做完"蒙混
+  - 不守此规的典型后果:bootstrap × N 次 trial-and-error 把对话拖到 compact,中途改动丢上下文 → 跨 issue 耦合失控
 
 ---
 
@@ -326,9 +332,10 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | **非阻挡** | 独立 root cause + 不 BLOCK 本轮主任务 VCM 通过 | **立项修**:写 `docs/4-issues/IXXX-*.md`(用下节命名规范),不许只对话提 / 只 commit msg 提 / 只 memory 记 |
 
 **硬规则**:
-- **禁止第三态**("顺手修无关 bug" / "打包修 2 个 issue")—— 要么阻挡本轮必修,要么独立立项,不许混入主任务 commit
+- **禁止第三态**("顺手修无关 bug" / "打包修 2 个标准改以上 issue")—— 要么阻挡本轮必修,要么独立立项,不许混入主任务 commit
 - 若本轮修了阻挡性衍生问题,**commit 拆 2 条**(主 issue 一条 + blocker 修复一条),commit message 显式说明 blocker 关联
 - 非阻挡问题**必写 issue 文件**,对话 / commit msg 提到 "IXXX" 而目录不存在 → `derived_issue_linter` BLOCK
+- **多 issue 串跑白名单**:多个**全微改**档位 issue 可一轮合并(合并条件 + commit 拆法见 §改动分层 §判定细则 §多 issue 串跑判定),本节"禁第三态"规则不阻此场景
 
 **命名规范**:
 
