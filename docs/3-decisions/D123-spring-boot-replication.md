@@ -174,7 +174,7 @@ Phase 5 Java oracle + parity CI 接线
 7. Bash    bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity
 8. Bash    bin/ss run tools/reflection_health_linter.ss(反射 gate)
 9. 失败     → 根因修(禁绕路)→ 回 step 4
-10. 全绿    → VCM 五验贴证据 → /simplify → commit
+10. 全绿    → VCM 六验贴证据 → /simplify → commit
 11. 写下轮 payload(含 ultrathink)→ stop
 ```
 
