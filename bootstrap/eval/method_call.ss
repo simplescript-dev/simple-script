@@ -68,6 +68,16 @@ function evalMethodCall(astId: int): int {
         }
         return ctMethodCallDispatch(astId, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
     }
+    // ctVal array/map 接收者无法 materialize 成寄存器(interp_value.ss:41 返 "0"),
+    // 必须走 ctMethodCallDispatch 否则运行时 genMethodCall 发 `ss_mapKeysArray(ptr 0)`。
+    // @methodOf handler 体常触发(comptimeDepth==0 + for-in 绑 ctVal)。
+    if (isCt(mcObj) == 1) {
+        const mcObjKind = interpType(payload(mcObj))
+        if (mcObjKind == "array" || mcObjKind == "map") {
+            callPreRegs = mcSavedCPR
+            return ctMethodCallDispatch(astId, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
+        }
+    }
     if (nGetI3(astId) > 0) {
         callPreRegs.set(`${mcObjNode}`, mcObjReg)
         const mcOptResult = genOptionalMethodCall(astId)
