@@ -102,7 +102,7 @@ bin/ss clean
 
 **Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
 
-**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline 2 列制/AUTO-DRIFT 软警告/`bump`+`bump-group` 扩容申报 CLI/scope-aware 判定 见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；流程层触发范围与扩容判定路径见 `docs/3-MNK.md` §特定领域 §反射路径根因 gate / §反射路径扩容判定。
+**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline 2 列制/AUTO-DRIFT 软警告/`bump`+`bump-group` 扩容申报 CLI/scope-aware 判定 见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；流程层触发范围与 REGRESSION A/B 路径见 `docs/3-MNK.md` §特定领域 §反射路径根因 gate。
 
 **回复语言**：所有回复及总结使用中文。
 
