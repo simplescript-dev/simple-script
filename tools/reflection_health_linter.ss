@@ -80,6 +80,37 @@ const F1_LIMIT = 600
 const TOL_PCT_NUM = 1
 const TOL_PCT_DEN = 100
 
+// ── D125 §P2 scope-aware 反射 gate ────────────────────────────
+// 读 `git diff --name-only HEAD` 判改动集是否触及反射路径白名单。
+// 未触及:M1-M7+N1-N5 REGRESSION 降 SCOPE-DRIFT 软警告(gate 不阻,
+// 消除非反射改动误伤诱发的远距离榨指标八股,feedback_no_distant_offset 根解)。
+// 触及 or git diff 为空:保持原 hard gate(clean tree 无改动也算未触及,soft 合理)。
+// F1 行数 gate 不受 scope 影响(每文件 size > budget_max 永远硬阻)。
+// 白名单 4 路径见 isReflectionScope 函数体 + D097 §开发流集成 + D125 §P2 §实施。
+function listDiffFiles(): Array<string> {
+    const raw = shell("git diff --name-only HEAD")
+    let out: Array<string> = []
+    if (raw == "") { return out }
+    for (line in raw.split("\n")) {
+        if (line == "") { continue }
+        out.push(line)
+    }
+    return out
+}
+
+function isReflectionScope(diffFiles: Array<string>): int {
+    let i = 0
+    while (i < diffFiles.length()) {
+        const f = diffFiles[i]
+        if (f.startsWith("bootstrap/gen/class/") == 1 && f.endsWith(".ss") == 1) { return 1 }
+        if (f.startsWith("bootstrap/gen/stmts/") == 1 && f.endsWith(".ss") == 1) { return 1 }
+        if (f == "bootstrap/checker/check_stmts.ss") { return 1 }
+        if (f == "bootstrap/gen/codegen.ss") { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
 // ── Map<string,string> → int 适配 ────────────────────────────
 function mapGetInt(m: Map<string, string>, k: string): int {
     if (m.has(k) == 0) { return 0 }
@@ -516,34 +547,36 @@ function checkF1(): int {
     return regs
 }
 
-function compareAndReport(): int {
+// D125 §P2: 14 指标 REGRESSION 按 isReflectionScopeTouched 切 hard/soft;F1 永远硬阻(不传 scope)。
+function compareAndReport(isReflectionScopeTouched: int): int {
     if (fileExists(BASELINE_PATH) == 0) {
         println("(no baseline found — will not gate)")
         println(`  (to record current as baseline: bin/ss run ${"tools/reflection_health_linter.ss"} record)`)
         return 0
     }
     loadBaseline()
-    println("--- 基线对比 (cur > budget_max → BLOCKED) ---")
+    println("--- 基线对比 (cur > budget_max → BLOCKED,non-reflection scope 降 SCOPE-DRIFT 软警告) ---")
     const labels: Array<string> = ["M1 ", "M2 ", "M3a", "M3b", "M4 ", "M5 ", "M6 ", "M7a", "M7b", "N1 ", "N2 ", "N3 ", "N4 ", "N5 "]
     const keys: Array<string> = ["M1", "M2", "M3a", "M3b", "M4", "M5", "M6", "M7a", "M7b", "N1", "N2", "N3", "N4", "N5"]
     const curs: Array<int> = [m1, m2, m3a, m3b, m4, m5, m6, m7a, m7b, n1, n2, n3, n4, n5]
     let regressions = 0
     let j = 0
     while (j < curs.length()) {
-        regressions = regressions + reportDelta(labels[j], curs[j], keys[j])
+        regressions = regressions + reportDelta(labels[j], curs[j], keys[j], isReflectionScopeTouched)
         j = j + 1
     }
     regressions = regressions + checkF1()
     return regressions
 }
 
-// D124 §决策 2.1 四终态 + D125 §P4 AUTO-DRIFT 软区间 = 五终态:
+// D124 §决策 2.1 四终态 + D125 §P4 AUTO-DRIFT + §P2 SCOPE-DRIFT = 六终态:
 //   cur < baseline_value                              → PROGRESS
 //   cur == baseline_value                             → OK
 //   baseline_value < cur ≤ budget_max                 → DRIFT       (gate 不阻,扩容预算内浮动)
-//   budget_max < cur ≤ budget_max × (1 + TOL_PCT)     → AUTO-DRIFT  (gate 不阻,软警告,小幅微扩豁免申报)
-//   cur > budget_max × (1 + TOL_PCT)                  → REGRESSION  (gate 阻)
-function reportDelta(label: string, cur: int, key: string): int {
+//   budget_max < cur ≤ budget_max × (1 + TOL_PCT)     → AUTO-DRIFT  (gate 不阻,软警告,小幅微扩豁免)
+//   cur > budget_max × (1 + TOL_PCT) && !isReflectionScopeTouched → SCOPE-DRIFT (gate 不阻,diff 未触反射白名单软降)
+//   cur > budget_max × (1 + TOL_PCT) && isReflectionScopeTouched  → REGRESSION  (gate 阻)
+function reportDelta(label: string, cur: int, key: string, isReflectionScopeTouched: int): int {
     const bv = mapGetIntOrNeg(baselineMap, key)
     const bm = mapGetIntOrNeg(budgetMap, key)
     if (bv < 0) {
@@ -553,18 +586,22 @@ function reportDelta(label: string, cur: int, key: string): int {
     const delta = cur - bv
     let tag = "OK"
     let isReg = 0
-    let autoDriftMsg = ""
+    let softMsg = ""
     if (cur > bm) {
         if (isAutoDrift(cur, bm) == 1) {
             tag = "AUTO-DRIFT"
-            autoDriftMsg = `  ⚠ AUTO-DRIFT: ${label} cur=${cur} within ${TOL_PCT_NUM}% of budget_max=${bm} (soft, not blocked)`
+            softMsg = `  ⚠ AUTO-DRIFT: ${label} cur=${cur} within ${TOL_PCT_NUM}% of budget_max=${bm} (soft, not blocked)`
+        }
+        else if (isReflectionScopeTouched == 0) {
+            tag = "SCOPE-DRIFT"
+            softMsg = `  ⚠ SCOPE-DRIFT: ${label} cur=${cur} > budget_max=${bm} 但 diff 未触及反射白名单 (soft, not blocked)`
         }
         else { tag = "REGRESSION"; isReg = 1 }
     }
     else if (cur > bv) { tag = "DRIFT" }
     else if (cur < bv) { tag = "PROGRESS" }
     println(`  ${label} cur=${cur} bv=${bv} bm=${bm} delta=${delta} → ${tag}`)
-    if (autoDriftMsg != "") { println(autoDriftMsg) }
+    if (softMsg != "") { println(softMsg) }
     return isReg
 }
 
@@ -802,7 +839,17 @@ function main() {
         return
     }
 
-    const regressions = compareAndReport()
+    const diffFiles = listDiffFiles()
+    const isReflectionScopeTouched = isReflectionScope(diffFiles)
+    let scopeDesc = "not touched"
+    if (isReflectionScopeTouched == 1) { scopeDesc = "TOUCHED" }
+    println(`--- Reflection scope: ${diffFiles.length()} changed file(s) in HEAD diff, reflection path ${scopeDesc} ---`)
+    if (isReflectionScopeTouched == 0) {
+        println(`  (M1-M7+N1-N5 REGRESSION 降 SCOPE-DRIFT 软警告;F1 硬阻保留)`)
+    }
+    println("")
+
+    const regressions = compareAndReport(isReflectionScopeTouched)
     println("")
     if (regressions > 0) {
         println(`GATE BLOCKED — ${regressions} metric(s) regressed`)

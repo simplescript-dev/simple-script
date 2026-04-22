@@ -70,7 +70,9 @@ bin/ss run tools/reflection_health_linter.ss bump-group <doc> <m1>=<b1> <m2>=<b2
 
 ## 开发流集成
 
-反射相关改动(触碰 `bootstrap/gen_class.ss` / `gen_stmts.ss` / `check_stmts.ss` 的反射路径,或新增 `classXxxAnnotation*` 全局),**以及任何可能影响编译器结构规模的改动**,在 commit 前必须跑本 linter,任一指标 regression 阻断 commit。
+反射相关改动(触碰 `bootstrap/gen/class/*.ss` / `bootstrap/gen/stmts/*.ss` / `bootstrap/checker/check_stmts.ss` / `bootstrap/gen/codegen.ss` 反射段,或新增 `classXxxAnnotation*` 全局),在 commit 前必须跑本 linter,任一指标 regression 阻断 commit。
+
+**D125 §P2 scope-aware(2026-04-22 起)**:linter `main()` 消费 `shell("git diff --name-only HEAD")` 判改动 scope — 触及上述反射白名单任一文件则 M1-M7+N1-N5 REGRESSION 硬阻(原行为),未触及则降 SCOPE-DRIFT 软警告 gate 不阻(消除非反射改动误伤诱发的远距离榨指标八股,`feedback_no_distant_offset` 根解)。F1 行数 gate 不受 scope 影响(每文件 size > budget_max 永远硬阻,防"拆文件"类 F1 规避被 scope-aware 豁免)。
 
 Baseline 更新规则:
 

@@ -99,7 +99,7 @@ readability agent 对其他三维度有**否决权**:reuse agent 建议"合并�
 
 ---
 
-### P2 — 反射 gate 加 scope-aware 过滤(高优先)
+### P2 — 反射 gate 加 scope-aware 过滤(高优先)[x] Done at `tools/reflection_health_linter.ss:listDiffFiles/isReflectionScope/reportDelta` (D125 Execute 4, 2026-04-22)
 
 **现状**:`tools/reflection_health_linter.ss` 对 `bootstrap/` 全量 scan,M1-M7 + N1-N5 不区分改动 scope。非反射路径改动(例如 `bootstrap/pir/pir_opt.ss` 加一个优化 pass)若推高 M1/M2 会被 14 指标 gate REGRESSION 阻,实际与反射无关 → 误伤 → 诱发远距离榨指标八股。
 
@@ -336,6 +336,14 @@ gate 设计者的心智模型:**"如果 cur 不升,质量就不降"**。失真�
 - **commit**:四代码文件 + 本条目 + baseline.txt + 2 demo(`tests/phase5/shell_builtin.ss` / `shell_edge.ss`)同 commit,message `feat(D125): Execute 3 P2 前置 — shell builtin 解锁 scope-aware`
 - **验证**:RED `grep -r 'ss_shell' bootstrap/ \| wc -l` = 0 入场;bootstrap 固定点 Stage2=Stage3 ✓;demo shell("echo hello_shell") → "hello_shell\n" / shell("yes x | head -c 8192").length()=8192(grow 分支) / shell 空 / 缺失命令 → "" 均通过
 - **后续**:P2 linter 消费 shell 实现 scope 判定 + 白名单豁免(另轮);本前置完成使 P2 入场 RED `grep -n "shell(" tools/reflection_health_linter.ss` 从 0 起算
+
+### Execute(第四批) [x] Done at 2026-04-22 — P2 scope-aware 反射 gate 落地
+
+- **P2 §实施**:`tools/reflection_health_linter.ss` 新增 `listDiffFiles(): Array<string>`(消费 `shell("git diff --name-only HEAD")` 捕获 HEAD diff 文件集)+ `isReflectionScope(diffFiles: Array<string>): int`(按 4 路径白名单匹配 `bootstrap/gen/class/*.ss` / `bootstrap/gen/stmts/*.ss` / `bootstrap/checker/check_stmts.ss` / `bootstrap/gen/codegen.ss`);`reportDelta` 加第 4 参数 `inReflectionScope`,原 REGRESSION 分支按 scope 切:反射 scope 保持 REGRESSION 硬阻,非反射 scope 降 `SCOPE-DRIFT` 软警告 `isReg=0`;`compareAndReport` 签名同步 + 传递 scope(F1 `checkF1()` 不传 — 行数 gate 永远硬阻不受 scope 影响);`main()` `record`/`bump`/`bump-group` 分支后加 scope 判定 + `--- Reflection scope: N changed file(s) ... TOUCHED/not touched ---` 报告行
+- **reportDelta 六终态扩展**:D124 §决策 2.1 四终态 + D125 §P4 AUTO-DRIFT + §P2 SCOPE-DRIFT = 六终态(PROGRESS / OK / DRIFT / AUTO-DRIFT / SCOPE-DRIFT / REGRESSION);SCOPE-DRIFT 和 AUTO-DRIFT 均 gate 不阻但语义分离 — AUTO-DRIFT 是"cur 超 budget_max 但 ≤ 1% tol"(数值微扩豁免),SCOPE-DRIFT 是"cur 超 budget_max > 1% tol 但改动未触反射白名单"(scope 豁免,不限 delta 幅度)
+- **文档同步**:D097 §开发流集成 现描述("任何可能影响编译器结构规模的改动...任一指标 regression 阻断 commit")升级为"反射白名单 4 路径改动 hard gate / 非反射改动 soft gate + F1 硬阻";D125 §P2 标题加 `[x] Done at <file:anchor>` 状态标注(P19)
+- **commit**:三文件(linter + D097 + D125)+ 本附录条目同 commit,message `feat(D125): Execute 4 P2 scope-aware 反射 gate 按 diff scope 切 hard/soft`
+- **验证**:RED `grep -cE "shell\(" tools/reflection_health_linter.ss` = 0 入场;`bin/ss run tools/reflection_health_linter.ss` clean working tree `3 changed file(s) not touched` 报告 + 14 指标 AUTO-DRIFT/OK GATE PASS;临时改 `M1=5169:5168 → M1=5000:5000`(cur=5169 > bm×1.01=5050 超 tol)+ 非反射 scope → `M1 → SCOPE-DRIFT + soft not blocked + GATE PASS`;再 `printf >> bootstrap/gen/class/class.ss`(反射 scope)→ `reflection path TOUCHED` + `M1 → REGRESSION + GATE BLOCKED`(5 changed file(s));验后 baseline + class.ss 全恢复;`bin/ss test tests/` 全绿;`./build.sh bootstrap` 固定点 ✓
 
 ---
 
