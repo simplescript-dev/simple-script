@@ -311,13 +311,21 @@ function processFile(path: string) {
 }
 
 // ── baseline IO (D124 §决策 1-3: 2 列制 baseline_value:budget_max) ────
-let rowMap: Map<string, string> = new Map()
+// 两个 Map 分别承载语义清晰的两列:baseline_value(历史证据)+ budget_max(gate 阈值)。
+// 不合成单 Map<string,"bv:bm"> — 自内部数据不二次序列化(`feedback_human_readable_code` #1)。
+let baselineMap: Map<string, string> = new Map()
+let budgetMap: Map<string, string> = new Map()
 let baselineLoaded: int = 0
 
 const TODAY_DATE = "2026-04-22"
 
+function mapGetIntOrNeg(m: Map<string, string>, k: string): int {
+    if (m.has(k) == 0) { return -1 }
+    return parseInt(m.getString(k))
+}
+
 // 解析 "<prefix><bv>:<bm>"(2 列)或 legacy "<prefix><v>"(视作 bv==bm)。baseline.txt 是 IO 边界,
-// 手工 edit 的格式畸形必须拒(D124 §决策 3.3 不可伪造)。
+// 手工 edit 的格式畸形必须拒(D124 §决策 3.3 不可伪造)。返 [bv, bm] 前缀不匹配返 []。
 function parseRow(line: string, prefix: string): Array<int> {
     let out: Array<int> = []
     if (line.startsWith(prefix) == 0) { return out }
@@ -359,29 +367,20 @@ function loadBaseline() {
         const key = line.substring(0, eqIdx)
         const row = parseRow(line, `${key}=`)
         if (row.length() == 2) {
-            rowMap.set(key, `${row[0]}:${row[1]}`)
+            const bv = row[0]; const bm = row[1]
+            baselineMap.set(key, `${bv}`)
+            budgetMap.set(key, `${bm}`)
         }
     }
 }
 
-// 返回 [bv, bm];key 不存在返 [] (调用者用 length()==0 判 missing)
-function readBaselineRow(key: string): Array<int> {
-    loadBaseline()
-    let out: Array<int> = []
-    if (rowMap.has(key) == 0) { return out }
-    const raw = rowMap.getString(key)
-    const colonIdx = raw.indexOf(":")
-    out.push(parseInt(raw.substring(0, colonIdx)))
-    out.push(parseInt(raw.substring(colonIdx + 1, raw.length() - (colonIdx + 1))))
-    return out
-}
-
-// D124 §决策 2.1 四终态:
+// D124 §决策 2.1 四终态 record 行为:
 //   首次 (bv_old<0):          [cur, cur]
 //   PROGRESS (cur < bv_old):  bv=cur; 若 bv_old==bm_old 同降,否则 stamp 保持
 //   OK       (cur == bv_old): 不变
 //   DRIFT    (bv_old < cur ≤ bm_old): bv=cur 消耗扩容预算, bm 保持(§决策 3.2 Execute 后同步语义)
 //   REGRESSION (cur > bm_old):由调用方 gate 阻 record,本函数不感知
+// 返 [new_bv, new_bm];调用方立即解包到命名变量。
 function computeRecord(cur: int, bv_old: int, bm_old: int): Array<int> {
     let out: Array<int> = []
     if (bv_old < 0) { out.push(cur); out.push(cur); return out }
@@ -391,10 +390,11 @@ function computeRecord(cur: int, bv_old: int, bm_old: int): Array<int> {
     return out
 }
 
-function checkRegressionCur(key: string, cur: int): int {
-    const row = readBaselineRow(key)
-    if (row.length() == 0) { return 0 }
-    if (cur > row[1]) { return 1 }
+function isRegression(key: string, cur: int): int {
+    loadBaseline()
+    const bm = mapGetIntOrNeg(budgetMap, key)
+    if (bm < 0) { return 0 }
+    if (cur > bm) { return 1 }
     return 0
 }
 
@@ -406,9 +406,9 @@ function writeBaseline() {
     let blocked = 0
     let j = 0
     while (j < curs.length()) {
-        if (checkRegressionCur(labels[j], curs[j]) == 1) {
-            const row = readBaselineRow(labels[j])
-            println(`  record 拒绝: ${labels[j]} cur=${curs[j]} > budget_max=${row[1]} (REGRESSION,需走 bump CLI)`)
+        if (isRegression(labels[j], curs[j]) == 1) {
+            const bm_old = mapGetIntOrNeg(budgetMap, labels[j])
+            println(`  record 拒绝: ${labels[j]} cur=${curs[j]} > budget_max=${bm_old} (REGRESSION,需走 bump CLI)`)
             blocked = 1
         }
         j = j + 1
@@ -418,9 +418,9 @@ function writeBaseline() {
         const path = files[fi]
         const cur = parseInt(fileLineCounts.getString(path))
         const f1key = `F1:${path}`
-        if (checkRegressionCur(f1key, cur) == 1) {
-            const row = readBaselineRow(f1key)
-            println(`  record 拒绝: ${f1key} cur=${cur} > budget_max=${row[1]} (REGRESSION,需拆文件或 bump)`)
+        if (isRegression(f1key, cur) == 1) {
+            const bm_old = mapGetIntOrNeg(budgetMap, f1key)
+            println(`  record 拒绝: ${f1key} cur=${cur} > budget_max=${bm_old} (REGRESSION,需拆文件或 bump)`)
             blocked = 1
         }
         fi = fi + 1
@@ -443,11 +443,11 @@ function writeBaseline() {
 
     j = 0
     while (j < curs.length()) {
-        const row = readBaselineRow(labels[j])
-        let bv_old = -1; let bm_old = -1
-        if (row.length() == 2) { bv_old = row[0]; bm_old = row[1] }
+        const bv_old = mapGetIntOrNeg(baselineMap, labels[j])
+        const bm_old = mapGetIntOrNeg(budgetMap, labels[j])
         const rec = computeRecord(curs[j], bv_old, bm_old)
-        text = `${text}${labels[j]}=${rec[0]}:${rec[1]}\n`
+        const new_bv = rec[0]; const new_bm = rec[1]
+        text = `${text}${labels[j]}=${new_bv}:${new_bm}\n`
         j = j + 1
     }
     fi = 0
@@ -456,11 +456,11 @@ function writeBaseline() {
         const cur = parseInt(fileLineCounts.getString(path))
         if (cur > F1_LIMIT) {
             const f1key = `F1:${path}`
-            const row = readBaselineRow(f1key)
-            let bv_old = -1; let bm_old = -1
-            if (row.length() == 2) { bv_old = row[0]; bm_old = row[1] }
+            const bv_old = mapGetIntOrNeg(baselineMap, f1key)
+            const bm_old = mapGetIntOrNeg(budgetMap, f1key)
             const rec = computeRecord(cur, bv_old, bm_old)
-            text = `${text}${f1key}=${rec[0]}:${rec[1]}\n`
+            const new_bv = rec[0]; const new_bm = rec[1]
+            text = `${text}${f1key}=${new_bv}:${new_bm}\n`
         }
         fi = fi + 1
     }
@@ -475,10 +475,10 @@ function checkF1(): int {
         const path = files[fi]
         const cur = parseInt(fileLineCounts.getString(path))
         const f1key = `F1:${path}`
-        const row = readBaselineRow(f1key)
+        const bv = mapGetIntOrNeg(baselineMap, f1key)
+        const bm = mapGetIntOrNeg(budgetMap, f1key)
         let tag = "OK"
-        if (row.length() == 2) {
-            const bv = row[0]; const bm = row[1]
+        if (bm >= 0) {
             if (cur > bm) { tag = "REGRESSION"; regs = regs + 1 }
             else if (cur > bv) { tag = "DRIFT" }
             else if (cur < bv) { tag = "PROGRESS" }
@@ -519,12 +519,12 @@ function compareAndReport(): int {
 //   baseline_value < cur ≤ budget_max → DRIFT (gate 不阻,扩容预算内浮动)
 //   cur > budget_max                  → REGRESSION (gate 阻)
 function reportDelta(label: string, cur: int, key: string): int {
-    const row = readBaselineRow(key)
-    if (row.length() == 0) {
+    const bv = mapGetIntOrNeg(baselineMap, key)
+    const bm = mapGetIntOrNeg(budgetMap, key)
+    if (bv < 0) {
         println(`  ${label} cur=${cur} baseline=(missing)`)
         return 0
     }
-    const bv = row[0]; const bm = row[1]
     const delta = cur - bv
     let tag = "OK"
     let isReg = 0
@@ -544,12 +544,13 @@ function bumpCmd(metric: string, newBudgetStr: string, docAnchor: string) {
         println(`  bump 拒绝: new_budget "${newBudgetStr}" 非正整数`)
         exit(1)
     }
-    const row = readBaselineRow(metric)
-    if (row.length() == 0) {
+    loadBaseline()
+    const bv_old = mapGetIntOrNeg(baselineMap, metric)
+    const bm_old = mapGetIntOrNeg(budgetMap, metric)
+    if (bv_old < 0) {
         println(`  bump 拒绝: metric "${metric}" 未在 baseline 中 (legacy 首轮先跑 record 升 2 列格式)`)
         exit(1)
     }
-    const bv_old = row[0]; const bm_old = row[1]
     if (newBudget < bm_old) {
         println(`  bump 拒绝: new_budget=${newBudget} < old_budget=${bm_old} (bump 只上不下,下压走 record)`)
         exit(1)
