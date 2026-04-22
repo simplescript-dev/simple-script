@@ -13,7 +13,7 @@
 - 现存 prior art:`lib/http.ss` 151 / `lib/jakarta/servlet.ss` 191 / `lib/tomcat/embed.ss` 83 / `lib/spring/{web,http,data,jdbc}.ss` 211 / `lib/spring/boot/jpa.ss` 14(合计 ~650 行,覆盖 HTTP / Servlet / ResponseEntity / JPA 骨架)
 
 **Date:** 2026-04-21
-**Last Updated:** 2026-04-21
+**Last Updated:** 2026-04-22
 
 ---
 
@@ -472,6 +472,60 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 - 白名单 + Java oracle 双层守护:静态(linter)拦编写期,动态(parity diff)拦运行期
 - 每 Phase 配一个最小 example(hello / todo / ...),parity gate 一路独立兑现
 - Phase 0 不 touch 编译器,纯规划 + 入口 gate,先锁方向再开工
+
+---
+
+# 附录 C: 能力层叠分解(结构视角)
+
+**Status:** draft(粒度 / 物理落点 / 单一判据 逐层待用户审定,§C.4 为迭代入口)
+
+正交于 §3 Phase 时序。§3 按时间序排 6 个里程碑,附录 C 按能力递进排 7 层。两者多对多映射见 §C.2。
+
+## C.1 能力层表
+
+| 层 | 能力 | 状态 | 物理落点 | 单一判据 | 依赖 |
+|---|---|---|---|---|---|
+| **A** | 注解 parse → AST | ✅ Done | `bootstrap/parse/parse_exprs.ss:556-587`(COLON 命名参 D121 R2-A);`CLASS_DECL.I4` / `FUNC_DECL.I4` / `PARAM.list` 挂 `ANNOTATION` 节点 | `tests/phase5/d121_*.ss` parser 解 `@X(k: v)` 无 error | — |
+| **B** | comptime introspect | ✅ Done | `bootstrap/gen/exprs/exprs_ct_reflect.ss`(D120 `reflect.classes()`);`AnnotationMeta.args: Map<string,string>`(D121 R1 commit `b18acf3`);`cls.methods` / `m.annotations` / `ann.args.get(k)` comptime 可访问 | `tests/phase5/d120_reflect_classes.ss` + D121 R1 test GREEN | A |
+| **C** | 白名单 + 根因 gate | ✅ Done | `tools/spring_boot_annotation_linter.ss`(35 Spring Boot + 5 SS 内建);`tools/reflection_health_linter.ss` M1-M7b / N1-N5 baseline;`grep @comptimeEmit\|@derive` 零命中 | `bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity` → `GATE PASS — 0 fake annotations` | — |
+| **D** | comptime 构造常量路由表 | ❌ 未做 | `lib/spring/boot/application.ss`(**不存在**);`ControllerMeta[]` + `RouteMeta[]` 常量段 | `bin/ss build examples/spring-parity/hello/ss/main.ss --emit-ir \| grep -c "ss_reflect_"` = 0(comptime 展开干净) | A + B + C |
+| **E** | runtime dispatcher | ❌ 未做 | `lib/spring/boot/application.ss` `SpringApplication.run(App.class, args)`;`lib/spring/web.ss` DispatcherServlet(当前仅 4 行 re-export) | `curl http://localhost:8080/hello` 返 "Hello, World!"(body / status / Content-Type 符合) | D + `lib/http.ss` + `lib/jakarta/servlet.ss` |
+| **F** | 参数绑定 | ❌ 未做 | `lib/spring/boot/application.ss` comptime `method.params` 扫 `@RequestParam` / `@PathVariable` / `@RequestBody`;runtime adapter | `curl http://localhost:8080/hello?name=SS` 返 "Hello, SS!" | E |
+| **G** | Java oracle + parity | ❌ 未做 | `examples/spring-parity/<app>/java/` Maven 项目;`tools/spring_parity_test.ss`(未建) | `diff <(curl SS 端) <(curl Java 端)` = 空(排除 Server/Date header) | E(基础) / F(完整) |
+
+## C.2 与 §3 Phase 映射(多对多)
+
+| Phase | 对应层 | 范围 |
+|---|---|---|
+| Phase 0 | C | Plan + 白名单 linter 入仓(commit `4998ebe`) |
+| Phase 1 | D 启动 | `@SpringBootApplication` comptime 扫 `@RestController` 建 `ControllerMeta[]`(不 dispatch) |
+| Phase 2 | D + E | `@GetMapping` 路由表 + runtime dispatcher 启 httpServe |
+| Phase 3 | E 扩 | `lib/spring/web.ss` DispatcherServlet 补齐 + Servlet request 参数 |
+| Phase 4 | F | `@RequestParam` / `@PathVariable` / `@RequestBody` 绑定 |
+| Phase 5 | G | Java oracle + parity CI |
+
+## C.3 当前断点
+
+- A/B/C 已 Done,Phase 1 blocker D121 R1 已清零(commit `b18acf3`)
+- **真正缺口 = 层 D**:`lib/spring/boot/application.ss` 不存在,comptime → 常量路由表这一步没写
+- D 层落地后 E 层 runtime dispatcher 自然跟上(D/E 共挂 `application.ss` 同文件)
+- F/G 是后续增量,不影响"注解首次端到端跑通"的证明
+- 最近 10+ commit 在 D124-D126 元流程层(反射 gate / PFV 分档 / rule 问答收敛),未推 D123 主线
+
+## C.4 用户逐层待审细节(本文档迭代入口)
+
+每一项为 Claude 起草判断,待用户审定后锁定 / 修正 / 删除:
+
+- [ ] **层粒度**:A-G 7 层是否合理?候选争议:(a) D+E 合并为"comptime+runtime 注解驱动"单层?(b) C 拆成"静态白名单 linter" + "reflection baseline gate" 两层?
+- [ ] **层 D 单一判据**:`grep -c "ss_reflect_"` = 0 是否充分?是否需补"路由表常量段内容对比(预期 path → handler 映射表完整性)"?
+- [ ] **层 E 单一判据**:只测 `/hello` 返 `"Hello, World!"` 是否够?是否需加 HTTP status 200 / Content-Type 验证才算 E 层 Done?
+- [ ] **层 F 单一判据**:`@RequestParam` / `@PathVariable` / `@RequestBody` 是否应拆成 F1 / F2 / F3 三子层(各自独立 curl 验证)?
+- [ ] **物理落点集中度**:层 D / E / F 都挂 `lib/spring/boot/application.ss` 单文件,feedback_600_split_not_inline 门槛 600 行,是否预留拆分点(如 `application.ss` / `dispatcher.ss` / `param_binding.ss`)?
+- [ ] **Phase 映射多对多**:Phase 2 = D+E 同 Phase 合并,是否应拆 Phase 2a(D RouteMeta 扩)+ Phase 2b(E runtime 接入)避免单 Phase 双能力?
+- [ ] **依赖列多源**:层 G 同时依赖 E(最小)和 F(完整),是否需区分"最小 G"(hello world parity)与"完整 G"(含参数绑定 parity)?
+- [ ] **A/B 层归属**:A/B 本质是 D120/D121 Done 状态,Phase 0 范围只列 C 未显式纳 A/B 引用,是否需补"Phase 0 前置 = A/B 落地状态核对"条?
+- [ ] **层序 vs Phase 序互换**:本分解是"能力层叠"结构;D123 §3 是"Phase 时序"。两者正交是否成立?是否存在"某 Phase 跳过能力层"或"某能力层被多 Phase 拆执行"漏 case?
+- [ ] **新层候选**:是否漏"H 容器层"(DI 容器 @Component / @Autowired)?D123 §A.2.1 说 DI 容器不在 scope,但 §C.1 不列是否会让"Spring Boot 复刻完整度"判据模糊?
 
 ---
 
