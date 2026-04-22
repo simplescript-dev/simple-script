@@ -120,6 +120,8 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - 五验**不能 self-attest**(不能用同一证据填两项)
 - 证据必须能被**独立第三方复跑**
 
+**§验 1 豁免条款**:本轮改动**纯文档 / 纯配置**(无 `bootstrap/` / `lib/` / `tools/` 代码路径变动)可显式豁免 bootstrap + tests,声明"doc-only, 无代码路径变动"即可;豁免理由**必须在 VCM §5 (d) 答问里自证**(grep diff 证明 `bootstrap/` 无改动),不许隐式跳。Execute 型代码改动无此豁免。
+
 **扩容申报类任务**叠加"预估 vs 实测"对账,累计组任一指标预估偏差 > 50% → 写入 D 文档 §扩容申报 §预估失准段,下轮 PSM 开工前必读(对账步作为 commit_radius Q2 "跨族 justified 与否"证据之一)。
 
 ---
@@ -282,6 +284,19 @@ bin/ss run .harness/common/bug.ss fixed <round> <certainty>
 
 **自检 trigger**:想写 "reset 重做" / "推倒重来" / "全部回滚" / "整个 branch 都假装" 时,必须停下问:"我是不是在用戏剧性方案替代细致诊断?"
 
+### Compact 恢复 gate
+
+**trigger**:context compact 后 Claude 从 summary 恢复继续工作。summary 只描述**意图**,不是工作树状态的直接证据;跨会话状态(其他会话改动 / 手动操作 / 工具副产物)**不在 summary 覆盖范围内**。
+
+**硬规则**:
+
+- **Compact 后第一个工具调用**必须是 `git status --short` + `git log --oneline -5`,核对工作树实况
+- summary 声称已完成但工作树仍有未提交改动 → 先 commit 清理,再继续
+- summary 未提及的改动(其他会话产物 / 大范围删除 / untracked 测试副产物 / 系统文件) → **显式排除在本轮 commit 范围外**,按 §附录 A §commit_radius §前置约束 精准 `git add <file>`
+- **禁止**仅凭 summary 就假定工作状态,下游 commit 按 summary 意图盲 stage 全量变更
+
+**自检 trigger**:看到"Continue the conversation from where it left off" / summary 块时,必须停下先 `git status`,**不许**直接按 summary 末尾建议的 next step 动手。
+
 ---
 
 ## Fractal 承载(L0-L4 递归)
@@ -324,6 +339,8 @@ bin/ss run .harness/common/bug.ss fixed <round> <certainty>
 ## 子问卷
 
 ### commit_radius(N=3)
+
+**前置约束**:答 Q1-Q3 前,必须先 `git status --short` 核对本轮范围。不属于本任务的 unstaged / untracked 改动(其他会话产物 / 系统副产物 / 大范围删除) **显式排除在本 commit 外** —— 精准 `git add <file1> <file2>`,**禁用** `git add -A / .` / `git commit -a`。排除清单列入答 Q1 的头部(格式:"排除:<file1>, <file2>, ..."),未列 = 视为隐式包含,Q1 FAIL。
 
 - **Q1**:本 commit 跨几个子族?列 `familyOf(path) = 前 2 段` 分布
 - **Q2**:跨族分类(同任务扩展 / 元流程改进 / 远距离榨指标) + 理由
