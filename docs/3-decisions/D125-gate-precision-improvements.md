@@ -328,9 +328,14 @@ gate 设计者的心智模型:**"如果 cur 不升,质量就不降"**。失真�
 - **commit**:三文件(linter + D097 + D124)+ 本附录条目同 commit,message `feat(D125): Execute 2 P3 bump-group CLI + P4 AUTO-DRIFT soft tol=0.01`
 - **验证**:RED `bin/ss run tools/reflection_health_linter.ss 2>&1 | grep -c 'bump-group'` 输出 0 入场;5 条拒绝路径(无参 / 无 # 分隔 / D 文档缺 / metric 缺 / 下调 bm)全拒 exit(1);合法 no-op(`D125#Execute M1=5168 M2=76617` 等同现 bm)audit trail 写成功(测后回滚 baseline.txt);AUTO-DRIFT 实测:M1 bm=5120 时 cur=5168 呈 AUTO-DRIFT + GATE PASS,bm=5100 时呈 REGRESSION + GATE BLOCKED(测后 baseline.txt 回滚)
 
-### Execute(第三批)[ ] Planned
+### Execute(第三批) [x] Done at 2026-04-22 — P2 前置 shell builtin 解锁 runtime diff 能力
 
-候选:P2 scope-aware 反射 gate(等 bin/ss `bash("git diff --name-only HEAD")` runtime 能力就绪);P6 字符匹配语义兜底延后或砍(优先级 ★,可能直接剔除)
+- **前置需求**:P2 §实施 "linter 读 `git diff --name-only HEAD`" 缺 runtime 层能力,SS 语言无通用 stdout 捕获 builtin(`exec()` 返 ExecResult 结构过重,`_ss_popen_read` 下划线私有)。按 "参考 readFile / writeFile 的 C extern 风格" 新增 `shell(cmd: string): string` 主线 builtin,专供 stdout-only 场景
+- **改动**:(a) `bootstrap/gen/rt/gen_rt_shell.ss` 新增(~57 行),定义 `@ss_shell(ptr %cmd) → ptr`(popen + 动态 buffer fread + pclose + RC strdup;与 `@ss_popen_read` 区分,不写全局 exit code);命名前缀族 `gen_rt_*` 归位 `bootstrap/gen/rt/` ✓;(b) `gen_runtime.ss` import + 调度(+2 行);(c) `gen_registry.ss` `funcRetTypes.set("shell","string")` + builtinMap `names` 加 `shell`(+1+1 行);(d) `checker/checker.ss` `strFns` + `oneArgFns` 加 `shell`(+1+1 行)
+- **§扩容申报**:本轮主线新增 I/O builtin,F1 `bootstrap/gen/gen_runtime.ss` 621→623(+2 行最小 import + 调度,无法本地抵消);非反射路径扩容,14 指标 M/N 未触及白名单,反射 gate scope-aware 落地后本类扩容应自动降 DRIFT。预期实测 delta 对齐:F1:gen_runtime.ss=623(其它 14 指标已在 bv 之前 AUTO-DRIFT 区间,非本轮引入)。bump CLI: `bump F1:gen_runtime.ss 623 D125#Execute3`
+- **commit**:四代码文件 + 本条目 + baseline.txt + 2 demo(`tests/phase5/shell_builtin.ss` / `shell_edge.ss`)同 commit,message `feat(D125): Execute 3 P2 前置 — shell builtin 解锁 scope-aware`
+- **验证**:RED `grep -r 'ss_shell' bootstrap/ \| wc -l` = 0 入场;bootstrap 固定点 Stage2=Stage3 ✓;demo shell("echo hello_shell") → "hello_shell\n" / shell("yes x | head -c 8192").length()=8192(grow 分支) / shell 空 / 缺失命令 → "" 均通过
+- **后续**:P2 linter 消费 shell 实现 scope 判定 + 白名单豁免(另轮);本前置完成使 P2 入场 RED `grep -n "shell(" tools/reflection_health_linter.ss` 从 0 起算
 
 ---
 

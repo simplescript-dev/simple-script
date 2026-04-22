@@ -104,6 +104,7 @@ function initFuncRetTypes() {
     funcRetTypes.set("fromCharCode", "string")
     funcRetTypes.set("base64Encode", "string")
     funcRetTypes.set("base64Decode", "string")
+    funcRetTypes.set("shell", "string")
     funcRetTypes.set("ss_sqlite3_query", "string")
     funcRetTypes.set("ss_sqlite3_open", "string")
     funcRetTypes.set("println", "void")
@@ -229,7 +230,7 @@ function initBuiltinMap() {
     builtinMap.set("Math_fmod", "ss_fmod")
     builtinMap.set("Math_randomInt", "ss_randomInt")
     // All standard builtins: ss_ + callee
-    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
+    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,shell,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
     const parts = names.split(",")
     for (n in parts) {
         builtinMap.set(n, `ss_${n}`)

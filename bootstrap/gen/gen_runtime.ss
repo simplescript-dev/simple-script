@@ -3,6 +3,7 @@
 import { emitRuntimeStringOps, emitRuntimeConversions } from "./rt/gen_rt_string"
 import { emitRuntimeArrayOps } from "./rt/gen_rt_array"
 import { emitRuntimeIO, emitRuntimeProcess, emitRuntimeMath } from "./rt/gen_rt_io"
+import { emitRuntimeShell } from "./rt/gen_rt_shell"
 import { emitRuntimeMap } from "./rt/gen_rt_map"
 import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeSQLite, emitRuntimeInotify } from "./rt/gen_rt_system"
 import { emitRuntimeRef } from "./rt/gen_rt_ref"
@@ -19,6 +20,7 @@ function emitRuntimeDefs() {
     emitRuntimeArrayOps()
     emitRuntimeConversions()
     emitRuntimeProcess()
+    emitRuntimeShell()
     emitRuntimeMath()
     emitRuntimeFS()
     emitRuntimeNet()
