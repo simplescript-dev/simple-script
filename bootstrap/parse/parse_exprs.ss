@@ -553,11 +553,12 @@ function parseTemplateLit(): int {
     return id
 }
 
-// D121 R2-B:allowAssign=1 时 `IDENT = expr` 等同 `IDENT : expr` 作 NAMED_ARG
-// 构造,Java/Spring `@RequestMapping(value = "/x", method = RequestMethod.GET)`
-// byte-identical 复刻。范围限 annotation parser 两 callsite(parser.ss:257/716),
-// 函数调用 parseArgs(0) 不受污染(SS / TS 函数 named arg 统一 COLON)。
+// D127 §A.3:annotation ASSIGN 单形(`@Foo(k = v)`),call/constructor COLON 单形
+// (`foo(k: v)` / `new Foo(k: v)`)。allowAssign=1→期望 ASSIGN(Java annotation 字段赋值),
+// allowAssign=0→期望 COLON(TS/Dart named arg)。annotation 两 callsite(parser.ss:257/716)
+// 传 1,其余传 0。双形过渡期已废(feedback_dual_entry_is_dual_track)。
 function parseArgs(allowAssign: int): string {
+    const namedSepKind = allowAssign == 1 ? "ASSIGN" : "COLON"
     skipNL()
     if (curKind() == "RPAREN") { return "" }
     let args = ""
@@ -570,8 +571,8 @@ function parseArgs(allowAssign: int): string {
             const spreadNode = newNode("SPREAD_ELEM")
             nSetI1(spreadNode, spreadExpr)
             args = listAppend(args, spreadNode)
-        // Named arg: IDENT followed by COLON (or ASSIGN under allowAssign) → NAMED_ARG
-        } else if (curKind() == "IDENT" && (kindAt(tPos + 1) == "COLON" || (allowAssign == 1 && kindAt(tPos + 1) == "ASSIGN"))) {
+        // Named arg: IDENT + namedSepKind → NAMED_ARG
+        } else if (curKind() == "IDENT" && kindAt(tPos + 1) == namedSepKind) {
             const naName = curValue()
             pAdvance()
             pAdvance()

@@ -1,6 +1,6 @@
 // D121 R1-A Execute 2 — AnnotationMeta.args: Map<string, string>
 // + value kind 通用化(STRING/INT/TRUE/FALSE/DOUBLE/MEMBER_ACCESS enum)
-// + R2-B parser ASSIGN `=` 等同 COLON `:` NAMED_ARG(范围限 annotation)
+// + D127 §A.3 parser ASSIGN 单形(COLON 已废,双形违反 feedback_dual_entry_is_dual_track)
 // + Map for-in comptime iterate values(兼容 d097 / d096_p4_l2h 旧 test)
 
 import { assertEqual } from "@/lib/test"
@@ -16,16 +16,13 @@ class P1 { x: int }
 @M2("a", "b", "c")
 class P2 { x: int }
 
-@M3(key: "via-colon")
-class P3 { x: int }
-
 @M4(key = "via-assign", k2 = "second")
 class P4 { x: int }
 
 @M5(n = 42, flag = true)
 class P5 { x: int }
 
-@M6(method = HttpMethod.Get, path: "/api/search")
+@M6(method = HttpMethod.Get, path = "/api/search")
 class P6 { x: int }
 
 function main() {
@@ -47,15 +44,7 @@ function main() {
         }
         assertEqual(r, "a|b|c")
     })
-    test("D121 R2-A COLON — named via :", () => {
-        const r = comptime {
-            let acc = ""
-            for (a in P3.annotations) { acc = a.args.get("key") }
-            return acc
-        }
-        assertEqual(r, "via-colon")
-    })
-    test("D121 R2-B ASSIGN — named via =", () => {
+    test("D127 §A.3 ASSIGN — named via =", () => {
         const r = comptime {
             let acc = ""
             for (a in P4.annotations) {
