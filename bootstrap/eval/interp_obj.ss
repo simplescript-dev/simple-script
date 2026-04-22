@@ -161,14 +161,9 @@ function evalAnnotationArg(nodeId: int): int {
         const eName = nGetS1(nGetI1(nodeId))
         const mName = nGetS1(nodeId)
         const eKey = `${eName}.${mName}`
-        if (interpEnumValues.has(eKey) == 1) {
-            if (interpEnumTypes.has(eName) == 1) { return interpNewString(interpEnumValues.getString(eKey)) }
-            return interpNewString(mName)
-        }
-        if (enumReady == 1 && enumValues.has(eKey) == 1) {
-            if (enumTypes.has(eName) == 1) { return interpNewString(enumValues.getString(eKey)) }
-            return interpNewString(mName)
-        }
+        const backing = lookupEnumBackingValue(eName, eKey)
+        if (backing != "") { return interpNewString(backing) }
+        if (lookupEnumOrdinal(eName, eKey) >= 0) { return interpNewString(mName) }
     }
     comptimeError(`annotation arg kind '${kind}' not yet supported (I005 array / I006 class ref / I007 expr pending)`, nodeId)
     return interpNewNull()

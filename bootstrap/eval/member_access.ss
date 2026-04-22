@@ -7,14 +7,10 @@ function evalMemberAccess(astId: int): int {
     if (nGetKind(objNode) == "IDENT") {
         const eName = nGetS1(objNode)
         const enumKey = `${eName}.${member}`
-        if (interpEnumValues.has(enumKey) == 1) {
-            const ieVal = interpEnumValues.getString(enumKey)
-            return ctVal(interpEnumTypes.has(eName) == 1 ? interpNewString(ieVal) : interpNewInt(parseInt(ieVal)))
-        }
-        if (enumReady == 1 && enumValues.has(enumKey) == 1) {
-            const eVal = enumValues.getString(enumKey)
-            return ctVal(enumTypes.has(eName) == 1 ? interpNewString(eVal) : interpNewInt(parseInt(eVal)))
-        }
+        const backing = lookupEnumBackingValue(eName, enumKey)
+        if (backing != "") { return ctVal(interpNewString(backing)) }
+        const ord = lookupEnumOrdinal(eName, enumKey)
+        if (ord >= 0) { return ctVal(interpNewInt(ord)) }
         if (comptimeDepth == 0 && getVarType(eName) == "" && classFields.has(eName) == 1) {
             return 0 - constVal(genMemberAccess(astId)) - 1
         }

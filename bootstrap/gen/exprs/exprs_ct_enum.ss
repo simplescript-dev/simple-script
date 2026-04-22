@@ -30,10 +30,10 @@ function ctEnumValueOfMethod(eName: string, nodeId: int): int {
         if (isCt(voVal) == 1) {
             const voName = interpAsStr(payload(voVal))
             const voKey = `${eName}.${voName}`
-            if (interpEnumValues.has(voKey) == 1) {
-                if (interpEnumTypes.has(eName) == 1) { return interpNewString(interpEnumValues.getString(voKey)) }
-                return interpNewInt(parseInt(interpEnumValues.getString(voKey)))
-            }
+            const backing = lookupEnumBackingValue(eName, voKey)
+            if (backing != "") { return interpNewString(backing) }
+            const ord = lookupEnumOrdinal(eName, voKey)
+            if (ord >= 0) { return interpNewInt(ord) }
         }
     }
     return interpNewNull()

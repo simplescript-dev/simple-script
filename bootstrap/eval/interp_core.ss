@@ -31,6 +31,32 @@ let interpEnumValues = new Map()
 let interpEnumTypes = new Map()
 let interpEnumNodes = new Map()
 
+// enum 双 map 查找 (I010 — D127 §A.1 衍生):interpEnumValues/Types = comptime
+// 注册,enumValues/Types = runtime 注册(codegen.ss,受 enumReady gate)。
+// lookupEnumBackingValue typed hit 返 backing value("" = miss/untyped);
+// lookupEnumOrdinal untyped hit 返 ordinal(-1 = miss/typed)。两者互斥,
+// 调用点(member_access / interp_obj.evalAnnotationArg / exprs_ct_enum.ctEnumValueOfMethod)
+// 按各自 untyped 语义组装 tv。
+function lookupEnumBackingValue(eName: string, eKey: string): string {
+    if (interpEnumValues.has(eKey) == 1 && interpEnumTypes.has(eName) == 1) {
+        return interpEnumValues.getString(eKey)
+    }
+    if (enumReady == 1 && enumValues.has(eKey) == 1 && enumTypes.has(eName) == 1) {
+        return enumValues.getString(eKey)
+    }
+    return ""
+}
+
+function lookupEnumOrdinal(eName: string, eKey: string): int {
+    if (interpEnumValues.has(eKey) == 1 && interpEnumTypes.has(eName) == 0) {
+        return parseInt(interpEnumValues.getString(eKey))
+    }
+    if (enumReady == 1 && enumValues.has(eKey) == 1 && enumTypes.has(eName) == 0) {
+        return parseInt(enumValues.getString(eKey))
+    }
+    return -1
+}
+
 function interpShouldStop(): int {
     if (interpReturnFlag == 1) { return 1 }
     if (interpBreakFlag == 1) { return 1 }
