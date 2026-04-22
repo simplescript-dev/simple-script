@@ -7,11 +7,12 @@ import { assertEqual } from "@/lib/test"
 
 function TagArgs(cls: string) {
     @methodOf(cls) function argsOf(): string {
+        // D127 §A.1 I003:args value 是 AstNodeId,用 keys() + getString 迭代
         let acc = ""
         for (f in cls.fields) {
             for (a in f.annotations) {
-                for (v in a.args) {
-                    acc = acc + f.name + "@" + a.name + "(" + v + ");"
+                for (k in a.args.keys()) {
+                    acc = acc + f.name + "@" + a.name + "(" + a.args.getString(k) + ");"
                 }
             }
         }

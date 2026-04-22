@@ -1,7 +1,7 @@
-// D121 R1-A Execute 2 — AnnotationMeta.args: Map<string, string>
-// + value kind 通用化(STRING/INT/TRUE/FALSE/DOUBLE/MEMBER_ACCESS enum)
-// + D127 §A.3 parser ASSIGN 单形(COLON 已废,双形违反 feedback_dual_entry_is_dual_track)
-// + Map for-in comptime iterate values(兼容 d097 / d096_p4_l2h 旧 test)
+// D121 R1-A Execute 2 — annotation args Map 通用化(STRING/INT/TRUE/FALSE/DOUBLE/MEMBER_ACCESS enum)
+// D127 §A.3 parser ASSIGN 单形(COLON 已废,双形违反 feedback_dual_entry_is_dual_track)
+// D127 §A.1 I003 — args value 存 AstNodeId,typed getter `getString/getInt/getBool` 走 evalAnnotationArg
+// 保留原生类型;`keys()` + typed getter 代替原 `for (v in a.args)` values 迭代
 
 import { assertEqual } from "@/lib/test"
 
@@ -29,7 +29,7 @@ function main() {
     test("D121 R1-A — positional single → value", () => {
         const r = comptime {
             let acc = ""
-            for (a in P1.annotations) { acc = a.args.get("value") }
+            for (a in P1.annotations) { acc = a.args.getString("value") }
             return acc
         }
         assertEqual(r, "positional-single")
@@ -38,7 +38,7 @@ function main() {
         const r = comptime {
             let acc = ""
             for (a in P2.annotations) {
-                acc = a.args.get("0") + "|" + a.args.get("1") + "|" + a.args.get("2")
+                acc = a.args.getString("0") + "|" + a.args.getString("1") + "|" + a.args.getString("2")
             }
             return acc
         }
@@ -48,17 +48,17 @@ function main() {
         const r = comptime {
             let acc = ""
             for (a in P4.annotations) {
-                acc = a.args.get("key") + "|" + a.args.get("k2")
+                acc = a.args.getString("key") + "|" + a.args.getString("k2")
             }
             return acc
         }
         assertEqual(r, "via-assign|second")
     })
-    test("D121 — INT/BOOL value generalization", () => {
+    test("D127 §A.1 I003 — INT/BOOL 类型保真(typed getter)", () => {
         const r = comptime {
             let acc = ""
             for (a in P5.annotations) {
-                acc = a.args.get("n") + "|" + a.args.get("flag")
+                acc = `${a.args.getInt("n")}|${a.args.getBool("flag")}`
             }
             return acc
         }
@@ -68,18 +68,18 @@ function main() {
         const r = comptime {
             let acc = ""
             for (a in P6.annotations) {
-                acc = a.args.get("method") + "|" + a.args.get("path")
+                acc = a.args.getString("method") + "|" + a.args.getString("path")
             }
             return acc
         }
         assertEqual(r, "GET|/api/search")
     })
-    test("D121 — Map for-in values iteration (d097/d096 兼容镜像)", () => {
+    test("D127 §A.1 I003 — keys() + getString 迭代(d097/d096 兼容镜像)", () => {
         const r = comptime {
             let acc = ""
             for (a in P2.annotations) {
-                for (v in a.args) {
-                    acc = acc + v + ";"
+                for (k in a.args.keys()) {
+                    acc = acc + a.args.getString(k) + ";"
                 }
             }
             return acc

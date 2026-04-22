@@ -314,6 +314,41 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - 输出 0 个 → 按 P10.1 自由决定
 - 不做扫描 → Plan 路径决策漂,**任务拒绝**
 
+### 衍生 issue 归档(feedback_interactive_one_doc 的执行层配套)
+
+**trigger**:`/loop` 主任务执行中发现 root cause 与当前 issue 不同的新问题。
+
+**二分法**(阻挡性 → 处理方式):
+
+| 状态 | 判据 | 处理 |
+|---|---|---|
+| **阻挡** | 不修 → 本轮主任务 BLOCK(测试红 / bootstrap 失败 / reflection GATE BLOCK / N 五验过不去) | **本轮修**,不许推迟。理由附在 commit message 或 VCM §5 (d) |
+| **非阻挡** | 独立 root cause + 不 BLOCK 本轮主任务 VCM 通过 | **立项修**:写 `docs/4-issues/IXXX-*.md`(用下节命名规范),不许只对话提 / 只 commit msg 提 / 只 memory 记 |
+
+**硬规则**:
+- **禁止第三态**("顺手修无关 bug" / "打包修 2 个 issue")—— 要么阻挡本轮必修,要么独立立项,不许混入主任务 commit
+- 若本轮修了阻挡性衍生问题,**commit 拆 2 条**(主 issue 一条 + blocker 修复一条),commit message 显式说明 blocker 关联
+- 非阻挡问题**必写 issue 文件**,对话 / commit msg 提到 "IXXX" 而目录不存在 → `derived_issue_linter` BLOCK
+
+**命名规范**:
+
+| 场景 | 编号规则 | 举例 |
+|---|---|---|
+| **同 scope 子扩展** | 父 issue + 字母后缀 | I00X → I00Xa(细拆)/ I00Xb(同路径增强) |
+| **独立 root cause** | 取当前 top IXXX +1 | 若最高是 I009,新 issue 为 I010 / I011 / ... |
+| **跨 D 文档挂载** | 文件名前缀保持 IXXX,父决策字段指向所属 D | `I0XX-*.md` 父决策可以指向任意 D 文档 |
+
+**P4 机械校验**(`tools/derived_issue_linter.ss`,§After Done §2 commit 前跑):
+
+- 扫 `git log --grep='I0' HEAD~1..` / `.claude/next_prompt.md` / 当前 `git diff` 里的 `IXXX` / "后续 issue" / "下轮处理" / "衍生问题" pattern
+- 对照 `docs/4-issues/` 文件存在性(`ls docs/4-issues/IXXX-*.md`)
+- 发现文本引用但目录缺文件 → stdout `GATE BLOCKED: derived issue IXXX not archived`
+- 有 GATE BLOCKED → 不许 commit / 不许 stop,回去补 issue 文件
+
+**自检 trigger**:
+- 想写"这个 bug 我先绕过,后续再处理"时 → 必须先答"阻挡 or 非阻挡?",再按上表分流
+- 对话里出现 "IXXX 待后续" / "下轮修" / "先搁置" → 立即开 issue 文件,不许靠对话记忆跨轮
+
 ---
 
 ## Fractal 承载(L0-L4 递归)
@@ -398,6 +433,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | 双入口 | `dual_track_linter.ss` | scope 特征 | 双轨伪装成"兼容架构" |
 | commit 差半径 | `commit_radius_linter.ss` | 子族分布 ≥ 3 | 远距离榨指标(直接,soft warn) |
 | commit footer | `commit_footer_bagu_linter.ss` | "去掉少什么:" 字串存在 | VCM 复盘凑仪式(格式强制) |
+| 衍生 issue 归档 | `derived_issue_linter.ss` | IXXX 引用 vs `docs/4-issues/` 存在 | 非阻挡衍生问题只对话提失踪 |
 
 ## B.2 未机械化层(6 种形态)
 
@@ -440,6 +476,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | 2026-04-22 VCM (d) 沉积复盘靠自觉 | 八股沉积 | §VCM 无 commit footer 强制 | §K commit_footer |
 | 2026-04-22 八股讨论结论留对话缓冲区 | 跨轮丢失 | 无流程反思 gate | §收尾 gate 第 3 步流程反思 |
 | 2026-04-22 流程层规则分散 3 处 | 跨轮 Claude 读不全 | 无单一事实源 | **本文档归档(docs/3-MNK.md)** |
+| 2026-04-22 I003 收尾 3 衍生问题只对话提 | 非阻挡问题失踪 | 无 issue 归档 gate | §特定领域 §衍生 issue 归档 + `tools/derived_issue_linter.ss` |
 
 ---
 

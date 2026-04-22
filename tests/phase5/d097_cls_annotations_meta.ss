@@ -29,11 +29,12 @@ function main() {
         assertEqual(names, "Deprecated;Override;")
     })
     test("D097 — cls.annotations Meta iteration, a.args", () => {
+        // D127 §A.1 I003:args value 是 AstNodeId,用 keys() + getString 迭代
         const argStr = comptime {
             let acc = ""
             for (a in Api.annotations) {
-                for (v in a.args) {
-                    acc = acc + a.name + "(" + v + ");"
+                for (k in a.args.keys()) {
+                    acc = acc + a.name + "(" + a.args.getString(k) + ");"
                 }
             }
             return acc

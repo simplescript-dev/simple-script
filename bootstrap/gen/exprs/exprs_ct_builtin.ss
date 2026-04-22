@@ -219,9 +219,20 @@ function ctMapMethod(objVal: int, method: string, argVals: Array<string>): int {
         interpMapSet(objVal, key, parseInt(argVals[1]))
         return interpNewNull()
     }
-    if (method == "get" || method == "getString") {
+    if (method == "get") {
         const key = interpAsStr(parseInt(argVals[0]))
         return interpMapGet(objVal, key)
+    }
+    // getString 宽松(任何 kind coerce 到 string),getInt/getBool/getDouble 严格返 typed tv
+    // 供原生算术/比较(`a+b`、`==true`);value 非 AstNodeId int 时原样返(普通 Map 调
+    // typed getter 的兼容 fallback,严格 annotation-only 分派待 I003b strict marker)。
+    if (method == "getString" || method == "getInt" || method == "getBool" || method == "getDouble") {
+        const key = interpAsStr(parseInt(argVals[0]))
+        const rawTv = interpMapGet(objVal, key)
+        let evaled = rawTv
+        if (interpType(rawTv) == "int") { evaled = evalAnnotationArg(interpAsInt(rawTv)) }
+        if (method == "getString") { return interpNewString(interpToStr(evaled)) }
+        return evaled
     }
     if (method == "has") {
         const key = interpAsStr(parseInt(argVals[0]))

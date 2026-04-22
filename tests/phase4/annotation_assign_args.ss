@@ -1,4 +1,5 @@
 // D127 §A.3 I001 验收 — annotation 命名参 ASSIGN 单形(COLON 已废)
+// D127 §A.1 I003 — args value 存 AstNodeId,typed getter `getString` 走 evalAnnotationArg
 // 对齐 Java @RequestMapping(value = "/x", method = RequestMethod.GET)
 
 import { assertEqual } from "@/lib/test"
@@ -14,7 +15,7 @@ function main() {
         const r = comptime {
             let acc = ""
             for (a in Bar.annotations) {
-                acc = a.args.get("a") + "|" + a.args.get("b")
+                acc = a.args.getString("a") + "|" + a.args.getString("b")
             }
             return acc
         }
@@ -23,7 +24,7 @@ function main() {
     test("D127 §A.3 — 单命名参 ASSIGN", () => {
         const r = comptime {
             let acc = ""
-            for (a in S.annotations) { acc = a.args.get("k") }
+            for (a in S.annotations) { acc = a.args.getString("k") }
             return acc
         }
         assertEqual(r, "only")

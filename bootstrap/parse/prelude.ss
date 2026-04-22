@@ -22,9 +22,13 @@ class FieldMeta {
     annotations: Array<AnnotationMeta>
 }
 
+// D127 §A.1 I003 — args value 形态:AstNodeId(raw int),
+// 通过 evalAnnotationArg(nodeId) 按 nKind 分派 eval 得 typed tv;
+// 消费走 args.getString/getInt/getBool/getDouble typed accessor
+// (I004 接 getEnum / I005 接 getArray / I006 接 getClass)。
 class AnnotationMeta {
     name: string
-    args: Map<string, string>
+    args: Map<string, int>
 }
 
 // D117 §决策 1 — 补齐 5 类 Meta。

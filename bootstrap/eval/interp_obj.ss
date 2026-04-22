@@ -106,16 +106,12 @@ function interpNewVal(kind: string, payload: string): int {
     return newTvNull()
 }
 
-// D121 R1-A:args 形态 Array<string> → Map<string, string>,value 通用化
-// (STRING/INT/DOUBLE/TRUE/FALSE/MEMBER_ACCESS enum)。位置参数 Java 惯例:
-// 单参 → key "value",多参 → key "0"/"1"/...;命名参数(NAMED_ARG COLON 或
-// R2-B ASSIGN)→ key = S1, value = inline kind dispatch on nGetI1(argId)。
-// 非 comptime-evaluable value kind silently skip(保兼容 d096 非 STRING 原行为)。
+// args value 存 AstNodeId(tv kind=int 包装),消费侧调 evalAnnotationArg(nodeId)
+// 延迟 eval 出 typed tv —— 保留类型信息供 getInt/getBool/getDouble 严格访问。
+// 位置参数 Java 惯例:单参 → key "value",多参 → key "0"/"1"/...;命名参数
+// (NAMED_ARG ASSIGN)→ key = S1,value = NAMED_ARG.I1 AST id。
 // annListId 非 ANNOTATION_LIST kind 或 <=0 返空数组(abstract FUNC_DECL.I4=1)。
 // ANN InternPool key = `ANN|${annPoolPrefix}.${annName}`(D118 Execute 2 抽出)。
-// D121 R1-A value kind 通用化:STRING/INT/DOUBLE/BOOL/enum MEMBER_ACCESS 字面化;
-// sentinel "\0" 判非合法值(区别合法 "" 空串,D121 test 无空串用例)。enum 双 map 回退
-// (comptimeDepth=0 注册 enumValues / >0 注册 interpEnumValues,见 member_access.ss:10-16)。
 function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
     const arr = interpNewArray("")
     if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return arr }
@@ -141,21 +137,33 @@ function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
             } else {
                 key = posCount == 1 ? "value" : `${posIdx}`; valId = argId; posIdx = posIdx + 1
             }
-            const vKind = nGetKind(valId)
-            let valStr = "\0"
-            if (vKind == "STRING_LIT" || vKind == "INT_LIT" || vKind == "DOUBLE_LIT") { valStr = nGetS1(valId) }
-            else if (vKind == "TRUE_LIT" || vKind == "FALSE_LIT") { valStr = vKind == "TRUE_LIT" ? "true" : "false" }
-            else if (vKind == "MEMBER_ACCESS" && nGetKind(nGetI1(valId)) == "IDENT") {
-                const eKey = `${nGetS1(nGetI1(valId))}.${nGetS1(valId)}`
-                if (interpEnumValues.has(eKey) == 1) { valStr = interpEnumValues.getString(eKey) }
-                else if (enumReady == 1 && enumValues.has(eKey) == 1) { valStr = enumValues.getString(eKey) }
-            }
-            if (valStr != "\0") { interpMapSet(argsMap, key, interpNewString(valStr)) }
+            if (valId > 0) { interpMapSet(argsMap, key, interpNewInt(valId)) }
         }
         tvMap.set(`${amId}|args`, `${argsMap}`)
         interpArrayPush(arr, internPoolGetOrInsert(`ANN|${annPoolPrefix}.${nGetS1(aId)}`, amId))
     }
     return arr
+}
+
+// STRING/INT/DOUBLE/BOOL → typed tv;MEMBER_ACCESS 按 enum 双 map 回解(enumValues
+// 与 interpEnumValues 分属 comptimeDepth=0/>0 两条注册路径,见 member_access.ss:10-16)。
+// 未实装 kind 抛 comptimeError 而非静默返 null:null 在 `getString(k).length()` 会变
+// 运行时 NPE,归因成本高。ARRAY_LIT/IDENT class ref 等待 I005/I006 扩。
+function evalAnnotationArg(nodeId: int): int {
+    if (nodeId <= 0) { return interpNewNull() }
+    const kind = nGetKind(nodeId)
+    if (kind == "STRING_LIT") { return interpNewString(nGetS1(nodeId)) }
+    if (kind == "INT_LIT") { return interpNewInt(parseInt(nGetS1(nodeId))) }
+    if (kind == "DOUBLE_LIT") { return interpNewDouble(parseDouble(nGetS1(nodeId))) }
+    if (kind == "TRUE_LIT") { return interpNewBool(1) }
+    if (kind == "FALSE_LIT") { return interpNewBool(0) }
+    if (kind == "MEMBER_ACCESS" && nGetKind(nGetI1(nodeId)) == "IDENT") {
+        const eKey = `${nGetS1(nGetI1(nodeId))}.${nGetS1(nodeId)}`
+        if (interpEnumValues.has(eKey) == 1) { return interpNewString(interpEnumValues.getString(eKey)) }
+        if (enumReady == 1 && enumValues.has(eKey) == 1) { return interpNewString(enumValues.getString(eKey)) }
+    }
+    comptimeError(`annotation arg kind '${kind}' not yet supported (I004 enum / I005 array / I006 class ref pending)`, nodeId)
+    return interpNewNull()
 }
 
 // ClassMeta 实例 + InternPool name-based dedup,FieldMeta/MethodMeta/AnnotationMeta inline 构造。
