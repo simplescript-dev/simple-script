@@ -52,14 +52,17 @@ v1 的 G1-G5(字符串匹配 `nGetS1=="fields"`、变量名前缀 `classXxxAnnot
 ## Gate 行为
 
 ```
-bin/ss run tools/reflection_health_linter.ss           # 对比基线
-bin/ss run tools/reflection_health_linter.ss record    # 把当前值写为新基线
+bin/ss run tools/reflection_health_linter.ss                                       # 对比基线
+bin/ss run tools/reflection_health_linter.ss record                                # 把当前值写为新基线
+bin/ss run tools/reflection_health_linter.ss bump <metric> <new_budget> <doc>      # 扩容申报升 budget_max (D124)
 ```
 
-- **任一指标 > baseline → `exit(1)` GATE BLOCKED**(改动触及编译器结构且未伴随根因削减)
-- **所有指标 ≤ baseline → `exit(0)` GATE PASS**(无 regression)
+- **任一指标 > budget_max → `exit(1)` GATE BLOCKED**(改动触及编译器结构且未伴随根因削减或扩容申报)
+- **所有指标 ≤ budget_max → `exit(0)` GATE PASS**(无 regression)
 
 仅此两种终态,无中间"ALL TARGETS MET / 未完成目标"分级 — 目标在 D093 §决策 里,不在 linter 阈值里。linter 的职责只做**单调守护**:任何 commit 必须证明自己不加深结构。
+
+> **baseline 2 列制升级见 D124**:2026-04-22 起 baseline.txt 升为 `metric=baseline_value:budget_max` 2 列,gate 条件从 `cur ≤ baseline + tol` 升为 `cur ≤ budget_max`。`baseline_value` 承本节"历史证据"角色(单调下压规则保留),`budget_max` 承"gate 阈值"角色(上移必经 `bump` CLI + D 文档 §扩容申报 锚点 + audit trail)。非扩容轮两列同值,gate 行为等同本节严格契约。
 
 ## 开发流集成
 
@@ -69,6 +72,7 @@ Baseline 更新规则:
 
 - **只在削减方向更新**:例如合并两个 Map 使 M5 从 1758 降到 1750,`bin/ss run tools/reflection_health_linter.ss record` 写入新 baseline,commit message 说明削减路径
 - **累积方向严禁更新**:新增 kind 分支 / 新增 Map / 新增 sidecar 导致 M/N 任一项上升,必须先回头削减,不允许"调高 baseline 让 gate 过"
+- **扩容申报(D124 2 列制)**:形态升级(容器 Array→Map / 新 Meta kind / AST 字段扩)累计组物理下限必然上升,走 `bump` CLI + D 文档 §扩容申报段 + audit trail,`budget_max` 申报驱动上移,`baseline_value` 在 Execute 完成后另一次 record 同步(DRIFT 态 cur ≤ budget_max 允许升 bv)
 
 ## 后续工作
 

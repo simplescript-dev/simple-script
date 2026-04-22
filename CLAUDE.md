@@ -102,7 +102,7 @@ bin/ss clean
 
 **Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
 
-**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 baseline 阻断 commit。规则/baseline/触发范围见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`。
+**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline/触发范围见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；baseline 2 列制（`baseline_value:budget_max`）+ 扩容申报 CLI `bump <metric> <new_budget> <doc_anchor>` 见 `docs/3-decisions/D124-linter-baseline-budget-two-column.md`。
 
 **回复语言**：所有回复及总结使用中文。
 

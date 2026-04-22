@@ -310,65 +310,186 @@ function processFile(path: string) {
     }
 }
 
-// ── baseline IO ───────────────────────────────────────────────
-function parseKV(line: string, prefix: string): int {
-    if (line.startsWith(prefix) == 0) { return -1 }
+// ── baseline IO (D124 §决策 1-3: 2 列制 baseline_value:budget_max) ────
+let rowMap: Map<string, string> = new Map()
+let baselineLoaded: int = 0
+
+const TODAY_DATE = "2026-04-22"
+
+// 解析 "<prefix><bv>:<bm>"(2 列)或 legacy "<prefix><v>"(视作 bv==bm)。baseline.txt 是 IO 边界,
+// 手工 edit 的格式畸形必须拒(D124 §决策 3.3 不可伪造)。
+function parseRow(line: string, prefix: string): Array<int> {
+    let out: Array<int> = []
+    if (line.startsWith(prefix) == 0) { return out }
     const rest = line.substring(prefix.length(), line.length() - prefix.length())
-    return parseInt(rest)
+    if (rest == "") {
+        println(`  格式错误: ${prefix} 后无值`)
+        exit(1)
+    }
+    const colonIdx = rest.indexOf(":")
+    if (colonIdx < 0) {
+        const v = parseInt(rest)
+        out.push(v); out.push(v)
+        return out
+    }
+    const left = rest.substring(0, colonIdx)
+    const right = rest.substring(colonIdx + 1, rest.length() - (colonIdx + 1))
+    if (right.indexOf(":") >= 0) {
+        println(`  格式错误: ${prefix}${rest} 多冒号 (不允许)`)
+        exit(1)
+    }
+    if (left == "" || right == "") {
+        println(`  格式错误: ${prefix}${rest} 空值`)
+        exit(1)
+    }
+    out.push(parseInt(left))
+    out.push(parseInt(right))
+    return out
 }
 
-function readBaselineVal(prefix: string): int {
-    if (fileExists(BASELINE_PATH) == 0) { return -1 }
+function loadBaseline() {
+    if (baselineLoaded == 1) { return }
+    baselineLoaded = 1
+    if (fileExists(BASELINE_PATH) == 0) { return }
     const text = readFile(BASELINE_PATH)
     for (line in text.split("\n")) {
         if (line == "" || line.startsWith("#") == 1) { continue }
-        const v = parseKV(line, prefix)
-        if (v >= 0) { return v }
+        const eqIdx = line.indexOf("=")
+        if (eqIdx < 0) { continue }
+        const key = line.substring(0, eqIdx)
+        const row = parseRow(line, `${key}=`)
+        if (row.length() == 2) {
+            rowMap.set(key, `${row[0]}:${row[1]}`)
+        }
     }
-    return -1
+}
+
+// 返回 [bv, bm];key 不存在返 [] (调用者用 length()==0 判 missing)
+function readBaselineRow(key: string): Array<int> {
+    loadBaseline()
+    let out: Array<int> = []
+    if (rowMap.has(key) == 0) { return out }
+    const raw = rowMap.getString(key)
+    const colonIdx = raw.indexOf(":")
+    out.push(parseInt(raw.substring(0, colonIdx)))
+    out.push(parseInt(raw.substring(colonIdx + 1, raw.length() - (colonIdx + 1))))
+    return out
+}
+
+// D124 §决策 2.1 四终态:
+//   首次 (bv_old<0):          [cur, cur]
+//   PROGRESS (cur < bv_old):  bv=cur; 若 bv_old==bm_old 同降,否则 stamp 保持
+//   OK       (cur == bv_old): 不变
+//   DRIFT    (bv_old < cur ≤ bm_old): bv=cur 消耗扩容预算, bm 保持(§决策 3.2 Execute 后同步语义)
+//   REGRESSION (cur > bm_old):由调用方 gate 阻 record,本函数不感知
+function computeRecord(cur: int, bv_old: int, bm_old: int): Array<int> {
+    let out: Array<int> = []
+    if (bv_old < 0) { out.push(cur); out.push(cur); return out }
+    if (cur == bv_old) { out.push(bv_old); out.push(bm_old); return out }
+    out.push(cur)
+    if (cur < bv_old && bv_old == bm_old) { out.push(cur) } else { out.push(bm_old) }
+    return out
+}
+
+function checkRegressionCur(key: string, cur: int): int {
+    const row = readBaselineRow(key)
+    if (row.length() == 0) { return 0 }
+    if (cur > row[1]) { return 1 }
+    return 0
 }
 
 function writeBaseline() {
+    loadBaseline()
     const labels: Array<string> = ["M1", "M2", "M3a", "M3b", "M4", "M5", "M6", "M7a", "M7b", "N1", "N2", "N3", "N4", "N5"]
     const curs: Array<int> = [m1, m2, m3a, m3b, m4, m5, m6, m7a, m7b, n1, n2, n3, n4, n5]
+
     let blocked = 0
     let j = 0
     while (j < curs.length()) {
-        const old = readBaselineVal(`${labels[j]}=`)
-        if (old >= 0 && curs[j] > old) {
-            println(`  record 拒绝: ${labels[j]} ${old} → ${curs[j]} 累积方向`)
+        if (checkRegressionCur(labels[j], curs[j]) == 1) {
+            const row = readBaselineRow(labels[j])
+            println(`  record 拒绝: ${labels[j]} cur=${curs[j]} > budget_max=${row[1]} (REGRESSION,需走 bump CLI)`)
             blocked = 1
         }
         j = j + 1
     }
-    // D102 §规则 2.1 R4: F1 baseline 单调下降,cur > baseline 拒 record。
     let fi = 0
     while (fi < files.length()) {
         const path = files[fi]
         const cur = parseInt(fileLineCounts.getString(path))
-        const old = readBaselineVal(`F1:${path}=`)
-        if (old >= 0 && cur > old) {
-            println(`  record 拒绝: F1:${path} ${old} → ${cur} 文件行数上升`)
+        const f1key = `F1:${path}`
+        if (checkRegressionCur(f1key, cur) == 1) {
+            const row = readBaselineRow(f1key)
+            println(`  record 拒绝: ${f1key} cur=${cur} > budget_max=${row[1]} (REGRESSION,需拆文件或 bump)`)
             blocked = 1
         }
         fi = fi + 1
     }
     if (blocked == 1) {
         println("")
-        println("D097 L102 + D102 §规则 2.1 R4: 累积方向 / F1 行数升严禁更新 baseline。")
-        println("  只有削减路径(所有指标不升 + F1 文件不升)才允许 record。")
+        println("D097 §累积方向严禁更新 + D124 §决策 2.1: cur > budget_max 拒 record。")
+        println("  要么回退 cur,要么 `bin/ss run tools/reflection_health_linter.ss bump <metric> <new_budget> <doc_anchor>` 升 budget_max。")
         exit(1)
     }
-    let text = `# auto-generated by tools/reflection_health_linter.ss — do not edit\nM1=${m1}\nM2=${m2}\nM3a=${m3a}\nM3b=${m3b}\nM4=${m4}\nM5=${m5}\nM6=${m6}\nM7a=${m7a}\nM7b=${m7b}\nN1=${n1}\nN2=${n2}\nN3=${n3}\nN4=${n4}\nN5=${n5}\n`
-    // D102 §规则 2.1 R4: cur ≤ 600 的文件不写 F1: 条目(graduate 到 R2 状态,回升即阻)。
-    let fi2 = 0
-    while (fi2 < files.length()) {
-        const path = files[fi2]
+
+    const header = "# auto-generated by tools/reflection_health_linter.ss — do not edit"
+    let text = `${header}\n`
+    const oldText = readFile(BASELINE_PATH)
+    for (line in oldText.split("\n")) {
+        if (line.startsWith("#") == 1 && line != header) {
+            text = `${text}${line}\n`
+        }
+    }
+
+    j = 0
+    while (j < curs.length()) {
+        const row = readBaselineRow(labels[j])
+        let bv_old = -1; let bm_old = -1
+        if (row.length() == 2) { bv_old = row[0]; bm_old = row[1] }
+        const rec = computeRecord(curs[j], bv_old, bm_old)
+        text = `${text}${labels[j]}=${rec[0]}:${rec[1]}\n`
+        j = j + 1
+    }
+    fi = 0
+    while (fi < files.length()) {
+        const path = files[fi]
         const cur = parseInt(fileLineCounts.getString(path))
-        if (cur > F1_LIMIT) { text = `${text}F1:${path}=${cur}\n` }
-        fi2 = fi2 + 1
+        if (cur > F1_LIMIT) {
+            const f1key = `F1:${path}`
+            const row = readBaselineRow(f1key)
+            let bv_old = -1; let bm_old = -1
+            if (row.length() == 2) { bv_old = row[0]; bm_old = row[1] }
+            const rec = computeRecord(cur, bv_old, bm_old)
+            text = `${text}${f1key}=${rec[0]}:${rec[1]}\n`
+        }
+        fi = fi + 1
     }
     writeFile(BASELINE_PATH, text)
+}
+
+function checkF1(): int {
+    let regs = 0
+    println("--- F1 文件行数 GATE (cur > budget_max → BLOCKED) ---")
+    let fi = 0
+    while (fi < files.length()) {
+        const path = files[fi]
+        const cur = parseInt(fileLineCounts.getString(path))
+        const f1key = `F1:${path}`
+        const row = readBaselineRow(f1key)
+        let tag = "OK"
+        if (row.length() == 2) {
+            const bv = row[0]; const bm = row[1]
+            if (cur > bm) { tag = "REGRESSION"; regs = regs + 1 }
+            else if (cur > bv) { tag = "DRIFT" }
+            else if (cur < bv) { tag = "PROGRESS" }
+            println(`  F1 ${path} cur=${cur} bv=${bv} bm=${bm} → ${tag}`)
+        } else if (cur > F1_LIMIT) {
+            tag = "REGRESSION (> 600 新文件 R3)"; regs = regs + 1
+            println(`  F1 ${path} cur=${cur} bv=-1 bm=-1 → ${tag}`)
+        }
+        fi = fi + 1
+    }
+    return regs
 }
 
 function compareAndReport(): int {
@@ -377,123 +498,145 @@ function compareAndReport(): int {
         println(`  (to record current as baseline: bin/ss run ${"tools/reflection_health_linter.ss"} record)`)
         return 0
     }
-    const text = readFile(BASELINE_PATH)
-    let bm1 = -1
-    let bm2 = -1
-    let bm3a = -1
-    let bm3b = -1
-    let bm4 = -1
-    let bm5 = -1
-    let bm6 = -1
-    let bm7a = -1
-    let bm7b = -1
-    let bn1 = -1
-    let bn2 = -1
-    let bn3 = -1
-    let bn4 = -1
-    let bn5 = -1
-    for (line in text.split("\n")) {
-        if (line == "" || line.startsWith("#") == 1) { continue }
-        const v1 = parseKV(line, "M1="); if (v1 >= 0) { bm1 = v1 }
-        const v2 = parseKV(line, "M2="); if (v2 >= 0) { bm2 = v2 }
-        const v3a = parseKV(line, "M3a="); if (v3a >= 0) { bm3a = v3a }
-        const v3b = parseKV(line, "M3b="); if (v3b >= 0) { bm3b = v3b }
-        const v4 = parseKV(line, "M4="); if (v4 >= 0) { bm4 = v4 }
-        const v5 = parseKV(line, "M5="); if (v5 >= 0) { bm5 = v5 }
-        const v6 = parseKV(line, "M6="); if (v6 >= 0) { bm6 = v6 }
-        const v7a = parseKV(line, "M7a="); if (v7a >= 0) { bm7a = v7a }
-        const v7b = parseKV(line, "M7b="); if (v7b >= 0) { bm7b = v7b }
-        const vn1 = parseKV(line, "N1="); if (vn1 >= 0) { bn1 = vn1 }
-        const vn2 = parseKV(line, "N2="); if (vn2 >= 0) { bn2 = vn2 }
-        const vn3 = parseKV(line, "N3="); if (vn3 >= 0) { bn3 = vn3 }
-        const vn4 = parseKV(line, "N4="); if (vn4 >= 0) { bn4 = vn4 }
-        const vn5 = parseKV(line, "N5="); if (vn5 >= 0) { bn5 = vn5 }
-    }
-    println("--- 基线对比 (任一指标 > baseline → exit(1)) ---")
+    loadBaseline()
+    println("--- 基线对比 (cur > budget_max → BLOCKED) ---")
+    const labels: Array<string> = ["M1 ", "M2 ", "M3a", "M3b", "M4 ", "M5 ", "M6 ", "M7a", "M7b", "N1 ", "N2 ", "N3 ", "N4 ", "N5 "]
+    const keys: Array<string> = ["M1", "M2", "M3a", "M3b", "M4", "M5", "M6", "M7a", "M7b", "N1", "N2", "N3", "N4", "N5"]
+    const curs: Array<int> = [m1, m2, m3a, m3b, m4, m5, m6, m7a, m7b, n1, n2, n3, n4, n5]
     let regressions = 0
-    regressions = regressions + reportDelta("M1 ", m1, bm1)
-    regressions = regressions + reportDelta("M2 ", m2, bm2)
-    regressions = regressions + reportDelta("M3a", m3a, bm3a)
-    regressions = regressions + reportDelta("M3b", m3b, bm3b)
-    regressions = regressions + reportDelta("M4 ", m4, bm4)
-    regressions = regressions + reportDelta("M5 ", m5, bm5)
-    regressions = regressions + reportDelta("M6 ", m6, bm6)
-    regressions = regressions + reportDelta("M7a", m7a, bm7a)
-    regressions = regressions + reportDelta("M7b", m7b, bm7b)
-    regressions = regressions + reportDelta("N1 ", n1, bn1)
-    regressions = regressions + reportDelta("N2 ", n2, bn2)
-    regressions = regressions + reportDelta("N3 ", n3, bn3)
-    regressions = regressions + reportDelta("N4 ", n4, bn4)
-    regressions = regressions + reportDelta("N5 ", n5, bn5)
+    let j = 0
+    while (j < curs.length()) {
+        regressions = regressions + reportDelta(labels[j], curs[j], keys[j])
+        j = j + 1
+    }
     regressions = regressions + checkF1()
     return regressions
 }
 
-// D102 §规则 2.1 F1 4 状态矩阵:
-//   S1 base 有 + cur > 600 → R1 monotonic (cur > base REGRESSION / < PROGRESS / == OK)
-//   S2 base 有 + cur ≤ 600 → R1 PROGRESS;record 时 R4 graduate 删条目
-//   S3 base 无 + cur > 600 → R3 REGRESSION 阻断
-//   S4 base 无 + cur ≤ 600 → R2 默认 OK(cur 升 > 600 触 R3);record 时 R4 不入库
-// 下方合并实现:base >= 0 分 S1/S2,else cur > F1_LIMIT 分 S3/S4
-function checkF1(): int {
-    let regs = 0
-    println("--- F1 文件行数 GATE (R1 超标单调下降 / R2+R3 新增 > 600 硬阻) ---")
-    let fi = 0
-    while (fi < files.length()) {
-        const path = files[fi]
-        const cur = parseInt(fileLineCounts.getString(path))
-        const base = readBaselineVal(`F1:${path}=`)
-        let tag = "OK"
-        if (base >= 0) {
-            if (cur > base) { tag = "REGRESSION"; regs = regs + 1 }
-            else if (cur < base) { tag = "PROGRESS" }
-        } else {
-            if (cur > F1_LIMIT) { tag = "REGRESSION (> 600 新文件 R3)"; regs = regs + 1 }
-        }
-        if (base >= 0 || cur > F1_LIMIT) {
-            println(`  F1 ${path} cur=${cur} baseline=${base} → ${tag}`)
-        }
-        fi = fi + 1
-    }
-    return regs
-}
-
-// D102 §规则 1.2 分层阈值:
-//   累计组 6 项 (M1/M2/M3a/M5/N1/N2) tol = baseline / 200 (±0.5%)
-//   N1 保底 tol = 1 (新 kind 首次引入必 +1)
-//   结构组 8 项 (M3b/M4/M6/M7a/M7b/N3/N4/N5) tol = 0 严格
-// §规则 1.3 三终态: PROGRESS / OK / DRIFT(累计组窗口内) / REGRESSION
-function reportDelta(label: string, cur: int, baseline: int): int {
-    if (baseline < 0) {
+// D124 §决策 2.1 四终态 (tol 由 budget_max - baseline_value 显式表达,旧 tol=baseline/200 废):
+//   cur < baseline_value              → PROGRESS
+//   cur == baseline_value             → OK
+//   baseline_value < cur ≤ budget_max → DRIFT (gate 不阻,扩容预算内浮动)
+//   cur > budget_max                  → REGRESSION (gate 阻)
+function reportDelta(label: string, cur: int, key: string): int {
+    const row = readBaselineRow(key)
+    if (row.length() == 0) {
         println(`  ${label} cur=${cur} baseline=(missing)`)
         return 0
     }
-    let tol = 0
-    if (label == "M1 " || label == "M2 " || label == "M3a" || label == "M5 " || label == "N1 " || label == "N2 ") {
-        tol = baseline / 200
-        if (label == "N1 " && tol == 0) { tol = 1 }
-    }
-    const delta = cur - baseline
+    const bv = row[0]; const bm = row[1]
+    const delta = cur - bv
     let tag = "OK"
     let isReg = 0
-    if (cur > baseline + tol) { tag = "REGRESSION"; isReg = 1 }
-    else if (cur > baseline) { tag = "DRIFT" }
-    else if (cur < baseline) { tag = "PROGRESS" }
-    println(`  ${label} cur=${cur} baseline=${baseline} delta=${delta} tol=±${tol} → ${tag}`)
+    if (cur > bm) { tag = "REGRESSION"; isReg = 1 }
+    else if (cur > bv) { tag = "DRIFT" }
+    else if (cur < bv) { tag = "PROGRESS" }
+    println(`  ${label} cur=${cur} bv=${bv} bm=${bm} delta=${delta} → ${tag}`)
     return isReg
+}
+
+// D124 §决策 3.2 bump <metric> <new_budget_max> <doc_anchor>:
+// 只上不下; doc_anchor 形如 D<num>#<section>, 文件需存在 docs/3-decisions/, section 需命中。
+// 写入:改 metric 行 budget_max, baseline_value 不变, 注释块前追加 audit trail。
+function bumpCmd(metric: string, newBudgetStr: string, docAnchor: string) {
+    const newBudget = parseInt(newBudgetStr)
+    if (newBudget <= 0) {
+        println(`  bump 拒绝: new_budget "${newBudgetStr}" 非正整数`)
+        exit(1)
+    }
+    const row = readBaselineRow(metric)
+    if (row.length() == 0) {
+        println(`  bump 拒绝: metric "${metric}" 未在 baseline 中 (legacy 首轮先跑 record 升 2 列格式)`)
+        exit(1)
+    }
+    const bv_old = row[0]; const bm_old = row[1]
+    if (newBudget < bm_old) {
+        println(`  bump 拒绝: new_budget=${newBudget} < old_budget=${bm_old} (bump 只上不下,下压走 record)`)
+        exit(1)
+    }
+    const hashIdx = docAnchor.indexOf("#")
+    if (hashIdx < 0) {
+        println(`  bump 拒绝: doc_anchor "${docAnchor}" 无 # 分隔符 (期望 D<num>#<section>)`)
+        exit(1)
+    }
+    const docNum = docAnchor.substring(0, hashIdx)
+    const section = docAnchor.substring(hashIdx + 1, docAnchor.length() - (hashIdx + 1))
+    const entries = listDir("docs/3-decisions")
+    let docFilePath = ""
+    if (entries != "") {
+        for (ent in entries.split("\n")) {
+            if (ent == "") { continue }
+            if (ent.startsWith(`${docNum}-`) == 1 && ent.endsWith(".md") == 1) {
+                docFilePath = `docs/3-decisions/${ent}`
+            }
+        }
+    }
+    if (docFilePath == "") {
+        println(`  bump 拒绝: D 文档 "${docNum}-*.md" 不存在于 docs/3-decisions/`)
+        exit(1)
+    }
+    const docText = readFile(docFilePath)
+    if (docText.indexOf(section) < 0) {
+        println(`  bump 拒绝: section "${section}" 在 ${docFilePath} 中未命中 (强制文档落段)`)
+        exit(1)
+    }
+    const oldText = readFile(BASELINE_PATH)
+    const auditTrail = `# bump ${metric} ${bm_old}→${newBudget} trail=${docAnchor} date=${TODAY_DATE}`
+    let newText = ""
+    let trailInserted = 0
+    for (line in oldText.split("\n")) {
+        if (line == "") { continue }
+        if (line.startsWith("#") == 1) {
+            newText = `${newText}${line}\n`
+            continue
+        }
+        if (trailInserted == 0) {
+            newText = `${newText}${auditTrail}\n`
+            trailInserted = 1
+        }
+        if (line.startsWith(`${metric}=`) == 1) {
+            newText = `${newText}${metric}=${bv_old}:${newBudget}\n`
+        } else {
+            newText = `${newText}${line}\n`
+        }
+    }
+    writeFile(BASELINE_PATH, newText)
+    println(`✓ bump ${metric} ${bm_old}→${newBudget} trail=${docAnchor} date=${TODAY_DATE}`)
+    println(`  baseline_value=${bv_old} (不变) / budget_max=${newBudget} (升)`)
+    println(`  Execute 后跑 \`bin/ss run tools/reflection_health_linter.ss record\` 把 baseline_value 同步到 cur`)
 }
 
 // ── main ──────────────────────────────────────────────────────
 function main() {
     let mode = ""
     let scanDir = "bootstrap"
+    let bumpMetric = ""
+    let bumpNewBudget = ""
+    let bumpDocAnchor = ""
     let i = 1
     while (i < args()) {
         const a = arg(i)
         if (a == "record") { mode = "record" }
+        else if (a == "bump") {
+            mode = "bump"
+            if (i + 3 >= args()) {
+                println("用法: bump <metric> <new_budget> <doc_anchor>")
+                exit(1)
+            }
+            bumpMetric = arg(i + 1)
+            bumpNewBudget = arg(i + 2)
+            bumpDocAnchor = arg(i + 3)
+            i = i + 3
+        }
         else if (a == "--dir" && i + 1 < args()) { scanDir = arg(i + 1); i = i + 1 }
         i = i + 1
     }
+
+    if (mode == "bump") {
+        bumpCmd(bumpMetric, bumpNewBudget, bumpDocAnchor)
+        return
+    }
+
     collectSSFiles(scanDir)
     let fi = 0
     while (fi < files.length()) { processFile(files[fi]); fi = fi + 1 }
@@ -529,7 +672,7 @@ function main() {
     println("")
     if (regressions > 0) {
         println(`GATE BLOCKED — ${regressions} metric(s) regressed`)
-        println("  改动触及反射路径且未伴随根因削减,请回头想清楚再提交。")
+        println("  cur > budget_max 且未 bump 扩容申报,或触碰反射路径未伴随根因削减,请回头想清楚再提交。")
         exit(1)
     } else {
         println("GATE PASS — no regressions")

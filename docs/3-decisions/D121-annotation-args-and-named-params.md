@@ -674,7 +674,7 @@ N3=517080 (原 518111 → -1031,PROGRESS 单调下压)
 ```
 其余 8 项(M3a/M3b/M6/M7a/M7b/N1/N4/N5)不变。当前 `tools/linter_baseline.txt` 仍是扩容前值 → 本轮 commit **不更新 baseline.txt**,改由"扩容申报段承载 gate 放行",linter GATE BLOCKED 接受为**申报态**(非真 REGRESSION)。
 
-**baseline 2 列制改造**:单列 `baseline_value + tol` 机制无法表达"申报上限"概念 —— 本轮 commit 后另起 D 文档 `D124` 决策 `baseline_value budget_max` 两列制 + gate PASS 条件 `cur ≤ budget_max`。暂行 workaround:本轮 linter GATE BLOCKED **不阻 commit**,因 (1) 结构组全守住(本质合规)+ (2) 扩容申报段完整(流程合规)+ (3) `feedback_reflection_expansion_protocol` 明述"扩容轮申报驱动 budget_max 上移"路径。
+**baseline 2 列制改造** [x] Done at D124(2026-04-22):单列 `baseline_value + tol` 机制无法表达"申报上限"概念 —— D124 决策 `baseline_value budget_max` 两列制 + gate PASS 条件 `cur ≤ budget_max`,Execute 轮兑现:5 项 bump(M1/M2/M3a/M5/N2,含本轮 §首个 use case 4 项 + D124 校正补 M3a)trail=D121#扩容申报 + record 同步 M4/N3 PROGRESS。"暂行 workaround 本轮 linter GATE BLOCKED 不阻 commit" 彻底消除,`bin/ss run tools/reflection_health_linter.ss` 现在 GATE PASS;反射扩容申报路径正式工具链化(CLI `bump` 强制 D 文档 §扩容申报 锚点 + audit trail,手工 edit baseline.txt 触格式校验拒)。
 
 **VCM 预估 vs 实测对账(§预估失准记录,下轮 PSM 开工前必读)**:
 - **累计组漏估的根因**:§A.3 #6 第四轮 Plan 推演聚焦**结构组 delta**(M4/N3/M7b,因 tol=0 严格),累计组(M1/M2/M5/N2)推演粒度仅给出"low/medium risk"标签未实际量化 → Execute 落地时 R1-A 真实改动规模(6 value kind 分支 + enum 双 map fallback + forin map 分支 + ctProbe map 扩展)远超 pass1+pass2 伪代码 14 行推演
