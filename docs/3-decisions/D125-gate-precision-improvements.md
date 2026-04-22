@@ -1,6 +1,6 @@
 # D125: Gate 精准化改进 — 消除数值 / 字符代理失真诱发的八股
 
-**Status:** [ ] Planned(Plan 型,锁决策不动代码;Execute 另轮触发)
+**Status:** [x] Done at 2026-04-22(P1-P5 全批落地 + P6 砍,全批收敛)
 **Depends on:** D097(反射根因 14 指标 gate)、D102(F1 行数 gate)、D124(baseline 2 列制 + bump CLI)、`feedback_auto_simplify`、`feedback_bagu_self_check`、`feedback_no_distant_offset`、`feedback_reflection_expansion_protocol`、`feedback_human_readable_code`、`feedback_ultrathink_gate`、`feedback_600_split_not_inline`
 **Date:** 2026-04-22
 **Last Updated:** 2026-04-22
@@ -171,7 +171,7 @@ Blast radius 判定可自动(linter 读 `git diff --shortstat`)或自报(用户 
 
 ---
 
-### P6 — 字符匹配 gate 加语义兜底(低优先,长尾)
+### P6 — 字符匹配 gate 加语义兜底(低优先,长尾) [x] 砍 at 2026-04-22 (D125 Execute 5 全批收敛,详见附录 B 第五批)
 
 **现状**:`next_prompt_ultrathink_linter` grep `ultrathink` 字面;PSM 字段 1 grep 对照 D 文档段落字面。语义等价但字面不同的写法被误拒。
 
@@ -344,6 +344,20 @@ gate 设计者的心智模型:**"如果 cur 不升,质量就不降"**。失真�
 - **文档同步**:D097 §开发流集成 现描述("任何可能影响编译器结构规模的改动...任一指标 regression 阻断 commit")升级为"反射白名单 4 路径改动 hard gate / 非反射改动 soft gate + F1 硬阻";D125 §P2 标题加 `[x] Done at <file:anchor>` 状态标注(P19)
 - **commit**:三文件(linter + D097 + D125)+ 本附录条目同 commit,message `feat(D125): Execute 4 P2 scope-aware 反射 gate 按 diff scope 切 hard/soft`
 - **验证**:RED `grep -cE "shell\(" tools/reflection_health_linter.ss` = 0 入场;`bin/ss run tools/reflection_health_linter.ss` clean working tree `3 changed file(s) not touched` 报告 + 14 指标 AUTO-DRIFT/OK GATE PASS;临时改 `M1=5169:5168 → M1=5000:5000`(cur=5169 > bm×1.01=5050 超 tol)+ 非反射 scope → `M1 → SCOPE-DRIFT + soft not blocked + GATE PASS`;再 `printf >> bootstrap/gen/class/class.ss`(反射 scope)→ `reflection path TOUCHED` + `M1 → REGRESSION + GATE BLOCKED`(5 changed file(s));验后 baseline + class.ss 全恢复;`bin/ss test tests/` 全绿;`./build.sh bootstrap` 固定点 ✓
+
+### Execute(第五批) [x] Done at 2026-04-22 — D125 全批收敛 P6 砍
+
+- **P6 去留判据(4 条 memory 事件复发风险对照)**:
+  - `feedback_no_distant_offset` — 远距离榨指标根因在反射 gate 粗粒度误伤;**P2 scope-aware** 按 diff 切 hard/soft 已根解非反射误伤,远距离榨指标动机消除于源头;P6(字符匹配 bypass)与数值 gate 无关,零覆盖
+  - `feedback_bagu_self_check`(元规则) — **P6 bypass 文件机制本身是新八股入口**:为绕字符 gate 写 bypass 理由 = 仪式填充,违反元规则"去掉它核心产出会少吗"判据,**方向相悖**
+  - `feedback_reflection_expansion_protocol` — 扩容申报由 **P3 bump-group**(O(N)→O(1)) + **P4 AUTO-DRIFT** 1% 豁免根解,P6 与数值 gate 无关,零覆盖
+  - `feedback_human_readable_code` — 可读性由 **P1 simplify 第 4 维 readability** 否决权根解,P6 与 simplify 无关,零覆盖
+- **字符匹配误拒率实证**:D125 起草至今 `next_prompt_ultrathink_linter` + PSM 字段 1 grep 对照 **零实证误拒事件**;修正成本("补关键字" / "改 grep 命令")远 < P6 bypass 声明 + audit trail + 新 state 文件维护成本
+- **P6 方向与 P5 分层倒置**:P5 微改豁免 PSM+simplify 仅留 next_prompt(减仪式),P6 bypass 为微改增新仪式槽(写 bypass 理由),**减增方向相反**
+- **综合净负结论**:成本估 30 行 linter + `.claude/gate_bypass.txt` 新 state 文件;收益限边缘案例;元规则层引入新八股载体 → **砍**
+- **文档改动**:(a) 文档头 §Status `[ ] Planned` → `[x] Done at 2026-04-22(P1-P5 全批落地 + P6 砍,全批收敛)`;(b) §P6 标题加 `[x] 砍 at 2026-04-22 (D125 Execute 5 全批收敛,详见附录 B 第五批)`(P19 状态标注);(c) 本附录 B 条目留判据痕迹
+- **commit**:单文件 D125 同 commit,message `feat(D125): Execute 5 全批收敛 — P6 砍 / P1-P5 全落地`
+- **验证**:RED `grep -c "P6 可砍" docs/3-decisions/D125-*.md` = 1 入场(P6 章末原话预留);改动后 `grep -c "P6 砍" docs/3-decisions/D125-*.md` ≥ 5(Status + §P6 标题 + 第五批标题 + 判据 bullet + 验证行自引用);`bin/ss run tools/reflection_health_linter.ss` 非反射 scope 实测 `3 changed file(s) not touched` + 14 指标 AUTO-DRIFT/OK + F1 全 OK + `GATE PASS — no regressions` ✓;下轮 next_prompt 关键字 `ultrathink` 由提示词本体承载
 
 ---
 
