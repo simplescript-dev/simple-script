@@ -320,9 +320,17 @@ gate 设计者的心智模型:**"如果 cur 不升,质量就不降"**。失真�
 - **commit**:两核心文件 + 本附录条目同 commit,message `feat(D125): Execute 1 仪式层 — simplify readability 第 4 维 + PFV 三档分层`
 - **验证**:RED `find ~/.claude -name '*simplify*' 2>/dev/null` 命中 5 条 feedback memory 证 simplify 无集中 skill 定义 → 按 D125 §P1 "等价 skill 定义"入场路径创建 user-level SKILL.md;skill registry 动态刷新识别新 4 维版本(available-skills 系统提示实测)
 
-### Execute(第二批)[ ] Planned
+### Execute(第二批) [x] Done at 2026-04-22 — P3 + P4 工具层落地(P2 延后)
 
-候选:P2 + P3 + P4 工具层联动;P6 延后
+- **P3 bump-group CLI**:`tools/reflection_health_linter.ss` 新增 `bumpGroupCmd(docAnchor, pairs)` + `main()` `bump-group` dispatch;复用 `isRegression` / `mapGetIntOrNeg` 同源校验(metric 存在 / `new_budget ≥ bm_old` / doc_anchor # 分隔 + D 文档 section 命中)+ 原子写(任一失败全拒,单 audit trail 行 `# bump-group M1=<b1> ... trail=<doc> date=2026-04-22`);保留 `bump` 单指标 CLI 兼容
+- **P4 AUTO-DRIFT 软 tol**:同文件新增 `TOL_PCT_NUM=1` / `TOL_PCT_DEN=100`(linter 无 float,整数比表达 1% 容忍)+ `isAutoDrift(cur, bm)` helper + `isRegression` 把 AUTO-DRIFT 归于非 REGRESSION + `reportDelta` 五终态分支(DRIFT / AUTO-DRIFT / REGRESSION 三分);AUTO-DRIFT 态输出 `⚠ AUTO-DRIFT: <label> cur=<cur> within 1% of budget_max=<bm> (soft, not blocked)` + exit(0) 不阻;超 1% 退回 REGRESSION 硬阻;`writeBaseline` AUTO-DRIFT 路径下 record 允许升 `baseline_value` 到 cur(`budget_max` 保持,形成软债可见跟踪,下轮仍呈 AUTO-DRIFT 或升至 REGRESSION)
+- **文档同步**:D097 §Gate 行为 二终态扩 **三终态**(GATE PASS / AUTO-DRIFT 软警告 / GATE BLOCKED)+ `bump-group` CLI 行入链;§开发流集成 §扩容申报段补 `bump-group` 路径;D124 §决策 2.1 四终态扩 **五终态**(加 AUTO-DRIFT 行)+ 新 §决策 3.2a `bump-group` CLI 规格段
+- **commit**:三文件(linter + D097 + D124)+ 本附录条目同 commit,message `feat(D125): Execute 2 P3 bump-group CLI + P4 AUTO-DRIFT soft tol=0.01`
+- **验证**:RED `bin/ss run tools/reflection_health_linter.ss 2>&1 | grep -c 'bump-group'` 输出 0 入场;5 条拒绝路径(无参 / 无 # 分隔 / D 文档缺 / metric 缺 / 下调 bm)全拒 exit(1);合法 no-op(`D125#Execute M1=5168 M2=76617` 等同现 bm)audit trail 写成功(测后回滚 baseline.txt);AUTO-DRIFT 实测:M1 bm=5120 时 cur=5168 呈 AUTO-DRIFT + GATE PASS,bm=5100 时呈 REGRESSION + GATE BLOCKED(测后 baseline.txt 回滚)
+
+### Execute(第三批)[ ] Planned
+
+候选:P2 scope-aware 反射 gate(等 bin/ss `bash("git diff --name-only HEAD")` runtime 能力就绪);P6 字符匹配语义兜底延后或砍(优先级 ★,可能直接剔除)
 
 ---
 

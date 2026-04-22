@@ -52,17 +52,21 @@ v1 的 G1-G5(字符串匹配 `nGetS1=="fields"`、变量名前缀 `classXxxAnnot
 ## Gate 行为
 
 ```
-bin/ss run tools/reflection_health_linter.ss                                       # 对比基线
-bin/ss run tools/reflection_health_linter.ss record                                # 把当前值写为新基线
-bin/ss run tools/reflection_health_linter.ss bump <metric> <new_budget> <doc>      # 扩容申报升 budget_max (D124)
+bin/ss run tools/reflection_health_linter.ss                                              # 对比基线
+bin/ss run tools/reflection_health_linter.ss record                                       # 把当前值写为新基线
+bin/ss run tools/reflection_health_linter.ss bump <metric> <new_budget> <doc>             # 单指标扩容申报 (D124)
+bin/ss run tools/reflection_health_linter.ss bump-group <doc> <m1>=<b1> <m2>=<b2> ...     # 多指标一次申报 (D125 P3)
 ```
 
-- **任一指标 > budget_max → `exit(1)` GATE BLOCKED**(改动触及编译器结构且未伴随根因削减或扩容申报)
-- **所有指标 ≤ budget_max → `exit(0)` GATE PASS**(无 regression)
+- **任一指标 `cur > budget_max × 1.01` → `exit(1)` GATE BLOCKED**(硬 REGRESSION:改动触及编译器结构且未伴随根因削减或扩容申报)
+- **任一指标 `budget_max < cur ≤ budget_max × 1.01` → `exit(0)` GATE PASS + ⚠ AUTO-DRIFT 软警告**(D125 §P4 1% 容忍区间,微扩豁免 bump 仪式;record 允许升 `baseline_value` 到 cur,`budget_max` 保持形成"软债"可见跟踪)
+- **所有指标 `cur ≤ budget_max` → `exit(0)` GATE PASS**(无 regression)
 
-仅此两种终态,无中间"ALL TARGETS MET / 未完成目标"分级 — 目标在 D093 §决策 里,不在 linter 阈值里。linter 的职责只做**单调守护**:任何 commit 必须证明自己不加深结构。
+三终态(D125 §P4 起扩 AUTO-DRIFT 软区间),无中间"ALL TARGETS MET / 未完成目标"分级 — 目标在 D093 §决策 里,不在 linter 阈值里。linter 的职责仍是**单调守护**:AUTO-DRIFT 区间之外的累积必须走 `bump` / `bump-group` 显式申报或回压。
 
-> **baseline 2 列制升级见 D124**:2026-04-22 起 baseline.txt 升为 `metric=baseline_value:budget_max` 2 列,gate 条件从 `cur ≤ baseline + tol` 升为 `cur ≤ budget_max`。`baseline_value` 承本节"历史证据"角色(单调下压规则保留),`budget_max` 承"gate 阈值"角色(上移必经 `bump` CLI + D 文档 §扩容申报 锚点 + audit trail)。非扩容轮两列同值,gate 行为等同本节严格契约。
+> **baseline 2 列制升级见 D124**:2026-04-22 起 baseline.txt 升为 `metric=baseline_value:budget_max` 2 列,gate 条件从 `cur ≤ baseline + tol` 升为 `cur ≤ budget_max`。`baseline_value` 承本节"历史证据"角色(单调下压规则保留),`budget_max` 承"gate 阈值"角色(上移必经 `bump` / `bump-group` CLI + D 文档 §扩容申报 锚点 + audit trail)。非扩容轮两列同值,gate 行为等同本节严格契约。
+
+> **AUTO-DRIFT + bump-group 升级见 D125**:2026-04-22 起 `cur > budget_max` 但 `cur ≤ budget_max × 1.01` 走软警告不阻 commit(P4,消除 M4+1 case 分支级微扩申报仪式诱发的远距离榨指标八股);`bump-group <doc> <m1>=<b1> <m2>=<b2> ...` 一次申报多指标,单行 audit trail + 原子写(P3,把 D121 Execute R1-A 5 次 `bump` 串跑的 O(N 指标)仪式压到 O(1))。
 
 ## 开发流集成
 
@@ -72,7 +76,7 @@ Baseline 更新规则:
 
 - **只在削减方向更新**:例如合并两个 Map 使 M5 从 1758 降到 1750,`bin/ss run tools/reflection_health_linter.ss record` 写入新 baseline,commit message 说明削减路径
 - **累积方向严禁更新**:新增 kind 分支 / 新增 Map / 新增 sidecar 导致 M/N 任一项上升,必须先回头削减,不允许"调高 baseline 让 gate 过"
-- **扩容申报(D124 2 列制)**:形态升级(容器 Array→Map / 新 Meta kind / AST 字段扩)累计组物理下限必然上升,走 `bump` CLI + D 文档 §扩容申报段 + audit trail,`budget_max` 申报驱动上移,`baseline_value` 在 Execute 完成后另一次 record 同步(DRIFT 态 cur ≤ budget_max 允许升 bv)
+- **扩容申报(D124 2 列制 + D125 bump-group)**:形态升级(容器 Array→Map / 新 Meta kind / AST 字段扩)累计组物理下限必然上升,单指标走 `bump` CLI,一次能力扩展同推多指标走 `bump-group <doc> <m1>=<b1> ...` 单行 audit trail + 原子写(任一失败全拒);两路径都必绑 D 文档 §扩容申报段 + audit trail,`budget_max` 申报驱动上移,`baseline_value` 在 Execute 完成后另一次 record 同步(DRIFT / AUTO-DRIFT 态 cur ≤ budget_max × 1.01 允许升 bv)
 
 ## 后续工作
 

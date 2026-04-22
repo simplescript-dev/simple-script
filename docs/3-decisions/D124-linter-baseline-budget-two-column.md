@@ -102,16 +102,17 @@ Execute 轮首次 `record` 命令自动把文件升到 2 列格式,过渡期限 
 - `cur ≤ baseline` → PASS
 - `cur > baseline + tol` → REGRESSION 阻断(累计组 tol=baseline/200,结构组 tol=0)
 
-新 gate:**`cur ≤ budget_max → PASS;cur > budget_max → BLOCKED`**。四终态重定义:
+新 gate(D125 §P4 扩后):**`cur ≤ budget_max → PASS;budget_max < cur ≤ budget_max × 1.01 → PASS + ⚠ AUTO-DRIFT 软警告;cur > budget_max × 1.01 → BLOCKED`**。五终态重定义:
 
 | 终态 | 条件 | 含义 | record 行为 |
 |---|---|---|---|
 | **PROGRESS** | `cur < baseline_value` | 真实下压 | record 把 baseline_value 降至 cur;budget_max 同降到 cur(若原本两列同值)或保持不变(若 budget_max 高于 baseline_value,即扩容历史高水位 stamp) |
 | **OK** | `cur == baseline_value` | 恰好基线 | 无变化 |
 | **DRIFT** | `baseline_value < cur ≤ budget_max` | 扩容预算内浮动 | gate 不阻;record 允许升 `baseline_value` 到 cur(扩容 Execute 完成,新真实 AST 状态 ≤ budget_max 是合法的"预算内消耗"),`budget_max` 保持 stamp 不降;与 §决策 3.2 "Execute 后另一次 record 把 baseline_value 同步到新真实 cur" 自洽 |
-| **REGRESSION** | `cur > budget_max` | gate 阻断 | record 拒;要么回退 cur,要么走 `bump` CLI 升 budget_max |
+| **AUTO-DRIFT (D125 §P4)** | `budget_max < cur ≤ budget_max × (1 + TOL_PCT)` (`TOL_PCT = 0.01`,整数比 1/100) | 微扩软容忍,gate 不阻但输出 `⚠ AUTO-DRIFT` 软警告;豁免小幅微扩(M4+1 case 分支级)走 `bump` 仪式的开销 | record 允许升 `baseline_value` 到 cur,`budget_max` 保持形成"软债"可见跟踪(下轮 linter 仍呈 AUTO-DRIFT,超 1% 区间后自动升级 REGRESSION,软债累积压力天然可见)|
+| **REGRESSION** | `cur > budget_max × (1 + TOL_PCT)` | gate 硬阻 | record 拒;要么回退 cur,要么走 `bump` / `bump-group` CLI 升 budget_max |
 
-**旧 `tol = baseline / 200` 机制废除** — 2 列制下"tol" 由 `budget_max - baseline_value` 显式表达,不再隐含比例。累计组(M1/M2/M3a/M5/N1/N2)与结构组(M3b/M4/M6/M7a/M7b/N3/N4/N5)在 gate 条件上**统一**,差异全落到 "何时允许 bump" 的策略判断(反射扩容协议,`feedback_reflection_expansion_protocol` §How to apply 1 三选一)。
+**旧 `tol = baseline / 200` 机制废除** — 2 列制下"tol" 由 `budget_max - baseline_value` 显式表达,`AUTO-DRIFT` 软容忍由 `TOL_PCT` 作 linter 常量显式表达(D125 §P4,linter `TOL_PCT_NUM / TOL_PCT_DEN`),不再隐含比例。累计组(M1/M2/M3a/M5/N1/N2)与结构组(M3b/M4/M6/M7a/M7b/N3/N4/N5)在 gate 条件上**统一**,差异全落到 "何时允许 bump / bump-group" 的策略判断(反射扩容协议,`feedback_reflection_expansion_protocol` §How to apply 1 三选一)。
 
 ### 2.2 budget_max 单调性
 
@@ -171,6 +172,31 @@ bin/ss run tools/reflection_health_linter.ss bump <metric> <new_budget_max> <doc
 - 修改对应 metric 行的 budget_max(第二个数字)
 - baseline_value 不改(真实 AST 状态未变,bump 只是"预留扩容预算"/"Execute 后另一次 record 把 baseline_value 同步到新真实 cur")
 - 注释行追加 audit trail:`# bump M1 5134→5168 trail=D121#扩容申报 date=2026-04-22`
+
+### 3.2a 新 CLI 子命令:`bump-group`(D125 §P3)
+
+```
+bin/ss run tools/reflection_health_linter.ss bump-group <doc_anchor> <metric1>=<budget1> [<metric2>=<budget2> ...]
+```
+
+参数:
+- `<doc_anchor>`:D 文档段落锚点(形如 `D121#扩容申报`),落入 baseline.txt 注释行作为**共享** audit trail
+- `<metric1>=<budget1> ...`:可变长度 metric=budget 对列表(至少 1 项;每项 budget ≥ 当前 budget_max,只上不下)
+
+校验(与 `bump` 同源,**所有 metric 全通过才写**):
+- `<metric>` 未在 baseline 中 → 拒
+- `<new_budget> < bm_old` → 拒
+- `<new_budget> ≤ 0` → 拒
+- `<doc_anchor>` # 分隔符缺失 / D 文档文件不存在 / section 未命中 → 拒
+
+写入行为(原子):
+- 任一 metric 校验失败 → 全拒,不修改 baseline.txt
+- 全通过 → **单行** audit trail `# bump-group M1=<b1> M2=<b2> ... trail=<doc> date=<YYYY-MM-DD>` 追加到注释块尾;每个命中 metric 行的 budget_max 升到 new_budget,baseline_value 不动
+
+设计初衷(D125 §P3):
+- 能力扩展(主线第一性需求)同推 N 指标时(如 D121 R1-A M1/M2/M3a/M5/N2 同扩),避免 N 次 `bump` 串跑 + N 条独立 audit trail 冗长
+- 申报成本从 O(N 指标)降到 O(1):一次 CLI + 一行 trail + D 文档 §扩容申报段引用单次
+- 保留 `bump` 单指标 CLI 不变,两路径并存:单指标走 `bump`,一次能力扩展同推多指标走 `bump-group`
 
 ### 3.3 baseline.txt 格式校验
 

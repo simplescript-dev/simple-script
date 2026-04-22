@@ -64,9 +64,21 @@ function intLog2(n: int): int {
     return r
 }
 
+// SS stdlib `substring(start, len)` 取 start + 长度(非 start + end),
+// 调用点 `s.substring(i + 1, s.length() - (i + 1))` 意图是"从 i+1 到尾",读者要停下心算;
+// 抽 `substringFrom` 让语义一眼可见。
+function substringFrom(s: string, start: int): string {
+    return s.substring(start, s.length() - start)
+}
+
 const BASELINE_PATH = "tools/linter_baseline.txt"
 // D102 §规则 2.1: 单文件行数上限(R2/R3 硬阻新文件 > 600,最终目标所有 bootstrap 文件 ≤ 600)。
 const F1_LIMIT = 600
+// D125 §P4 AUTO-DRIFT: cur 略超 budget_max 但 ≤ budget_max × (1 + TOL_PCT/DEN) 区间 gate 不阻,
+// record 允许升 baseline_value 到 cur(budget_max 保持,形成"软债"可见跟踪)。
+// linter 无 float — 用整数比 TOL_PCT_NUM / TOL_PCT_DEN 表达 1% 容忍。
+const TOL_PCT_NUM = 1
+const TOL_PCT_DEN = 100
 
 // ── Map<string,string> → int 适配 ────────────────────────────
 function mapGetInt(m: Map<string, string>, k: string): int {
@@ -390,12 +402,24 @@ function computeRecord(cur: int, bv_old: int, bm_old: int): Array<int> {
     return out
 }
 
+// D125 §P4: AUTO-DRIFT 软区间判定。cur ≤ bm 时返 0;cur > bm 且整数比值在
+// cur * DEN ≤ bm * (DEN + NUM) 内(= cur ≤ bm × 1.01)返 1。
+function isAutoDrift(cur: int, bm: int): int {
+    if (bm <= 0) { return 0 }
+    if (cur <= bm) { return 0 }
+    if (cur * TOL_PCT_DEN <= bm * (TOL_PCT_DEN + TOL_PCT_NUM)) { return 1 }
+    return 0
+}
+
+// D125 §P4: isRegression 只判"硬 REGRESSION"(超出 budget_max × 1.01 软容忍),
+// AUTO-DRIFT 归于非 REGRESSION,让 gate 不阻 commit,让 record 允许升 bv 到 cur。
 function isRegression(key: string, cur: int): int {
     loadBaseline()
     const bm = mapGetIntOrNeg(budgetMap, key)
     if (bm < 0) { return 0 }
-    if (cur > bm) { return 1 }
-    return 0
+    if (cur <= bm) { return 0 }
+    if (isAutoDrift(cur, bm) == 1) { return 0 }
+    return 1
 }
 
 function writeBaseline() {
@@ -513,11 +537,12 @@ function compareAndReport(): int {
     return regressions
 }
 
-// D124 §决策 2.1 四终态 (tol 由 budget_max - baseline_value 显式表达,旧 tol=baseline/200 废):
-//   cur < baseline_value              → PROGRESS
-//   cur == baseline_value             → OK
-//   baseline_value < cur ≤ budget_max → DRIFT (gate 不阻,扩容预算内浮动)
-//   cur > budget_max                  → REGRESSION (gate 阻)
+// D124 §决策 2.1 四终态 + D125 §P4 AUTO-DRIFT 软区间 = 五终态:
+//   cur < baseline_value                              → PROGRESS
+//   cur == baseline_value                             → OK
+//   baseline_value < cur ≤ budget_max                 → DRIFT       (gate 不阻,扩容预算内浮动)
+//   budget_max < cur ≤ budget_max × (1 + TOL_PCT)     → AUTO-DRIFT  (gate 不阻,软警告,小幅微扩豁免申报)
+//   cur > budget_max × (1 + TOL_PCT)                  → REGRESSION  (gate 阻)
 function reportDelta(label: string, cur: int, key: string): int {
     const bv = mapGetIntOrNeg(baselineMap, key)
     const bm = mapGetIntOrNeg(budgetMap, key)
@@ -528,16 +553,86 @@ function reportDelta(label: string, cur: int, key: string): int {
     const delta = cur - bv
     let tag = "OK"
     let isReg = 0
-    if (cur > bm) { tag = "REGRESSION"; isReg = 1 }
+    let autoDriftMsg = ""
+    if (cur > bm) {
+        if (isAutoDrift(cur, bm) == 1) {
+            tag = "AUTO-DRIFT"
+            autoDriftMsg = `  ⚠ AUTO-DRIFT: ${label} cur=${cur} within ${TOL_PCT_NUM}% of budget_max=${bm} (soft, not blocked)`
+        }
+        else { tag = "REGRESSION"; isReg = 1 }
+    }
     else if (cur > bv) { tag = "DRIFT" }
     else if (cur < bv) { tag = "PROGRESS" }
     println(`  ${label} cur=${cur} bv=${bv} bm=${bm} delta=${delta} → ${tag}`)
+    if (autoDriftMsg != "") { println(autoDriftMsg) }
     return isReg
 }
 
-// D124 §决策 3.2 bump <metric> <new_budget_max> <doc_anchor>:
-// 只上不下; doc_anchor 形如 D<num>#<section>, 文件需存在 docs/3-decisions/, section 需命中。
-// 写入:改 metric 行 budget_max, baseline_value 不变, 注释块前追加 audit trail。
+// D124 §决策 3.2 doc_anchor 校验:形如 D<num>#<section>,文件需在 docs/3-decisions/ 且 section 文本命中。
+// 失败就地 exit(1),cmdPrefix 用于错误信息区分 "bump 拒绝" / "bump-group 拒绝"。
+function resolveDocAnchor(docAnchor: string, cmdPrefix: string): string {
+    const hashIdx = docAnchor.indexOf("#")
+    if (hashIdx < 0) {
+        println(`  ${cmdPrefix} 拒绝: doc_anchor "${docAnchor}" 无 # 分隔符 (期望 D<num>#<section>)`)
+        exit(1)
+    }
+    const docNum = docAnchor.substring(0, hashIdx)
+    const section = substringFrom(docAnchor, hashIdx + 1)
+    const entries = listDir("docs/3-decisions")
+    let docFilePath = ""
+    if (entries != "") {
+        for (ent in entries.split("\n")) {
+            if (ent == "") { continue }
+            if (ent.startsWith(`${docNum}-`) == 1 && ent.endsWith(".md") == 1) {
+                docFilePath = `docs/3-decisions/${ent}`
+            }
+        }
+    }
+    if (docFilePath == "") {
+        println(`  ${cmdPrefix} 拒绝: D 文档 "${docNum}-*.md" 不存在于 docs/3-decisions/`)
+        exit(1)
+    }
+    const docText = readFile(docFilePath)
+    if (docText.indexOf(section) < 0) {
+        println(`  ${cmdPrefix} 拒绝: section "${section}" 在 ${docFilePath} 中未命中 (强制文档落段)`)
+        exit(1)
+    }
+    return docFilePath
+}
+
+// D124 §决策 3.3 "不可伪造":baseline 写入的唯一路径。替换 replacements 中命中的 metric 行为
+// `key=bv_old:newBudget` 2 列格式,在首条数据行前插入 auditTrail,其余行原样保留。
+// 调用者负责:已 `loadBaseline()` / replacements 值为 newBudget 字符串 / auditTrail 带 "# " 前缀。
+function rewriteBaselineWithTrail(auditTrail: string, replacements: Map<string, string>) {
+    const oldText = readFile(BASELINE_PATH)
+    let newText = ""
+    let trailInserted = 0
+    for (line in oldText.split("\n")) {
+        if (line == "") { continue }
+        if (line.startsWith("#") == 1) {
+            newText = `${newText}${line}\n`
+            continue
+        }
+        if (trailInserted == 0) {
+            newText = `${newText}${auditTrail}\n`
+            trailInserted = 1
+        }
+        const eqIdx = line.indexOf("=")
+        if (eqIdx > 0) {
+            const key = line.substring(0, eqIdx)
+            if (replacements.has(key) == 1) {
+                const bv_old = mapGetIntOrNeg(baselineMap, key)
+                const newBudgetStr = replacements.getString(key)
+                newText = `${newText}${key}=${bv_old}:${newBudgetStr}\n`
+                continue
+            }
+        }
+        newText = `${newText}${line}\n`
+    }
+    writeFile(BASELINE_PATH, newText)
+}
+
+// D124 §决策 3.2 bump <metric> <new_budget_max> <doc_anchor>:只上不下单指标扩容。
 function bumpCmd(metric: string, newBudgetStr: string, docAnchor: string) {
     const newBudget = parseInt(newBudgetStr)
     if (newBudget <= 0) {
@@ -555,56 +650,76 @@ function bumpCmd(metric: string, newBudgetStr: string, docAnchor: string) {
         println(`  bump 拒绝: new_budget=${newBudget} < old_budget=${bm_old} (bump 只上不下,下压走 record)`)
         exit(1)
     }
-    const hashIdx = docAnchor.indexOf("#")
-    if (hashIdx < 0) {
-        println(`  bump 拒绝: doc_anchor "${docAnchor}" 无 # 分隔符 (期望 D<num>#<section>)`)
-        exit(1)
-    }
-    const docNum = docAnchor.substring(0, hashIdx)
-    const section = docAnchor.substring(hashIdx + 1, docAnchor.length() - (hashIdx + 1))
-    const entries = listDir("docs/3-decisions")
-    let docFilePath = ""
-    if (entries != "") {
-        for (ent in entries.split("\n")) {
-            if (ent == "") { continue }
-            if (ent.startsWith(`${docNum}-`) == 1 && ent.endsWith(".md") == 1) {
-                docFilePath = `docs/3-decisions/${ent}`
-            }
-        }
-    }
-    if (docFilePath == "") {
-        println(`  bump 拒绝: D 文档 "${docNum}-*.md" 不存在于 docs/3-decisions/`)
-        exit(1)
-    }
-    const docText = readFile(docFilePath)
-    if (docText.indexOf(section) < 0) {
-        println(`  bump 拒绝: section "${section}" 在 ${docFilePath} 中未命中 (强制文档落段)`)
-        exit(1)
-    }
-    const oldText = readFile(BASELINE_PATH)
+    resolveDocAnchor(docAnchor, "bump")
+    let replacements: Map<string, string> = new Map()
+    replacements.set(metric, `${newBudget}`)
     const auditTrail = `# bump ${metric} ${bm_old}→${newBudget} trail=${docAnchor} date=${TODAY_DATE}`
-    let newText = ""
-    let trailInserted = 0
-    for (line in oldText.split("\n")) {
-        if (line == "") { continue }
-        if (line.startsWith("#") == 1) {
-            newText = `${newText}${line}\n`
-            continue
-        }
-        if (trailInserted == 0) {
-            newText = `${newText}${auditTrail}\n`
-            trailInserted = 1
-        }
-        if (line.startsWith(`${metric}=`) == 1) {
-            newText = `${newText}${metric}=${bv_old}:${newBudget}\n`
-        } else {
-            newText = `${newText}${line}\n`
-        }
-    }
-    writeFile(BASELINE_PATH, newText)
+    rewriteBaselineWithTrail(auditTrail, replacements)
     println(`✓ bump ${metric} ${bm_old}→${newBudget} trail=${docAnchor} date=${TODAY_DATE}`)
     println(`  baseline_value=${bv_old} (不变) / budget_max=${newBudget} (升)`)
     println(`  Execute 后跑 \`bin/ss run tools/reflection_health_linter.ss record\` 把 baseline_value 同步到 cur`)
+}
+
+// D125 §P3 bump-group <doc_anchor> <metric1>=<budget1> [<metric2>=<budget2> ...]:
+// 多指标原子扩容 — 任一校验失败全拒,共享单行 audit trail。把 D121 R1-A 5 次 bump 串跑压到 1 次。
+function bumpGroupCmd(docAnchor: string, pairs: Array<string>) {
+    const n = pairs.length()
+    if (n == 0) {
+        println(`  bump-group 拒绝: 未提供 metric=budget 对`)
+        exit(1)
+    }
+    resolveDocAnchor(docAnchor, "bump-group")
+    loadBaseline()
+    let metrics: Array<string> = []
+    let newBudgets: Array<int> = []
+    let oldBudgets: Array<int> = []
+    let idx = 0
+    while (idx < n) {
+        const pair = pairs[idx]
+        const peqIdx = pair.indexOf("=")
+        if (peqIdx < 0) {
+            println(`  bump-group 拒绝: 参数 "${pair}" 无 = 分隔符 (期望 metric=budget)`)
+            exit(1)
+        }
+        const metric = pair.substring(0, peqIdx)
+        const bstr = substringFrom(pair, peqIdx + 1)
+        const newBudget = parseInt(bstr)
+        if (newBudget <= 0) {
+            println(`  bump-group 拒绝: ${metric}=${bstr} 非正整数`)
+            exit(1)
+        }
+        const bv_old = mapGetIntOrNeg(baselineMap, metric)
+        const bm_old = mapGetIntOrNeg(budgetMap, metric)
+        if (bv_old < 0) {
+            println(`  bump-group 拒绝: metric "${metric}" 未在 baseline 中 (legacy 首轮先跑 record 升 2 列)`)
+            exit(1)
+        }
+        if (newBudget < bm_old) {
+            println(`  bump-group 拒绝: ${metric} new_budget=${newBudget} < old_budget=${bm_old} (只上不下,下压走 record)`)
+            exit(1)
+        }
+        metrics.push(metric)
+        newBudgets.push(newBudget)
+        oldBudgets.push(bm_old)
+        idx = idx + 1
+    }
+    let trail = "# bump-group"
+    let replacements: Map<string, string> = new Map()
+    idx = 0
+    while (idx < n) {
+        trail = `${trail} ${metrics[idx]}=${newBudgets[idx]}`
+        replacements.set(metrics[idx], `${newBudgets[idx]}`)
+        idx = idx + 1
+    }
+    trail = `${trail} trail=${docAnchor} date=${TODAY_DATE}`
+    rewriteBaselineWithTrail(trail, replacements)
+    println(`✓ bump-group ${n} metric(s) trail=${docAnchor} date=${TODAY_DATE}`)
+    idx = 0
+    while (idx < n) {
+        println(`  ${metrics[idx]}: ${oldBudgets[idx]} → ${newBudgets[idx]}`)
+        idx = idx + 1
+    }
+    println(`  baseline_value 全不变 / budget_max 全升; Execute 后跑 record 同步 bv`)
 }
 
 // ── main ──────────────────────────────────────────────────────
@@ -614,6 +729,7 @@ function main() {
     let bumpMetric = ""
     let bumpNewBudget = ""
     let bumpDocAnchor = ""
+    let bumpGroupPairs: Array<string> = []
     let i = 1
     while (i < args()) {
         const a = arg(i)
@@ -629,12 +745,29 @@ function main() {
             bumpDocAnchor = arg(i + 3)
             i = i + 3
         }
+        else if (a == "bump-group") {
+            mode = "bump-group"
+            if (i + 2 >= args()) {
+                println("用法: bump-group <doc_anchor> <metric1>=<budget1> [<metric2>=<budget2> ...]")
+                exit(1)
+            }
+            bumpDocAnchor = arg(i + 1)
+            i = i + 2
+            while (i < args()) {
+                bumpGroupPairs.push(arg(i))
+                i = i + 1
+            }
+        }
         else if (a == "--dir" && i + 1 < args()) { scanDir = arg(i + 1); i = i + 1 }
         i = i + 1
     }
 
     if (mode == "bump") {
         bumpCmd(bumpMetric, bumpNewBudget, bumpDocAnchor)
+        return
+    }
+    if (mode == "bump-group") {
+        bumpGroupCmd(bumpDocAnchor, bumpGroupPairs)
         return
     }
 
