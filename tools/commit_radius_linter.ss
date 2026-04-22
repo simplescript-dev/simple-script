@@ -3,7 +3,8 @@
 // Usage:
 //   bin/ss run tools/commit_radius_linter.ss
 //
-// 扫 git diff --name-only HEAD 变动文件集,按前 2 段路径划子族。
+// 扫 git diff --name-only --cached 变动文件集(staged 将要 commit 的,排 unstaged
+// 跨轮流程噪声如 .claude/next_prompt.md),按前 2 段路径划子族。
 // 散点跨 ≥3 无关子族 → FLAG "疑似远距离榨指标"软警告(soft gate, 不阻 commit)。
 // 提示 commit message 独立 justify 跨族语义关联,或按任务拆 commit。
 // 本 linter 只标注不阻断 —— 判据太粗无法机械判对错,留 human review 窗口。
@@ -39,8 +40,8 @@ function familyOf(path: string): string {
 }
 
 function main() {
-    const raw = shell("git diff --name-only HEAD")
-    println("[commit_radius_linter] scanning git diff --name-only HEAD ...")
+    const raw = shell("git diff --name-only --cached")
+    println("[commit_radius_linter] scanning git diff --name-only --cached ...")
 
     if (raw == "") {
         println("  no changes (or git not available) — nothing to check")
