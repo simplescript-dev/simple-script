@@ -485,7 +485,8 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 | 层 | 能力 | 状态 | 物理落点 | 单一判据 | 依赖 |
 |---|---|---|---|---|---|
-| **A** | 注解 parse → AST | ✅ Done | `bootstrap/parse/parse_exprs.ss:556-587`(COLON 命名参 D121 R2-A);`CLASS_DECL.I4` / `FUNC_DECL.I4` / `PARAM.list` 挂 `ANNOTATION` 节点 | `tests/phase5/d121_*.ss` parser 解 `@X(k: v)` 无 error | — |
+| **A1** | 注解 parse 骨架 → AST | ✅ Done | `bootstrap/parse/parse_exprs.ss`;`CLASS_DECL.I4` / `FUNC_DECL.I4` / `PARAM.list` 挂 `ANNOTATION` 节点(无参注解 + 单字符串位置参已工作) | `tests/phase5/d121_*.ss` parser 解 `@X(...)` 无 error | — |
+| **A2** | ASSIGN 命名参 + 任意表达式值 | ❌ 未做 | parser `=` 命名参替 COLON;`AnnotationMeta.args` value 类型扩 `Map<string, CtValue>` / `Map<string, AstNodeId>` 承载 enum member / array / bool / int / class refs(当前 `Map<string,string>` 不够,D121 R2-A COLON 被推翻,见 §C.5) | parser 解 `@RequestMapping(value = "/x", method = RequestMethod.GET)` 无 error + comptime 读 `method` 得 `RequestMethod.GET` enum 值 | A1 |
 | **B** | comptime introspect | ✅ Done | `bootstrap/gen/exprs/exprs_ct_reflect.ss`(D120 `reflect.classes()`);`AnnotationMeta.args: Map<string,string>`(D121 R1 commit `b18acf3`);`cls.methods` / `m.annotations` / `ann.args.get(k)` comptime 可访问 | `tests/phase5/d120_reflect_classes.ss` + D121 R1 test GREEN | A |
 | **C** | 白名单 + 根因 gate | ✅ Done | `tools/spring_boot_annotation_linter.ss`(35 Spring Boot + 5 SS 内建);`tools/reflection_health_linter.ss` M1-M7b / N1-N5 baseline;`grep @comptimeEmit\|@derive` 零命中 | `bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity` → `GATE PASS — 0 fake annotations` | — |
 | **D** | comptime 构造常量路由表 | ❌ 未做 | `lib/spring/boot/application.ss`(**不存在**);`ControllerMeta[]` + `RouteMeta[]` 常量段 | `bin/ss build examples/spring-parity/hello/ss/main.ss --emit-ir \| grep -c "ss_reflect_"` = 0(comptime 展开干净) | A + B + C |
@@ -506,7 +507,7 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ## C.3 当前断点
 
-- A/B/C 已 Done,Phase 1 blocker D121 R1 已清零(commit `b18acf3`)
+- A1/B/C 已 Done,Phase 1 blocker D121 R1 已清零(commit `b18acf3`);**但 2026-04-22 用户翻案发现层 A2(ASSIGN + 任意表达式值)是新 blocker,见 §C.5**
 - **真正缺口 = 层 D**:`lib/spring/boot/application.ss` 不存在,comptime → 常量路由表这一步没写
 - D 层落地后 E 层 runtime dispatcher 自然跟上(D/E 共挂 `application.ss` 同文件)
 - F/G 是后续增量,不影响"注解首次端到端跑通"的证明
@@ -526,6 +527,31 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 - [ ] **A/B 层归属**:A/B 本质是 D120/D121 Done 状态,Phase 0 范围只列 C 未显式纳 A/B 引用,是否需补"Phase 0 前置 = A/B 落地状态核对"条?
 - [ ] **层序 vs Phase 序互换**:本分解是"能力层叠"结构;D123 §3 是"Phase 时序"。两者正交是否成立?是否存在"某 Phase 跳过能力层"或"某能力层被多 Phase 拆执行"漏 case?
 - [ ] **新层候选**:是否漏"H 容器层"(DI 容器 @Component / @Autowired)?D123 §A.2.1 说 DI 容器不在 scope,但 §C.1 不列是否会让"Spring Boot 复刻完整度"判据模糊?
+
+## C.5 层 A 翻案(2026-04-22 用户反馈)
+
+**触发**:用户给出真 Spring Boot 例 `@RequestMapping(value = "/{accessLogId:.+}", method = RequestMethod.GET)`,推翻 D121 R2-A COLON 命名参 `@GetMapping(path: "/x")` "语法译本"方案(D123 §A.2.5 决策需回写)。
+
+**推翻点**:
+- **ASSIGN 替代 COLON**:annotation 命名参用 `=` 而非 `:`,对齐 Java 原版
+- **非字符串表达式值**:`method = RequestMethod.GET` 是 enum MEMBER_ACCESS,当前 `AnnotationMeta.args: Map<string,string>`(D121 R1)**不承载**;可能还需 array literal / class refs / int / bool 字面量
+- **影响面**:§3 Phase 2 示例 `@GetMapping(path: "/hello")` 需改为 ASSIGN(或单位置参);byte-identical HTTP payload parity 判据不变,但源码层注解语法须与 Java oracle 对齐
+
+**层 A 状态拆**:
+- **A1 parse 骨架** ✅ Done:`ANNOTATION` AST 节点挂点,无参注解 + 单字符串位置参已工作
+- **A2 ASSIGN + 任意表达式值** ❌ 未做:parser `=` 命名参语法 + `AnnotationMeta.args` value 承载机制 + comptime 求值 enum member
+
+**用户逐项待审**(§C.4 扩展):
+
+- [ ] **ASSIGN / COLON 兼容**:完全切 ASSIGN 废 COLON,还是 annotation 双形容忍?—— 双形违反 feedback_dual_entry_is_dual_track 倾向单形
+- [ ] **SS 命名参全局一致**:SS 现有 `new Foo(name: "x")` 用 COLON,annotation 改 ASSIGN 引入"两种命名参语法"不一致;是否反向 SS 全改 ASSIGN(breaking change 影响面大)还是 annotation 作为 Java 语法"例外子域"?
+- [ ] **annotation value 承载机制**:(a) `Map<string, CtValue>` 新 sum type 承载 string/int/bool/enum/array/class;(b) `Map<string, AstNodeId>` AST 节点 ID 字符串化,comptime 再求值;(c) `Map<string, string>` 不升容器,"表达式文本 comptime 解析"—— 哪种?
+- [ ] **enum member 访问语义**:`RequestMethod.GET` 在 annotation 参位是 comptime-resolve 到 enum 值(value 直接是 Enum instance),还是 parser-level `MEMBER_ACCESS` 节点(下游 comptime 展开)?
+- [ ] **其他表达式形态**:array literal `{A, B}`(Java) / `[A, B]`(TS)/ class literal `MyClass.class`(Java)/ int / double / bool 字面量 —— 支持范围?
+- [ ] **D 文档承接**:层 A2 落 D121 R3 (ASSIGN) + R4 (value 类型扩展),还是起 **D127 annotation-assign-and-expr-values.md**?
+- [ ] **Phase 1 blocker 扩容**:原 Phase 1 blocker 仅 D121 R1(已清零),现发现 A2 是新 blocker — Phase 1 开工前必须 A2 全清零?还是 Phase 1 先用 A1 单字符串位置参(无命名参场景)部分启动?
+- [ ] **Phase 2 示例字符串**:§3 Phase 2 "`@GetMapping(path: "/hello")`" 改 "`@GetMapping(value = "/hello")`"(或 `@GetMapping("/hello")` 单位置参)+ Java oracle 同步?
+- [ ] **§A.2.5 决策回写**:D123 §A.2.5 "COLON 是语法译本" 被推翻,应标 `[SUPERSEDED by §C.5 2026-04-22]` 还是直接重写该段?
 
 ---
 
