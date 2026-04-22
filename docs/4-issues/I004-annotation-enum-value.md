@@ -1,7 +1,7 @@
 # I004 — Enum 成员访问作 annotation value
 
-**父决策:** D123 §C.5 层 A 翻案 第 4 项
-**状态:** Draft
+**父决策:** D127 §A.1 第 4 项(D123 §C.5 层 A 翻案)
+**状态:** Done at `bootstrap/eval/interp_obj.ss:148-177` (2026-04-22)
 **颗粒度:** ~3-5 万 token
 **依赖:** I003(annotation value eval 分派表)
 **创建:** 2026-04-22

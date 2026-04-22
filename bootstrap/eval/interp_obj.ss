@@ -145,10 +145,10 @@ function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
     return arr
 }
 
-// STRING/INT/DOUBLE/BOOL → typed tv;MEMBER_ACCESS 按 enum 双 map 回解(enumValues
-// 与 interpEnumValues 分属 comptimeDepth=0/>0 两条注册路径,见 member_access.ss:10-16)。
-// 未实装 kind 抛 comptimeError 而非静默返 null:null 在 `getString(k).length()` 会变
-// 运行时 NPE,归因成本高。ARRAY_LIT/IDENT class ref 等待 I005/I006 扩。
+// STRING/INT/DOUBLE/BOOL → typed tv;MEMBER_ACCESS enum → typed(backed)取 backing value,
+// untyped 取 symbol name —— 两种形态下用户期望都是 "GET"。enum 注册分属 interpEnumValues /
+// enumValues 两条(comptimeDepth=0/>0),见 member_access.ss:10-16。未实装 kind 抛
+// comptimeError 而非静默返 null,避免下游 `.length()` NPE 归因成本。
 function evalAnnotationArg(nodeId: int): int {
     if (nodeId <= 0) { return interpNewNull() }
     const kind = nGetKind(nodeId)
@@ -158,11 +158,19 @@ function evalAnnotationArg(nodeId: int): int {
     if (kind == "TRUE_LIT") { return interpNewBool(1) }
     if (kind == "FALSE_LIT") { return interpNewBool(0) }
     if (kind == "MEMBER_ACCESS" && nGetKind(nGetI1(nodeId)) == "IDENT") {
-        const eKey = `${nGetS1(nGetI1(nodeId))}.${nGetS1(nodeId)}`
-        if (interpEnumValues.has(eKey) == 1) { return interpNewString(interpEnumValues.getString(eKey)) }
-        if (enumReady == 1 && enumValues.has(eKey) == 1) { return interpNewString(enumValues.getString(eKey)) }
+        const eName = nGetS1(nGetI1(nodeId))
+        const mName = nGetS1(nodeId)
+        const eKey = `${eName}.${mName}`
+        if (interpEnumValues.has(eKey) == 1) {
+            if (interpEnumTypes.has(eName) == 1) { return interpNewString(interpEnumValues.getString(eKey)) }
+            return interpNewString(mName)
+        }
+        if (enumReady == 1 && enumValues.has(eKey) == 1) {
+            if (enumTypes.has(eName) == 1) { return interpNewString(enumValues.getString(eKey)) }
+            return interpNewString(mName)
+        }
     }
-    comptimeError(`annotation arg kind '${kind}' not yet supported (I004 enum / I005 array / I006 class ref pending)`, nodeId)
+    comptimeError(`annotation arg kind '${kind}' not yet supported (I005 array / I006 class ref / I007 expr pending)`, nodeId)
     return interpNewNull()
 }
 
