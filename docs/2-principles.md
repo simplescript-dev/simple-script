@@ -43,19 +43,19 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 
 ## PFV 流程 (Problem-Fractal-Verification)
 
-> 本节仅作**入口速查**。**完整规则已迁至 `docs/3-MNK.md`**(PSM 十问 / VCM 五验 / 改动分层 / 收尾 gate / 八股自检 / rule 问答收敛循环 / 特定领域 gate / Fractal 承载全文)。两处内容以 `docs/3-MNK.md` 为准。
+> 本节仅作**入口速查**。**完整规则已迁至 `docs/3-MNK.md`**(PSM 九问 / VCM 五验 / 改动分层 / 收尾 gate / 八股自检 / rule 问答收敛循环 / 特定领域 gate / Fractal 承载全文)。两处内容以 `docs/3-MNK.md` 为准。
 
 **元工作流程骨架**(`docs/3-MNK.md` 定义):
 
-- **M — Before Code**:写代码前的 M 个问题(十问 PSM 开工 gate,第一次工具调用前必答)
+- **M — Before Code**:写代码前的 M 个问题(九问 PSM 开工 gate,第一次工具调用前必答)
 - **N — After Code**:写代码后的 N 个问题(五验 VCM 收工 gate,宣告完成前必答)
 - **K — After Lint**:跑 lint 后的 K 个问题(rule 问答收敛循环,M=2 默认 commit_radius / commit_footer)
 - **Continue NK 循环**:N → K → 改代码 → N → K 反复,直到全 pass
 - **After Done**:收尾 gate 四步(simplify → commit → 流程反思 → next_prompt 自闭环)
 
-**档位门槛**(决定走多少 gate):微改豁免 / 标准改 字段 1-5 + 五验全 / 大改 十问全 + 五验全 + 独立 commit。
+**档位门槛**(决定走多少 gate):微改豁免 / 标准改 字段 1-5 + 五验全 / 大改 九问全 + 五验全 + 独立 commit。
 
 **目的**:防 harness 工具(TaskCreate / Plan / D 文档 6 维度模板)强化「接到任务先结构化执行」的偏见,防 D 文档脚注里的「独立后续 / 候选 / 列为 D0NN 范围」被读成路线指引,防「基本完成 / 应该可以」的伪验证。
 
-详细 10 问 / 5 验 / 三档档位 / 收尾四步 / 八股自检 / rule 子问卷 / reset 双重 gate / 反射扩容协议等全部在 `docs/3-MNK.md`。每次接到任务先回头读该文件。
+详细 9 问 / 5 验 / 三档档位 / 收尾四步 / 八股自检 / rule 子问卷 / reset 双重 gate / 反射扩容协议等全部在 `docs/3-MNK.md`。每次接到任务先回头读该文件。
 

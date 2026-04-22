@@ -96,7 +96,7 @@ bin/ss clean
 
 **交互式单文档**：每轮等用户明确指定一个文档/文件，逐个问题确认方向再执行。不自动扫 `docs/3-decisions/` 找未完成决策自主挑任务，不顺带修无关文件，不批量推进类似问题。**下轮提示词 payload `.claude/next_prompt.md` 必含关键字 `ultrathink`**,§After Done §下一步提示词 写入后强制跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss`,stdout 出现 `GATE BLOCKED` 即阻断 stop(机械校验,详见 `docs/3-MNK.md §After Done §4.下一步提示词`)。
 
-**MNK 流程(强制)**:接到任意任务,第一次工具调用之前必须按 `docs/3-MNK.md §M — Before Code` 的十问 PSM 填表;任务完成宣告之前必须按 §N — After Code 五验 VCM 逐项贴证据;commit 标准改 / 大改必走 §K — After Lint 的 M-linter-K-M 问答收敛循环;`N→K→改代码` 反复 Continue NK 直到全 pass;收敛后必须走 §After Done 四步(simplify → commit → 流程反思 → 下一步提示词),缺一条不许 stop。档位门槛、八股自检、reset 双重 gate、反射扩容协议等细节以 `docs/3-MNK.md` 为单一事实源,此处不重复。
+**MNK 流程(强制)**:接到任意任务,第一次工具调用之前必须按 `docs/3-MNK.md §M — Before Code` 的九问 PSM 填表;任务完成宣告之前必须按 §N — After Code 五验 VCM 逐项贴证据;commit 标准改 / 大改必走 §K — After Lint 的 M-linter-K-M 问答收敛循环;`N→K→改代码` 反复 Continue NK 直到全 pass;收敛后必须走 §After Done 四步(simplify → commit → 流程反思 → 下一步提示词),缺一条不许 stop。档位门槛、八股自检、reset 双重 gate、反射扩容协议等细节以 `docs/3-MNK.md` 为单一事实源,此处不重复。
 
 **决策记录**：每个确认的设计决策立即写入 `docs/3-decisions/D0NN-*.md`，一个决策一个文件，不等到实现完成再补。多阶段计划的 Phase 进度只写在 D 文档里。下轮提示词收尾**自闭环**两步:(1) 对话输出(让用户审阅措辞) (2) 覆盖写入 `.claude/next_prompt.md`(单次 payload)。terman 内建 `claude-next` preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮(见 `docs/terman-auto-next.md`)。两处内容严格一致;用户在 30s 窗口里审阅,Ctrl+C 或键入字符即可中断。preset 读完即 `delete_file` 消费,Claude 不承载跨轮状态累积;Claude 本轮**不执行**任何触发脚本,直接 stop。
 
@@ -111,7 +111,7 @@ bin/ss clean
 - 项目入门、语言特性 demo：`README.md`
 - 详细开发指南：`docs/guide.md`
 - 项目共识与原则：`docs/1-axioms.md`、`docs/2-principles.md`
-- **八股流程层闸门单一事实源(MNK)**:`docs/3-MNK.md` — PSM 十问 / VCM 五验 / 档位 / 收尾 gate / 八股自检 / rule 问答收敛循环 / 反射扩容协议 / reset 双重 gate 等全部规则
+- **八股流程层闸门单一事实源(MNK)**:`docs/3-MNK.md` — PSM 九问 / VCM 五验 / 档位 / 收尾 gate / 八股自检 / rule 问答收敛循环 / 反射扩容协议 / reset 双重 gate 等全部规则
 - 设计决策归档（含 import 解析、enum、null safety、并发等）：`docs/3-decisions/`
 - 标准库源码：`lib/`（json、base64、sha256、http）
 - Terman 下轮提示词自动注入（terman `claude-next` preset 机制、`.claude/next_prompt.md` payload 协议）：`docs/terman-auto-next.md`
