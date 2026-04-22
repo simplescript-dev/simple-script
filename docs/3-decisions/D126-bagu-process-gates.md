@@ -249,23 +249,163 @@ D126 的贡献是**把 (b) 从隐式升显式**,不是"完美消除八股"。
 
 ---
 
-# 附录 B: 实施日志
+# 附录 B: rule 问答收敛循环协议
 
-### 起草 + Execute(本轮) [x] Done at 2026-04-22
+> 本附录是 §3 (B)(C) 表层 linter "下轮升根" 路径的**根解落位**。协议名称 "rule 问答收敛循环" 在 principles.md §PSM 字段 4 挂载、§VCM §5 (d) 触发,D126 此处单点维护子问卷。
+
+## B.1 背景与动机
+
+§3 (B)(C) 定义的 commit_radius / commit_footer 两个 linter,§A.4 表标注"表面 — 下轮升根"。根源(§A.2):
+
+> linter 查**可观测特征**(指标数、关键字、路径、字串存在),看不见**意图**。同一 for-in→while 改动 D121 场景是八股、独立 refactor 场景合法,linter 无法区分。
+
+直接 PASS/FAIL 导致双失效:
+- **假阳**: 跨族但语义相关的 refactor 被 radius linter FLAG(例如本协议落位同轮改 docs + tools + decisions 三子族但都是元流程改进)
+- **假阴**: commit message 含 "去掉少什么:" 字串但答案是空话("不少" / "无")
+
+**升根路径**: 把"意图判断"显式 externalize 给人,linter 只校验"问答结构完整性"。机械部分查结构,语义部分交人 —— 这就是 rule 问答收敛循环。
+
+## B.2 协议定义 — M-linter-K-M 收敛循环
+
+### 记号
+
+- **第 1 个 M**: 参与 rule 数(初始 M = 2: commit_radius / commit_footer)
+- **K**: 单轮问题总数 = Σ N_i(N_i 为第 i 个 rule 的本轮问题数)
+- **第 2 个 M**: 重判 rule 数(每个 rule 独立读答案重判 → 可能产新问题)
+
+### 循环伪码
+
+```
+LOOP_ROUND = 0
+LOOP:
+  LOOP_ROUND += 1
+  K = 0
+  for i in 1..M:
+    rule_i 基于当前 commit state 生成 N_i 个问题
+    K += N_i
+  if K == 0:
+    CONVERGED → GREEN, break
+  if LOOP_ROUND > 3:
+    FAIL → 回 PSM 重构
+  被查者(Claude / 用户)逐条作答
+  if 累计 "空话" 计数 >= 2:
+    FAIL → 回 PSM 重构
+  for i in 1..M:
+    rule_i 读答案 → 判定是否产新问题
+  goto LOOP
+```
+
+### 收敛判据
+
+| 判据 | 条件 | 处置 |
+|---|---|---|
+| **GREEN** | 循环 ≤ 3 轮,所有 M 个 rule 同时 0 新问题 | PASS,进入 VCM 下一验 |
+| **FAIL-round** | 循环 > 3 轮未收敛 | FAIL,任务未完成,回 PSM 重构 scope |
+| **FAIL-vacuous** | 累计 ≥ 2 条被识别为"空话"的答案 | FAIL,回 PSM 重构 |
+| **红线短路** | 任一 rule 的红线问答错 | 直接 FAIL,不进入第 2 轮 |
+
+### "空话"识别 pattern(非穷举)
+
+- 单字 / 极短答("无" / "不少" / "OK") 不含具体 file:function / 概念引用
+- 与改动无关的 pattern(例如跨族答问题里不引用具体跨的子族)
+- 重复上轮答不增加新信息
+- 只引用规则本身不引用本轮事实("按规则过了" 不算)
+
+### 挂载点
+
+- **PSM 字段 4**(principles.md): 任务开工时内联当前轮子问卷(引用 §B.3,不复制)
+- **VCM §5 (d)**(principles.md): 执行收敛循环 + 贴每轮答案 + 贴收敛证据
+- Execute 完成前必过 GREEN;未收敛 → 回 PSM 不许 commit
+
+## B.3 子问卷(初始 M = 2)
+
+### B.3.1 commit_radius 子问卷(N = 3)
+
+| # | 问题 | 必答形式 | 合格判据 |
+|---|---|---|---|
+| Q1 | 本 commit 跨了几个子族?列出具体路径 → 子族映射(`familyOf(path)` = 前 2 段路径) | 路径列表 + 子族计数 | 与 `bin/ss run tools/commit_radius_linter.ss` 输出的子族分布一致 |
+| Q2 | 跨族分类: **同任务扩展** / **元流程改进** / **远距离榨指标**?给语义理由 | 分类关键字 + 一句理由 | 理由须引用本轮 PSM 字段 1/2 / 任务 scope。分类为"远距离榨指标"→ 本轮应 revert 压指标改动(Q3 必答"可缩"),否则违反 `feedback_no_distant_offset` |
+| Q3 | 若缩到 1-2 子族,本轮任务能完成吗?给可缩/不可缩证据 | yes/no + 跨族耦合证据 | no + 证据引用跨族的强耦合点(某子族的定义依赖另一子族)→ PASS;yes → FAIL(跨族多余),要求拆 commit |
+
+**合格范式**(本轮示例):
+```
+Q1: docs/2-principles + docs/3-decisions (2 子族;前 2 段 = docs/2-principles 与 docs/3-decisions)
+Q2: 元流程改进 — 本轮为 D126 §附录 B 协议落位,principles.md(字段 4 挂载 + VCM 触发) + D126(协议单点维护)是协议定义的三处挂载点,耦合不可分
+Q3: no — principles.md §字段 4 引用 D126 §B.3;D126 §B.3 定义需 principles.md §VCM (d) 触发;任一缺失协议闭环断
+```
+
+### B.3.2 commit_footer 子问卷(N = 3)
+
+| # | 问题 | 必答形式 | 合格判据 |
+|---|---|---|---|
+| **Q1(红线)** | 本轮**所有**改动项过"去掉它核心产出会少什么"元规则后,每项是否均答"有缺"(即不是八股)?若有项答"不会少",是否已 revert 或 commit message 点名? | 逐项列 + 整体 yes/no | 全 yes → PASS;任一项答"不会少"且未处理 → **直接 FAIL,不进入下轮**(红线短路) |
+| Q2 | commit message 含 "去掉少什么:" 行数 ≥ 改动文件数? | yes/no + 实际计数 | `grep -c "去掉少什么" <commit_msg>` ≥ 文件数 → PASS |
+| Q3 | 每条 "去掉少什么:" 答案含具体 file:function / 概念引用(非"无"/"不少"空话)? | yes/no + 抽样 2 条原文 | 每条至少一个具体引用 → PASS;任一条被识别"空话"pattern → 累计"空话"计数 +1 |
+
+**合格范式**(本轮示例):
+```
+Q1(逐项):
+  - principles.md §字段 4:去掉则 rule 挂载断,PSM 字段 4 无收敛触发入口 — 有缺
+  - principles.md §VCM (d):去掉则元规则降级为 free text 打勾,无机械循环判据 — 有缺
+  - D126 §附录 B:去掉则协议定义无单点归档,跨轮漂移 — 有缺
+  整体 yes,全有缺,无 revert 需求
+Q2: 3 文件改动 + commit message 3 条 "去掉少什么:" → 3 ≥ 3,PASS
+Q3: 抽样 (a) "去掉少什么: rule 挂载断" 引用具体字段;(b) "M-linter-K-M 循环判据无" 引用具体判据段 — 均非空话,PASS
+```
+
+## B.4 与 tools/ linter 实装的关系
+
+**本协议不改 linter SS 代码**。协议是**使用协议**,不是 linter 重构。linter 继续扮演"机械材料提供者"角色:
+
+- `tools/commit_radius_linter.ss`(D126 §3.B 原始实装,子族分布 ≥ 3 FLAG soft warn)→ 输出是 commit_radius Q1 的原始统计材料;Q2/Q3 是被查者对 FLAG 的语义解释
+- `tools/commit_footer_bagu_linter.ss`(D126 §3.C 原始实装,"去掉少什么:" 字串存在校验)→ 输出等价于 commit_footer Q2 的机械判定;Q1 / Q3 是被查者的语义回答 + 抽样自检
+
+这保留 D125 §P5 档位政策 "机械 gate 抑制形态" 层(linter 提供客观材料),同时叠加 "用户抽查抑制内核" 层(Q2/Q3 语义回答),形成 D126 §A.3 的 (a) + (b) 双支柱收敛。
+
+## B.5 扩展方向(非本轮 scope)
+
+- **M 扩展**: 新 rule 加入 → 新子问卷写入 §B.3.X,M 升为 3/4(候选: commit_message_verbdeclare / commit_granularity)
+- **N 扩展**: 单 rule 加问 → §B.3.i 追加问答范式(候选: commit_radius Q4 "子族间依赖图是否单向")
+- **红线扩展**: 新红线问在 §B.3 各子表用 **Q1(红线)** 标记
+
+## B.6 接入 pre-commit hook 策略(下轮讨论)
+
+当前协议为**人工执行**版本 —— 被查者(Claude)在 VCM §5 (d) 手动跑循环,把答案贴进对话。自动化升级需:
+- (a) `.claude/settings.json` `PreToolUse` hook 拦截 `git commit` 触发收敛 UI
+- (b) 问答格式结构化(YAML / JSON) 以便机器重判
+- (c) 收敛记录写入 `.claude/convergence/<sha>.md` 供跨轮回看
+
+接入策略不在本轮 scope,下轮 D 文档单独讨论。
+
+## B.7 历史实施日志
+
+### 起草 + Execute(2026-04-22 早轮,commit `ff11d3a`) [x] Done at 2026-04-22
 
 - **PSM**:大改档(新增 D 文档 + 4 文件 + LOC > 100)全十问填齐,⚠ 偏离 D088 Zig 路线用户授权标记。RED 三条全 FAIL(grep "流程反思" / ls commit_*linter / ls D126*)
-- **(A) 流程反思入 PFV**:`docs/2-principles.md` 3 处 Edit:(1) 126 行"三步必做"→"四步必做";(2) 130 行原 "3. **下一步提示词**" 前插入新 "3. **流程反思(档位门槛)**" 整段,原 3 重编号为 4;(3) 135 行例外加"不反思"
-- **(B) commit 差半径 linter**:新建 `tools/commit_radius_linter.ss`(~85 行),`shell("git diff --name-only HEAD")` + `familyOf(path)` 前 2 段子族算法 + `RADIUS_THRESHOLD = 3` soft warn。smoke test `bin/ss run tools/commit_radius_linter.ss` → 当前 working tree 3 文件 / 3 子族(docs / .claude / &lt;root&gt;)正确 FLAG RADAR SOFT WARN 输出
-- **(C) commit footer 八股自检 linter**:新建 `tools/commit_footer_bagu_linter.ss`(~60 行),`shell("git log -1 --format=%B <rev>")` + `shell("git show --name-only --format= <rev>")` + "去掉少什么:" 字串存在校验。smoke test `bin/ss run tools/commit_footer_bagu_linter.ss` → HEAD(D125 全批收敛 commit d933c0d 不含答案行)正确 FAIL GATE BLOCKED exit 1
-- **(D) D126 归档**:本 D 文档,A.1-A.5 四段梳理 + 附录 B 实施日志
-- **VCM 五验**:
-  - ① 工程:本轮不动 bootstrap/ / 不动 lib/,无需 `./build.sh bootstrap` 全跑;2 linter smoke test 等价局部 build
-  - ② 行为:新能力 = "流程反思"被强制入 PFV + 2 linter 可跑;前(上一轮) `grep "流程反思" principles.md` = 0,后 ≥ 1
-  - ③ 反向:删 `tools/commit_radius_linter.ss` → `bin/ss run tools/commit_radius_linter.ss` fail(文件不存在),证明因果
-  - ④ 边界:commit_radius 空 diff → `GATE OK — no changes`;commit_footer 空 commit → `GATE OK — skipping`
-  - ⑤ 路线 + 八股沉积复盘:⚠ 偏离 Zig 路线(流程元改进,用户授权)。本轮所有改动回放:(A) principles.md — 去掉少什么:流程反思强制 gate 缺失;(B) commit_radius — 去掉少什么:远距离榨指标无机械标注;(C) commit_footer — 去掉少什么:VCM 复盘无格式强制;(D) D126 — 去掉少什么:八股流程层共识锚缺失。四项均答"有缺",无八股沉积
-- **commit**:5 文件(principles.md + 2 linter + D126 + 本附录 B 条目)同 commit,message 含"偏离 Zig 路线用户授权"标记 + D126 引用 + "去掉少什么:"答案行(满足 C linter 自我校验)
-- **争议 / 遗留**:B/C linter 本轮只建立,**不**接入 pre-commit gate。接入策略留下轮讨论(是 `.claude/settings.json` hook? 是 `/simplify` 收尾附带? 是单独 `/commit-check` slash command?)
+- **(A) 流程反思入 PFV**:`docs/2-principles.md` 3 处 Edit:(1) "三步必做"→"四步必做";(2) 原 "3. **下一步提示词**" 前插入新 "3. **流程反思(档位门槛)**" 整段,原 3 重编号为 4;(3) 例外加"不反思"
+- **(B) commit 差半径 linter**:新建 `tools/commit_radius_linter.ss`(~85 行),`shell("git diff --name-only HEAD")` + `familyOf(path)` 前 2 段子族算法 + `RADIUS_THRESHOLD = 3` soft warn
+- **(C) commit footer 八股自检 linter**:新建 `tools/commit_footer_bagu_linter.ss`(~60 行),"去掉少什么:" 字串存在校验
+- **(D) D126 归档**:本 D 文档 §A.1-A.5 四段梳理 + 初版 §附录 B 实施日志
+- **commit** `ff11d3a`:5 文件同 commit,message 含"偏离 Zig 路线用户授权"标记 + D126 引用
+- **遗留**:B/C linter 标"表面 — 下轮升根";接入 pre-commit hook 策略未定
+
+### fix commit_radius_linter `--cached` / HEAD 切换(2026-04-22 中轮,commit `dbb3510`) [x] Done at 2026-04-22
+
+- **问题**: `git diff --name-only HEAD` 在 Execute 流程中混入 unstaged 文件(噪声),导致 radius linter 误 FLAG
+- **根因**: Execute 写盘后,radius linter 用 HEAD 为基准,unstaged 未 `git add` 时同样计入,跨族计数虚高
+- **修复**: radius linter 改为 `git diff --name-only --cached`,只扫 staged 改动;commit `dbb3510` 单文件修复
+
+### rule 问答收敛循环协议落位(2026-04-22 晚轮,本附录) [x] Done at 2026-04-22
+
+- **上轮共识**: D126 §A.4 (B)(C) 表标 "下轮升根";对话共识收敛到 "M-linter-K-M 问答协议" 作为升根形式;本轮 Execute 落盘
+- **RED**: `grep '问答收敛循环' docs/2-principles.md docs/3-decisions/D126-*.md` = 0 exit 1
+- **改动清单**:
+  - `docs/2-principles.md` §PSM 字段 4: 加"rule 问答收敛循环挂载"附注,引用 D126 §B.3
+  - `docs/2-principles.md` §VCM §5 (d): 升级为"M-linter-K-M 问答收敛循环",保留"去掉少什么"元规则为红线 Q1(commit_footer Q1)
+  - `docs/3-decisions/D126-bagu-process-gates.md` §附录 B: 重写为 "rule 问答收敛循环协议"(B.1-B.7),原实施日志归入 §B.7
+- **GREEN**: `grep '问答收敛循环' docs/2-principles.md docs/3-decisions/D126-*.md` 命中数 ≥ 6
+- **不改 tools/**: linter SS 代码零变更,协议是使用协议
+- **M-linter-K-M 循环本轮自测**: 本 commit 走 §B.3 协议一遍作为首次 live 演练(见本轮 commit message 附带答卷)
 
 ---
 
