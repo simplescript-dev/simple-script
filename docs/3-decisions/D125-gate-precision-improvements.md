@@ -313,9 +313,12 @@ gate 设计者的心智模型:**"如果 cur 不升,质量就不降"**。失真�
 - 代码零改动,仅 docs/3-decisions/D125-*.md 新增
 - **验证**:Plan 阶段 4 判据通过(架构 / 文档 / 依赖闭环 / 代码边界)
 
-### Execute(第一批)[ ] Planned — 待用户指认 Px 切入点
+### Execute(第一批) [x] Done at 2026-04-22 — P1 + P5 仪式层落地
 
-候选:P1(simplify + readability)+ P5(PFV 仪式分层)并行
+- **P1**:`~/.claude/skills/simplify/SKILL.md` 新增,simplify 从 3 agents(reuse/quality/efficiency)扩到 4 agents,第 4 agent `readability` 以 `feedback_human_readable_code` 5 条 (a)-(e) 为 rubric,对 reuse/quality/efficiency 建议有**否决权**(违反 rubric 标 `REJECTED BY readability`,不执行);输出格式含 Reuse/Quality/Efficiency/Readability 四段 + Summary;skill registry 刷新后 user-level 4 维版本覆盖 built-in 3 维
+- **P5**:`docs/2-principles.md` §PFV 流程 §改动分层(blast radius,D125 §P5 初值)新增;三档(微改 / 标准改 / 大改)按 LOC delta + 文件数 + 函数签名变 / D 文档新增划分;微改豁免 PSM+VCM+simplify 仅留 next_prompt,标准改 PSM 字段 1-5+VCM 五验+收尾全,大改十问+五验+收尾+**独立 commit 禁合并**;detector 工具(`tools/pfv_scope_detector.ss`)延后自报,本批走声明制
+- **commit**:两核心文件 + 本附录条目同 commit,message `feat(D125): Execute 1 仪式层 — simplify readability 第 4 维 + PFV 三档分层`
+- **验证**:RED `find ~/.claude -name '*simplify*' 2>/dev/null` 命中 5 条 feedback memory 证 simplify 无集中 skill 定义 → 按 D125 §P1 "等价 skill 定义"入场路径创建 user-level SKILL.md;skill registry 动态刷新识别新 4 维版本(available-skills 系统提示实测)
 
 ### Execute(第二批)[ ] Planned
 

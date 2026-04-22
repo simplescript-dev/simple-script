@@ -47,6 +47,25 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 源于 P1 / P2 / P5 / P14 / P15 等开发流程原则，把「先验证 → 后宣告」上升为机制 hook。
 **目的**：防 harness 工具（TaskCreate / Plan / D 文档 6 维度模板）强化「接到任务先结构化执行」的偏见，防 D 文档脚注里的「独立后续 / 候选 / 列为 D0NN 范围」被读成路线指引，防「基本完成 / 应该可以」的伪验证。
 
+### 改动分层（blast radius，D125 §P5 初值）
+
+**每轮开工第一句声明档位自报**（格式："本轮档位:<微改|标准改|大改>(LOC ~N + M 文件)"），detector 工具延后自报。档位决定走多少 gate：
+
+| 档位 | 判据 | §开工 gate (PSM) | §收工 gate (VCM) | §收尾 gate |
+|---|---|---|---|---|
+| **微改** | LOC delta ≤ 5 **且** 改 1 文件 **且** 无函数签名变 | **豁免** | **豁免** | 仅 next_prompt 写入（simplify 豁免，commit 可与其他轮合并）|
+| **标准改** | LOC delta 6-100 **或** 2-5 文件 | 字段 1-5 必填（字段 6-10 可省）| 五验全 | simplify + commit + next_prompt 全走 |
+| **大改** | LOC delta > 100 **或** > 5 文件 **或** 新增 D 文档 | 十问全 | 五验全 | simplify + commit + next_prompt 全走，**独立 commit 禁与其他改动打包** |
+
+判定细则：
+
+- 多维度叠加**取最严档**（LOC 120 + 1 文件 → 大改；LOC 3 + 3 文件 → 标准改）
+- **函数签名变**（入参 / 返回类型 / 名改）一律升档至 ≥ 标准改（即使 LOC ≤ 5）
+- **新增 D 文档**（即便仅 `[ ] Planned` 骨架）一律大改
+- 档位自报错档 → §收工 gate 发现实际改动超自报档 → 回写档位 + 补齐缺省 gate，**不许**宣告完成
+- 纯文档 / 纯配置改动仍按档位判；只是 §收尾 gate simplify 子步骤可显式跳过（无"代码"可审查）
+- detector 工具（`tools/pfv_scope_detector.ss` 读 `git diff --shortstat` 自判）**延后**。届时此节升级为"自报 + 自判双轨，不一致阻断 commit"
+
 ### 开工 gate（强制，第一次工具调用之前）
 
 接到任意任务（含用户明确指定的），**第一次工具调用之前**必须用纯文字把十问 PSM 表格写在回复正文里。
