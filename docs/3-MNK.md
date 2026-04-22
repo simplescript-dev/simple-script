@@ -65,10 +65,10 @@
 - 答"不会少任何东西" → **停手,这是八股,禁止落盘**
 - 答"XYZ 功能 / 验证 / 说明缺一块" → 不是八股,继续
 
-**典型形态**(已识别 6 种,详见 §附录 B):远距离榨指标 / 凑 VCM 仪式 / grep 摆样子 / 编造 D 文档段 / 文档膨胀 / checklist 表演
+**典型形态**:详见 §附录 B.2(6 种已识别形态)。
 
 **不通过时回路**:
-- 扩容超 tol → 走 §字段 5 (b) 反射扩容判定(申报 + 升 baseline),不绕道
+- 扩容超 tol → 走 §特定领域 §反射路径扩容判定(申报 + 升 baseline),不绕道
 - 规则假命中 → 质疑规则**向用户报告**,不是绕规则
 - 其他 → 停手想清楚,不要用八股填补
 
@@ -105,8 +105,6 @@
 
 ## K — After Lint: 跑 lint 后的 K 个问题(rule 问答收敛循环)
 
-> **本章 K 槽当前绑 M-linter-K-M 循环**,后续用户手改。
-
 ### M-linter-K-M 问答收敛循环(当前 M=2,K=6)
 
 本轮**所有**改动进入收敛循环:M 个 rule linter 各提 N 问 → 单轮问题总数 **K = ΣN** → 被查者逐条作答 → M 个 rule linter 独立读答案重判 → 任一 rule 仍有新问题 → 再轮;所有 rule 0 新问题 → **收敛 GREEN**。
@@ -116,9 +114,7 @@
 - (ii) **> 3 轮未收敛** / **累计 ≥ 2 条"空话"答案**(单字 / 与改动无关 pattern / 重复上轮答):FAIL,任务未完成,回 PSM 重构
 - (iii) **红线问必过**:见各 rule 红线问栏
 
-### rule 库(初始 M=2)
-
-详见 §附录 A 子问卷与扩展规则。
+**rule 库(当前 M=2)**:子问卷 + 扩展规则详见 §附录 A。
 
 ---
 
@@ -222,7 +218,7 @@ bin/ss run .harness/common/bug.ss fixed <round> <certainty>
 
 **REGRESSION 时**:
 - **refactor 型** → 本地抵消(半径内),**禁止远距离榨指标**
-- **形态升级型扩容**(Array→Map / 新 Meta kind / AST 字段扩) → 走 §M §字段 5 (b) 反射扩容判定
+- **形态升级型扩容**(Array→Map / 新 Meta kind / AST 字段扩) → 走 §反射路径扩容判定
 
 规则 / baseline / 工具位置见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`。
 
@@ -403,10 +399,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 
 档位自报(微改 / 标准改 / 大改)是对这层的部分反制 —— 档位错报 + 实际超档 → 收工 gate 回写补齐暴露漂移。但档位判定本身也可被压字符绕过。
 
-**终极闸门双支柱**:
-
-- (a) 高发形态的机械 linter 倒逼 —— 覆盖**形态**
-- (b) 用户回合间抽查 + 流程反思强制审视 —— 覆盖**内核**
+**终极闸门双支柱**(详见 §核心原则 (2)):覆盖形态的机械 linter + 覆盖内核的用户抽查 / 流程反思 —— 缺一不可。
 
 ---
 
@@ -418,12 +411,12 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | 2026-04-15 D092 branch 戏剧性 reset | 用整体否定替代细致诊断 | 无 reset 双重验证 | §特定领域 §Reset 双重 gate |
 | 2026-04-15 @derive 漂移 | D 文档应然被当实然 | PSM 字段 1 无 grep 对照 + 收尾无 RED | §字段 1 grep 对照 + §收尾 Execute 型 RED 凭据 |
 | 2026-04-20 D113 codegen.ss 492 行 R4 宣告 | 行数达成 ≠ 结构清晰 | F1 硬阻无结构判据 | P10.1 拆分判据升级 |
-| 2026-04-20 D116 gen_rt_cache.ss 漏归 rt/ 子族 | Plan 路径决策漂 | PSM 字段 5 未扫命名前缀族 | §字段 5 (a) 命名前缀族扫描 |
-| 2026-04-21 D121 R1-A Execute 2 newTvArray 远距离榨指标 | 远距离 | 反射 14 指标粗 gate | D125 §P2 scope-aware + §K commit_radius |
-| D124 Execute 5 次 bump 串跑 | 仪式 O(N) | bump 单指标粒度 | D125 §P3 bump-group |
-| 10e2c8b rowMap "bv:bm" + tuple 裸露 | 可读性失真 | simplify 3 维度缺 readability | D125 §P1 4th agent |
-| F1 600 字符级塞字符 | 压缩 / 合并 / 删空行 | F1 硬阻无 soft warn | D125 §P4 AUTO-DRIFT |
-| 简单改也十问 PSM | 仪式不分层 | PFV 粗粒度强制 | D125 §P5 三档分层 |
+| 2026-04-20 D116 gen_rt_cache.ss 漏归 rt/ 子族 | Plan 路径决策漂 | PSM 字段 5 未扫命名前缀族 | §特定领域 §命名前缀族归位扫描 |
+| 2026-04-21 D121 R1-A Execute 2 newTvArray 远距离榨指标 | 远距离 | 反射 14 指标粗 gate | §反射路径根因 gate scope-aware + §K commit_radius |
+| D124 Execute 5 次 bump 串跑 | 仪式 O(N) | bump 单指标粒度 | §反射路径扩容判定 bump-group |
+| 10e2c8b rowMap "bv:bm" + tuple 裸露 | 可读性失真 | simplify 3 维度缺 readability | (入 memory feedback_human_readable_code,未落本文档锚) |
+| F1 600 字符级塞字符 | 压缩 / 合并 / 删空行 | F1 硬阻无 soft warn | (入 memory feedback_600_split_not_inline,未落本文档锚) |
+| 简单改也十问 PSM | 仪式不分层 | PFV 粗粒度强制 | §改动分层 三档门槛 |
 | 2026-04-22 VCM (d) 沉积复盘靠自觉 | 八股沉积 | §VCM 无 commit footer 强制 | §K commit_footer |
 | 2026-04-22 八股讨论结论留对话缓冲区 | 跨轮丢失 | 无流程反思 gate | §收尾 gate 第 3 步流程反思 |
 | 2026-04-22 流程层规则分散 3 处 | 跨轮 Claude 读不全 | 无单一事实源 | **本文档归档(docs/3-MNK.md)** |
@@ -435,8 +428,6 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - `docs/1-axioms.md`(项目公理)
 - `docs/2-principles.md`(原则,§PFV 流程 指针指向本文档)
 - `docs/3-decisions/D088-*.md`(Zig 路线主 D 文档)
-- `docs/3-decisions/D097-reflection-root-cause-metrics.md`(反射根因指标体系)
-- `docs/3-decisions/D124-linter-baseline-budget-two-column.md`(baseline 2 列制)
-- `docs/3-decisions/D125-gate-precision-improvements.md`(数值 gate 精准化,本文档姊妹篇,后续清理)
+- `docs/3-decisions/D097-reflection-root-cause-metrics.md`(反射根因指标体系 + baseline 2 列制 + AUTO-DRIFT + bump-group 规则)
 - `docs/terman-auto-next.md`(下轮提示词自动注入机制)
-- `CLAUDE.md` §项目技术规则(交互式单文档 / PFV 流程 / 根因优先)
+- `CLAUDE.md` §项目技术规则(交互式单文档 / MNK 流程 / 根因优先)

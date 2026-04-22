@@ -18,7 +18,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **P8: Study before designing.** Check Go/Rust/Zig/Swift compiler approach before implementing any feature. ← V3
 - **P9: Complexity in compiler, not user code.** Users should never see implementation details of memory management, vtables, or other internals. ← C5, V2
 - **P10: Forward-compatible refactoring.** Refactoring blocked by missing language features (struct, enum) is deferred, not hacked around. ← V6
-- **P10.1: 拆分判据是结构清晰,不是行数。** 文件/模块拆分完成后,**禁止**以"行数 ≤ 600 / D102 R4 达成 / F1 GATE PASS"宣告结束。终局判据是**结构清晰**:(a) 单一文件职责单一 —— 内部 top-level function + let 可按职责归为**一类**,出现 ≥ 3 职责类别即不清晰;(b) 跨文件依赖单向 —— A → B 不反向。完成拆分后必须执行"结构清晰度复盘":列 top-level 声明按职责归类,职责 ≥ 3 类则按同 D 文档的细分预案继续拆,依赖回路立即修。行数 gate 和结构 gate **并列**,不可前者代替后者。← V3 (derived from 2026-04-20 D113 Execute 3+4 复盘:codegen.ss 492 ≤ 600 R4 达成但 eval/interp_core.ss 544 行内部混堆 TypedValue 容器 / 标量构造 / 控制流 flag / 对象容器操作 / Comptime buffer / scope 管理 6 个职责层)
+- **P10.1: 拆分判据是结构清晰,不是行数。** 文件/模块拆分完成后,**禁止**以"行数 ≤ 600 / F1 GATE PASS"宣告结束。终局判据是**结构清晰**:(a) 单一文件职责单一 —— 内部 top-level function + let 可按职责归为**一类**,出现 ≥ 3 职责类别即不清晰;(b) 跨文件依赖单向 —— A → B 不反向。完成拆分后必须执行"结构清晰度复盘":列 top-level 声明按职责归类,职责 ≥ 3 类则按任务初设的细分预案继续拆,依赖回路立即修。行数 gate 和结构 gate **并列**,不可前者代替后者。← V3 (derived from 2026-04-20 codegen.ss 492 ≤ 600 达成但 eval/interp_core.ss 544 行内部混堆 TypedValue 容器 / 标量构造 / 控制流 flag / 对象容器操作 / Comptime buffer / scope 管理 6 个职责层复盘)
 
 ## Code Style
 

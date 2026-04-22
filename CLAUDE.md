@@ -46,7 +46,7 @@ bin/ss clean
                             (liveness / REUSE)               生成所有 ss_* 运行时函数
 ```
 
-`bootstrap/` 内编译器源码按职能分族入子目录:`lexer/`(含 `intern_pool.ss`)、`parse/`(含 `prelude.ss`)、`checker/`、`eval/`(~20,含 `eval_expr.ss` + `interp_*` + 10 条子 eval)、`pir/`(Perceus IR 层,`pir.ss`+`pir_lower.ss`+`pir_opt.ss`)、`gen/`(根下基础族 + `codegen.ss` 入口 + 子族 `class/`/`exprs/`/`stmts/`/`methods/`/`rt/`)。根目录仅保留 `main.ss`(编译器驱动入口)。`parse/prelude.ss` 在编译时自动注入到源码前。`main.ss` 的 `resolveImports()` 在解析前递归内联所有 `import`;解析顺序(`@/` 项目根、`./` 相对路径、`@scope/name` 走 `ss.json` dependencies、包入口 `main`/`src/index.ss`)见 D085。详细文件清单 `ls bootstrap/ bootstrap/*/`。
+`bootstrap/` 内编译器源码按职能分族入子目录:`lexer/`(含 `intern_pool.ss`)、`parse/`(含 `prelude.ss`)、`checker/`、`eval/`(~20,含 `eval_expr.ss` + `interp_*` + 10 条子 eval)、`pir/`(Perceus IR 层,`pir.ss`+`pir_lower.ss`+`pir_opt.ss`)、`gen/`(根下基础族 + `codegen.ss` 入口 + 子族 `class/`/`exprs/`/`stmts/`/`methods/`/`rt/`)。根目录仅保留 `main.ss`(编译器驱动入口)。`parse/prelude.ss` 在编译时自动注入到源码前。`main.ss` 的 `resolveImports()` 在解析前递归内联所有 `import`;解析顺序(`@/` 项目根、`./` 相对路径、`@scope/name` 走 `ss.json` dependencies、包入口 `main`/`src/index.ss`)见 `bootstrap/main.ss` `resolveImports()` 实现。详细文件清单 `ls bootstrap/ bootstrap/*/`。
 
 ## 添加新语言特性
 
@@ -102,7 +102,7 @@ bin/ss clean
 
 **Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
 
-**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline/触发范围见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；baseline 2 列制（`baseline_value:budget_max`）+ 扩容申报 CLI `bump <metric> <new_budget> <doc_anchor>` 见 `docs/3-decisions/D124-linter-baseline-budget-two-column.md`。
+**反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline 2 列制/AUTO-DRIFT 软警告/`bump`+`bump-group` 扩容申报 CLI/scope-aware 判定 见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；流程层触发范围与扩容判定路径见 `docs/3-MNK.md` §特定领域 §反射路径根因 gate / §反射路径扩容判定。
 
 **回复语言**：所有回复及总结使用中文。
 
