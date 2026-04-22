@@ -267,6 +267,8 @@ bin/ss run .harness/common/bug.ss fixed <round> <certainty>
 - summary 声称已完成但工作树仍有未提交改动 → 先 commit 清理,再继续
 - summary 未提及的改动(其他会话产物 / 大范围删除 / untracked 测试副产物 / 系统文件) → **显式排除在本轮 commit 范围外**,按 §附录 A §commit_radius §前置约束 精准 `git add <file>`
 - **禁止**仅凭 summary 就假定工作状态,下游 commit 按 summary 意图盲 stage 全量变更
+- **PSM 九问填表锚点** = 第一次**修改性** tool call(Edit / Write / Bash 带变动 / commit / push)之前;核对性 tool call(Read / Grep / Glob / ls / git status / git log)**不触发** PSM 义务。消除"compact 恢复后频繁核对 → PSM 时机滑向事后"的漂移
+- **跨 compact 用户授权范围收缩**:compact 前用户授权 N 候选,恢复后 Claude 审视后执行 M < N 条,未执行的 N-M 条**必须**写入 next_prompt 显式列 + 每条推迟原因,交下轮用户裁决;**禁止**隐式消化(靠自觉不提 = 与用户意图脱钩)
 
 **自检 trigger**:看到"Continue the conversation from where it left off" / summary 块时,必须停下先 `git status`,**不许**直接按 summary 末尾建议的 next step 动手。
 
