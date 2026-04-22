@@ -94,9 +94,9 @@ bin/ss clean
 
 **Root Cause 优先**：编译器限制是 bug，不是边界条件。当编译器限制迫使 stdlib 或用户代码使用丑陋 workaround，先修编译器。同一个 workaround 出现第二次必须停下修根因，不要记为 "Known limitation" 然后绕过。
 
-**交互式单文档**：每轮等用户明确指定一个文档/文件，逐个问题确认方向再执行。不自动扫 `docs/3-decisions/` 找未完成决策自主挑任务，不顺带修无关文件，不批量推进类似问题。**下轮提示词 payload `.claude/next_prompt.md` 必含关键字 `ultrathink`**,§收尾 gate 第 3 步 (b) 写入后强制跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss`,stdout 出现 `GATE BLOCKED` 即阻断 stop(机械校验,对称反射根因 gate 模式,详见 `memory/feedback_ultrathink_gate.md`)。
+**交互式单文档**：每轮等用户明确指定一个文档/文件，逐个问题确认方向再执行。不自动扫 `docs/3-decisions/` 找未完成决策自主挑任务，不顺带修无关文件，不批量推进类似问题。**下轮提示词 payload `.claude/next_prompt.md` 必含关键字 `ultrathink`**,§收尾 gate 第 4 步 (b) 写入后强制跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss`,stdout 出现 `GATE BLOCKED` 即阻断 stop(机械校验,对称反射根因 gate 模式,详见 `memory/feedback_ultrathink_gate.md`)。
 
-**PFV 流程（强制）**：接到任意任务，第一次工具调用之前必须按 `docs/2-principles.md §PFV 流程` 的十问 PSM 填表；任务完成宣告之前必须按五验 VCM 逐项贴证据；VCM 通过后必须走**收尾 gate** 的 simplify → commit → 下一步提示词三步，缺一条不许 stop。细节、层级、例外规则以该文档为准，此处不重复。
+**PFV 流程（强制）**：接到任意任务，第一次工具调用之前必须按 `docs/2-principles.md §PFV 流程` 的十问 PSM 填表；任务完成宣告之前必须按五验 VCM 逐项贴证据；VCM 通过后必须走**收尾 gate** 的 simplify → commit → 流程反思 → 下一步提示词四步，缺一条不许 stop。细节、层级、例外规则以该文档为准，此处不重复。
 
 **决策记录**：每个确认的设计决策立即写入 `docs/3-decisions/D0NN-*.md`，一个决策一个文件，不等到实现完成再补。多阶段计划的 Phase 进度只写在 D 文档里。下轮提示词收尾**自闭环**两步:(1) 对话输出(让用户审阅措辞) (2) 覆盖写入 `.claude/next_prompt.md`(单次 payload)。terman 内建 `claude-next` preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮(见 `docs/terman-auto-next.md`)。两处内容严格一致;用户在 30s 窗口里审阅,Ctrl+C 或键入字符即可中断。preset 读完即 `delete_file` 消费,Claude 不承载跨轮状态累积;Claude 本轮**不执行**任何触发脚本,直接 stop。
 

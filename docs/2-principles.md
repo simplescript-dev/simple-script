@@ -123,16 +123,17 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 
 ### 收尾 gate（强制，五验 VCM 通过之后）
 
-VCM 通过 ≠ 回合结束。宣告"完成"到实际 stop 之间还有三步必做动作，按顺序执行，缺一条不许 stop：
+VCM 通过 ≠ 回合结束。宣告"完成"到实际 stop 之间还有四步必做动作，按顺序执行，缺一条不许 stop：
 
 1. **代码审查**：`/simplify` 对本轮新增 / 修改的代码做质量审查，修复发现的问题。改动纯文档 / 纯配置可跳过并显式说明
 2. **提交**：`git status` 有未提交改动 → commit（`/commit` 或手工），消息遵循 conventional commits。commit 必须落在同一轮对话里，不许跨轮补
-3. **下一步提示词(自闭环两步)**:(a) 最后一条回复**直接输出**下一步简短提示词(1-3 句、单段、命令式、模仿用户原始风格),(b) **同时**覆盖写入 `.claude/next_prompt.md`(terman `claude-next` preset 的单次 payload,见 `docs/terman-auto-next.md`)。preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮;两处内容严格一致,用户在 30s 窗口内 Ctrl+C / 键入字符可中断。Phase 进度仍只落在 D 文档,`.claude/next_prompt.md` 不承载跨轮状态累积 / 进度摘要。Claude 本轮**不**执行任何脚本或 terman send —— stop 后 preset 自动接管。例外:bootstrap 失败 / 测试红 / GATE 阻断 / 用户明说不要时,**不写** payload 停下等裁决 —— preset `read_file` 返回空即 early return,天然降级
+3. **流程反思(档位门槛)**：基于本轮实际走过的流程,审视是否有规则 / gate / 文本需要升级。列 0–N 条候选(无候选显式写"无"),以紧凑列表交用户确认。用户 Ok → 落位(principles.md / memory / D 文档 / tools/ 新 linter);用户 No → 本轮对话记录里点名"丢弃原因"防下轮重提。档位门槛:标准改 / 大改必做;微改豁免(与档位政策对齐)。反思不是仪式 —— 是把"用户回合间抽查八股"从隐式习惯升为显式 gate,消除"八股自检元规则靠 Claude 主动提出才触发"的隐式依赖。不写反思段 → 下轮 Claude 不主动想起 → 八股讨论产出丢对话缓冲区 → 跨轮复用脆弱(D126 归档配套,2026-04-22)
+4. **下一步提示词(自闭环两步)**:(a) 最后一条回复**直接输出**下一步简短提示词(1-3 句、单段、命令式、模仿用户原始风格),(b) **同时**覆盖写入 `.claude/next_prompt.md`(terman `claude-next` preset 的单次 payload,见 `docs/terman-auto-next.md`)。preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮;两处内容严格一致,用户在 30s 窗口内 Ctrl+C / 键入字符可中断。Phase 进度仍只落在 D 文档,`.claude/next_prompt.md` 不承载跨轮状态累积 / 进度摘要。Claude 本轮**不**执行任何脚本或 terman send —— stop 后 preset 自动接管。例外:bootstrap 失败 / 测试红 / GATE 阻断 / 用户明说不要时,**不写** payload 停下等裁决 —— preset `read_file` 返回空即 early return,天然降级
    - **Execute 型**(动词形态 "改 X / 重写 X / 去掉 Y / 修复 Z / 实现 W")**必须**附**本轮已跑过**的 **RED 命令 + 输出**作为凭据,证明 X 尚未达成。RED 无效(已 GREEN / 命令不成立 / 代码已是目标形态) → **不许写 Execute 型**,改为: (a) 宣告 "本轮已覆盖 X + 证据",终止本线路, 或 (b) 降级为 **Plan 型** "验证 / 巡检 X 现状,若发现 Y 再推进",把诊断权交回下一轮
    - **Plan 型**(动词形态 "验证 / 调研 / 巡检 / 对照 X")不要求 RED 凭据,但提示词里**不得**带 "改 / 重写 / 去掉 / 修复 / 实现" 等变更动词,避免退化为未经验证的 Execute 型
    - 这是防漂移**跨轮传播**的出口 gate——与 §开工 gate §字段 1 D 文档 grep 对照构成两道闸:上一轮关闭出口,下一轮关闭入口
 
-例外：用户明说"不 simplify" / "不 commit" / "不要下一步" → 按用户要求跳过。没说就必须做。
+例外：用户明说"不 simplify" / "不 commit" / "不反思" / "不要下一步" → 按用户要求跳过。没说就必须做。
 
 此 gate 是 `feedback_auto_simplify` / `feedback_simplify_not_terminal` / `feedback_next_prompt_terse` 三条 memory 的合流入口——下轮 Claude 读 PFV 能一次看全，不再依赖散落 memory 的偶然命中。
 
