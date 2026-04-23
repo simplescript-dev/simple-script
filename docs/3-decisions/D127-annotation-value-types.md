@@ -158,7 +158,7 @@ A → (未来若 annotation eval 成为 comptime hot path)checker 缓存 eval �
 | I002 值类型选型 | §A.1 锁方案 A | **Done(本 D 文档锁定)** |
 | I003 值类型落地 | §A.1 分派表框架(STRING/INT/BOOL/DOUBLE 基础路径) | Ready to implement(依赖 I001) |
 | I004 enum 成员访问 | §A.1 `MEMBER_ACCESS` 分支 | Ready to implement(依赖 I003) |
-| I005 literal 四种 | §A.1 `ARRAY_LIT` / `INT_LIT` / `BOOL_LIT` / `DOUBLE_LIT` 分支 | Ready to implement(依赖 I003) |
+| I005 literal 四种 | §A.1 `ARRAY_LIT` 分支(INT/BOOL/DOUBLE I003 已吸收) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` ARRAY_LIT 分支 + bootstrap/gen/exprs/exprs_ct_builtin.ss:`ctMapMethod` getArray(2026-04-24)** |
 | I006 class ref | §A.2 锁方案 A(裸类名) | **Done(本 D 文档锁定)** |
 | I007 命名参一致性 | §A.3 锁方案 A(按语义分场景) | **Done(本 D 文档锁定)** |
 | I008 D123 回写 | §C D121 锚点澄清 + §A.2.5 标 SUPERSEDED | Blocked by I001-I007 全 Done |

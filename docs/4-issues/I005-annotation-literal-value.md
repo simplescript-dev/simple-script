@@ -1,7 +1,7 @@
 # I005 — Array / Bool / Int / Double 字面量作 annotation value
 
 **父决策:** D123 §C.5 层 A 翻案 第 5 项(Other expression forms)
-**状态:** Draft
+**状态:** **Done at bootstrap/eval/interp_obj.ss `evalAnnotationArg` ARRAY_LIT 分支 + bootstrap/gen/exprs/exprs_ct_builtin.ss `ctMapMethod` getArray getter(2026-04-24)。INT/BOOL/DOUBLE literal I003 已吸收;本 issue 实际增量 = ARRAY_LIT 单一 kind(含元素递归 eval,嵌套 array 禁,验收测试 `tests/phase5/i005_annotation_array_value.ss` 5/5 PASS)**
 **颗粒度:** ~3-5 万 token
 **依赖:** I003
 **创建:** 2026-04-22

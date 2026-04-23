@@ -165,7 +165,21 @@ function evalAnnotationArg(nodeId: int): int {
         if (backing != "") { return interpNewString(backing) }
         if (lookupEnumOrdinal(eName, eKey) >= 0) { return interpNewString(mName) }
     }
-    comptimeError(`annotation arg kind '${kind}' not yet supported (I005 array / I006 class ref / I007 expr pending)`, nodeId)
+    // I005: ARRAY_LIT 元素递归 eval,禁嵌套 array(Java annotation 对齐,I005 §备注)。
+    if (kind == "ARRAY_LIT") {
+        const arr = interpNewArray("")
+        for (ep in nGetList(nodeId).split(",")) {
+            const elemId = parseInt(ep)
+            if (elemId <= 0) { continue }
+            if (nGetKind(elemId) == "ARRAY_LIT") {
+                comptimeError("nested array not allowed in annotation value (I005 §备注)", elemId)
+                return interpNewNull()
+            }
+            interpArrayPush(arr, evalAnnotationArg(elemId))
+        }
+        return arr
+    }
+    comptimeError(`annotation arg kind '${kind}' not yet supported (I006 class ref IDENT pending)`, nodeId)
     return interpNewNull()
 }
 
