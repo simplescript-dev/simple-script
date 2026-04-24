@@ -486,7 +486,33 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 **commit**:(本轮 commit 时追加 hash)
 
-### Phase 2-5: 未启动
+### Phase 2: @RestController + @GetMapping routes csv [部分 Done] (2026-04-24)
+
+**实施内容**(本轮 2 文件新增 + 2 文件改,LOC ~80):
+
+- `lib/spring/boot/application.ss`(扩 43→81 行):新 `RouteMeta` class 占位 + `import { httpServe, httpResponse }` + Phase 2 comptime 4 层嵌套收 routes csv(`reflect.classes() → c.annotations[name=="RestController"] → c.methods → m.annotations[name=="GetMapping"] → mAnn.args.getString("path")`)+ `httpServe(8080, dispatchPending)` 仅在 args 含 `--serve` 启动;`dispatchPending` stub 返 503 + body 显式标 I014 BLOCKER pointer
+- `examples/spring-parity/hello/ss/HelloController.ss`(新建,15 行):`@RestController` + `@GetMapping(path = "/hello")`(D127 §A.3 ASSIGN 命名参形态)+ `function hello(): string { return "Hello, World!" }`
+- `examples/spring-parity/hello/ss/main.ss`(改 16→18 行):import HelloController;`function main()` 读 CLI args(`args()` / `arg(i)`)推入 appArgs 传给 SpringApplication.run
+- `examples/spring-parity/hello/java/src/main/java/hello/HelloController.java`(新建,11 行):Java oracle 对等 — `@RestController` + `@GetMapping("/hello")` + `public String hello() { return "Hello, World!"; }`
+
+**实测验证**(本轮 SS 端独立可跑,Java 端 mvn 不可用 → parity gate Deferred):
+
+| # | 判据 | 实测 |
+|---|---|---|
+| 1 | 4 层嵌套 comptime 工作 | ✅ `bin/ss build hello/ss/main.ss && /tmp/hello_phase2` → stdout `Routes: /hello|HelloController.hello;` |
+| 2 | httpServe 接入 + curl 连通 | ✅ `/tmp/hello_phase2 --serve &` + `curl http://localhost:8080/hello` → HTTP 503 + body `dispatcher pending I014 — see docs/4-issues/I014-spring-dispatch-impl.md` |
+| 3 | 不阻塞默认入口 | ✅ 无 args 模式 stdout 输出后正常退出 |
+| 4 | 白名单 linter | ✅ `bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity` GATE PASS |
+| 5 | 反射 linter | ✅ M/N 不升(本轮 diff 仅触 lib/spring/boot/application.ss + examples/,反射路径未触) |
+| 6 | bootstrap | ✅ `./build.sh bootstrap` Stage 2 == Stage 3 固定点 |
+| 7 | 测试 | ✅ `bin/ss test tests/` 全绿(d123_phase1_smoke.ss 仍 PASS,Phase 1 形态向后兼容)|
+| 8 | parity gate | ⏸ **Deferred to I014** — SS 端 503 vs Java 端 200 必然 diff,真兑现需 dispatcher impl |
+
+**关键 insight**:Step 1 实测发现 4 层嵌套 comptime + ann.args.getString 端到端工作(超出预估障碍,routes csv 直接拿到 `/hello|HelloController.hello;`)。但 Step 2 dispatcher 接入撞 SS 当前能力边界 — comptime 已能拿到 `(path, className, methodName)` 三元组(string),runtime 无法把 string 转 method call(D088 §反模式 禁 runtime 反射 / @comptimeEmit / @derive)。**真根因路径**立项 I014:`docs/4-issues/I014-spring-dispatch-impl.md`(预选路径 A — 扩 stmts_loop_forin.ss ct-array unroll body 内识别 `ctVar.<methodNameStr>()` 静态 emit `call @<className>_<methodName>`)。
+
+**commit**:(本轮 commit 时追加 hash)
+
+### Phase 3-5: 未启动
 
 ---
 

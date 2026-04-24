@@ -1,16 +1,13 @@
-// D123 Phase 1 — @SpringBootApplication comptime 入口骨架
-//
-// comptime block 内 reflect.classes() 枚举编译单元所有 class,过滤 @RestController
-// 注解,收集 className CSV(Phase 1 scope:只扫,不 dispatch)。Phase 2 将基于
-// 此扫描再展开 @GetMapping 路由表 + runtime dispatcher(见 D123 §3 Phase 2)。
-//
-// 根因路径:D088 §第一性需求 + D120 reflect.classes() + D127 annotation value types。
-// 禁 runtime 反射 / @comptimeEmit 字符串拼接 / @derive 替代(D088 §反模式 L377-386)。
+// D123 Phase 1+2 — @SpringBootApplication entrypoint + @RestController/@GetMapping 路由 csv
+// 真 dispatch 待 I014(comptime ctMethodMeta → static method call IR emit);
+// 禁 runtime 反射 / @comptimeEmit / @derive(D088 §反模式 L377-386)。
 
-// Phase 2+ consumer 占位:comptime 扫到的 controller 名 + method 列表 + @GetMapping
-// 参数将 materialize 为 RouteMeta 常量段,Phase 1 仅保留类 shape。
-class ControllerMeta {
+import { httpServe, httpResponse } from "@/lib/http"
+
+class RouteMeta {
+    path: string
     className: string
+    methodName: string
 }
 
 class SpringApplication {
@@ -28,6 +25,24 @@ class SpringApplication {
             return acc
         }
 
+        const routesCsv = comptime {
+            let acc = ""
+            for (c in reflect.classes()) {
+                for (cAnn in c.annotations) {
+                    if (cAnn.name == "RestController") {
+                        for (m in c.methods) {
+                            for (mAnn in m.annotations) {
+                                if (mAnn.name == "GetMapping") {
+                                    acc = acc + mAnn.args.getString("path") + "|" + c.name + "." + m.name + ";"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return acc
+        }
+
         println("Started " + appName)
         let count = 0
         if (controllerNames != "") {
@@ -38,5 +53,19 @@ class SpringApplication {
         } else {
             println("Controllers: " + count + " [" + controllerNames + "]")
         }
+        println("Routes: " + routesCsv)
+
+        // --serve 才启动 httpServe(阻塞 listen);默认入口仅打印 routes csv 退出。
+        let wantsServe = 0
+        for (a in args) {
+            if (a == "--serve") { wantsServe = 1 }
+        }
+        if (wantsServe == 1) {
+            httpServe(8080, dispatchPending)
+        }
     }
+}
+
+function dispatchPending(req: Map<string, string>): string {
+    return httpResponse(503, "text/plain", "dispatcher pending I014 — see docs/4-issues/I014-spring-dispatch-impl.md")
 }
