@@ -74,6 +74,19 @@ function channelElemType(chanType: string): string {
     return "int"
 }
 
+// ── Map value type helper (I019) ─────────────────────────────
+// "Map<K,V>" / "Map<K, V>" → V;v0 naive first-comma split(嵌套 generic K 不在 scope,
+// typical Spring 用例 Map<string,*> / Map<int,*> 足够)。
+function extractMapValueType(mapType: string): string {
+    if (mapType.startsWith("Map<") == 0) { return "" }
+    const emCI = mapType.indexOf(",")
+    if (emCI < 0) { return "" }
+    const emEnd = mapType.length() - 1
+    let emS = emCI + 1
+    while (emS < emEnd && mapType.charAt(emS) == " ") { emS = emS + 1 }
+    return mapType.substring(emS, emEnd - emS)
+}
+
 // Walk a BLOCK body for the first RETURN, returning inferType on its expression
 // (or "" if body missing / bare return / no RETURN found). Shared by arrow and
 // comptime-class-method retType inference; callers pick their own fallback.
@@ -390,6 +403,11 @@ function inferType(id: int): string {
             if (chType.startsWith("Channel<") == 1) {
                 return channelElemType(chType)
             }
+        }
+        // I019 — Map<K,string>.get returns string (v0 scope; i64 fallback for other V).
+        if (method == "get") {
+            const mgT = inferType(mcObj)
+            if (mgT.startsWith("Map<") == 1 && extractMapValueType(mgT) == "string") { return "string" }
         }
         if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {
             if (method == "values" || method == "names") { return "ptr" }

@@ -564,7 +564,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
         }
         return result
     }
-    result = genMapMethod(method, objVal, argList)
+    result = genMapMethod(method, objVal, objType, argList)
     if (result != "") { return result }
 
     // Fallback: class method

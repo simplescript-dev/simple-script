@@ -664,6 +664,38 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I019 (2026-04-24)
+
+**触发**:I019 §路径 — typed `Map<K,V>.get` value 类型推断升根(I018 §风险 §下轮升根路径 hard prereq 兑现)。D123 Phase 3 Step 1 真兑现后 Controller 仍被迫用 `req.getString("name")` 代 `req.get("name")` 字面对齐 Java;本轮让 `inferType METHOD_CALL` 按 receiver generic value arg 返回类型(v0 scope:Map<K,string> → string 路由 ss_mapGetString),消除 I018 §风险 双入口负债。**第一性需求**:引 D123 §第一性需求 —— Spring Boot byte-identical parity 在 enterprise 尺度(含 @RequestParam 语义)兑现,类型系统应 comptime 静态驱动 codegen 不靠用户记忆 `get` vs `getString` 方法名。
+
+**改动路径**:
+- `bootstrap/gen/gen_types.ss`:`extractMapValueType` 小 helper(naive first-comma split,v0 嵌套 generic K 不在 scope)+ `inferType` METHOD_CALL 加 Map<K,string>.get → string 分支(~17 LOC)
+- `bootstrap/gen/gen_builtins.ss`:`genMapMethod` 签名 +objType 参 + typed Map<K,string>.get 路由 ss_mapGetString 非 ss_mapGet(~8 LOC)
+- `bootstrap/gen/methods/gen_methods.ss`:caller 传 objType(+1 LOC)
+- `examples/spring-parity/hello/ss/HelloController.ss`:`req.getString("name")` → `req.get("name")` + 注释同步(I018 §风险 表面绕过描述撤换为 I019 §路径 根因链路)
+- `tests/phase5/d123_phase3_i019_typed_map_get.ss`:新建 3 个 PASS RED→GREEN 测试(v/miss/Controller-concat)
+- `docs/4-issues/I019-typed-map-get-value-inference.md`:新建归档(Done at file:line)
+
+**REGRESSION + AUTO-DRIFT + bump 项 delta 表(实测,OK 项省略;non-reflection scope M*/N* AUTO-DRIFT 软警告按 D097 §反射 scope gate 行为豁免)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| F1:bootstrap/gen/gen_types.ss | 738 | 760 | 775 | +15 vs bm | REGRESSION |
+
+**本地抵消路径**:
+- **F1:bootstrap/gen/gen_types.ss**:I019 加 extractMapValueType helper(11 LOC 已压到 naive)+ inferType Map.get 分支(3 LOC inline)+ 注释(3 LOC)= 净 +17 LOC。第一版 bracket-depth 版已压至 naive first-comma,inline 2 place 比 helper 更多 LOC,无更深压榨空间。文件是 gen 层 inferType / resolveObjClass / ssTypeToLLVM / getVarType 的中枢,物理拆需按 inferType kind-by-kind 拆子文件(~5 子 kind 各独立)—— 非本轮 scope(与 D114 Execute 4 风格的 checker 子文件化类似工程面,应独立 DXXX 决策,不在 I019 issue scope)。
+
+**新 baseline 预期值(=实测,bump 升 budget_max)**:
+- F1:bootstrap/gen/gen_types.ss budget_max:760 → 780(5 LOC headroom 吸收下一轮微调)
+
+**VCM 实测 vs 预估对照槽**:预估 cur +15(压榨后实测)精确落地;压榨前先试 bracket-depth 版 cur +60(+45 预估偏差 = 300% 高估)— 预估时未看出 bracket-depth 是过度工程、naive 足够 v0 用例,下轮 PSM §字段 6 应前置"先尝试 naive、failing 再 complex"。I019 §单一判据(3 条):`bin/ss run /tmp/t_i019_red.ss` 输出 `got:v` ✓(before: `got:5244697`);`tests/phase5/d123_phase3_i019_typed_map_get.ss` 3 passed ✓;`tests/phase5/d123_phase3_param_bind.ss`(I018 regression)1 passed ✓ getString 仍 work。
+
+**Phase 3 Step 1 根因闭环状态**:I018 §风险 §下轮升根路径 显式的 typed Map.get value 类型推断缺口本轮根除。Java oracle parity 字面对齐达成(`req.get("name")` 等价 Java),下一 Phase 3 Step 2 @RequestParam / @PathVariable 扩参可基于此实施不再耦合双轨制方法名税。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:

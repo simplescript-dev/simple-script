@@ -213,7 +213,7 @@ function genArrayMethod(method: string, objVal: string, objType: string, argList
 
 // ── Map methods ─────────────────────────────────────────────────
 
-function genMapMethod(method: string, objVal: string, argList: string): string {
+function genMapMethod(method: string, objVal: string, objType: string, argList: string): string {
     if (method == "set") {
         const argParts = argList.split(",")
         let key = genExpr(parseInt(argParts[0]))
@@ -258,6 +258,9 @@ function genMapMethod(method: string, objVal: string, argList: string): string {
         if (method == "has") {
             emitIR(`  ${r} = call i32 @ss_mapHas(ptr ${objVal}, ptr ${mkey})`)
         } else if (method == "getString") {
+            emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
+        } else if (objType.startsWith("Map<") == 1 && extractMapValueType(objType) == "string") {
+            // I019 — typed Map<K,string>.get → ss_mapGetString (ptr + @.rt.str.empty on miss).
             emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
         } else {
             emitIR(`  ${r} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
