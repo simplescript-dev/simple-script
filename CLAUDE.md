@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目本质
 
-SimpleScript 是一门自举的编译型语言。编译器用 SimpleScript 自身编写，编译到 LLVM IR 并静态链接 musl libc + mimalloc，产出原生二进制。零 C 依赖——所有运行时函数由编译器直接生成 LLVM IR。用户自定义 class 实例使用 Perceus 风格引用计数：对象头 RC@0 + TypeInfo@1，PIR 中间层做 liveness 分析自动插入 release，mimalloc 分配器支持 REUSE 优化。
+SimpleScript 是一门自举的编译型语言。编译器用 SimpleScript 自身编写，编译到 LLVM IR 并静态链接 musl libc + mimalloc，产出原生二进制。零 C 依赖——所有运行时函数由编译器直接生成 LLVM IR。用户自定义 class 实例使用 Perceus 风格引用计数：对象头 RC@0 + TypeInfo@1，PIR 中间层做 liveness 分析自动插入 release，mimalloc 分配器支持 REUSE 优化。应用层 stdlib（HTTP/JSON/路由/sha256/base64/url）用纯 SS 模块实现（见 `lib/`），不引入应用层 C 库；只有底层基础设施（mimalloc 分配器）允许链接 C。
 
 ## 构建与测试
 
@@ -33,7 +33,7 @@ bin/ss clean
 # seed→stage1→stage2→stage3，验证 stage2==stage3 后更新 bin/ss
 ```
 
-依赖：`llc-18`、`musl-gcc`、`vendor/mimalloc.o`（首次构建自动编译）。
+依赖：`llc-18`、`musl-gcc`、`vendor/mimalloc.o`（首次构建自动编译）。自举一次约 55 秒（三阶段固定点验证）；开工前先静态分析画完整方案、一次性改完再编译验证，避免 trial-and-error 堆编译次数。
 
 测试文件格式：每个 `.ss` 测试是独立程序，含 `function main()`。通过条件 = 编译成功 + 运行 exit code 0。内置 `test(name, fn)` + `assertEqual`/`assertTrue` 等断言。含 `import/` 子目录的测试组只编译 `main.ss`。
 
@@ -46,7 +46,7 @@ bin/ss clean
                             (liveness / REUSE)               生成所有 ss_* 运行时函数
 ```
 
-`bootstrap/` 内编译器源码按职能分族入子目录:`lexer/`(含 `intern_pool.ss`)、`parse/`(含 `prelude.ss`)、`checker/`、`eval/`(~20,含 `eval_expr.ss` + `interp_*` + 10 条子 eval)、`pir/`(Perceus IR 层,`pir.ss`+`pir_lower.ss`+`pir_opt.ss`)、`gen/`(根下基础族 + `codegen.ss` 入口 + 子族 `class/`/`exprs/`/`stmts/`/`methods/`/`rt/`)。根目录仅保留 `main.ss`(编译器驱动入口)。`parse/prelude.ss` 在编译时自动注入到源码前。`main.ss` 的 `resolveImports()` 在解析前递归内联所有 `import`;解析顺序(`@/` 项目根、`./` 相对路径、`@scope/name` 走 `ss.json` dependencies、包入口 `main`/`src/index.ss`)见 `bootstrap/main.ss` `resolveImports()` 实现。详细文件清单 `ls bootstrap/ bootstrap/*/`。
+`bootstrap/` 内编译器源码按职能分族入子目录:`lexer/`(含 `intern_pool.ss`)、`parse/`(含 `prelude.ss`)、`checker/`、`eval/`(~20,含 `eval_expr.ss` + `interp_*` + 10 条子 eval)、`pir/`(Perceus IR 层,`pir.ss`+`pir_lower.ss`+`pir_opt.ss`)、`gen/`(根下基础族 + `codegen.ss` 入口 + 子族 `class/`/`exprs/`/`stmts/`/`methods/`/`rt/`)。根目录仅保留 `main.ss`(编译器驱动入口)。**未来拆分沿用此风格**:按职能归族入子目录(不看文件数门槛,2 文件或 8 文件一视同仁)、入口文件(dispatcher)与目录同名(如 `checker/checker.ss`、`gen/exprs/exprs.ss`)、其他 .ss 一律入子目录不退回扁平根。`parse/prelude.ss` 在编译时自动注入到源码前。`main.ss` 的 `resolveImports()` 在解析前递归内联所有 `import`;解析顺序(`@/` 项目根、`./` 相对路径、`@scope/name` 走 `ss.json` dependencies、包入口 `main`/`src/index.ss`)见 `bootstrap/main.ss` `resolveImports()` 实现。详细文件清单 `ls bootstrap/ bootstrap/*/`。
 
 ## 添加新语言特性
 
