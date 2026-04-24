@@ -164,7 +164,7 @@ A → (未来若 annotation eval 成为 comptime hot path)checker 缓存 eval �
 | I006 class ref | §A.2 锁方案 A(裸类名) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` IDENT 分支(2026-04-24)** |
 | I007 命名参一致性 | §A.3 锁方案 A(按语义分场景) | **Decided(§A.3 方案 A;annotation 侧 ASSIGN 由 I001 落地,call/constructor 侧 COLON 保持不动无代码改动)** |
 | I008 D123 回写 | §C D121 锚点澄清 + §A.2.5 标 SUPERSEDED | Blocked by I001-I007 全 Done |
-| I009 e2e | `tests/phase5/spring_annotation_e2e.ss` | Blocked by I001-I006 全 Done |
+| I009 e2e | `tests/phase5/spring_annotation_e2e.ss` | **Done at tests/phase5/spring_annotation_e2e.ss:`main`(1cfe717)** —— 6 test PASS,五 kind 混一 annotation 无交互污染,D123 Phase 1 前置 gate 通过 |
 
 ---
 
