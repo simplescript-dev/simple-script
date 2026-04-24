@@ -1,4 +1,6 @@
 /target/
 *.o
 *.ll
+*.ll.str
 /tmp/
+build/

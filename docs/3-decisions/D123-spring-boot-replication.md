@@ -102,7 +102,7 @@ curl http://localhost:8081/hello?name=World   # Java 版
 
 | 项 | 值 |
 |---|---|
-| 当前阶段 | Phase 0(Plan 起草)/ 等 D121 R1 落地再开 Phase 1 |
+| 当前阶段 | Phase 1 in progress(Execute 1 本轮 commit:`lib/spring/boot/application.ss` 骨架 + `examples/spring-parity/hello/` 最小 app + Java oracle 入仓)/ Phase 2 `@GetMapping` dispatcher 下轮启动。D121 R1 / D127 value-type blocker 已清零(I001-I009 全 Done) |
 | 测试基线 | `bin/ss test tests/` 当前 GREEN 基线(commit `8be976a`) |
 | 入口命令 | `./build.sh bootstrap` / `bin/ss build examples/spring-parity/<app>/ss/main.ss -o /tmp/ss_app` / `cd examples/spring-parity/<app>/java && mvn spring-boot:run` |
 | linter 关键计数 | `reflection_health_linter` M1=5134/M2=76126/M3a=12122/M3b=1879/M4=3037/M5=1750/M6=32/M7a=27/M7b=676/N1=34/N2=380630/N3=518111/N4=321/N5=0 |
@@ -459,7 +459,34 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 - **Phase 1 前置对账**:层 A2 blocker(ASSIGN + 任意表达式值)已清零 —— I001-I009 全 Done(commits `1cfe717` e2e / `c4de335` D127 §B 对账 / `fa82751` D123 §A.2.5 SUPERSEDED / I008 落位 Done at docs/4-issues/I008-d121-d123-backwrite.md §落位)
 - **commit**:(本轮 commit 时追加 hash)
 
-### Phase 1-5: 未启动
+### Phase 1: @SpringBootApplication comptime 入口 [x] Done at `lib/spring/boot/application.ss:17-30` (2026-04-24)
+
+**实施内容**(4 文件新增,LOC ~120):
+
+- `lib/spring/boot/application.ss`(新建,43 行):`class ControllerMeta { className }` 占位 + `class SpringApplication` + `static function run(appName, args)`;comptime block 内 `for (c in reflect.classes()) for (ann in c.annotations) if (ann.name == "RestController")` 收集 className CSV;runtime 打印 `Started <appName>` + controllers 数量
+- `examples/spring-parity/hello/ss/main.ss`(新建,13 行):`@SpringBootApplication class HelloApp {}` + `function main() { SpringApplication.run("HelloApp", []) }`
+- `examples/spring-parity/hello/java/pom.xml`(新建,34 行):Spring Boot 3.3.0 `spring-boot-starter-parent` + `spring-boot-starter-web` Maven 骨架
+- `examples/spring-parity/hello/java/src/main/java/hello/HelloApp.java`(新建,11 行):Java 版 `@SpringBootApplication` 对应物
+
+**判据兑现**(对照 §5 Evaluation,逐条):
+
+| # | 判据 | 实测 |
+|---|---|---|
+| 1 | Spring Boot 官方注解 | ✅ `@SpringBootApplication` 在白名单 |
+| 2 | 白名单 gate | ✅ `bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity` → `GATE PASS — 0 fake annotations`(扫 1 文件,1 不同 annotation) |
+| 3 | 反射 gate | ✅ `bin/ss run tools/reflection_health_linter.ss` → `GATE PASS — no regressions`(diff 未触及反射路径,M/N 与 baseline 一致) |
+| 4 | 编译器 | ✅ `./build.sh bootstrap` → `Fixed point verified! Stage 2 = Stage 3` |
+| 5 | Phase 2+ parity | N/A(Phase 1 不要求 HTTP parity,Phase 2 首次启用) |
+| 6 | 根因收敛 | ✅ `grep -rn "@comptimeEmit\|@derive" examples/spring-parity/` = 0 + `grep -c ss_reflect_ /tmp/hello_ss.ll` = 0(comptime 展开干净) |
+| 7 | 测试 | ✅ `bin/ss test tests/` → 224 passed + 4 pre-existing fail 保持 |
+
+**行为证据**(VCM §2):`bin/ss build examples/spring-parity/hello/ss/main.ss -o /tmp/hello_ss && /tmp/hello_ss` → stdout `Started HelloApp\nControllers: 0` + exit 0。
+
+**反向证据**(VCM §3):`mv lib/spring/boot/application.ss /tmp/ && bin/ss build ...` → `Unknown class: SpringApplication` @ `main.ss:14`,恢复后 GREEN。因果链闭环。
+
+**commit**:(本轮 commit 时追加 hash)
+
+### Phase 2-5: 未启动
 
 ---
 
