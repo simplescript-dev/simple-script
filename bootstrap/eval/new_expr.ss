@@ -1,4 +1,4 @@
-// D109 §步骤 1: NEW_EXPR 迁子目录(Phase A 末轮 2d,zig 驱动 9 kind 末 1)
+// NEW_EXPR 子目录文件(原 eval_expr.ss 迁出)
 // 对称:泛型类 + Map/Set 短路 + callPreRegs 三态 + args(NAMED_ARG/普通)+ comptime/runtime 分派
 
 function evalNewExpr(astId: int): int {

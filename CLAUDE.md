@@ -104,6 +104,8 @@ bin/ss clean
 
 **反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline 2 列制/AUTO-DRIFT 软警告/`bump`+`bump-group` 扩容申报 CLI/scope-aware 判定 见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；流程层触发范围与 REGRESSION A/B 路径见 `docs/3-MNK.md` §特定领域 §反射路径根因 gate。
 
+**D 文档治理 gate（强制）**：删/合并/重命名 `docs/3-decisions/D*.md` 或改动 bootstrap/tools/CLAUDE.md/docs/3-MNK.md 里 `D\d{3} §` 引用后必须跑 `bin/ss run tools/d_doc_index_linter.ss`；F1 死指针 BLOCK（源码注释指向已删 D 文档） / F2 孤立 D 文档 soft warn。规则见 `docs/3-MNK.md` §特定领域 §D 文档治理 gate（对称 §memory 治理 gate）。
+
 **回复语言**：所有回复及总结使用中文。
 
 ## 外部引用

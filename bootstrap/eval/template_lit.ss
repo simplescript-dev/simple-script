@@ -1,4 +1,4 @@
-// D108 §步骤 1: TEMPLATE_LIT 迁出 eval_expr.ss 独立子目录文件
+// TEMPLATE_LIT 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:全 ct → 拼接 string;有 runtime → tmplPreRegs + genTemplateLit
 
 function evalTemplateLit(astId: int): int {

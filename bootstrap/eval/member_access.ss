@@ -1,4 +1,4 @@
-// D108 §步骤 1: MEMBER_ACCESS 迁出 eval_expr.ss 独立子目录文件
+// MEMBER_ACCESS 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:FieldMeta f.name/.type/.annotations → enum X.Y → ct obj field/length/name/fields/annotations → runtime
 
 function evalMemberAccess(astId: int): int {
@@ -24,7 +24,7 @@ function evalMemberAccess(astId: int): int {
             const items = interpAsStr(objPayload)
             return ctVal(interpNewInt(mpKind == "string" ? items.length() : (items == "" ? 0 : items.split(",").length())))
         }
-        // D117 §决策 4 — string/TypeValue 当作 class 句柄 .name/.fields/.methods/
+        // D120 §Phase 1 — string/TypeValue 当作 class 句柄 .name/.fields/.methods/
         // .annotations 全部统一经 ClassMeta interpGetField read,消除 hardcoded 字符串
         // 数组 + AST 构造 AnnotationMeta 两条特例。未知 class 时 .name 回落 string tvId。
         if ((member == "name" || member == "fields" || member == "methods" || member == "annotations") && (mpKind == "string" || mpKind == "type")) {

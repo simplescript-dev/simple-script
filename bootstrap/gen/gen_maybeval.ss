@@ -1,4 +1,4 @@
-// D098 §决策 2 §新张力 2 / D110 §决策 2 / D111 §决策 2 — Phase B InternPool 实化
+// D098 §决策 2 §新张力 2 — Phase B InternPool 实化
 // Value 句柄访问器:屏蔽 Phase A tagged int(ctVal bit 30)vs Phase B
 // InternPool index 的差异。调用方传 mv(MaybeVal.val 即 Value 句柄),
 // accessor 内部完成 strip + 取 payload/type。

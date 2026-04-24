@@ -1,4 +1,4 @@
-// D108 §步骤 1: POSTFIX_INC 迁子目录(原迁出 D106)
+// POSTFIX_INC 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:comptime ctScopeStack/ctVars 自增 + return old;runtime genPostfixExpr
 
 function evalPostfixInc(astId: int): int {

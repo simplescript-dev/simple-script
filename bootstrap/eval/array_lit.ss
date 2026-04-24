@@ -1,4 +1,4 @@
-// D108 §步骤 1: ARRAY_LIT 迁出 eval_expr.ss 独立子目录文件
+// ARRAY_LIT 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:空数组 / comptime 全 ct(含 SPREAD_ELEM 展平)/ runtime arrPreRegs
 
 function evalArrayLit(astId: int): int {

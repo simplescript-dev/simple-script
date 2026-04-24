@@ -1,5 +1,5 @@
-// D108 §步骤 1: CALL 迁出 eval_expr.ss 独立子目录文件
-// (D102 §规则 2.1 R2 守门:eval_expr.ss ≤ 600,evalCall 80 行无法 inline)
+// CALL 子目录文件(原 eval_expr.ss 迁出 — feedback_600_split_not_inline)
+// (F1 GATE 600 守门:eval_expr.ss ≤ 600,evalCall 80 行无法 inline;见 memory feedback_f1_gate_semantic)
 // 对称三段式:泛型 2 分支 + callPreRegs 三态 + args 3 分支(NAMED_ARG/SPREAD_ELEM/普通)
 //   + comptime/runtime 分派 + 2 处 mv 编码 (genGenericCall / genCall)
 

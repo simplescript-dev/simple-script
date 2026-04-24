@@ -146,7 +146,7 @@ function registerClass(id: int) {
                             exit(1)
                         }
                     }
-                    // D118 §新张力 2: accessor get/set 在 interpBuildTypeInfo 经
+                    // D120 §Phase 1 accessor Meta: accessor get/set 在 interpBuildTypeInfo 经
                     // MTH|<cls>.<mth>.get / .set 后缀分离,两 FUNC_DECL 独立 MethodMeta。
                     if (mKind == 2) {
                         const getMangled = `${name}_get_${mName}`

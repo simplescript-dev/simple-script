@@ -1,4 +1,4 @@
-// D108 §步骤 1: TERNARY 迁出 eval_expr.ss 独立子目录文件
+// TERNARY 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:cond ct → 单边 evalExpr;cond runtime → alloca + br + load
 
 function evalTernary(astId: int): int {

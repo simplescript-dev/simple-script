@@ -31,7 +31,7 @@ class AnnotationMeta {
     args: Map<string, int>
 }
 
-// D117 §决策 1 — 补齐 5 类 Meta。
+// D120 §Phase 1 — 补齐 5 类 Meta。
 class ParamMeta {
     name: string
     type: string

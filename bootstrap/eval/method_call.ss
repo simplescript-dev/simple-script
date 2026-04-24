@@ -1,4 +1,4 @@
-// D108 §步骤 1: METHOD_CALL 迁子目录(原迁出 D107)
+// METHOD_CALL 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:ctEnumNodes/runtime enum + Thread/super 短路 + args(NAMED_ARG/普通)+ comptime/runtime 分派
 
 function evalMethodCall(astId: int): int {

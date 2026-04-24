@@ -1,4 +1,4 @@
-// D108 §步骤 1: SHORT_CIRCUIT (And/Or) 迁出 eval_expr.ss 独立子目录文件
+// SHORT_CIRCUIT (And/Or) 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:left ct → 短路;left runtime → alloca + br + load
 
 function evalShortCircuit(op: string, astId: int): int {

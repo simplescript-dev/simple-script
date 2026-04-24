@@ -2,7 +2,7 @@
 //   mv >= 0   → known,  val = mv        (ctVal tagged int,bit 30 set)
 //   mv <= -2  → runtime,regId = -mv - 1  (regTable 1-based)
 //   mv == -1  → error 哨兵
-// D108 §步骤 1: 仅留主 dispatch evalExpr + UNARY/BINARY inline,10 子函数迁 bootstrap/eval/*.ss
+// 仅留主 dispatch evalExpr + UNARY/BINARY inline,10 子函数迁 bootstrap/eval/*.ss(eval_expr 子目录拆分)
 // 本文件承载 10 条 import(main.ss F1=630 baseline 守门,不+import 行)。
 
 import { evalCall } from "./call"

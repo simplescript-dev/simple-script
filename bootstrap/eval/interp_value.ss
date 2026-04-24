@@ -158,7 +158,7 @@ function interpAsStr(id: int): string {
     return tvStringOf(id)
 }
 
-// interp* value delegate — D092 Phase 2 sub-b / D111 §决策 4 InternPool dedup
+// interp* value delegate — D092 §Phase 2 sub-b / D098 §决策 2 Phase B InternPool dedup
 // 5 标量入口(int/string/bool/null/type)key tag 与 interpType 同名,Array/Map/Double 留 Phase C
 
 function interpNewInt(n: int): int {

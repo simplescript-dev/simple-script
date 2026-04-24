@@ -78,7 +78,7 @@ function main() {
         println(`FLAG: suspected distant metric offset`)
         println(`  ${famCount} unrelated families >= threshold ${RADIUS_THRESHOLD}`)
         println(`  commit message 必须独立 justify 本次跨族语义关联,或按任务拆 commit。`)
-        println(`  参考 feedback_no_distant_offset.md / D126 §改进 B。`)
+        println(`  参考 feedback_no_distant_offset.md / MNK §K commit_radius rule 库。`)
         println("RADAR SOFT WARN — gate not blocking, human review required")
         return
     }

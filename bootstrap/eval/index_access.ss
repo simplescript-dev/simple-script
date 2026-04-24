@@ -1,4 +1,4 @@
-// D108 §步骤 1: INDEX_ACCESS 迁出 eval_expr.ss 独立子目录文件
+// INDEX_ACCESS 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:obj+idx 全 ct → 直查 array/object/map/string;否则 runtime
 
 function evalIndexAccess(astId: int): int {

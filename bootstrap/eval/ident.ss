@@ -1,4 +1,4 @@
-// D108 §步骤 1: IDENT 迁出 eval_expr.ss 独立子目录文件
+// IDENT 子目录文件(原 eval_expr.ss 迁出)
 // 对称三段式:ctScopeStack lookup → ctVars(currentFunc) → comptime interpVars/class/泛型/alias → runtime genIdent
 
 function evalIdent(astId: int): int {

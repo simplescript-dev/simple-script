@@ -53,7 +53,7 @@ function main() {
     println("=======================================")
     if (hitPos < 0 && fileCount > 0) {
         println(`FAIL: commit message 缺失 '${SELF_CHECK_MARKER}' 答案行`)
-        println("  按 VCM §第 5 条 (d) + D126 §改进 C,每项改动需在 commit footer 写入")
+        println("  按 VCM §第 5 条 (d) + MNK §K commit_footer rule 库,每项改动需在 commit footer 写入")
         println(`  <file>:<function> — ${SELF_CHECK_MARKER} <一句话>`)
         println(`  或对纯文档/配置改动 <file> — ${SELF_CHECK_MARKER} <一句话>`)
         println("GATE BLOCKED")

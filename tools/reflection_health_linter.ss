@@ -52,7 +52,7 @@ let recFuncs: Map<string, string> = new Map()
 let kindSet: Map<string, string> = new Map()
 let funcScope: Array<string> = []
 let files: Array<string> = []
-// D102 §决策 2 F1 GATE: 每个扫描文件的行数(charAt '\n' 计数,对齐 wc -l)。
+// F1 GATE (memory feedback_f1_gate_semantic): 每个扫描文件的行数(charAt '\n' 计数,对齐 wc -l)。
 let fileLineCounts: Map<string, string> = new Map()
 
 // ── integer log2 (floor) ─────────────────────────────────────
@@ -72,21 +72,21 @@ function substringFrom(s: string, start: int): string {
 }
 
 const BASELINE_PATH = "tools/linter_baseline.txt"
-// D102 §规则 2.1: 单文件行数上限(R2/R3 硬阻新文件 > 600,最终目标所有 bootstrap 文件 ≤ 600)。
+// F1 GATE 600 硬阻规则 (memory feedback_f1_gate_semantic + feedback_600_split_not_inline): 单文件行数上限(R2/R3 硬阻新文件 > 600,最终目标所有 bootstrap 文件 ≤ 600)。
 const F1_LIMIT = 600
-// D125 §P4 AUTO-DRIFT: cur 略超 budget_max 但 ≤ budget_max × (1 + TOL_PCT/DEN) 区间 gate 不阻,
+// AUTO-DRIFT (D097 §Gate 行为 / CLAUDE.md §反射根因 gate): cur 略超 budget_max 但 ≤ budget_max × (1 + TOL_PCT/DEN) 区间 gate 不阻,
 // record 允许升 baseline_value 到 cur(budget_max 保持,形成"软债"可见跟踪)。
 // linter 无 float — 用整数比 TOL_PCT_NUM / TOL_PCT_DEN 表达 1% 容忍。
 const TOL_PCT_NUM = 1
 const TOL_PCT_DEN = 100
 
-// ── D125 §P2 scope-aware 反射 gate ────────────────────────────
+// ── scope-aware 反射 gate (D097 §Gate 行为 / CLAUDE.md §反射根因 gate) ────
 // 读 `git diff --name-only HEAD` 判改动集是否触及反射路径白名单。
 // 未触及:M1-M7+N1-N5 REGRESSION 降 SCOPE-DRIFT 软警告(gate 不阻,
 // 消除非反射改动误伤诱发的远距离榨指标八股,feedback_no_distant_offset 根解)。
 // 触及 or git diff 为空:保持原 hard gate(clean tree 无改动也算未触及,soft 合理)。
 // F1 行数 gate 不受 scope 影响(每文件 size > budget_max 永远硬阻)。
-// 白名单 4 路径见 isReflectionScope 函数体 + D097 §开发流集成 + D125 §P2 §实施。
+// 白名单 4 路径见 isReflectionScope 函数体 + D097 §开发流集成。
 function listDiffFiles(): Array<string> {
     const raw = shell("git diff --name-only HEAD")
     let out: Array<string> = []
@@ -353,7 +353,7 @@ function processFile(path: string) {
     }
 }
 
-// ── baseline IO (D124 §决策 1-3: 2 列制 baseline_value:budget_max) ────
+// ── baseline IO (D097 §Gate 行为: 2 列制 baseline_value:budget_max) ────
 // 两个 Map 分别承载语义清晰的两列:baseline_value(历史证据)+ budget_max(gate 阈值)。
 // 不合成单 Map<string,"bv:bm"> — 自内部数据不二次序列化(`feedback_human_readable_code` #1)。
 let baselineMap: Map<string, string> = new Map()
@@ -368,7 +368,7 @@ function mapGetIntOrNeg(m: Map<string, string>, k: string): int {
 }
 
 // 解析 "<prefix><bv>:<bm>"(2 列)或 legacy "<prefix><v>"(视作 bv==bm)。baseline.txt 是 IO 边界,
-// 手工 edit 的格式畸形必须拒(D124 §决策 3.3 不可伪造)。返 [bv, bm] 前缀不匹配返 []。
+// 手工 edit 的格式畸形必须拒(D097 §不可伪造性论证)。返 [bv, bm] 前缀不匹配返 []。
 function parseRow(line: string, prefix: string): Array<int> {
     let out: Array<int> = []
     if (line.startsWith(prefix) == 0) { return out }
@@ -417,7 +417,7 @@ function loadBaseline() {
     }
 }
 
-// D124 §决策 2.1 四终态 record 行为:
+// D097 §Gate 行为 — 四终态 record 行为:
 //   首次 (bv_old<0):          [cur, cur]
 //   PROGRESS (cur < bv_old):  bv=cur; 若 bv_old==bm_old 同降,否则 stamp 保持
 //   OK       (cur == bv_old): 不变
@@ -433,7 +433,7 @@ function computeRecord(cur: int, bv_old: int, bm_old: int): Array<int> {
     return out
 }
 
-// D125 §P4: AUTO-DRIFT 软区间判定。cur ≤ bm 时返 0;cur > bm 且整数比值在
+// D097 §Gate 行为 — AUTO-DRIFT 软区间判定。cur ≤ bm 时返 0;cur > bm 且整数比值在
 // cur * DEN ≤ bm * (DEN + NUM) 内(= cur ≤ bm × 1.01)返 1。
 function isAutoDrift(cur: int, bm: int): int {
     if (bm <= 0) { return 0 }
@@ -442,7 +442,7 @@ function isAutoDrift(cur: int, bm: int): int {
     return 0
 }
 
-// D125 §P4: isRegression 只判"硬 REGRESSION"(超出 budget_max × 1.01 软容忍),
+// D097 §Gate 行为 — isRegression 只判"硬 REGRESSION"(超出 budget_max × 1.01 软容忍),
 // AUTO-DRIFT 归于非 REGRESSION,让 gate 不阻 commit,让 record 允许升 bv 到 cur。
 function isRegression(key: string, cur: int): int {
     loadBaseline()
@@ -482,7 +482,7 @@ function writeBaseline() {
     }
     if (blocked == 1) {
         println("")
-        println("D097 §累积方向严禁更新 + D124 §决策 2.1: cur > budget_max 拒 record。")
+        println("D097 §累积方向严禁更新 + §Gate 行为 四终态: cur > budget_max 拒 record。")
         println("  要么回退 cur,要么 `bin/ss run tools/reflection_health_linter.ss bump <metric> <new_budget> <doc_anchor>` 升 budget_max。")
         exit(1)
     }
@@ -547,7 +547,7 @@ function checkF1(): int {
     return regs
 }
 
-// D125 §P2: 14 指标 REGRESSION 按 isReflectionScopeTouched 切 hard/soft;F1 永远硬阻(不传 scope)。
+// D097 §Gate 行为 — 14 指标 REGRESSION 按 isReflectionScopeTouched 切 hard/soft;F1 永远硬阻(不传 scope)。
 function compareAndReport(isReflectionScopeTouched: int): int {
     if (fileExists(BASELINE_PATH) == 0) {
         println("(no baseline found — will not gate)")
@@ -569,7 +569,7 @@ function compareAndReport(isReflectionScopeTouched: int): int {
     return regressions
 }
 
-// D124 §决策 2.1 四终态 + D125 §P4 AUTO-DRIFT + §P2 SCOPE-DRIFT = 六终态:
+// D097 §Gate 行为 — 四终态 + AUTO-DRIFT + SCOPE-DRIFT = 六终态:
 //   cur < baseline_value                              → PROGRESS
 //   cur == baseline_value                             → OK
 //   baseline_value < cur ≤ budget_max                 → DRIFT       (gate 不阻,扩容预算内浮动)
@@ -605,7 +605,7 @@ function reportDelta(label: string, cur: int, key: string, isReflectionScopeTouc
     return isReg
 }
 
-// D124 §决策 3.2 doc_anchor 校验:形如 D<num>#<section>,文件需在 docs/3-decisions/ 且 section 文本命中。
+// D097 §Gate 行为 — doc_anchor 校验:形如 D<num>#<section>,文件需在 docs/3-decisions/ 且 section 文本命中。
 // 失败就地 exit(1),cmdPrefix 用于错误信息区分 "bump 拒绝" / "bump-group 拒绝"。
 function resolveDocAnchor(docAnchor: string, cmdPrefix: string): string {
     const hashIdx = docAnchor.indexOf("#")
@@ -637,7 +637,7 @@ function resolveDocAnchor(docAnchor: string, cmdPrefix: string): string {
     return docFilePath
 }
 
-// D124 §决策 3.3 "不可伪造":baseline 写入的唯一路径。替换 replacements 中命中的 metric 行为
+// D097 §不可伪造性论证 — baseline 写入的唯一路径。替换 replacements 中命中的 metric 行为
 // `key=bv_old:newBudget` 2 列格式,在首条数据行前插入 auditTrail,其余行原样保留。
 // 调用者负责:已 `loadBaseline()` / replacements 值为 newBudget 字符串 / auditTrail 带 "# " 前缀。
 function rewriteBaselineWithTrail(auditTrail: string, replacements: Map<string, string>) {
@@ -669,7 +669,7 @@ function rewriteBaselineWithTrail(auditTrail: string, replacements: Map<string, 
     writeFile(BASELINE_PATH, newText)
 }
 
-// D124 §决策 3.2 bump <metric> <new_budget_max> <doc_anchor>:只上不下单指标扩容。
+// D097 §Gate 行为 — bump <metric> <new_budget_max> <doc_anchor>:只上不下单指标扩容。
 function bumpCmd(metric: string, newBudgetStr: string, docAnchor: string) {
     const newBudget = parseInt(newBudgetStr)
     if (newBudget <= 0) {
@@ -697,7 +697,7 @@ function bumpCmd(metric: string, newBudgetStr: string, docAnchor: string) {
     println(`  Execute 后跑 \`bin/ss run tools/reflection_health_linter.ss record\` 把 baseline_value 同步到 cur`)
 }
 
-// D125 §P3 bump-group <doc_anchor> <metric1>=<budget1> [<metric2>=<budget2> ...]:
+// D097 §Gate 行为 — bump-group <doc_anchor> <metric1>=<budget1> [<metric2>=<budget2> ...]:
 // 多指标原子扩容 — 任一校验失败全拒,共享单行 audit trail。把 D121 R1-A 5 次 bump 串跑压到 1 次。
 function bumpGroupCmd(docAnchor: string, pairs: Array<string>) {
     const n = pairs.length()

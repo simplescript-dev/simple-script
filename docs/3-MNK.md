@@ -58,7 +58,7 @@
 |---|---|---|---|
 | 1 | 总体 | 服务于哪个上层目标? | **必须先引 D 文档 §第一性需求 段落**,再接子表(禁跳子表);引用的**每一条** D 文档段落**必须同时附** grep / test / ls 命令证明 `[已达成 / 未达成 / 部分达成]`;不跑对照 → 任务拒绝;对照结果与 D 文档描述不一致(语态矛盾 / 标注过时 / 代码已移动) → 先回写 D 文档状态标注(P19 `[x] Done at <file:line>`)再开工。防漂移**跨轮传播的入口 gate**(与 §收尾 Execute 型 RED 凭据构成两道闸) |
 | 2 | 第一性需求 | 真正根本痛点(不是症状)?"为什么"**至少 2 层**,末层必须断言可观测否定证据("不做 → 出现 X 现象") | Why 链 < 2 层 → 字段不算填齐,回去补 |
-| 3 | 核心目标 | 完成后可观测的具体能力变化;**必须含一条 RED 命令**(形如 `bin/ss run <file> 2>&1 \| grep <pattern>`),证明现状未达成 | **第一个工具调用必须是这条命令**;已 GREEN → 任务不成立,停下报告。**文件拆分类任务**的 RED **不许**只用 `wc -l ≤ 600`,必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类,**≥ 3 类 → RED 成立**;仅 wc -l → PSM 作废重填(P10.1 配套);**表行增删类任务**的 RED 必须限定**表唯一锚**(表标题关键字 / 列值组合,如 `^\| 6 \| 根因`),避免裸 grep 跨表命中其他表同编号行造成假 RED(2026-04-22 MNK §N 增 §6 行首次 RED `grep -c '^\| 6 \|'` 命中 PSM §6 步骤致差值失真事件)。**用户 prompt RED 实测不成立**(如 `grep -c "@HelloController_hello" = 0` 但实测 =1 因函数 def 占位)→ Claude **主动 refine pattern** 更精确化(限定 `call.*@X` / match 非定义行 / 表唯一锚),PSM 字段 3 显式注明"重构自用户 RED:原 `<pattern>` 实测 = N(命中 define/meta noise),精确化为 `<new-pattern>` 实测 = 0"。不许直接放弃任务,也不许模糊复述让实测判据失真(2026-04-24 I014 §路径 A 本轮 RED grep 原 pattern 命中 define 行事件) |
+| 3 | 核心目标 | 完成后可观测的具体能力变化;**必须含一条 RED 命令**(形如 `bin/ss run <file> 2>&1 \| grep <pattern>`),证明现状未达成 | **第一个工具调用必须是这条命令**;已 GREEN → 任务不成立,停下报告。**文件拆分类任务**的 RED **不许**只用 `wc -l ≤ 600`,必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类,**≥ 3 类 → RED 成立**;仅 wc -l → PSM 作废重填(P10.1 配套);**表行增删类任务**的 RED 必须限定**表唯一锚**(表标题关键字 / 列值组合,如 `^\| 6 \| 根因`),避免裸 grep 跨表命中其他表同编号行造成假 RED(2026-04-22 MNK §N 增 §6 行首次 RED `grep -c '^\| 6 \|'` 命中 PSM §6 步骤致差值失真事件)。**用户 prompt RED 实测不成立**(如 `grep -c "@HelloController_hello" = 0` 但实测 =1 因函数 def 占位)→ Claude **主动 refine pattern** 更精确化(限定 `call.*@X` / match 非定义行 / 表唯一锚),PSM 字段 3 显式注明"重构自用户 RED:原 `<pattern>` 实测 = N(命中 define/meta noise),精确化为 `<new-pattern>` 实测 = 0"。不许直接放弃任务,也不许模糊复述让实测判据失真(2026-04-24 I014 §路径 A 本轮 RED grep 原 pattern 命中 define 行事件)。**runtime 反常行为最小变量隔离义务**:诊断 SS 运行时 bug(Map.get 返指针 / Array.indexOf 返 -1 / 模板插值异常 等)**前**,必须先做 one-liner 最小隔离测试 —— **每个可疑 API/操作单独 println**,避免多可疑点一揽子怀疑导致误诊 + 绕道式 workaround(与 feedback_root_cause_no_cost 同族,执行层细化)。违规例:同一个测试里既用模板字符串又入 Map 再 get,观测到错乱直接判"模板和 Map 都有问题"并全改 concat;正例:先 `println(\`${x}:${y}\`)` 不入 Map 验证模板本身 OK,再 `m.set("k","v")` + `println(m.get("k"))` 验证 get 本身 → 精确锁定 Map<string,string>.get 是唯一可疑点。**触发事件**:2026-04-24 D 文档死指针清零轮 — Claude 误把 Map.get string 返指针 bug 锅丢给字符串模板 concat,用户纠正 "模板那么好用怎么不用" |
 | 4 | 规则 | 本任务硬约束(引用 CLAUDE.md / 本文档 / D088 等具体段落) | |
 | 5 | 界定 | 做什么 + **不做什么**,两清单都填;**SSoT 术语改名扩展**:改本文档 / CLAUDE.md / D088 等 SSoT 文档的术语(如"五验→六验" / gate 重命名 / 字段重编号)前,**必须** `grep -rn <旧术语> CLAUDE.md docs/` 核对外链,界定里**显式列每处**"同步更新 / 保留为史实"的处理,漏扫 → 跨轮术语分裂(2026-04-22 MNK "五验→六验" 后 CLAUDE.md 两处漏扫事件) | 场景触发型扩展义务见 §特定领域 gate(命名前缀族扫描 / 反射路径根因 gate B 路径) |
 | 6 | 步骤 | 可执行序列,> 30 min 步骤拆 L4 子表(见 §Fractal) | |
@@ -163,6 +163,8 @@ VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**四
 基于本轮实际走过的流程,审视是否有规则 / gate / 文本需要升级。列 0-N 条候选(无候选**显式写"无"**),以紧凑列表交用户确认。
 
 **反思层级颗粒度硬规则**(2026-04-24 R4 新增):反思候选**必须含至少 1 条结构性反思**(关于 PSM gate / VCM / 工具 / 角色边界 / 层级耦合 / 流程时序的根本机制问题)。**结构性 vs 细节 patch 判据**:"如果本轮没做这件事,下一轮 Claude 接到**任意任务**还会同样卡这一类问题吗?"答 yes → 结构性;答 no → 细节 patch,列入回复末尾的 "follow-up todo" section 不算反思候选。**纯细节 patch 列表**(全部"答 no")= 反思失败,本轮反思候选作废,Claude 必须重做。理由:细节是无穷的,反思方法论必须强制 anchor 到 meta-pattern,否则退化为 patch 表演(B.2 第 7 形态)。**触发事件**:2026-04-24 I015 §收尾反思 R4 — Claude 默认列了"MNK 加 1 行 / 立 1 issue / 改 5 行注释"3 条全细节 patch,被用户当场指出"反思应该从高维层面解决,而不是从细节里面解决,因为细节是无穷的"。
+
+**ultrathink 预置反思 + Claude 自主反思并存规则**(2026-04-24 新增):用户 prompt 里显式预置"反思候选 X" / "ultrathink 反思 Y" 等主题时,预置候选**不吞掉** Claude 同轮主动反思义务 —— Claude 必须**独立于 prompt 预置**再列 0-N 条结构性候选,即使预置主题已涵盖本轮核心反思,也要扫"prompt 预置没覆盖的结构性盲点"(如 runtime bug 诊断方法论 / 工具误判修正 / 层级跨越识别 等)。两者并存的理由:反思机制的内核闸门属性靠 Claude 自主盲点扫描,不靠上轮 prompt 外供;若预置 = 唯一源,反思退化为"命题作文"失去主动性。**触发事件**:2026-04-24 D 文档死指针清零轮 — 用户 prompt 预置"反思候选 1 = 新增 D 文档治理 gate",Claude 同轮又自主发现 (a) 多因素 runtime bug 诊断应隔离变量、(b) ultrathink 预置反思的反身性风险,两条补位结构性候选。
 
 **回应窗口 stop 规则**(方案 A 硬约束):
 - Claude 输出反思候选后,本轮回复**必须在此处 stop**(不连续写 §3 commit / §4 next_prompt)
@@ -425,6 +427,20 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 
 **自检 trigger**:看到 "memory 已 stale" / "这个 feedback 不需要了" / "合并到 D 文档" / "批量 deprecate memory" 类念头时,停下问"目标位置 grep 已落实?跑过 memory_index_linter?"。把"想删"念头当 trigger,不是把"已删"当事后清单。
 
+### D 文档治理 gate
+
+**trigger**:任何**删除 / 合并 / 重命名** `docs/3-decisions/D*.md` 类操作 + 源码注释内 `D\d{3}\s*§` 引用任何改动 / 移除。
+
+**硬规则**:
+- 删 / 合并 / deprecate 一个 D 文档前,**必须**先按 §M §字段 9 "删除 / 合并 / deprecate 类操作专属 gate" 跑 grep(`grep -rn "DNNN §" bootstrap/ tools/ CLAUDE.md docs/3-MNK.md`)验证源码注释里该 D 号的每一处 § 引用都有迁移目标(活 D § 段 / MNK §XX / memory feedback_*);未迁移 → 先迁移再删
+- 改完 `docs/3-decisions/` 或 bootstrap / tools / CLAUDE.md / docs/3-MNK.md 里任一 D 引用**必须**跑 `bin/ss run tools/d_doc_index_linter.ss`(F1 死指针 BLOCK / F2 孤立 D 文档 soft warn);**有 GATE BLOCKED → 不许 commit**
+- linter 默认 project root = `pwd`,跨目录可传第 1 参数覆盖
+- linter 扫描 scope 刻意**不含** `docs/3-decisions/` 自身:D 文档之间互相引用是历史演进痕迹(合法);scope 是"源码 / 流程文档读到 D 号 → 期望 ls 能命中实文件"这条路径
+- linter pattern 刻意限 `§` 后缀:`DNNN#` 形态(`linter_baseline.txt` bump trail)是 commit footer 式溯源戳,不属于规则引用
+- F2 孤立 D 文档 soft warn 不阻 commit:纯 Plan/业务 D 文档未必需要在源码注释里引,linter 仅提示人工审视
+
+**自检 trigger**:看到 "D 文档已 stale" / "这个 D 可以删了" / "合并到 MNK" / "批量 deprecate D" 类念头时,停下问"源码注释里该 D § 引用 grep 迁移已落实?跑过 d_doc_index_linter?"。把"想删"念头当 trigger,不是把"已删"当事后清单。对称 memory 治理 gate,两层形成 "ls → 源码注释" 双轨消歧。
+
 ---
 
 ## Fractal 承载(L0-L4 递归)
@@ -511,6 +527,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | commit footer | `commit_footer_bagu_linter.ss` | "去掉少什么:" 字串存在 | VCM 复盘凑仪式(格式强制) |
 | 衍生 issue 归档 | `derived_issue_linter.ss` | IXXX 引用 vs `docs/4-issues/` 存在 | 非阻挡衍生问题只对话提失踪 |
 | memory 索引一致性 | `memory_index_linter.ss` | `~/.claude/.../memory/MEMORY.md` 索引 vs `feedback_*.md` 文件双向校验(F1 索引漂移 BLOCK / F2 孤立文件 soft warn) | 跨 session memory 索引漂移(指针指向不存在的文件)+ 孤立 memory 文件不被加载;**触发时机**:删/合并 memory 后必跑 + commit 前(配 §特定领域 §memory 治理 gate) |
+| D 文档引用一致性 | `d_doc_index_linter.ss` | 4 路径(bootstrap/tools/CLAUDE.md/docs/3-MNK.md)`D\d{3}\s*§` 引用 vs `docs/3-decisions/D\d{3}*.md` 实存双向校验(F1 死指针 BLOCK / F2 孤立 D 文档 soft warn) | 跨轮 D 文档指针漂移(源码注释指向已删/合并的 D 文档)+ 孤立 D 文档人工审视;**触发时机**:删/合并/重命名 D 文档后必跑 + commit 前(配 §特定领域 §D 文档治理 gate) |
 
 ## B.2 未机械化层(6 种形态)
 
@@ -560,6 +577,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | 2026-04-22 VCM §6 RED 跨表假命中 | 表行 RED 裸 grep | §M §字段 3 无表行域内唯一约束 | §M §字段 3 追加表唯一锚约束 |
 | 2026-04-22 CLAUDE.md 五验外链漏扫 | SSoT 术语改后外链分裂 | §M §字段 5 无术语外链扫描义务 | §M §字段 5 追加 SSoT 术语扩展扫描 |
 | 2026-04-24 反思候选跨 clear 丢失 | §After Done 顺序 commit→反思→next_prompt,反思确认窗口被 30s terman clear 吞掉;跨轮断链 → "用户抽查 = 内核闸门"失效 | §核心原则 (2) 内核闸门与执行层时机脱钩;§3 Ok/No 二分未覆盖"待定立项下轮"三态;§M 锚点"第一次工具调用之前"与 §字段 1 "grep 对照"前置义务字面矛盾 | §After Done 顺序重排为 simplify→反思前置→commit→next_prompt(R3 方案 A,反思候选 stop 等用户回应)+ §After Done §3 Ok/No 扩三态含"待定立项下轮"(R2)+ §M PSM 锚点通用化至"第一次修改性 tool call"(R1)|
+| 2026-04-24 D 文档死指针跨轮漂移 | 源码 / 流程文档注释引用 `D\d{3} §` 指向已删/合并的 D 文档,跨轮 Claude 读源码找不到决策背景 hallucinate | `§特定领域 §memory 治理 gate` 已建立 MEMORY.md 层双轨消歧但 D 文档层无对称 gate;A7 follow-up `reflection_health_linter.ss:55,75` D102 注释 stale 属同类漂移 | §特定领域 §D 文档治理 gate + `tools/d_doc_index_linter.ss`(F1 死指针 BLOCK / F2 孤立 D 文档 soft warn);首次实战 10 死 D 号全修(D102/D108/D109/D110/D111/D117/D118/D124/D125/D126 → D097 / D098 / D120 / MNK §XX / feedback_f1_gate_semantic)|
 
 ---
 

@@ -196,7 +196,7 @@ function evalAnnotationArg(nodeId: int): int {
 
 // ClassMeta 实例 + InternPool name-based dedup,FieldMeta/MethodMeta/AnnotationMeta inline 构造。
 // Key schema:CLS|<cls> / FLD|<cls>.<fld> / MTH|<cls>.<mth>[.get|.set] / ANN|{CLS|FLD|MTH}|<...>。
-// accessor get/set 共用 mName,MTH key 加 .get/.set 后缀分离(D118 §新张力 2)。
+// accessor get/set 共用 mName,MTH key 加 .get/.set 后缀分离(D120 §Phase 1 accessor Meta)。
 // hit-check pre-guard 避免 miss 路径浪费 tvIds。fields 父类链 prepend parent first;
 // fromIC=0 走 classFields CSV(interpClasses 未注册场景,fp 直接是 fName string)。
 function interpBuildTypeInfo(typeName: string): int {
@@ -239,7 +239,7 @@ function interpBuildTypeInfo(typeName: string): int {
     }
     tvMap.set(`${id}|fields`, `${fArr}`)
     // methods 段:AST 直读 methodsBlock → FUNC_DECL.I4 ANNOTATION_LIST + handler-generated 尾部补齐。
-    // accessor get/set 共用 mName → MTH key 加 .get/.set 后缀分离(D118 §新张力 2);
+    // accessor get/set 共用 mName → MTH key 加 .get/.set 后缀分离(D120 §Phase 1 accessor Meta);
     // abstract method I4=1 被 buildAnnotationMetaArray kind 校验自动返空。
     // classMethods CSV = [own FUNC_DECL 按声明序] + [@methodOf handler-appended 尾部],
     // AST 只含 own 部分(class_annotation.ss:107 handler 只往 CSV push);本段先 AST 遍历 own,
