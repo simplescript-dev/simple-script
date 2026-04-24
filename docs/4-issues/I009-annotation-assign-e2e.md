@@ -48,9 +48,9 @@ annotation handler 读回所有值类型正确。
    function main() {
      const meta = reflect.getAnnotation(users, "RequestMapping")
      assertEqual(meta.args.getString("path"), "/api/users")
-     assertEqual(meta.args.getEnum("method"), HttpMethod.GET)
+     assertEqual(meta.args.getString("method"), "HttpMethod.GET")
      assertEqual(meta.args.getArray("headers")[0], "Accept=application/json")
-     assertEqual(meta.args.getClass("handler"), JsonHandler)
+     assertEqual(meta.args.getString("handler"), "JsonHandler")
    }
    ```
 2. bootstrap 固定点验证
@@ -73,4 +73,4 @@ bin/ss run tools/spring_boot_annotation_linter.ss    # 0 fake annotation
 
 - 本 issue 是 D123 **Phase 1 的前置 gate**
 - e2e 通过后,D123 Phase 1(`@SpringBootApplication` comptime entry)方可启动
-- annotation handler API(`getString` / `getEnum` / `getArray` / `getClass`)的最终命名随 I002/I003 决策调整
+- annotation handler API 最终锁定于 D127 §A.1 SSoT:`getString` / `getInt` / `getBool` / `getDouble` / `getArray`(落地于 `bootstrap/gen/exprs/exprs_ct_builtin.ss:ctMapMethod` 230 行)。`getEnum` / `getClass` 未实装 —— enum 成员访问 (`HttpMethod.GET`) 由 `getString` 返字符串化形态 `"HttpMethod.GET"`,class 裸类名引用 (`JsonHandler`) 由 `getString` 返类名字符串 `"JsonHandler"`(D127 §A.2 / I006 锁定方向)

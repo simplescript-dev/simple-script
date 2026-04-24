@@ -420,7 +420,9 @@ Spring Boot DI 容器(ApplicationContext + @Autowired 注入)是**运行时**能
 - D121 R1 升级 `AnnotationMeta.args` 到 Map 前,Phase 2 无法根因实现
 - Phase 1 表面只扫 class 不访问 args,但若 Phase 1 落地前 D121 R1 没锁,Phase 2 入场即卡,Phase 1 commit 变成"半拉子"(feedback_root_cause_no_cost 禁)
 
-### A.2.5 annotation 命名参数语法选 COLON 不选 ASSIGN
+### A.2.5 annotation 命名参数语法选 COLON 不选 ASSIGN [SUPERSEDED 2026-04-22 by D127 §A.3]
+
+> **2026-04-22 翻案**:user turn 5 推翻本节"COLON 语法译本"结论,annotation 侧改 ASSIGN (`@Foo(k = v)`),call / constructor 侧保留 COLON。替代决策见 D127 §A.3(按语义分场景)。原文保留供历史审计。
 
 D121 R2-A 已确认:`parseArgs` @ `parse_exprs.ss:570` 原生支持 `IDENT + COLON → NAMED_ARG`,零改动。选 `@GetMapping(path: "/x")` 作 SS 注解命名参数**唯一**语法:
 

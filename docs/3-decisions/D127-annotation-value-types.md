@@ -163,7 +163,7 @@ A → (未来若 annotation eval 成为 comptime hot path)checker 缓存 eval �
 | I005 literal 四种 | §A.1 `ARRAY_LIT` 分支(INT/BOOL/DOUBLE I003 已吸收) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` ARRAY_LIT 分支 + bootstrap/gen/exprs/exprs_ct_builtin.ss:`ctMapMethod` getArray(169b92b)** |
 | I006 class ref | §A.2 锁方案 A(裸类名) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` IDENT 分支(2026-04-24)** |
 | I007 命名参一致性 | §A.3 锁方案 A(按语义分场景) | **Decided(§A.3 方案 A;annotation 侧 ASSIGN 由 I001 落地,call/constructor 侧 COLON 保持不动无代码改动)** |
-| I008 D123 回写 | §C D121 锚点澄清 + §A.2.5 标 SUPERSEDED | Blocked by I001-I007 全 Done |
+| I008 D123 回写 | §C D121 锚点澄清 + §A.2.5 标 SUPERSEDED | **Done at docs/3-decisions/D123-spring-boot-replication.md:L423(§A.2.5 标题尾 + 翻案注) + docs/4-issues/I009-annotation-assign-e2e.md:L51/L53/L76(getEnum/getClass → getString + API 列表对齐 SSoT)** |
 | I009 e2e | `tests/phase5/spring_annotation_e2e.ss` | **Done at tests/phase5/spring_annotation_e2e.ss:`main`(1cfe717)** —— 6 test PASS,五 kind 混一 annotation 无交互污染,D123 Phase 1 前置 gate 通过 |
 
 ---
@@ -205,10 +205,10 @@ I008 实施时直接读本 §C 作为对齐依据。
 | 3a | I004 enum 成员访问 | I003 | 3-5 万 token | Done(7a03d6b) |
 | 3b | I005 literal 四种 | I003 | 3-5 万 token | Done(169b92b) |
 | 3c | I006 class ref | I003 | 3-5 万 token | Done(2026-04-24) |
-| 4 | I009 e2e 验收 | I001-I006 全 Done | 1-2 万 token | Ready(I001-I006 全 Done,可启动) |
-| 5 | I008 D123 回写(§A.2.5 标 SUPERSEDED + §C D121 锚点对齐) | I001-I007 全 Done | 5 千 token | Ready(I001-I007 全 Done / Decided,可启动) |
+| 4 | I009 e2e 验收 | I001-I006 全 Done | 1-2 万 token | **Done at tests/phase5/spring_annotation_e2e.ss:`main`(1cfe717)** |
+| 5 | I008 D123 回写(§A.2.5 标 SUPERSEDED + §C D121 锚点对齐) | I001-I007 全 Done | 5 千 token | **Done at docs/3-decisions/D123-spring-boot-replication.md:L423 + docs/4-issues/I009-annotation-assign-e2e.md:L51/L53/L76** |
 
-I001-I006 全 Done;下一步 I008 或 I009,见 §B 状态对齐。
+I001-I009 全 Done;D127 子决策与回写闭环完成(详见 §B 状态对账)。
 
 ---
 
