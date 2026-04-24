@@ -109,7 +109,9 @@
 - 六验**不能 self-attest**(不能用同一证据填两项)
 - 证据必须能被**独立第三方复跑**
 
-**§验 1 豁免条款**:本轮改动**纯文档 / 纯配置**(无 `bootstrap/` / `lib/` / `tools/` 代码路径变动)可显式豁免 bootstrap + tests,声明"doc-only, 无代码路径变动"即可;豁免理由**必须在 VCM §5 (c) 答问里自证**(grep diff 证明 `bootstrap/` 无改动),不许隐式跳。Execute 型代码改动无此豁免。
+**§验 1 豁免条款**:本轮改动**核心代码路径 diff=0**(`git diff HEAD -- bootstrap/ lib/ tools/` 空输出 —— 即改动仅落在 `docs/` / `tests/` / `.claude/` / `.harness/` / 配置等非编译器产出路径)可显式豁免 `./build.sh bootstrap` 固定点 + `bin/ss test tests/`,声明"核心代码路径 diff=0"即可;豁免证据**必须贴** `git diff --stat HEAD -- bootstrap/ lib/ tools/`(空输出 = PASS),在 VCM §5 (c) 自证,不许隐式跳。Execute 型代码改动(`bootstrap/` / `lib/` / `tools/` diff ≠ 0)无此豁免。
+
+**旧判据 "纯文档 / 纯配置" 已废**:原判据基于改动**类型**(主观归类 "这算文档还是配置?"),升级为基于改动**证据**(grep diff 机械可校验),天然覆盖 `tests/` 单测 / `docs/` D 文档 / `.claude/` payload / `.harness/` 脚本等非核心路径,消除 "test-only 改动仍按 Execute 型跑全测试" 冗余开销;同时杜绝把 `bootstrap/` 小改 prompt 塞进 "文档类" 的漂移。2026-04-24 I008 落位(对应反思候选 (4))。
 
 **扩容申报类任务**叠加"预估 vs 实测"对账,累计组任一指标预估偏差 > 50% → 写入 D 文档 §扩容申报 §预估失准段,下轮 PSM 开工前必读(对账步作为 commit_radius Q2 "跨族 justified 与否"证据之一)。
 
