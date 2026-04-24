@@ -234,6 +234,10 @@ function genGlobalVar(id: int) {
             // D112: TypeValue 不落 runtime,alias 并入 ctVars(全局 scope key `:${name}`)
             ctVars.set(`:${name}`, `${ctVal(interpNewType(ceLit))}`)
             return
+        } else if ((ceType == "array" || ceType == "object" || ceType == "map") && nGetS2(id) == "CONST" && parseInt(ceLit) > 0) {
+            // D128: 顶级 const Array/Object/Map → ctVars `:${name}` 全局 scope(D098 §D112 同模式扩三 kind);ceTv == 0 失败回落 else 通用 runtime alloca 路径
+            ctVars.set(`:${name}`, `${ctVal(parseInt(ceLit))}`)
+            return
         } else {
             emitIR(`@${name} = global ptr null, align 8`)
             if (globalInitIds == "") { globalInitIds = `${id}` }

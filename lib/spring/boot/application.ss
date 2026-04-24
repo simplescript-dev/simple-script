@@ -2,6 +2,10 @@
 // I014 §路径 A:dispatch(req) 用 ct-array<RouteMeta> for-in unroll + `r.invoke()` sentinel
 // 触发 method_call.ss 识别 className+methodName 字段对组合,emit `call ptr @<cn>_<mn>()`
 // 静态 IR;禁 runtime 反射 / @comptimeEmit / @derive(D088 §反模式 L377-386)。
+//
+// I015 §路径 A:routes comptime block 抽顶级 const,SpringApplication.run + dispatch 共享
+// 单一 ctVars binding(D128 §A.1/A.2 顶级 ctArray 全局 scope `:_ssRoutes`),消除跨函数 copy-paste。
+// controllerNames 由 _ssRoutes 派生(去重 className),避免双 comptime block。
 
 import { httpServe, httpResponse } from "@/lib/http"
 
@@ -11,41 +15,39 @@ class RouteMeta {
     methodName: string
 }
 
-class SpringApplication {
-    static function run(appName: string, args: Array<string>) {
-        const controllerNames = comptime {
-            let acc = ""
-            for (c in reflect.classes()) {
-                for (ann in c.annotations) {
-                    if (ann.name == "RestController") {
-                        if (acc != "") { acc = acc + "," }
-                        acc = acc + c.name
-                    }
-                }
-            }
-            return acc
-        }
-
-        const routes = comptime {
-            let arr: Array<RouteMeta> = []
-            for (c in reflect.classes()) {
-                for (cAnn in c.annotations) {
-                    if (cAnn.name == "RestController") {
-                        for (m in c.methods) {
-                            for (mAnn in m.annotations) {
-                                if (mAnn.name == "GetMapping") {
-                                    arr = arr.push(new RouteMeta(
-                                        path: mAnn.args.getString("path"),
-                                        className: c.name,
-                                        methodName: m.name
-                                    ))
-                                }
-                            }
+const _ssRoutes: Array<RouteMeta> = comptime {
+    let arr: Array<RouteMeta> = []
+    for (c in reflect.classes()) {
+        for (cAnn in c.annotations) {
+            if (cAnn.name == "RestController") {
+                for (m in c.methods) {
+                    for (mAnn in m.annotations) {
+                        if (mAnn.name == "GetMapping") {
+                            arr = arr.push(new RouteMeta(
+                                path: mAnn.args.getString("path"),
+                                className: c.name,
+                                methodName: m.name
+                            ))
                         }
                     }
                 }
             }
-            return arr
+        }
+    }
+    return arr
+}
+
+class SpringApplication {
+    static function run(appName: string, args: Array<string>) {
+        let controllerNames = ""
+        // seenClassNames value=1 表已见(SS 无 Set 类型,Map<string,int> 当 set 用)
+        let seenClassNames: Map<string, int> = new Map()
+        for (r in _ssRoutes) {
+            if (seenClassNames.has(r.className) == 0) {
+                seenClassNames.set(r.className, 1)
+                if (controllerNames != "") { controllerNames = controllerNames + "," }
+                controllerNames = controllerNames + r.className
+            }
         }
 
         println("Started " + appName)
@@ -60,7 +62,7 @@ class SpringApplication {
         }
 
         let routesCsv = ""
-        for (r in routes) {
+        for (r in _ssRoutes) {
             routesCsv = routesCsv + r.path + "|" + r.className + "." + r.methodName + ";"
         }
         println("Routes: " + routesCsv)
@@ -77,29 +79,8 @@ class SpringApplication {
 }
 
 function dispatch(req: Map<string, string>): string {
-    const routes = comptime {
-        let arr: Array<RouteMeta> = []
-        for (c in reflect.classes()) {
-            for (cAnn in c.annotations) {
-                if (cAnn.name == "RestController") {
-                    for (m in c.methods) {
-                        for (mAnn in m.annotations) {
-                            if (mAnn.name == "GetMapping") {
-                                arr = arr.push(new RouteMeta(
-                                    path: mAnn.args.getString("path"),
-                                    className: c.name,
-                                    methodName: m.name
-                                ))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return arr
-    }
     const path = req.get("path")
-    for (r in routes) {
+    for (r in _ssRoutes) {
         if (r.path == path) {
             return httpResponse(200, "text/plain", r.invoke())
         }

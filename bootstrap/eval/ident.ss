@@ -21,6 +21,16 @@ function evalIdent(astId: int): int {
     // D112: 全局 type alias fallback(`const T = comptime{...}` 仅 type ctVal 有效,防污染 int/string runtime)
     const ctGlobalVal = ctLookupTypeVal(ctIdName)
     if (ctGlobalVal != 0) { return ctGlobalVal }
+    // D128: 全局 const Array/Object/Map ctVars fallback(D098 §D112 type 同模式扩三 kind);
+    // 全局 const 不入 currentFunc scope,顶级 ctArray/Object/Map 跨函数共享 binding
+    const ctGlobalKey = `:${ctIdName}`
+    if (ctVars.has(ctGlobalKey) == 1) {
+        const ctGlobalCt = parseInt(ctVars.getString(ctGlobalKey))
+        if (isCt(ctGlobalCt) == 1) {
+            const ctGlobalPayloadType = interpType(payload(ctGlobalCt))
+            if (ctGlobalPayloadType == "array" || ctGlobalPayloadType == "object" || ctGlobalPayloadType == "map") { return ctGlobalCt }
+        }
+    }
     if (comptimeDepth > 0) {
         const ctInterpKey = interpFindScopeKey(ctIdName)
         if (ctInterpKey != "") {
