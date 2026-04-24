@@ -129,7 +129,7 @@ function genHigherOrderMethod(method: string, objVal: string, argList: string): 
 
 // ── Array methods ───────────────────────────────────────────────
 
-function genArrayMethod(method: string, objVal: string, argList: string): string {
+function genArrayMethod(method: string, objVal: string, objType: string, argList: string): string {
     if (method == "push") {
         const argId = parseInt(argList)
         const val = genExpr(argId)
@@ -173,6 +173,17 @@ function genArrayMethod(method: string, objVal: string, argList: string): string
         const argId = parseInt(argList)
         const argType = inferType(argId)
         const sub = genExpr(argId)
+        // string.includes(sub) → substring search via strstr (same as contains)
+        if (objType == "string") {
+            const idxR = nextReg()
+            emitIR(`  ${idxR} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`)
+            const cmpR = nextReg()
+            emitIR(`  ${cmpR} = icmp sge i32 ${idxR}, 0`)
+            const r = nextReg()
+            emitIR(`  ${r} = zext i1 ${cmpR} to i32`)
+            return r
+        }
+        // Array.includes(elem): dispatch by argType (objType is "ptr" or "Array<T>")
         if (argType == "int" || argType == "i64" || argType == "double") {
             let val64 = sub
             if (argType == "int") {
@@ -188,8 +199,9 @@ function genArrayMethod(method: string, objVal: string, argList: string): string
             emitIR(`  ${r} = zext i1 ${cmpR} to i32`)
             return r
         }
+        // string element: strcmp-based search
         const idxR = nextReg()
-        emitIR(`  ${idxR} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`)
+        emitIR(`  ${idxR} = call i32 @ss_arrayIndexOfStr(ptr ${objVal}, ptr ${sub})`)
         const cmpR = nextReg()
         emitIR(`  ${cmpR} = icmp sge i32 ${idxR}, 0`)
         const r = nextReg()

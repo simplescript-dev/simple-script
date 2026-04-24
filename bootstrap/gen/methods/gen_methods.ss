@@ -555,7 +555,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
     if (result != "") { return result }
     result = genHigherOrderMethod(method, objVal, argList)
     if (result != "") { return result }
-    result = genArrayMethod(method, objVal, argList)
+    result = genArrayMethod(method, objVal, objType, argList)
     if (result != "") {
         // push returns the (possibly reallocated) array ptr — store it back
         if (method == "push" && preObj == "" && nGetKind(objId) == "IDENT") {
