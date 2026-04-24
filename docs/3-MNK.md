@@ -47,9 +47,9 @@
 
 ## M — Before Code: 写代码前的 M 个问题(开工 gate)
 
-**强制**:接到任意任务(含用户明确指定的),**第一次工具调用之前**必须用纯文字把九问 PSM 表格写在回复正文里。
+**强制**:接到任意任务(含用户明确指定的),**第一次修改性 tool call(Edit / Write / Bash 带变动 / commit / push)之前**必须用纯文字把九问 PSM 表格写在回复正文里。核对性 tool call(Read / Grep / Glob / ls / git status / git log)**不触发** PSM 义务 —— 字段 1 "D 文档对照"天然要求先跑核对命令,严格"0 工具调用填 PSM"只能靠记忆推断字段 1,漂移风险高。
 
-> 例外:**Compact 恢复**场景下,PSM 锚点放宽至第一次**修改性** tool call 之前(见 §特定领域 §Compact 恢复 gate)。
+> 历史:原锚点"第一次工具调用之前"(含核对性)于 2026-04-24 R1 统一放宽至通用规则(原仅 §特定领域 §Compact 恢复 gate 例外),消除场景分裂,理由:核对性命令填充 PSM §字段 1 D 文档对照是合理前置而非漂移。
 
 ### 九问 PSM (Problem Statement Module)
 
@@ -144,6 +144,8 @@
 
 VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**四步必做**动作,按顺序执行,缺一条不许 stop。
 
+**顺序重排说明(2026-04-24 R3 方案 A)**:原顺序 `simplify → commit → 反思 → next_prompt` 有执行层 bug —— 反思候选在 §3 提出后,§4 next_prompt 紧跟 + Claude stop + terman 30s clear 窗口 → 用户回应时间 > 30s 概率高 → 反思落位窗口被 clear 吞掉 → "用户抽查 = 内核闸门"失效。新顺序**反思前置到 commit 之前**,反思 Ok 项的落位改动进入同一条 commit,证据链完整。
+
 ### 1. 代码审查:`/simplify`
 
 对本轮新增 / 修改的代码做质量审查,修复发现的问题。
@@ -155,22 +157,24 @@ VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**四
 
 **simplify 采纳/拒绝记账(档位门槛)**:标准改 / 大改的 commit message 必须加一行,格式 `simplify 采纳: <项>; 拒绝: <项>(<≤20 字依据>)`,依据必须点**否决类目**(可读性 / scope 错位 / 反例具体命名),禁 "本轮限 X scope" / "与任务无关" 这种套话;**无 simplify 建议或全采纳 → 不写这行**(不凑"无")。微改 / 纯文档 / 纯配置豁免。目的:补位 `feedback_human_readable_code` 可读性对 reuse/quality/efficiency 的 veto 行权留痕 —— memory 跨 compact 可失、对话缓冲区跨轮丢,git log 是唯一持久可 grep 入口。
 
-### 2. 提交:commit
-
-`git status` 有未提交改动 → commit(`/commit` 或手工),消息遵循 conventional commits。commit **必须**落在同一轮对话里,**不许跨轮补**。
-
-### 3. 流程反思(档位门槛)
+### 2. 流程反思(档位门槛)[反思前置 —— 方案 A]
 
 基于本轮实际走过的流程,审视是否有规则 / gate / 文本需要升级。列 0-N 条候选(无候选**显式写"无"**),以紧凑列表交用户确认。
 
-- 用户 **Ok** → 落位(`principles.md` / 本文档 / D 文档 / `tools/` 新 linter)
-- 用户 **No** → 本轮对话记录里点名"丢弃原因"防下轮重提
+**回应窗口 stop 规则**(方案 A 硬约束):
+- Claude 输出反思候选后,本轮回复**必须在此处 stop**(不连续写 §3 commit / §4 next_prompt)
+- Claude stop 后在对话主循环等用户回应,用户三态:
+  - **Ok** → 同轮继续:落位改动(`principles.md` / 本文档 / D 文档 / `tools/` 新 linter / memory)→ §3 commit(落位改动入同一条 commit,证据链完整)→ §4 next_prompt
+  - **No** → 本轮对话记录里点名"丢弃原因"防下轮重提 → 继续 §3 commit → §4 next_prompt
+  - **待定(立项下轮独立 issue)** → 写 `docs/4-issues/IXXX-*.md`(按 §特定领域 §衍生 issue 归档 命名规范)→ 继续 §3 commit → §4 next_prompt。判据:候选 LOC 估算 > 50 **或** 需前置设计决策未完成 → 立项;同轮落位成本低 → 走 Ok 分支
+- 用户在对话主循环超时未回应(Claude stop 后 terman 30s 窗口 clear) → 反思候选**丢弃**,不跨轮保留(方案 A 硬规则;若本 gate 多次事件发生,未来再加方案 B `.claude/reflection_queue.md` 跨轮兜底)
+- 反思候选**无**时显式写"无" + 跳过 stop,直接连续进入 §3 commit
 
 **档位门槛**:标准改 / 大改必做;微改豁免。
 
 反思不是仪式 —— 是把"用户回合间抽查八股"从隐式习惯升为显式 gate,消除"八股自检元规则靠 Claude 主动提出才触发"的隐式依赖。不写反思段 → 下轮 Claude 不主动想起 → 八股讨论产出丢对话缓冲区 → 跨轮复用脆弱。
 
-**反思落位后 token 预算 gate**:流程反思候选被用户裁决并落位后,检查当前上下文已用 token(粗估或 /cost):
+**反思落位后 token 预算 gate**:流程反思候选被用户裁决并落位(或 No 丢弃 / 待定立项下轮)后,检查当前上下文已用 token(粗估或 /cost):
 
 - **< 10 万 tokens** → 本轮**继续直接执行**剩余任务(compact 前用户授权的推迟候选 / 简单 Edit / 连带 simplify 补正),**不** stop,不写 next_prompt 进 §4
 - **10-15 万 tokens**(灰区) → 按剩余任务复杂度判:纯替换 / 微改继续,结构性 / 大改 stop 进 §4
@@ -186,6 +190,10 @@ token 使用量: ~N 万(粗估 / /cost)
 不打印 = 判断过程不透明,用户无从质疑估算偏差或档位误判。
 
 目的:反思落位后 Claude 容易惯性 stop 进 §4,丢失"本轮尚可做 + 授权仍在"的执行窗口;上限 15 万防止本轮强推超长对话 → compact 风险 → 跨 compact 授权衔接漏洞(见本文档 §Compact 恢复 gate §跨 compact 用户授权范围收缩)。
+
+### 3. 提交:commit
+
+`git status` 有未提交改动 → commit(`/commit` 或手工),消息遵循 conventional commits。commit **必须**落在同一轮对话里,**不许跨轮补**。**§2 反思 Ok 项的落位改动必须进入同一条 commit**(不许拆成两个 commit —— 拆分 = 反思证据链断,commit log 失去"反思驱动本轮改动"的唯一 grep 入口)。
 
 ### 4. 下一步提示词(自闭环两步)
 
@@ -307,7 +315,7 @@ reflection linter REGRESSION 被 gate BLOCK 时,**不允许**改动跟当前任�
 - summary 声称已完成但工作树仍有未提交改动 → 先 commit 清理,再继续
 - summary 未提及的改动(其他会话产物 / 大范围删除 / untracked 测试副产物 / 系统文件) → **显式排除在本轮 commit 范围外**,按 §附录 A §commit_radius §前置约束 精准 `git add <file>`
 - **禁止**仅凭 summary 就假定工作状态,下游 commit 按 summary 意图盲 stage 全量变更
-- **PSM 九问填表锚点** = 第一次**修改性** tool call(Edit / Write / Bash 带变动 / commit / push)之前;核对性 tool call(Read / Grep / Glob / ls / git status / git log)**不触发** PSM 义务。消除"compact 恢复后频繁核对 → PSM 时机滑向事后"的漂移
+- **PSM 九问填表锚点**:已在 §M 主规则通用化(2026-04-24 R1),本段不重复;Compact 恢复场景下此锚点的收益(频繁核对 → PSM 时机不滑向事后)天然继承自 §M 通用规则
 - **跨 compact 用户授权范围收缩**:compact 前用户授权 N 候选,恢复后 Claude 审视后执行 M < N 条,未执行的 N-M 条**必须**写入 next_prompt 显式列 + 每条推迟原因,交下轮用户裁决;**禁止**隐式消化(靠自觉不提 = 与用户意图脱钩)
 
 **自检 trigger**:看到"Continue the conversation from where it left off" / summary 块时,必须停下先 `git status`,**不许**直接按 summary 末尾建议的 next step 动手。
@@ -492,6 +500,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | 2026-04-22 VCM 缺独立根因验 | 表面伪装根 | "表面 vs 根"只作 §5 (c) 子项被主勾覆盖 | §N VCM §6 根因独立大验 + 五验→六验 |
 | 2026-04-22 VCM §6 RED 跨表假命中 | 表行 RED 裸 grep | §M §字段 3 无表行域内唯一约束 | §M §字段 3 追加表唯一锚约束 |
 | 2026-04-22 CLAUDE.md 五验外链漏扫 | SSoT 术语改后外链分裂 | §M §字段 5 无术语外链扫描义务 | §M §字段 5 追加 SSoT 术语扩展扫描 |
+| 2026-04-24 反思候选跨 clear 丢失 | §After Done 顺序 commit→反思→next_prompt,反思确认窗口被 30s terman clear 吞掉;跨轮断链 → "用户抽查 = 内核闸门"失效 | §核心原则 (2) 内核闸门与执行层时机脱钩;§3 Ok/No 二分未覆盖"待定立项下轮"三态;§M 锚点"第一次工具调用之前"与 §字段 1 "grep 对照"前置义务字面矛盾 | §After Done 顺序重排为 simplify→反思前置→commit→next_prompt(R3 方案 A,反思候选 stop 等用户回应)+ §After Done §3 Ok/No 扩三态含"待定立项下轮"(R2)+ §M PSM 锚点通用化至"第一次修改性 tool call"(R1)|
 
 ---
 
