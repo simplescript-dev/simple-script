@@ -51,3 +51,16 @@ grep -n "REVERSED\|SUPERSEDED" docs/3-decisions/D121*.md docs/3-decisions/D123*.
 - 此 issue 最后做(I001-I007 全 Done 后)
 - 回写仅**标记**,不删除原文
 - 若 I002 决策采"扩 D121 R3/R4"而非"新建 D127",则本 issue 的链接目标相应调整
+
+## 落位
+
+**Done at** `docs/3-decisions/D123-spring-boot-replication.md:L423`(§A.2.5 标题尾 `[SUPERSEDED 2026-04-22 by §C.5 + D127]` + 翻案注) + `docs/3-decisions/D127-annotation-value-types.md:§附录 C`(D121 虚锚澄清,物理事实:D121*.md 不存在,R1/R2-A 叙述被 D123 §A.2.5 + D123 §C.1 A1/B 吸收) + `docs/4-issues/I009-annotation-assign-e2e.md:L51/L53/L76`(getEnum/getClass → getString + API 列表对齐 D127 SSoT)
+
+**状态**: Done(2026-04-24)
+**相关 commit**: `fa82751`(D123 §A.2.5 标 SUPERSEDED + I009 API 对齐 D127 SSoT)/ `c4de335`(D127 §B I009 回写)
+
+**步骤 1-4 对账**:
+1. ✅ I001-I007 全部 Done(I001-I007 commits 已落)
+2. ~~Edit D121 R2-A 状态行~~ **虚步骤**:D121*.md 物理不存在(D127 §附录 C 澄清);原计划的"标 REVERSED 2026-04-22"目标文件缺失,改由 D127 §附录 C §1-§4 "D121 锚点澄清"段落整体吸收该意图(引用规则 + 不复用 D121 R? 虚锚 + 逐处字样对齐)
+3. ✅ Edit D123 §A.2.5 标 SUPERSEDED(commit `fa82751`,D123 L423)
+4. ✅ D127 §附录 C 总括虚锚澄清(commit `fa82751` / `c4de335`,D127 L171-L193)

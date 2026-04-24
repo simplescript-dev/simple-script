@@ -448,14 +448,15 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 # 附录 B: 实施日志
 
-### Phase 0: Plan + 静态 linter [⏳ 本轮]
+### Phase 0: Plan + 静态 linter [✅ 2026-04-24 收关]
 
-- ⏳ D123 Plan 起草(本文件)
-- ⏳ `tools/spring_boot_annotation_linter.ss` 入仓
-- **验证**:
-  - `tools/spring_boot_annotation_linter.ss` 在空目录 `--dir /tmp/empty` 返 `GATE PASS — 0 fake annotations`
-  - 负样本(手构 @RestController + @FakeAnnotation) stdout 含 `GATE BLOCKED` 且点出 FakeAnnotation
-  - `reflection_health_linter` 本轮 delta = 0(只动 tools/ 与 docs/)
+- ✅ D123 Plan 起草(本文件)
+- ✅ `tools/spring_boot_annotation_linter.ss` 入仓
+- **验证**(2026-04-24 本轮实测):
+  - ✅ `bin/ss run tools/spring_boot_annotation_linter.ss --dir /tmp/ss_empty_dir` → `GATE PASS — 0 fake annotations`
+  - ✅ 负样本 `/tmp/ss_neg_parity/fake.ss`(@RestController + @FakeAnnotation + @GetMapping + @PositionalOnly) → `GATE BLOCKED — 2 fake annotation(s)` 点名 `@FakeAnnotation` / `@PositionalOnly`,白名单 `@RestController` / `@GetMapping` 不误报
+  - ✅ `tools/reflection_health_linter.ss` → `GATE PASS — no regressions`(N3 AUTO-DRIFT soft warn 不阻断,本轮 `git diff HEAD -- bootstrap/ lib/` 空输出,核心代码路径 diff=0 确认)
+- **Phase 1 前置对账**:层 A2 blocker(ASSIGN + 任意表达式值)已清零 —— I001-I009 全 Done(commits `1cfe717` e2e / `c4de335` D127 §B 对账 / `fa82751` D123 §A.2.5 SUPERSEDED / I008 落位 Done at docs/4-issues/I008-d121-d123-backwrite.md §落位)
 - **commit**:(本轮 commit 时追加 hash)
 
 ### Phase 1-5: 未启动
