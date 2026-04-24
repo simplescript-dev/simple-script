@@ -152,15 +152,17 @@ A → (未来若 annotation eval 成为 comptime hot path)checker 缓存 eval �
 
 # 附录 B: I001-I009 映射
 
+> 状态格式约束(feedback_d_table_status_reconciliation):**决策锁定无代码**写 `Decided(...)`;**代码落地**写 `Done at <file>:<symbol>`,禁用 "Done(本 D 文档锁定)" 模糊混用。
+
 | issue | 本 D127 锁定锚点 | 状态 |
 |---|---|---|
-| I001 parser ASSIGN | §A.3 锁 "annotation ASSIGN,不动 call COLON" | Ready to implement(下轮起点) |
-| I002 值类型选型 | §A.1 锁方案 A | **Done(本 D 文档锁定)** |
-| I003 值类型落地 | §A.1 分派表框架(STRING/INT/BOOL/DOUBLE 基础路径) | Ready to implement(依赖 I001) |
-| I004 enum 成员访问 | §A.1 `MEMBER_ACCESS` 分支 | Ready to implement(依赖 I003) |
-| I005 literal 四种 | §A.1 `ARRAY_LIT` 分支(INT/BOOL/DOUBLE I003 已吸收) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` ARRAY_LIT 分支 + bootstrap/gen/exprs/exprs_ct_builtin.ss:`ctMapMethod` getArray(2026-04-24)** |
-| I006 class ref | §A.2 锁方案 A(裸类名) | **Done(本 D 文档锁定)** |
-| I007 命名参一致性 | §A.3 锁方案 A(按语义分场景) | **Done(本 D 文档锁定)** |
+| I001 parser ASSIGN | §A.3 锁 "annotation ASSIGN,不动 call COLON" | **Done at bootstrap/parse/parse_exprs.ss:`parseArgs` ASSIGN 分支(42224d0)** |
+| I002 值类型选型 | §A.1 锁方案 A | **Decided(§A.1 方案 A,Map<string, AstNodeId>)** |
+| I003 值类型落地 | §A.1 分派表框架(STRING/INT/BOOL/DOUBLE 基础路径) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` + bootstrap/gen/exprs/exprs_ct_builtin.ss:`ctMapMethod`(36a0dc0)** |
+| I004 enum 成员访问 | §A.1 `MEMBER_ACCESS` 分支 | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` MEMBER_ACCESS 分支(7a03d6b)** |
+| I005 literal 四种 | §A.1 `ARRAY_LIT` 分支(INT/BOOL/DOUBLE I003 已吸收) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` ARRAY_LIT 分支 + bootstrap/gen/exprs/exprs_ct_builtin.ss:`ctMapMethod` getArray(169b92b)** |
+| I006 class ref | §A.2 锁方案 A(裸类名) | **Done at bootstrap/eval/interp_obj.ss:`evalAnnotationArg` IDENT 分支(2026-04-24)** |
+| I007 命名参一致性 | §A.3 锁方案 A(按语义分场景) | **Decided(§A.3 方案 A;annotation 侧 ASSIGN 由 I001 落地,call/constructor 侧 COLON 保持不动无代码改动)** |
 | I008 D123 回写 | §C D121 锚点澄清 + §A.2.5 标 SUPERSEDED | Blocked by I001-I007 全 Done |
 | I009 e2e | `tests/phase5/spring_annotation_e2e.ss` | Blocked by I001-I006 全 Done |
 
@@ -196,17 +198,17 @@ I008 实施时直接读本 §C 作为对齐依据。
 
 # 附录 D: 后续工作路径
 
-| 步骤 | issue | 依赖 | 颗粒度 |
-|---|---|---|---|
-| 1 | I001 parser annotation COLON → ASSIGN | 无(本 D 文档 §A.3 就绪) | 1-2 万 token |
-| 2 | I003 值类型落地(基础分派表 + STRING/INT/BOOL/DOUBLE) | I001 | 7-10 万 token(超则拆 I003a/I003b) |
-| 3a | I004 enum 成员访问 | I003 | 3-5 万 token |
-| 3b | I005 literal 四种 | I003 | 3-5 万 token |
-| 3c | I006 class ref | I003 | 3-5 万 token |
-| 4 | I009 e2e 验收 | I001-I006 全 Done | 1-2 万 token |
-| 5 | I008 D123 回写(§A.2.5 标 SUPERSEDED + §C D121 锚点对齐) | I001-I007 全 Done | 5 千 token |
+| 步骤 | issue | 依赖 | 颗粒度 | 实际状态 |
+|---|---|---|---|---|
+| 1 | I001 parser annotation COLON → ASSIGN | 无(本 D 文档 §A.3 就绪) | 1-2 万 token | Done(42224d0) |
+| 2 | I003 值类型落地(基础分派表 + STRING/INT/BOOL/DOUBLE) | I001 | 7-10 万 token(超则拆 I003a/I003b) | Done(36a0dc0) |
+| 3a | I004 enum 成员访问 | I003 | 3-5 万 token | Done(7a03d6b) |
+| 3b | I005 literal 四种 | I003 | 3-5 万 token | Done(169b92b) |
+| 3c | I006 class ref | I003 | 3-5 万 token | Done(2026-04-24) |
+| 4 | I009 e2e 验收 | I001-I006 全 Done | 1-2 万 token | Ready(I001-I006 全 Done,可启动) |
+| 5 | I008 D123 回写(§A.2.5 标 SUPERSEDED + §C D121 锚点对齐) | I001-I007 全 Done | 5 千 token | Ready(I001-I007 全 Done / Decided,可启动) |
 
-I004/I005/I006 可并行实现(都往 I003 建立的分派表加分支,互不干扰)。
+I001-I006 全 Done;下一步 I008 或 I009,见 §B 状态对齐。
 
 ---
 

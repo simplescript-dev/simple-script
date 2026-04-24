@@ -179,7 +179,18 @@ function evalAnnotationArg(nodeId: int): int {
         }
         return arr
     }
-    comptimeError(`annotation arg kind '${kind}' not yet supported (I006 class ref IDENT pending)`, nodeId)
+    // I006: IDENT 裸类名 → ClassRef(类名 string,D127 §A.2 "类名 string 或 TypeInfo"
+    // 二选一取 string)。查表顺序 interpClasses → classNodeIds,任一命中返类名字符串;
+    // 未命中 fall through 到下方 comptimeError。TypeInfo 需要时由消费侧通过 reflect.
+    // classes[<name>] 延迟构造,避免 annotation eval 即时 build 整条 class 链开销。
+    // enum 已被 MEMBER_ACCESS 分支拦截,IDENT 在 annotation value 语境只剩类名。
+    if (kind == "IDENT") {
+        const clsName = nGetS1(nodeId)
+        if (interpClasses.has(clsName) == 1 || classNodeIds.has(clsName) == 1) {
+            return interpNewString(clsName)
+        }
+    }
+    comptimeError(`annotation arg kind '${kind}' not yet supported`, nodeId)
     return interpNewNull()
 }
 
