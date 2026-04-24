@@ -62,8 +62,8 @@
 | 5 | 界定 | 做什么 + **不做什么**,两清单都填;**SSoT 术语改名扩展**:改本文档 / CLAUDE.md / D088 等 SSoT 文档的术语(如"五验→六验" / gate 重命名 / 字段重编号)前,**必须** `grep -rn <旧术语> CLAUDE.md docs/` 核对外链,界定里**显式列每处**"同步更新 / 保留为史实"的处理,漏扫 → 跨轮术语分裂(2026-04-22 MNK "五验→六验" 后 CLAUDE.md 两处漏扫事件) | 场景触发型扩展义务见 §特定领域 gate(命名前缀族扫描 / 反射路径根因 gate B 路径) |
 | 6 | 步骤 | 可执行序列,> 30 min 步骤拆 L4 子表(见 §Fractal) | |
 | 7 | 对照实验 | **不做这件事,§第一性需求 会被卡吗?** | 必答 yes/no + 一句证据;no → 本轮任务**降级为 backlog 不做**(除非用户明说偏离授权) |
-| 8 | Plan vs Execute + Layer | (a) **Execute**(代码改动)/ **Plan**(方向、清单、调研、巡检);(b) **Layer**: **Issue**(执行单元,docs/4-issues/IXXX) / **Decision**(设计单元,docs/3-decisions/DXXX) / **Implementation**(实施单元,代码 + 测试 + lib + 配置) | Plan 型 VCM ④ 边界 替换为「替代方案对比 + 隐藏假设挑战」;**Layer 跨越触发 stop**:本轮 Layer ≠ PSM 字段 1 引用的上层 D 文档/issue 同 Layer 时,**stop 让用户授权或拆轮**(默认不跨层)。例外:issue 文档 §风险节 / §候选路径节明示 "若 X 则起 DXXX 决策" 类 hard prereq,实测命中即视为本轮跨层授权,但 Decision 文件**必须**先于 Implementation 落地(D 文档独立审查窗口不许吞)。**触发事件**:2026-04-24 I015 §收尾反思 R4 候选 2 — I015 (issue) 实测后内嵌起 D128 (decision) + 实施(implementation) 三层混在一轮,跨多轮反复(I014 同模式),根因是 PSM 字段 8 是 Plan vs Execute 二分缺 Layer 维度。 |
-| 9 | 表面 vs 根 | 本任务**和每个产出项**:根解决 / 表面解决? | **根** → 一句话给出消除的双轨制 / 架构根因;**表面** → 必须同时写「本轮接受表面的成本理由」+「下一轮如何升级到根」;多产出项任务**对每一项**单独标记 |
+| 8 | Plan vs Execute + Layer | (a) **Execute**(代码改动)/ **Plan**(方向、清单、调研、巡检);(b) **Layer**: **Issue**(执行单元,docs/4-issues/IXXX) / **Decision**(设计单元,docs/3-decisions/DXXX) / **Implementation**(实施单元,代码 + 测试 + lib + 配置) | Plan 型 VCM ④ 边界 替换为「替代方案对比 + 隐藏假设挑战」;**Layer 跨越触发 stop**:本轮 Layer ≠ PSM 字段 1 引用的上层 D 文档/issue 同 Layer 时,**stop 让用户授权或拆轮**(默认不跨层)。例外:issue 文档 §风险节 / §候选路径节明示 "若 X 则起 DXXX 决策" 类 hard prereq,实测命中即视为本轮跨层授权,但 Decision 文件**必须**先于 Implementation 落地(D 文档独立审查窗口不许吞)。**触发事件**:2026-04-24 I015 §收尾反思 R4 候选 2 — I015 (issue) 实测后内嵌起 D128 (decision) + 实施(implementation) 三层混在一轮,跨多轮反复(I014 同模式),根因是 PSM 字段 8 是 Plan vs Execute 二分缺 Layer 维度。**清单型 Execute 二次校验义务**:Plan 型产出"删/合并/保留"清单(元规则巡检表 / 批量 deprecation 列表 / 批量重命名清单),Execute 阶段**不许**按 Plan 判定一刀切批量执行,必须**为清单每项独立跑 PSM §字段 9 表面/根判定**(含字段 9 新增的"删除前 grep 验证")。Plan 阶段判定是清单层(粗粒度按元规则 yes/no),Execute 阶段判定是实例层(细粒度按"目标已落实"验证),两层不可互相吸收。**触发事件**:2026-04-24 元规则巡检 Plan 判 A11/A14/A18 = N 直接删,Execute 阶段未跑独立判定 → commit 前 grep 验证才发现 3 项均未在合并目标落实,撤回删除。 |
+| 9 | 表面 vs 根 | 本任务**和每个产出项**:根解决 / 表面解决? | **根** → 一句话给出消除的双轨制 / 架构根因;**表面** → 必须同时写「本轮接受表面的成本理由」+「下一轮如何升级到根」;多产出项任务**对每一项**单独标记。**删除 / 合并 / deprecate 类操作专属 gate**:删 memory / 合并 D 文档 / 删除既有规则 / 移除 file:line 锚 前,**必须**先 grep 目标合并位置验证内容已落实(同等 file:line 锚 + 类型语义不丢失 + 触发条件不缺);未落实 → 先迁移再删,不许 Plan 阶段判定"细节 patch / 已合并"即立即 Execute 删除。**触发事件**:2026-04-24 元规则巡检 Plan 判 A11 invoke_sentinel = N 直接删,commit 前 grep 发现 D128/I014 都没保留 method_call.ss:75-102 file:line 锚,撤回删除恢复;后续 A14/A18 同理保守缩窄到"合并目标已落实的 A20"删。 |
 
 ### 唯一例外
 
@@ -250,6 +250,8 @@ bin/ss run .harness/common/bug.ss fixed <round> <certainty>
 
 **全 PASS** 才允许 commit。机械指标基于不可变特征(exit code / bootstrap 字节比较 / 重新测量数值),**不依赖变量名 grep**(可改名规避)。
 
+**自检 trigger**:想跳过 `.harness/common/bug.ss` / 直接 grep code 找 bug 凭直觉改的瞬间,必须停下问"这是 bug 吗?是 → 必走 harness 双阶段(detected → fixed)+ `.bugfix` 6 gate;否 → 显式写明非 bug 类别(refactor / 新功能 / 文档 / 测试补)"。把"想跳"念头当 trigger,而不是把"必须跑"当事后清单。
+
 ### 反射路径根因 gate
 
 触碰反射路径(`bootstrap/gen/class.ss` / `gen_stmts.ss` `.fields/.methods/.annotations/.args` / `genForInUnrolled` / `classXxxAnnotation*` / `comptimeConsts __*` sidecar)必须在 commit 前跑 `bin/ss run tools/reflection_health_linter.ss`。
@@ -285,6 +287,8 @@ reflection linter REGRESSION 被 gate BLOCK 时,**不允许**改动跟当前任�
 > 2026-04-24 I014 §路径 A 扩容段列全 14 指标含 10 项 AUTO-DRIFT/OK 噪声,读者提取 5 项真实 REGRESSION 要跳过一半信息;规则由"全 14 指标"放宽为"REGRESSION + AUTO-DRIFT + bump 项",精简信息密度。
 
 规则 / baseline / 工具位置见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`。
+
+**自检 trigger**:想直接改 `bootstrap/gen/class.ss` / `gen_stmts.ss` `.fields/.methods/.annotations/.args` / `genForInUnrolled` / `classXxxAnnotation*` / `comptimeConsts __*` sidecar 等反射路径而**不跑** `tools/reflection_health_linter.ss` 时,停下问"本次改动会动到 14 指标(M1-M7b + N1-N5)的某项吗?如答 yes 或不确定 → 必跑 linter,REGRESSION 走 A/B 路径分流(A 半径内抵消 / B 形态升级扩容申报)"。
 
 ### Reset 双重 gate(行为规则)
 
@@ -336,6 +340,8 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - 输出 ≥ 1 个族目录 → 新建文件**归同目录**,除非 D 文档**显式写脱族理由**
 - 输出 0 个 → 按 P10.1 自由决定
 - 不做扫描 → Plan 路径决策漂,**任务拒绝**
+
+**自检 trigger**:`Write` 一个 `bootstrap/X/<prefix>_Y.ss` 新文件之前,必须先跑上面的 find 族归位扫描,否则**任务拒绝**。看到 PSM 字段 5 缺 "命名前缀族扫描:`<filepref>` 命中族目录 = ..." 字串 → 立即回填扫描结果再开 Write。
 
 ### COMPTIME_EXPR 非标量返回扩展 gate
 
@@ -405,6 +411,18 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 **自检 trigger**:
 - 想写"这个 bug 我先绕过,后续再处理"时 → 必须先答"阻挡 or 非阻挡?",再按上表分流
 - 对话里出现 "IXXX 待后续" / "下轮修" / "先搁置" → 立即开 issue 文件,不许靠对话记忆跨轮
+
+### memory 治理 gate
+
+**trigger**:任何**删除 / 合并 / 移动**`~/.claude/projects/.../memory/feedback_*.md` 类操作 + MEMORY.md 索引行任何改动。
+
+**硬规则**:
+- 删 / 合并 / deprecate 一条 memory 前,**必须**先按 §M §字段 9 "删除 / 合并 / deprecate 类操作专属 gate" 跑 grep 验证目标已落实(file:line 锚 + 类型语义不丢失);未落实 → 先迁移再删
+- 改完 MEMORY.md 索引或 memory 文件**必须**跑 `bin/ss run tools/memory_index_linter.ss`(F1 索引漂移 BLOCK / F2 孤立文件 soft warn);**有 GATE BLOCKED → 不许 commit**
+- linter 默认目标 `~/.claude/projects/-root-code-simplescript-dev-simple-script/memory/`,跨项目可传第 1 参数覆盖
+- linter 未机械化的元规则判定层(N/Y\*/Y)仍由人工 + 元规则原文判,linter 只校验"指针有没有指向真实文件",不判"该不该有这条 memory"
+
+**自检 trigger**:看到 "memory 已 stale" / "这个 feedback 不需要了" / "合并到 D 文档" / "批量 deprecate memory" 类念头时,停下问"目标位置 grep 已落实?跑过 memory_index_linter?"。把"想删"念头当 trigger,不是把"已删"当事后清单。
 
 ---
 
@@ -480,7 +498,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 
 # 附录 B: 八股形态索引
 
-## B.1 已机械化层(6 个 linter)
+## B.1 已机械化层(8 个 linter)
 
 | 层 | 工具 | 判据 | 抑制的八股形态 |
 |---|---|---|---|
@@ -491,6 +509,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | commit 差半径 | `commit_radius_linter.ss` | 子族分布 ≥ 3 | 远距离榨指标(直接,soft warn) |
 | commit footer | `commit_footer_bagu_linter.ss` | "去掉少什么:" 字串存在 | VCM 复盘凑仪式(格式强制) |
 | 衍生 issue 归档 | `derived_issue_linter.ss` | IXXX 引用 vs `docs/4-issues/` 存在 | 非阻挡衍生问题只对话提失踪 |
+| memory 索引一致性 | `memory_index_linter.ss` | `~/.claude/.../memory/MEMORY.md` 索引 vs `feedback_*.md` 文件双向校验(F1 索引漂移 BLOCK / F2 孤立文件 soft warn) | 跨 session memory 索引漂移(指针指向不存在的文件)+ 孤立 memory 文件不被加载;**触发时机**:删/合并 memory 后必跑 + commit 前(配 §特定领域 §memory 治理 gate) |
 
 ## B.2 未机械化层(6 种形态)
 
@@ -501,6 +520,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 5. **文档膨胀** —— 500 字解释其实一句话够(未机械化:价值判断)
 6. **checklist 表演** —— TaskCreate 微步骤凑进度条(未机械化:意图判断)
 7. **细节 patch 反思** —— §After Done §2 反思候选全是 "MNK 加 1 行 / 立 1 issue / 改 N 行注释" 等局部修补,无 meta-pattern 反思(2026-04-24 R4 加硬规则;判据见 §After Done §2 反思层级颗粒度硬规则)
+8. **字符级压缩绕过 gate 阈值** —— F1 / 反射等指标 gate 阈值临近时,用压缩注释 / 合并样板 / 删空行 / 把 overload 族压成大 dispatcher / 多 let 合并单行等**字符级手段**挤进阈值,信号被压没但复杂度仍在(2026-04-20 D113 interp_core.ss 头注释 4→2 行未增功能事件;memory feedback_600_split_not_inline 锚同步;判据:任何"行数即将超 gate 但内容未职责变化"的简化建议 → 改提拆文件 / 拆函数,不改字符密度)
 
 **原理限制**:八股 = "形式上满足规则,对任务核心产出零贡献",判据是**反身性**(回看自己刚写的)+ **语义**(核心产出定义依赖上下文)。linter 查**可观测特征**(指标数、关键字、路径、字串存在),看不见**意图**。同一 for-in→while 改动 D121 场景是八股、独立 refactor 场景合法,linter 无法区分。
 
@@ -528,8 +548,8 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | 2026-04-20 D116 gen_rt_cache.ss 漏归 rt/ 子族 | Plan 路径决策漂 | PSM 字段 5 未扫命名前缀族 | §特定领域 §命名前缀族归位扫描 |
 | 2026-04-21 D121 R1-A Execute 2 newTvArray 远距离榨指标 | 远距离 | 反射 14 指标粗 gate | §反射路径根因 gate scope-aware + §K commit_radius |
 | D124 Execute 5 次 bump 串跑 | 仪式 O(N) | bump 单指标粒度 | §反射路径根因 gate B 路径 bump-group |
-| 10e2c8b rowMap "bv:bm" + tuple 裸露 | 可读性失真 | simplify 3 维度缺 readability | (入 memory feedback_human_readable_code,未落本文档锚) |
-| F1 600 字符级塞字符 | 压缩 / 合并 / 删空行 | F1 硬阻无 soft warn | (入 memory feedback_600_split_not_inline,未落本文档锚) |
+| 10e2c8b rowMap "bv:bm" + tuple 裸露 | 可读性失真 | simplify 3 维度缺 readability | §After Done §1 simplify 采纳/拒绝记账段显式 veto 引用 `feedback_human_readable_code` (commit message 留痕)+ memory 同步 |
+| F1 600 字符级塞字符 | 压缩 / 合并 / 删空行 | F1 硬阻无 soft warn | §B.2 形态 8 "字符级压缩绕过 gate 阈值" + §M §字段 3 拆分类 RED grep 职责类别 ≥ 3 + memory `feedback_600_split_not_inline` 锚同步 |
 | 简单改也十问 PSM | 仪式不分层 | PFV 粗粒度强制 | §改动分层 三档门槛 |
 | 2026-04-22 VCM (d) 沉积复盘靠自觉 | 八股沉积 | §VCM 无 commit footer 强制 | §K commit_footer |
 | 2026-04-22 八股讨论结论留对话缓冲区 | 跨轮丢失 | 无流程反思 gate | §收尾 gate 第 3 步流程反思 |
