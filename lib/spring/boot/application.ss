@@ -1,7 +1,9 @@
 // D123 Phase 2 — @SpringBootApplication entrypoint + @RestController/@GetMapping 路由分派
-// I014 §路径 A:dispatch(req) 用 ct-array<RouteMeta> for-in unroll + `r.invoke()` sentinel
-// 触发 method_call.ss 识别 className+methodName 字段对组合,emit `call ptr @<cn>_<mn>()`
+// I014 §路径 A:dispatch(req) 用 ct-array<RouteMeta> for-in unroll + `r.invoke(req)` sentinel
+// 触发 method_call.ss 识别 className+methodName 字段对组合,emit `call ptr @<cn>_<mn>(ptr null, ptr %req)`
 // 静态 IR;禁 runtime 反射 / @comptimeEmit / @derive(D088 §反模式 L377-386)。
+// I018 §路径 A:r.invoke(req) 透传 runtime req map 指针,Controller 方法按形参签名接收
+// (funcParamCount 在 gen/class/class_method.ss 注册,invoke sentinel 按 arity 追加 ptr)。
 //
 // I015 §路径 A:routes comptime block 抽顶级 const,SpringApplication.run + dispatch 共享
 // 单一 ctVars binding(D128 §A.1/A.2 顶级 ctArray 全局 scope `:_ssRoutes`),消除跨函数 copy-paste。
@@ -82,7 +84,7 @@ function dispatch(req: Map<string, string>): string {
     const path = req.get("path")
     for (r in _ssRoutes) {
         if (r.path == path) {
-            return httpResponse(200, "text/plain", r.invoke())
+            return httpResponse(200, "text/plain", r.invoke(req))
         }
     }
     return httpResponse(404, "text/plain", "not found")

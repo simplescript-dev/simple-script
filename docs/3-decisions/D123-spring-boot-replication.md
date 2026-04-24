@@ -611,6 +611,59 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I018 (2026-04-24)
+
+**触发**:I018 §路径 A — invoke sentinel runtime arg 通道扩 + class method funcParamCount pre-register + httpServe query parse。D123 §3 Phase 3 Step 1 真兑现前置,让 Controller 能接收 runtime req map 参数(parity gate 从 byte-static `Hello, World!` 进阶到带 query param 绑定的 `Hello, <name>!`)。**第一性需求**:引 D123 §第一性需求 —— Spring Boot byte-identical parity 在 enterprise 尺度(含 @RequestParam 语义)兑现,invoke 硬编单 this 参是最后跳阻塞。
+
+**改动路径**:
+- `bootstrap/eval/method_call.ss`:invoke sentinel 按 funcParamCount arity 追加 runtime args(+26 LOC,method_call.ss:99-119 新循环 + callPreRegs 读)
+- `bootstrap/gen/gen_registry.ss`:`registerClassMethodRetType` pre-register 阶段扩注册 funcParamCount(+11 LOC,gen_registry.ss:36-58)
+- `bootstrap/gen/class/class_method.ss`:注释同步(emit 时机注册点撤回,避免 dispatch 先 emit 查不到)(+2 LOC 净)
+- `lib/http.ss`:httpServe query `key=value` 按 `&` + `=` split 各自入 req map(+16 LOC,lib/http.ss:35-55)
+- `lib/spring/boot/application.ss`:`r.invoke(req)` runtime req map 透传 + I018 §路径 A 注释同步(+5 LOC)
+- `examples/spring-parity/hello/ss/HelloController.ss`:`hello(req: Map<string,string>): string` 签名 + `req.getString("name")` body(+5 LOC)
+- `tests/phase5/d123_phase3_param_bind.ss`:新建 RED→GREEN 测试(+28 LOC)
+- `docs/4-issues/I018-invoke-runtime-arg-channel.md`:新建归档
+
+**REGRESSION + AUTO-DRIFT + bump 项 delta 表(实测,OK 项省略)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| M1 | 5169 | 5230 | 5249 | +19 vs bm | AUTO-DRIFT |
+| M2 | 76824 | 76617 | 77769 | +1152 vs bm | REGRESSION |
+| M3a | 12204 | 12290 | 12339 | +49 vs bm | AUTO-DRIFT |
+| M3b | 1892 | 1879 | 1902 | +23 vs bm | REGRESSION |
+| M4 | 3011 | 3050 | 3057 | +7 vs bm | AUTO-DRIFT |
+| M5 | 1765 | 1765 | 1770 | +5 vs bm | AUTO-DRIFT |
+| M6 | 32 | 33 | 33 | 0 vs bm(bv +1) | DRIFT |
+| M7b | 677 | 676 | 680 | +4 vs bm | AUTO-DRIFT |
+| N2 | 384120 | 383085 | 388845 | +5760 vs bm | REGRESSION |
+| N3 | 517961 | 517080 | 525616 | +8536 vs bm | REGRESSION |
+| N4 | 321 | 321 | 350 | +29 vs bm | REGRESSION |
+| F1:bootstrap/gen/methods/gen_methods.ss | 709 | 709 | 716 | +7 vs bm | REGRESSION (历史遗留) |
+
+**本地抵消路径**:
+- **M2 / N2 / N3**:形态升级型扩(invoke sentinel 增 runtime arg channel + funcParamCount pre-register + httpServe query parse),+60 LOC 新代码直接驱动 AST / Halstead / 节点深度总量。本轮无远距离榨指标空间,I018 三处改动构成最小闭合面。
+- **M3b**:`funcParamCount` 被 `method_call.ss` invoke 分支新一次查询,入度 +1;无法本地避开(查询本身是功能要求)。
+- **N4**:`method_call.ss:106-117` 内嵌 for-in + if/has/getString/concat 链最大 out-degree 升到 350;本轮实现已收敛(单循环),下轮若再增考虑提独立函数 `emitInvokeExtraArgs(mangled, mcArgList)`。
+- **F1:bootstrap/gen/methods/gen_methods.ss**:+7 **属历史遗留**(本轮 git diff `git diff --stat HEAD -- bootstrap/gen/methods/gen_methods.ss` 无输出,`wc -l`=716 对比 baseline 709 为前期漂移未同步)。本轮 housekeep 随 I018 anchor 合并 bump,避免下轮误归因。
+
+**新 baseline 预期值(=实测,bump-group 升 budget_max)**:
+- M2 budget_max:76617 → 77769
+- M3b budget_max:1879 → 1902
+- N2 budget_max:383085 → 388845
+- N3 budget_max:517080 → 525616
+- N4 budget_max:321 → 350
+- F1:bootstrap/gen/methods/gen_methods.ss budget_max:709 → 716
+
+**VCM 实测 vs 预估对照槽**:delta 表 `cur` 列即实测(2026-04-24 本轮 reflection_health_linter 实测)。预估上浮 ~1-1.5% 量级,实测 M2/N2 均 ~1.5% 落预估窗;N3 +1.65% 略超预估但仍在 I018 扩展面合理区间。I018 §单一判据(3 条):`call.*@HelloController_hello(ptr null, ptr ` main.ll:6433 命中 1 ✓;`curl :8080/hello?name=SS` → `Hello, SS!` ✓;`tests/phase5/d123_phase3_param_bind.ss` `Tests: 1 passed` ✓。
+
+**Phase 3 Step 1 parity gate 兑现状态**:SS 端真绑参 byte-identical 对齐 Java oracle 期望(`?name=SS` → `Hello, SS!`,`?name=Alice` → `Hello, Alice!`);Java 端 mvn 仍待 Phase 5 工具链搭起后 diff(8080 vs 8081 端口)。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:

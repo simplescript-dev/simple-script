@@ -45,6 +45,8 @@ function genClassMethod(className: string, id: int) {
             }
         }
     }
+    // I018 §路径 A — 形参数在 pre-register 阶段由 registerClassMethodRetType
+    // (gen/gen_registry.ss) 写入 funcParamCount;此处 emit 时机过晚,不重复注册。
 
     // Mangled name: accessors get `get_`/`set_` prefix (D096); overloaded
     // regular methods get a param-signature suffix; otherwise plain `Class_method`.

@@ -36,10 +36,23 @@ function trackOverload(name: string) {
 // Register a class method's return type under both base (`Cls_m`) and
 // overload-mangled (`Cls_m_sig`) keys, plus overload tracking. Keep the three
 // ops together so callers can't drift (gen_generic_class.ss once missed trackOverload).
+// I018 §路径 A:同时注册 funcParamCount(形参数,不含 this),供 bootstrap/eval/method_call.ss
+// invoke sentinel 按 arity 追加 runtime args。必须在 pre-register 阶段 set(早于任何 dispatch
+// 函数 emit),否则先 emit 的 call site 查不到 param count,退化到单 this 参路径。
 function registerClassMethodRetType(className: string, methodId: int, retType: string) {
     const baseName = `${className}_${funcName(methodId)}`
     funcRetTypes.set(baseName, retType)
-    const mSig = paramSig(funcParams(methodId))
+    const paramList = funcParams(methodId)
+    let pCount = 0
+    if (paramList != "") {
+        const parts = paramList.split(",")
+        for (p in parts) {
+            const pId = parseInt(p)
+            if (pId > 0 && nGetKind(pId) == "PARAM") { pCount = pCount + 1 }
+        }
+    }
+    funcParamCount.set(baseName, `${pCount}`)
+    const mSig = paramSig(paramList)
     if (mSig != "") { funcRetTypes.set(`${baseName}_${mSig}`, retType) }
     trackOverload(baseName)
 }

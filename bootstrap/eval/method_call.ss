@@ -77,12 +77,12 @@ function evalMethodCall(astId: int): int {
             callPreRegs = mcSavedCPR
             return ctMethodCallDispatch(astId, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
         }
-        // I014 §路径 A — ctVar class instance w/ (className, methodName) 字段对组合 + invoke
-        // sentinel → emit `call @<cn>_<mn>(ptr null)` 静态 IR(instance method 带 null this;
-        // Phase 2 controller body 不访问 this,Phase 3 DI 容器接 singleton 后填实)。消除 comptime
-        // 三元组 (path, cn, mn) 与 runtime method call 之间的 symbolic gap(D088 §反模式 禁
-        // @comptimeEmit/runtime 反射)。funcRetTypes lookup 决定 LLVM 返回 LL type(string→ptr /
-        // int→i32 / void→void);未注册时默认 ptr(按 Spring Boot @GetMapping 返 string body 惯例)。
+        // I014 §路径 A + I018 §路径 A — ctVar class instance w/ (className, methodName) 字
+        // 段对 + invoke sentinel → emit `call @<cn>_<mn>(ptr null[, ptr <arg>...])` 静态
+        // IR,消除 comptime (path, cn, mn) 与 runtime method call 的 symbolic gap(D088
+        // §反模式 禁 @comptimeEmit/runtime 反射)。I018 runtime arg 通道:funcParamCount
+        // (gen_registry.ss pre-register)拿 callee arity,callPreRegs[mcArgId] 取 runtime
+        // reg,按形参数追加;0 形参保持单 this 不回归(I014 Phase 2 契约)。
         if (mcObjKind == "object" && mcMethod == "invoke") {
             const ctObjId = payload(mcObj)
             const cnTv = interpGetField(ctObjId, "className")
@@ -91,16 +91,37 @@ function evalMethodCall(astId: int): int {
                 const cnStr = interpAsStr(cnTv)
                 const mnStr = interpAsStr(mnTv)
                 if (cnStr != "" && mnStr != "") {
-                    callPreRegs = mcSavedCPR
                     const mangled = `${cnStr}_${mnStr}`
+                    // I018 §路径 A — 按 callee 形参数追加 runtime args(callPreRegs reset 之前)
+                    let invokeExtraArgs = ""
+                    if (funcParamCount.has(mangled) == 1 && mcArgList != "") {
+                        const expectedPC = parseInt(funcParamCount.getString(mangled))
+                        if (expectedPC > 0) {
+                            const mcArgParts2 = mcArgList.split(",")
+                            let consumed = 0
+                            for (mcap2 in mcArgParts2) {
+                                const mcArgId2 = parseInt(mcap2)
+                                if (mcArgId2 > 0 && consumed < expectedPC) {
+                                    if (callPreRegs.has(`${mcArgId2}`) == 1) {
+                                        const aReg = callPreRegs.getString(`${mcArgId2}`)
+                                        invokeExtraArgs = `${invokeExtraArgs}, ptr ${aReg}`
+                                    } else {
+                                        invokeExtraArgs = `${invokeExtraArgs}, ptr null`
+                                    }
+                                    consumed = consumed + 1
+                                }
+                            }
+                        }
+                    }
+                    callPreRegs = mcSavedCPR
                     const retTy = funcRetTypes.has(mangled) == 1 ? funcRetTypes.getString(mangled) : "string"
                     const llRet = retTy == "void" ? "void" : (retTy == "int" ? "i32" : "ptr")
                     if (llRet == "void") {
-                        emitIR(`  call void @${mangled}(ptr null)`)
+                        emitIR(`  call void @${mangled}(ptr null${invokeExtraArgs})`)
                         return 0 - constVal("null") - 1
                     }
                     const resReg = nextReg()
-                    emitIR(`  ${resReg} = call ${llRet} @${mangled}(ptr null)`)
+                    emitIR(`  ${resReg} = call ${llRet} @${mangled}(ptr null${invokeExtraArgs})`)
                     return 0 - constVal(resReg) - 1
                 }
             }

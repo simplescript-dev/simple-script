@@ -34,7 +34,24 @@ function parseRequest(raw: string): Map<string, string> {
             const qIdx = fullPath.indexOf("?")
             if (qIdx >= 0) {
                 req.set("path", fullPath.substring(0, qIdx))
-                req.set("query", fullPath.substring(qIdx + 1, fullPath.length() - qIdx - 1))
+                const qs = fullPath.substring(qIdx + 1, fullPath.length() - qIdx - 1)
+                req.set("query", qs)
+                // I018 §路径 B — Spring Boot @RequestParam 契约:URL query key=value
+                // 按 `&` 拆后各自入 req map,Controller 用 req.get("<key>") 取 query param
+                // (req["query"] 整串 backward compat 保留)。空 value 存空串。
+                if (qs != "") {
+                    const qParts = qs.split("&")
+                    for (qp in qParts) {
+                        const eqIdx = qp.indexOf("=")
+                        if (eqIdx > 0) {
+                            const qk = qp.substring(0, eqIdx)
+                            const qv = qp.substring(eqIdx + 1, qp.length() - eqIdx - 1)
+                            req.set(qk, qv)
+                        } else if (qp.length() > 0) {
+                            req.set(qp, "")
+                        }
+                    }
+                }
             } else {
                 req.set("path", fullPath)
                 req.set("query", "")
