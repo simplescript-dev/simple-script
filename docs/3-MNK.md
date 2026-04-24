@@ -57,7 +57,7 @@
 |---|---|---|---|
 | 1 | 总体 | 服务于哪个上层目标? | **必须先引 D 文档 §第一性需求 段落**,再接子表(禁跳子表);引用的**每一条** D 文档段落**必须同时附** grep / test / ls 命令证明 `[已达成 / 未达成 / 部分达成]`;不跑对照 → 任务拒绝;对照结果与 D 文档描述不一致(语态矛盾 / 标注过时 / 代码已移动) → 先回写 D 文档状态标注(P19 `[x] Done at <file:line>`)再开工。防漂移**跨轮传播的入口 gate**(与 §收尾 Execute 型 RED 凭据构成两道闸) |
 | 2 | 第一性需求 | 真正根本痛点(不是症状)?"为什么"**至少 2 层**,末层必须断言可观测否定证据("不做 → 出现 X 现象") | Why 链 < 2 层 → 字段不算填齐,回去补 |
-| 3 | 核心目标 | 完成后可观测的具体能力变化;**必须含一条 RED 命令**(形如 `bin/ss run <file> 2>&1 \| grep <pattern>`),证明现状未达成 | **第一个工具调用必须是这条命令**;已 GREEN → 任务不成立,停下报告。**文件拆分类任务**的 RED **不许**只用 `wc -l ≤ 600`,必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类,**≥ 3 类 → RED 成立**;仅 wc -l → PSM 作废重填(P10.1 配套);**表行增删类任务**的 RED 必须限定**表唯一锚**(表标题关键字 / 列值组合,如 `^\| 6 \| 根因`),避免裸 grep 跨表命中其他表同编号行造成假 RED(2026-04-22 MNK §N 增 §6 行首次 RED `grep -c '^\| 6 \|'` 命中 PSM §6 步骤致差值失真事件) |
+| 3 | 核心目标 | 完成后可观测的具体能力变化;**必须含一条 RED 命令**(形如 `bin/ss run <file> 2>&1 \| grep <pattern>`),证明现状未达成 | **第一个工具调用必须是这条命令**;已 GREEN → 任务不成立,停下报告。**文件拆分类任务**的 RED **不许**只用 `wc -l ≤ 600`,必须两步:(a) `grep '^(function|let|const)\s+\w+' <file>` 列 top-level 声明;(b) 按职责归类,**≥ 3 类 → RED 成立**;仅 wc -l → PSM 作废重填(P10.1 配套);**表行增删类任务**的 RED 必须限定**表唯一锚**(表标题关键字 / 列值组合,如 `^\| 6 \| 根因`),避免裸 grep 跨表命中其他表同编号行造成假 RED(2026-04-22 MNK §N 增 §6 行首次 RED `grep -c '^\| 6 \|'` 命中 PSM §6 步骤致差值失真事件)。**用户 prompt RED 实测不成立**(如 `grep -c "@HelloController_hello" = 0` 但实测 =1 因函数 def 占位)→ Claude **主动 refine pattern** 更精确化(限定 `call.*@X` / match 非定义行 / 表唯一锚),PSM 字段 3 显式注明"重构自用户 RED:原 `<pattern>` 实测 = N(命中 define/meta noise),精确化为 `<new-pattern>` 实测 = 0"。不许直接放弃任务,也不许模糊复述让实测判据失真(2026-04-24 I014 §路径 A 本轮 RED grep 原 pattern 命中 define 行事件) |
 | 4 | 规则 | 本任务硬约束(引用 CLAUDE.md / 本文档 / D088 等具体段落) | |
 | 5 | 界定 | 做什么 + **不做什么**,两清单都填;**SSoT 术语改名扩展**:改本文档 / CLAUDE.md / D088 等 SSoT 文档的术语(如"五验→六验" / gate 重命名 / 字段重编号)前,**必须** `grep -rn <旧术语> CLAUDE.md docs/` 核对外链,界定里**显式列每处**"同步更新 / 保留为史实"的处理,漏扫 → 跨轮术语分裂(2026-04-22 MNK "五验→六验" 后 CLAUDE.md 两处漏扫事件) | 场景触发型扩展义务见 §特定领域 gate(命名前缀族扫描 / 反射路径根因 gate B 路径) |
 | 6 | 步骤 | 可执行序列,> 30 min 步骤拆 L4 子表(见 §Fractal) | |
@@ -273,12 +273,14 @@ reflection linter REGRESSION 被 gate BLOCK 时,**不允许**改动跟当前任�
 
 **trigger**:涉及"反射路径形态升级"(容器类型 Array→Map / AST 字段扩 / Meta kind 变更)。
 
-- **强制列全 14 指标 delta 预估**(M1/M2/M3a/M3b/M4/M5/M6/M7a/M7b/N1/N2/N3/N4/N5,**不允许只列结构组漏累计组**)
+- **指标表列粒度**:**REGRESSION + AUTO-DRIFT + bump 项** 必须全列(M1-M7b + N1-N5 中任一超 baseline_value 的);**OK 项可省**(linter soft warn 日志对 AUTO-DRIFT 自动覆盖,OK 项无信息量)。实务 15 个标量指标平均 5-8 个需列,**不允许** 15 个全列(读者信息密度低)或只列 REGRESSION 漏 AUTO-DRIFT(后者虽不 bump 但 cur>bv 反映真实漂移面)
 - 结构组任一 > 0 或累计组任一超 tol → **三选一**:
   - (a) 本地抵消(列具体削减点,限 A 路径半径规则)
   - (b) 升 baseline + D 文档 §扩容申报
   - (c) 拆 commit(除非用户明确拒绝分轮)
-- D 文档 §扩容申报段**必含**:扩容理由(引用 §第一性需求)/ 预期 14 指标 delta / 本地抵消路径 + 具体函数 / 新 baseline 预期值(=实测预估)/ VCM 实测 vs 预估对照槽
+- D 文档 §扩容申报段**必含**:扩容理由(引用 §第一性需求)/ REGRESSION + AUTO-DRIFT + bump 项 delta 表 / 本地抵消路径 + 具体函数 / 新 baseline 预期值(=实测预估)/ VCM 实测 vs 预估对照槽
+
+> 2026-04-24 I014 §路径 A 扩容段列全 14 指标含 10 项 AUTO-DRIFT/OK 噪声,读者提取 5 项真实 REGRESSION 要跳过一半信息;规则由"全 14 指标"放宽为"REGRESSION + AUTO-DRIFT + bump 项",精简信息密度。
 
 规则 / baseline / 工具位置见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`。
 
@@ -332,6 +334,39 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - 输出 ≥ 1 个族目录 → 新建文件**归同目录**,除非 D 文档**显式写脱族理由**
 - 输出 0 个 → 按 P10.1 自由决定
 - 不做扫描 → Plan 路径决策漂,**任务拒绝**
+
+### COMPTIME_EXPR 非标量返回扩展 gate
+
+**trigger**:改动让 `comptime { ... return X }` 的 X 是 array / object / map / tuple / Map<K,V> / Set 等**非标量**类型(历史仅支持 int / double / string / bool / type 五类)。
+
+**硬规则**:必须**同步扩 3 处**,缺一则 alloca i32 vs load ptr 必撞类型错(2026-04-24 I014 §路径 A Array<RouteMeta> 返回三处同步扩事件):
+
+1. `bootstrap/gen/gen_types.ss` `inferType COMPTIME_EXPR`:加新 kind 分支,`comptimeExprType.set(ceKey, <kind>)` + `comptimeExprLiteral.set(ceKey, <tvId-or-representation>)`
+2. `bootstrap/eval/eval_expr.ss` `COMPTIME_EXPR` 分支:对新 kind 返 `ctVal(payload)` 而非 runtime literal(runtime literal 只对 scalar 有意义)
+3. `bootstrap/gen/gen_decls.ss` `genVarDecl` `COMPTIME_EXPR` 分支:CONST 绑定 ctVars 跳 runtime alloca(非 CONST 形态暂不支持,let 可变 ctArray 需另扩 ctInvalidated 链路)
+
+**配套 test**:`tests/phase5/d<N>_comptime_<kind>_return.ss` 最小验证(let acc = Array<X> / return acc 后消费走 for-in unroll + member access + CONST 绑定全链)。
+
+**自检 trigger**:准备在 `inferType` 加 `comptimeExprType.set(..., "int")` fallback 回落代码时,停下问"是否有新 kind 没覆盖?";若 comptime 块 return 表达式类型不在 int/double/string/bool/type 五类白名单,必须扩三处,不许让 fallback 静默 miscompile。
+
+### untracked test fail 诊断流程
+
+**trigger**:`bin/ss test tests/` 实测 fail 数超过 Phase 基线记录(如 D123 Phase 1 "224 passed + 4 pre-existing fail"),但怀疑是**环境 drift**(untracked test dir / `.harness/` 丢失 / 上一会话残留测试)而非本轮代码 regression。
+
+**分流流程**:
+
+1. 先看 `git status --short | grep '??'` + `git ls-files --others --exclude-standard tests/` 列 untracked test 目录
+2. 怀疑 pre-existing →`git stash push bootstrap/eval/<files> bootstrap/gen/<files> bin/ss` 把本轮改动 stash(保留 docs / lib / example 不 stash)
+3. `./build.sh bootstrap` 重 build 回到改动前 bin/ss 状态
+4. `bin/ss build <疑 test> -o /tmp/t && /tmp/t` 单独验证 — 还 fail → **pre-existing**,不是本轮引入
+5. `git stash pop` + `./build.sh bootstrap` 恢复
+6. VCM §5 (c) 写"revert 全部本轮 X 个编译器文件后再 bootstrap rebuild <test> 仍 <症状>,证明 pre-existing"
+
+**反 case**:
+- `bin/ss test` 并发 race(多 test binary 抢 /tmp 资源)可能导致 flaky fail;单独跑 `/tmp/<test-bin>` 与并发版行为不一致 → 记入 VCM §5 (c) + 立项 docs/4-issues/ 追并发 race 诊断(不阻当前任务)
+- 不许用"手动跑 `/tmp/<bin>` exit=0"单个证据 absolve,`bin/ss test` 并发是 authoritative 判据
+
+**自检 trigger**:看到 "5 failed 比 baseline 4 多 1" 类数字差时,**立即 stash+revert+rebuild 验证**,不依赖"这个 test 看起来是 untracked" 直觉(2026-04-24 I014 §路径 A harness_bug / harness_task 误判事件)。
 
 ### 衍生 issue 归档(feedback_interactive_one_doc 的执行层配套)
 

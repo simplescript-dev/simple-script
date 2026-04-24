@@ -77,6 +77,35 @@ function evalMethodCall(astId: int): int {
             callPreRegs = mcSavedCPR
             return ctMethodCallDispatch(astId, mcMethod, payload(mcObj), mcCtArgs, mcCtNamed, mcHasNamed)
         }
+        // I014 §路径 A — ctVar class instance w/ (className, methodName) 字段对组合 + invoke
+        // sentinel → emit `call @<cn>_<mn>(ptr null)` 静态 IR(instance method 带 null this;
+        // Phase 2 controller body 不访问 this,Phase 3 DI 容器接 singleton 后填实)。消除 comptime
+        // 三元组 (path, cn, mn) 与 runtime method call 之间的 symbolic gap(D088 §反模式 禁
+        // @comptimeEmit/runtime 反射)。funcRetTypes lookup 决定 LLVM 返回 LL type(string→ptr /
+        // int→i32 / void→void);未注册时默认 ptr(按 Spring Boot @GetMapping 返 string body 惯例)。
+        if (mcObjKind == "object" && mcMethod == "invoke") {
+            const ctObjId = payload(mcObj)
+            const cnTv = interpGetField(ctObjId, "className")
+            const mnTv = interpGetField(ctObjId, "methodName")
+            if (interpType(cnTv) == "string" && interpType(mnTv) == "string") {
+                const cnStr = interpAsStr(cnTv)
+                const mnStr = interpAsStr(mnTv)
+                if (cnStr != "" && mnStr != "") {
+                    callPreRegs = mcSavedCPR
+                    const mangled = `${cnStr}_${mnStr}`
+                    const retTy = funcRetTypes.has(mangled) == 1 ? funcRetTypes.getString(mangled) : "string"
+                    const llRet = retTy == "void" ? "void" : (retTy == "int" ? "i32" : "ptr")
+                    if (llRet == "void") {
+                        emitIR(`  call void @${mangled}(ptr null)`)
+                        return 0 - constVal("null") - 1
+                    }
+                    const resReg = nextReg()
+                    emitIR(`  ${resReg} = call ${llRet} @${mangled}(ptr null)`)
+                    return 0 - constVal(resReg) - 1
+                }
+            }
+            return comptimeError(`static dispatch 'invoke' requires className+methodName fields on ctVar class instance`, astId)
+        }
     }
     if (nGetI3(astId) > 0) {
         callPreRegs.set(`${mcObjNode}`, mcObjReg)

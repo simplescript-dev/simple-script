@@ -539,6 +539,57 @@ for (arg in ann.args) { acc = acc + ann.name + "=" + arg + ";" }
 
 相比 §A.4 #2 "args 形态 Phase 2 阻塞"的单点推演,实测把 D121 分解为 R1(形态)+ R2(parser)双根因,且排除了 R3(iteration)—— D121 Plan 起草可直接按 R1 / R2 双范围铺设,不必再做一次探路实测。
 
+### Execute 2(I014 §路径 A): ct-array invoke sentinel → static dispatch emit [扩容申报-I014] (2026-04-24)
+
+**触发**:D120 §A.4 #3 `ct-array unroll 入口泛化`已 Done,I014 需继续扩**body 识别**—— comptime Array<RouteMeta> for-in unroll body 里 `r.invoke()` METHOD_CALL + ctVar class instance w/ (className, methodName) 字段对组合 → emit `call ptr @<cn>_<mn>(ptr null)` 静态 IR。支撑 D123 §3 Phase 2 "parity gate 首次启用"(hello app `/hello` → "Hello, World!" byte-identical) 真兑现。
+
+**改动路径**:
+- `bootstrap/eval/method_call.ss`:isCt object + `mcMethod == "invoke"` + (className, methodName) 字段对 → `call ptr @<cn>_<mn>(ptr null)` 静态 IR emit(+28 LOC)
+- `bootstrap/gen/stmts/stmts_loop_forin.ss`:ct-array element kind=="object" 时 setVarType(itemName, className) 同步 checker(+13 LOC)
+- `bootstrap/gen/exprs/exprs_ct_obj.ss`:ctNewExprDispatch 支持 runtime-registered user class (classNodeIds fallback,与 interpBuildTypeInfo 同构双注册源合集)(+10 LOC)
+- `bootstrap/gen/gen_types.ss`:inferType COMPTIME_EXPR 支持 array/object/map(literal 存 tvId);inferType METHOD_CALL `invoke` sentinel(obj 有 className+methodName 字段)返 "string"(+19 LOC)
+- `bootstrap/eval/eval_expr.ss`:COMPTIME_EXPR array/object/map 返 `ctVal(tvId)`(不 materialize 成 runtime literal)(+8 LOC)
+- `bootstrap/gen/gen_decls.ss`:COMPTIME_EXPR + CONST + (array|object|map) 绑 ctVars 跳 runtime alloca(+12 LOC)
+- `lib/spring/boot/application.ss`:comptime Array<RouteMeta> 构造 + `dispatch(req)` 用 for-in unroll + `r.invoke()` sentinel(~50 LOC 改动)
+- `examples/spring-parity/hello/ss/HelloController.ss`:`@GetMapping(path = "/hello")` instance method(Java oracle 对齐)
+
+**14 指标 delta 预估 vs 实测(含 F1)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| M1 | 5169 | 5168 | 5226 | +58 | REGRESSION |
+| M2 | 76824 | 76617 | 77371 | +547 | AUTO-DRIFT |
+| M3a | 12204 | 12158 | 12280 | +76 | REGRESSION |
+| M3b | 1892 | 1879 | 1894 | +2 | AUTO-DRIFT |
+| M4 | 3011 | 3011 | 3045 | +34 | REGRESSION |
+| M5 | 1765 | 1765 | 1766 | +1 | AUTO-DRIFT |
+| M6 | 32 | 32 | 33 | +1 | REGRESSION |
+| M7a | 27 | 27 | 27 | 0 | OK |
+| M7b | 677 | 676 | 680 | +3 | AUTO-DRIFT |
+| N1 | 34 | 34 | 34 | 0 | OK |
+| N2 | 384120 | 383085 | 386855 | +2735 | AUTO-DRIFT |
+| N3 | 517961 | 517080 | 521672 | +3711 | AUTO-DRIFT |
+| N4 | 321 | 321 | 321 | 0 | OK |
+| N5 | 0 | 0 | 0 | 0 | OK |
+| F1:bootstrap/gen/gen_types.ss | 738 | 738 | 757 | +19 | REGRESSION |
+| F1:bootstrap/gen/gen_decls.ss | 690 | 690 | 702 | +12 | REGRESSION |
+
+**本地抵消路径**:无 —— I014 是形态升级型(新 ct-array<object> 与 runtime dispatcher 桥接),非远距离榨指标,本地无削减空间。
+
+**新 baseline 预期值(=实测,bump-group 升 budget_max)**:
+- M1 budget_max:5168 → 5230
+- M3a budget_max:12158 → 12290
+- M4 budget_max:3011 → 3050
+- M6 budget_max:32 → 33
+- F1:bootstrap/gen/gen_types.ss budget_max:738 → 760
+- F1:bootstrap/gen/gen_decls.ss budget_max:690 → 705
+
+**VCM 实测 vs 预估对照槽**:预估 delta 全部与实测一致(表格 cur 列即实测)。I014 §单一判据:`grep -c "call.*@HelloController_hello" /tmp/hello_ss.ll` ≥ 1 ✓ (实测 1);curl `/hello` body == "Hello, World!" ✓。
+
+**Phase 2 parity gate 兑现状态**:SS 端独立通,Java oracle `mvn spring-boot:run` 需外部环境。byte-identical diff 留 Phase 5 `tools/spring_parity_test.ss` 自动化接入。
+
+**commit**:(本轮 commit 时追加 hash)
+
 ### Phase 2 [→] Deferred to D121
 
 - D121 范围(实测驱动):R1 `AnnotationMeta.args` Array→Map(或 dual)+ ct `.get()` dispatch;R2 注解参数 parser 命名参数语法;R3 已 Done 不承接

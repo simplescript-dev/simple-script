@@ -281,6 +281,15 @@ function inferType(id: int): string {
                 comptimeExprLiteral.set(ceKey, ceClass)
                 return "type"
             }
+            // I014 §路径 A — COMPTIME_EXPR 返 array/object/map 时 literal 存 tvId 字符串,
+            // eval_expr.ss 消费侧按 array/object/map type 解回 ctVal(tvId)。gen_decls.ss 对 CONST
+            // 绑定走 ctVars,跳过 runtime alloca。route 收集 `const routes = comptime{...return arr}`
+            // 与 D120 §A.4 #3 ct-array unroll 入口形成闭环(iter → unroll → body invoke → static call)。
+            if (ceType == "array" || ceType == "object" || ceType == "map") {
+                comptimeExprType.set(ceKey, ceType)
+                comptimeExprLiteral.set(ceKey, `${ceRetVal}`)
+                return ceType
+            }
         }
         comptimeExprType.set(ceKey, "int")
         comptimeExprLiteral.set(ceKey, "0")
@@ -394,6 +403,16 @@ function inferType(id: int): string {
             const fObjClass = resolveObjClass(mcObj)
             if (fObjClass != "" && classFields.has(fObjClass) == 1) {
                 return "Array<string>"
+            }
+        }
+        // I014 §路径 A — invoke sentinel:obj class 含 (className, methodName) 字段对组合时,
+        // method_call.ss emit `call ptr @<cn>_<mn>(ptr null)` 返 string body(Spring Boot
+        // @GetMapping handler 惯例)。inferType 返 "string" 让 gen_calls.ss ssTypeToLLVM
+        // 选 ptr,避免 httpResponse(i32 %7) 类型撞错。
+        if (method == "invoke") {
+            const invokeObjType = resolveObjClass(mcObj)
+            if (invokeObjType != "" && classFieldTypes.getString(`${invokeObjType}.className`) == "string" && classFieldTypes.getString(`${invokeObjType}.methodName`) == "string") {
+                return "string"
             }
         }
         // Resolve object type FIRST via unified inferType (recursive)

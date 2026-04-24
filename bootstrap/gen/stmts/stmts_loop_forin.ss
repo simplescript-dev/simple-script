@@ -93,7 +93,18 @@ function genForIn(id: int) {
         if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "array") {
             const ctArrId = payload(ctIterVal)
             const ctArrLen = interpArrayLen(ctArrId)
-            if (ctArrLen > 0 && interpType(interpArrayGet(ctArrId, 0)) == "string") { setVarType(itemName, "string") }
+            // I014 §路径 A — 元素类型提前同步给 checker/gen:string 按既有路径;object 元素取
+            // tvS1(className)让 body 内 `r.field` MEMBER_ACCESS / `r.invoke()` sentinel 可按
+            // 类型查 funcRetTypes / classFields,避免 runtime path fallback。
+            if (ctArrLen > 0) {
+                const ctFirstTv = interpArrayGet(ctArrId, 0)
+                const ctFirstKind = interpType(ctFirstTv)
+                if (ctFirstKind == "string") { setVarType(itemName, "string") }
+                if (ctFirstKind == "object") {
+                    const ctElemClass = interpAsStr(ctFirstTv)
+                    if (ctElemClass != "") { setVarType(itemName, ctElemClass) }
+                }
+            }
             let ctFi = 0
             while (ctFi < ctArrLen) {
                 ctVars.set(`${currentFunc}:${itemName}`, `${ctVal(interpArrayGet(ctArrId, ctFi))}`)

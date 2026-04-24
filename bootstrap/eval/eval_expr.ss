@@ -64,8 +64,15 @@ function evalExpr(astId: int): int {
     if (k == "TERNARY") { return evalTernary(astId) }
     if (k == "COMPTIME_EXPR") {
         if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
-        inferType(astId)
-        return 0 - constVal(comptimeExprLiteral.getString(`${astId}`)) - 1
+        const ceK = `${astId}`
+        const ceTy = inferType(astId)
+        // I014 §路径 A — array/object/map 返回不 materialize 成 runtime literal(无法压 i32),
+        // 改返 ctVal(tvId) 让外层 VAR_DECL CONST 绑定 ctVars,消费侧走 ct 路径(for-in unroll /
+        // member access)。gen_types.ss inferType 把 tvId 以字符串形式缓存到 comptimeExprLiteral。
+        if (ceTy == "array" || ceTy == "object" || ceTy == "map") {
+            return ctVal(parseInt(comptimeExprLiteral.getString(ceK)))
+        }
+        return 0 - constVal(comptimeExprLiteral.getString(ceK)) - 1
     }
     if (k == "INDEX_ACCESS") { return evalIndexAccess(astId) }
     if (k == "TEMPLATE_LIT") { return evalTemplateLit(astId) }

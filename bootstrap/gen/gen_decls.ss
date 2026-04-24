@@ -505,6 +505,18 @@ function genVarDecl(id: int) {
         ctVars.set(`${currentFunc}:${name}`, `${ctVal(interpNewType(ceLit))}`)
         return
     }
+    // I014 §路径 A — COMPTIME_EXPR 返 Array/Object/Map 时 CONST 绑定走 ctVars,跳过 runtime alloca。
+    // 消费侧(for-in unroll / evalMemberAccess)查 ctVars 得 ctVal,for-in 走 D120 §A.4 #3 ct-array
+    // unroll,body 里 `r.invoke()` 触发 method_call.ss static dispatch emit。runtime alloca 的 i32 0
+    // fallback 会和 `load ptr` 撞类型错;CONST 强制条件避免 let 可变 routes 难以承接的场景。
+    if (initId > 0 && nGetKind(initId) == "COMPTIME_EXPR" && (initType == "array" || initType == "object" || initType == "map") && nGetS2(id) == "CONST") {
+        const ceLit = comptimeExprLiteral.getString(`${initId}`)
+        const ceTv = parseInt(ceLit)
+        if (ceTv > 0) {
+            ctVars.set(`${currentFunc}:${name}`, `${ctVal(ceTv)}`)
+            return
+        }
+    }
     const llType = ssTypeToLLVM(initType)
 
     // Global vars: just store (alloca already done by genGlobalVar)

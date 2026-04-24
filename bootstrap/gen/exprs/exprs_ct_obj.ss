@@ -3,7 +3,11 @@
 
 function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedArgs: Map): int {
     const realName = resolveCtTypeAlias(className)
-    if (interpClasses.has(realName) != 1) {
+    // I014 §路径 A — runtime class(RouteMeta 等在顶级 `class X {}` 声明,走 classNodeIds 注册,
+    // 不入 interpClasses)也必须能在 comptime 块里 `new X(...)`。原只查 interpClasses 拒绝 runtime
+    // class ctNew → Array<RouteMeta> 无法构造。classNodeIds 是 codegen 层对所有 class(含 runtime)
+    // 的 AST node id 映射,与 interpBuildTypeInfo 的双注册源合集判定同构。
+    if (interpClasses.has(realName) != 1 && classNodeIds.has(realName) != 1) {
         println(`[comptime] unknown class: ${realName}`)
         return ctVal(interpNewNull())
     }
@@ -12,7 +16,11 @@ function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedA
     let allFields = ""
     let cur = realName
     while (cur != "") {
-        const paramList = nGetList(parseInt(interpClasses.getString(cur)))
+        let nId = 0
+        if (interpClasses.has(cur) == 1) { nId = parseInt(interpClasses.getString(cur)) }
+        else if (classNodeIds.has(cur) == 1) { nId = parseInt(classNodeIds.getString(cur)) }
+        if (nId == 0) { break }
+        const paramList = nGetList(nId)
         if (paramList != "") { allFields = allFields == "" ? paramList : `${paramList},${allFields}` }
         cur = interpClassParents.getString(cur)
     }

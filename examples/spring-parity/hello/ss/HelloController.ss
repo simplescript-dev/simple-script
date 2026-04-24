@@ -6,6 +6,9 @@
 // 注解形态:D127 §A.3 ASSIGN 单形(`path = "/hello"`),与 Java `@GetMapping("/hello")`
 // 通过 args.getString("path") comptime 读出语义对齐(parity 看 HTTP payload byte 级,
 // 不看源码字面;Java oracle 用单位置参,SS 端 path 走 ASSIGN 命名参均 OK)。
+//
+// I014 §路径 A:hello 保持 instance 形态对齐 Java,dispatcher emit `call ptr @HelloController_hello(ptr null)`
+// 传 null this(Phase 2 body 不访问 this;Phase 3 接 @Autowired/DI 容器时由 comptime singleton 构造填实).
 
 @RestController
 class HelloController {
