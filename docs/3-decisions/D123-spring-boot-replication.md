@@ -486,31 +486,31 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 **commit**:(本轮 commit 时追加 hash)
 
-### Phase 2: @RestController + @GetMapping routes csv [部分 Done] (2026-04-24)
+### Phase 2: @RestController + @GetMapping dispatcher [x] Done at `lib/spring/boot/application.ss:18-89 + bootstrap/eval/method_call.ss:86-108 + bootstrap/gen/stmts/stmts_loop_forin.ss:91-116 + bootstrap/gen/gen_types.ss:412-417` (2026-04-24)
 
-**实施内容**(本轮 2 文件新增 + 2 文件改,LOC ~80):
+**实施内容**(routes csv + I014 路径 A dispatcher 合计 4 commit:79b3ca8 Phase 2 routes csv / 2f3a895 I014 invoke sentinel / df2b39a I015 顶级 const / 40a3853 I017 includes 同源修复):
 
-- `lib/spring/boot/application.ss`(扩 43→81 行):新 `RouteMeta` class 占位 + `import { httpServe, httpResponse }` + Phase 2 comptime 4 层嵌套收 routes csv(`reflect.classes() → c.annotations[name=="RestController"] → c.methods → m.annotations[name=="GetMapping"] → mAnn.args.getString("path")`)+ `httpServe(8080, dispatchPending)` 仅在 args 含 `--serve` 启动;`dispatchPending` stub 返 503 + body 显式标 I014 BLOCKER pointer
+- `lib/spring/boot/application.ss`(最终 89 行):顶级 `const _ssRoutes: Array<RouteMeta> = comptime {...}`(I015 抽顶级,4 层嵌套收 routes) + `SpringApplication.run()` 打印 + `httpServe(8080, dispatch)` 启动 + `dispatch(req)` 对路径线性匹配 `r.invoke()` 触发 I014 invoke sentinel emit 静态 call
 - `examples/spring-parity/hello/ss/HelloController.ss`(新建,15 行):`@RestController` + `@GetMapping(path = "/hello")`(D127 §A.3 ASSIGN 命名参形态)+ `function hello(): string { return "Hello, World!" }`
 - `examples/spring-parity/hello/ss/main.ss`(改 16→18 行):import HelloController;`function main()` 读 CLI args(`args()` / `arg(i)`)推入 appArgs 传给 SpringApplication.run
 - `examples/spring-parity/hello/java/src/main/java/hello/HelloController.java`(新建,11 行):Java oracle 对等 — `@RestController` + `@GetMapping("/hello")` + `public String hello() { return "Hello, World!"; }`
 
-**实测验证**(本轮 SS 端独立可跑,Java 端 mvn 不可用 → parity gate Deferred):
+**实测验证**(SS 端真 dispatcher 兑现,parity mvn 侧推 Phase 5):
 
 | # | 判据 | 实测 |
 |---|---|---|
-| 1 | 4 层嵌套 comptime 工作 | ✅ `bin/ss build hello/ss/main.ss && /tmp/hello_phase2` → stdout `Routes: /hello|HelloController.hello;` |
-| 2 | httpServe 接入 + curl 连通 | ✅ `/tmp/hello_phase2 --serve &` + `curl http://localhost:8080/hello` → HTTP 503 + body `dispatcher pending I014 — see docs/4-issues/I014-spring-dispatch-impl.md` |
+| 1 | 4 层嵌套 comptime 工作 | ✅ `bin/ss build hello/ss/main.ss && /tmp/hello_ss` → stdout `Routes: /hello|HelloController.hello;` |
+| 2 | httpServe 接入 + curl 连通 | ✅ `/tmp/hello_ss --serve &` + `curl -s -i http://localhost:8080/hello` → `HTTP/1.1 200 OK` + `Content-Type: text/plain` + body `Hello, World!` + `Content-Length: 13`(I014 路径 A dispatcher 真兑现,invoke sentinel emit static `call @HelloController_hello`) |
 | 3 | 不阻塞默认入口 | ✅ 无 args 模式 stdout 输出后正常退出 |
 | 4 | 白名单 linter | ✅ `bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity` GATE PASS |
-| 5 | 反射 linter | ✅ M/N 不升(本轮 diff 仅触 lib/spring/boot/application.ss + examples/,反射路径未触) |
-| 6 | bootstrap | ✅ `./build.sh bootstrap` Stage 2 == Stage 3 固定点 |
-| 7 | 测试 | ✅ `bin/ss test tests/` 全绿(d123_phase1_smoke.ss 仍 PASS,Phase 1 形态向后兼容)|
-| 8 | parity gate | ⏸ **Deferred to I014** — SS 端 503 vs Java 端 200 必然 diff,真兑现需 dispatcher impl |
+| 5 | 反射 linter | ✅ M/N 不升(本轮 diff 仅触 lib/spring/boot/application.ss + bootstrap/{eval,gen} invoke 路径,反射 meta 路径未触) |
+| 6 | bootstrap | ✅ `./build.sh bootstrap` Stage 2 == Stage 3 固定点(I014 / I015 / I017 三次均过) |
+| 7 | 测试 | ✅ `bin/ss test tests/` 全绿(d123_phase1_smoke.ss 仍 PASS,Phase 1 形态向后兼容;i016 / i017 新测亦 GREEN) |
+| 8 | parity gate | ⏸ **Deferred to Phase 5** — SS 端 dispatcher 已真兑现(body `Hello, World!` + 200),mvn 工具链未装,Java 端 oracle 搭起配套 |
 
-**关键 insight**:Step 1 实测发现 4 层嵌套 comptime + ann.args.getString 端到端工作(超出预估障碍,routes csv 直接拿到 `/hello|HelloController.hello;`)。但 Step 2 dispatcher 接入撞 SS 当前能力边界 — comptime 已能拿到 `(path, className, methodName)` 三元组(string),runtime 无法把 string 转 method call(D088 §反模式 禁 runtime 反射 / @comptimeEmit / @derive)。**真根因路径**立项 I014:`docs/4-issues/I014-spring-dispatch-impl.md`(预选路径 A — 扩 stmts_loop_forin.ss ct-array unroll body 内识别 `ctVar.<methodNameStr>()` 静态 emit `call @<className>_<methodName>`)。
+**最终形态**:routes csv + dispatch 在 `lib/spring/boot/application.ss:18-89`,顶级 `const _ssRoutes` 4 层嵌套 comptime(I015) + `dispatch(req)` 内 `for r in _ssRoutes { if (r.path == path) { return httpResponse(200, "text/plain", r.invoke()) } }`。`r.invoke()` 触发 `bootstrap/eval/method_call.ss:86-108` invoke sentinel,comptime unroll body 内拿到 `className + methodName` 字段对,emit `call ptr @<cn>_<mn>(ptr null)` 静态 IR(Phase 3 DI 容器接 singleton 后 null 填实)。
 
-**commit**:(本轮 commit 时追加 hash)
+**commit 链**:79b3ca8 (Phase 2 routes csv + I014 立项) → 2f3a895 (I014 invoke sentinel) → df2b39a (I015 routes 抽顶级 const) → 40a3853 (I017 Array<string>.includes 同源修复,支持 routes Array<string> 派生能力)
 
 ### Phase 3-5: 未启动
 
@@ -545,8 +545,8 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 | **A2** | ASSIGN 命名参 + 任意表达式值 | ❌ 未做 | parser `=` 命名参替 COLON;`AnnotationMeta.args` value 类型扩 `Map<string, CtValue>` / `Map<string, AstNodeId>` 承载 enum member / array / bool / int / class refs(当前 `Map<string,string>` 不够,D121 R2-A COLON 被推翻,见 §C.5) | parser 解 `@RequestMapping(value = "/x", method = RequestMethod.GET)` 无 error + comptime 读 `method` 得 `RequestMethod.GET` enum 值 | A1 |
 | **B** | comptime introspect | ✅ Done | `bootstrap/gen/exprs/exprs_ct_reflect.ss`(D120 `reflect.classes()`);`AnnotationMeta.args: Map<string,string>`(D121 R1 commit `b18acf3`);`cls.methods` / `m.annotations` / `ann.args.get(k)` comptime 可访问 | `tests/phase5/d120_reflect_classes.ss` + D121 R1 test GREEN | A |
 | **C** | 白名单 + 根因 gate | ✅ Done | `tools/spring_boot_annotation_linter.ss`(35 Spring Boot + 5 SS 内建);`tools/reflection_health_linter.ss` M1-M7b / N1-N5 baseline;`grep @comptimeEmit\|@derive` 零命中 | `bin/ss run tools/spring_boot_annotation_linter.ss --dir examples/spring-parity` → `GATE PASS — 0 fake annotations` | — |
-| **D** | comptime 构造常量路由表 | ❌ 未做 | `lib/spring/boot/application.ss`(**不存在**);`ControllerMeta[]` + `RouteMeta[]` 常量段 | `bin/ss build examples/spring-parity/hello/ss/main.ss --emit-ir \| grep -c "ss_reflect_"` = 0(comptime 展开干净) | A + B + C |
-| **E** | runtime dispatcher | ❌ 未做 | `lib/spring/boot/application.ss` `SpringApplication.run(App.class, args)`;`lib/spring/web.ss` DispatcherServlet(当前仅 4 行 re-export) | `curl http://localhost:8080/hello` 返 "Hello, World!"(body / status / Content-Type 符合) | D + `lib/http.ss` + `lib/jakarta/servlet.ss` |
+| **D** | comptime 构造常量路由表 | ✅ Done at `lib/spring/boot/application.ss:18-38`(I015 顶级 const `_ssRoutes` 4 层嵌套 comptime) | `lib/spring/boot/application.ss:18-38`(commit df2b39a) | `bin/ss build examples/spring-parity/hello/ss/main.ss && /tmp/hello_ss` → `Routes: /hello|HelloController.hello;` ✅ 2026-04-24 | A + B + C |
+| **E** | runtime dispatcher | ✅ Done at `lib/spring/boot/application.ss:81-89 + bootstrap/eval/method_call.ss:86-108`(I014 路径 A invoke sentinel emit 静态 call) | commit 2f3a895 | `curl -s -i :8080/hello` → `HTTP/1.1 200 OK` + body `Hello, World!` ✅ 2026-04-24 | D + `lib/http.ss` + `lib/jakarta/servlet.ss` |
 | **F** | 参数绑定 | ❌ 未做 | `lib/spring/boot/application.ss` comptime `method.params` 扫 `@RequestParam` / `@PathVariable` / `@RequestBody`;runtime adapter | `curl http://localhost:8080/hello?name=SS` 返 "Hello, SS!" | E |
 | **G** | Java oracle + parity | ❌ 未做 | `examples/spring-parity/<app>/java/` Maven 项目;`tools/spring_parity_test.ss`(未建) | `diff <(curl SS 端) <(curl Java 端)` = 空(排除 Server/Date header) | E(基础) / F(完整) |
 
@@ -563,11 +563,11 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ## C.3 当前断点
 
-- A1/B/C 已 Done,Phase 1 blocker D121 R1 已清零(commit `b18acf3`);**但 2026-04-22 用户翻案发现层 A2(ASSIGN + 任意表达式值)是新 blocker,见 §C.5**
-- **真正缺口 = 层 D**:`lib/spring/boot/application.ss` 不存在,comptime → 常量路由表这一步没写
-- D 层落地后 E 层 runtime dispatcher 自然跟上(D/E 共挂 `application.ss` 同文件)
-- F/G 是后续增量,不影响"注解首次端到端跑通"的证明
-- 最近 10+ commit 在 D124-D126 元流程层(反射 gate / PFV 分档 / rule 问答收敛),未推 D123 主线
+- A1/B/C/D/E 已 Done(2026-04-24):Phase 2 dispatcher 端到端真兑现,`curl :8080/hello` → 200 + `Hello, World!` byte-match,commit 链 79b3ca8 → 2f3a895 → df2b39a → 40a3853
+- 层 A2(ASSIGN + 任意表达式值)仍待 §C.5 翻案落地 — 当前 `AnnotationMeta.args: Map<string,string>`(D127 §A.3 ASSIGN 单形),Phase 4 `@RequestParam(name = "name")` 扫入前需扩成承载 class ref / enum member / bool / int(I002-I009 子 issue 组正在推进)
+- **真正缺口 = 层 F**:参数绑定 — `@GetMapping(path = "/hello")` 本身可工作,但 `function hello(req: HttpServletRequest): ResponseEntity` 形态缺,需扩 `method_call.ss` invoke sentinel 传 runtime req arg + lib/jakarta/servlet.ss HttpServletRequest class(Phase 3 前置)
+- 层 G 工具链 blocker:mvn 未装(Phase 5 搭 Java oracle 前要装 maven / build java 对等 app / 并排 curl)
+- **下一轮推进候选**:Phase 3(HTTP 缺口 + req/res 参数对象签名) 或 Phase 4(RequestParam 绑定),两者均需层 A2 扩展配套,优先级由用户定
 
 ## C.4 用户逐层待审细节(本文档迭代入口)
 

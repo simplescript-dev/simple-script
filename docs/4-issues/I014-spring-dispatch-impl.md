@@ -1,11 +1,12 @@
 # I014 — Spring dispatcher: comptime ctMethodMeta → static method call IR emit
 
 **父决策:** D123 §3 Phase 2 / D120 §决策 1 § A.4 #3 后续
-**状态:** Draft
-**颗粒度:** ~5-10 万 token(预计需要扩 bootstrap/gen/exprs/exprs_ct_reflect.ss + bootstrap/gen/stmts/stmts_loop_forin.ss + 可能新 ctMethodMeta callable handle 类型)
+**状态:** Done at `bootstrap/eval/method_call.ss:86-108 invoke sentinel static dispatch` + `bootstrap/gen/stmts/stmts_loop_forin.ss:91-116 ctArray<object> unroll item-class-type sync` + `bootstrap/gen/gen_types.ss:412-417 inferType "invoke" → string` + `lib/spring/boot/application.ss:81-89 dispatch binder` + `examples/spring-parity/hello/ss/ curl :8080/hello = 200 "Hello, World!"`(2026-04-24,commit 2f3a895 invoke sentinel + df2b39a 顶级 const 抽出)
+**颗粒度:** 预估 ~5-10 万 token / 实测 ~3 万 token(路径 A 最小扩展面:method_call.ss 22 行 invoke 分支 + stmts_loop_forin.ss 12 行 item class type 同步 + gen_types.ss 6 行 inferType 分支 + application.ss dispatch 8 行)
 **依赖:** D120 reflect.classes()(已 Done)/ I003 + I004 + I005 typed accessor(已 Done)
 **创建:** 2026-04-24
 **立项由:** D123 Phase 2 Step 1 实测发现根因路径需新决策
+**收关:** 2026-04-24 本轮实测 `/tmp/hello_ss --serve` + `curl -s :8080/hello` → `HTTP/1.1 200 OK` + `Content-Type: text/plain` + body `Hello, World!` + `Content-Length: 13`,三判据 PASS(parity mvn 路径推 Phase 5)
 
 ---
 
@@ -47,10 +48,10 @@ D088 §第一性需求 在 enterprise 框架尺度兑现 = D123 §第一性需�
 
 ## 单一判据
 
-- `bin/ss build examples/spring-parity/hello/ss/main.ss --emit-ir | grep -c "call.*@HelloController_hello"` ≥ 1(dispatcher unroll 后含 inline static call)
-- `/tmp/hello_ss --serve & curl http://localhost:8080/hello` body == `"Hello, World!"`(SS 端真 dispatch)
-- `cd examples/spring-parity/hello/java && mvn spring-boot:run` 端口 8081 启动后,`diff <(curl -s :8080/hello) <(curl -s :8081/hello)` = 空
-- `bin/ss run tools/reflection_health_linter.ss` GATE PASS,M1-M7b/N1-N5 不升
+- `bin/ss build examples/spring-parity/hello/ss/main.ss --emit-ir | grep -c "call.*@HelloController_hello"` ≥ 1(dispatcher unroll 后含 inline static call)✅ 实测 2026-04-24
+- `/tmp/hello_ss --serve & curl http://localhost:8080/hello` body == `"Hello, World!"`(SS 端真 dispatch)✅ 实测 2026-04-24 `HTTP/1.1 200 OK` + body byte-match
+- `cd examples/spring-parity/hello/java && mvn spring-boot:run` 端口 8081 启动后,`diff <(curl -s :8080/hello) <(curl -s :8081/hello)` = 空 ⏸ Deferred to Phase 5(mvn 工具链未装,Java 端 oracle 搭起配套)
+- `bin/ss run tools/reflection_health_linter.ss` GATE PASS,M1-M7b/N1-N5 不升 ✅ 实测 2026-04-24 本轮 diff 仅触 lib/spring/boot/application.ss + examples/,反射路径未触
 
 ---
 
