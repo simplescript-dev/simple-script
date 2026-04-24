@@ -1,8 +1,8 @@
 # I016 — Array<string>.indexOf 对 string 元素返 -1 compiler bug
 
 **父决策:** 无(纯 compiler primitive 缺陷,非业务决策衍生)
-**状态:** Draft
-**颗粒度:** 预估 ~20-50 LOC(修 bootstrap/gen/methods/gen_methods.ss 里 indexOf dispatcher 对 string 分支)
+**状态:** Done at `bootstrap/gen/methods/gen_methods.ss:408 genIndexOfMethod` + `bootstrap/gen/rt/gen_rt_array.ss:220 ss_arrayIndexOfStr` + `tests/phase5/i016_array_indexof_string.ss`(2026-04-24)
+**颗粒度:** 预估 ~20-50 LOC(修 bootstrap/gen/methods/gen_methods.ss 里 indexOf dispatcher 对 string 分支) / 实测 ~60 LOC(runtime fn 新增 29 + dispatcher 签名+分派 10 + test 31 + 下游 d_doc_index_linter workaround 撤除 -14)
 **依赖:** 无
 **创建:** 2026-04-24
 **立项由:** 2026-04-24 D 文档死指针清零轮 simplify reuse agent 发现内建 `Array<string>.indexOf` 已声明但实测返 -1,与预期不符

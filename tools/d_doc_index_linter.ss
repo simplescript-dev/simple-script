@@ -17,7 +17,6 @@
 //
 // 实现注: 避开 Map<string,string>(simplescript 运行时 Map.get string value 返指针非字符串 bug),
 // 改用全局两个平行 Array<string>:foundNums 记 D 号,foundLocs 同 index 记 `file:line` 首见位置。
-// `Array<string>.indexOf` 实测对 string 元素返 -1(误报),所以自写 indexOfStr 线性查。
 
 let live: Array<string> = []
 let foundNums: Array<string> = []
@@ -30,16 +29,6 @@ function getDefaultRoot(): string {
 function isDigit(c: int): int {
     if (c >= 48) { if (c <= 57) { return 1 } }
     return 0
-}
-
-// 线性查 Array<string> 中某字符串的 index,不存在返 -1(对齐 JS/Java Array.indexOf 惯例)
-function indexOfStr(arr: Array<string>, target: string): int {
-    let i = 0
-    while (i < arr.length()) {
-        if (arr[i] == target) { return i }
-        i = i + 1
-    }
-    return -1
 }
 
 // § 的 UTF-8 编码:0xC2 0xA7 = 194, 167(两字节)。simplescript 字符串按字节索引。
@@ -67,7 +56,7 @@ function scanFile(path: string) {
                 }
                 if (j + 1 < n && content.charCodeAt(j) == 194 && content.charCodeAt(j + 1) == 167) {
                     const num = `D${content.substring(i + 1, 3)}`
-                    if (indexOfStr(foundNums, num) < 0) {
+                    if (foundNums.indexOf(num) < 0) {
                         foundNums = foundNums.push(num)
                         foundLocs = foundLocs.push(`${path}:${line}`)
                     }
@@ -113,7 +102,7 @@ function collectLiveDocs(dir: string) {
         if (isDigit(c2) == 0) { continue }
         if (isDigit(c3) == 0) { continue }
         const num = `D${entry.substring(1, 3)}`
-        if (indexOfStr(live, num) < 0) { live = live.push(num) }
+        if (live.indexOf(num) < 0) { live = live.push(num) }
     }
 }
 
@@ -150,7 +139,7 @@ function main() {
     let f = 0
     while (f < foundNums.length()) {
         const num = foundNums[f]
-        if (indexOfStr(live, num) < 0) {
+        if (live.indexOf(num) < 0) {
             deadNums = deadNums.push(num)
             deadLocs = deadLocs.push(foundLocs[f])
         }
@@ -161,7 +150,7 @@ function main() {
     let l = 0
     while (l < live.length()) {
         const num = live[l]
-        if (indexOfStr(foundNums, num) < 0) { orphan = orphan.push(num) }
+        if (foundNums.indexOf(num) < 0) { orphan = orphan.push(num) }
         l = l + 1
     }
 

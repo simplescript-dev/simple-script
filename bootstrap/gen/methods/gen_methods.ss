@@ -405,10 +405,16 @@ function genLengthMethod(objVal: string, objType: string): string {
     return r
 }
 
-function genIndexOfMethod(objVal: string, argList: string): string {
+function genIndexOfMethod(objVal: string, objType: string, argList: string): string {
     const argId = parseInt(argList)
     const argType = inferType(argId)
     const sub = genExpr(argId)
+    // string.indexOf(sub) → substring search via strstr
+    if (objType == "string") {
+        const r = nextReg(); emitIR(`  ${r} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`); return r
+    }
+    // Array.indexOf(elem): dispatch by argType. objType is typically "ptr" (ARRAY_LIT)
+    // or "Array<T>" (typed var) — both funnel into array-element search here.
     if (argType == "int" || argType == "i64" || argType == "double") {
         let val64 = sub
         if (argType == "int") {
@@ -418,7 +424,8 @@ function genIndexOfMethod(objVal: string, argList: string): string {
         }
         const r = nextReg(); emitIR(`  ${r} = call i32 @ss_arrayIndexOf(ptr ${objVal}, i64 ${val64})`); return r
     }
-    const r = nextReg(); emitIR(`  ${r} = call i32 @ss_indexOf(ptr ${objVal}, ptr ${sub})`); return r
+    // string element: strcmp-based search
+    const r = nextReg(); emitIR(`  ${r} = call i32 @ss_arrayIndexOfStr(ptr ${objVal}, ptr ${sub})`); return r
 }
 
 // ── Main method call dispatcher ─────────────────────────────────
@@ -532,7 +539,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
 
     // Type-dependent dispatch
     if (method == "length") { return genLengthMethod(objVal, objType) }
-    if (method == "indexOf") { return genIndexOfMethod(objVal, argList) }
+    if (method == "indexOf") { return genIndexOfMethod(objVal, objType, argList) }
 
     // Non-owning push check
     if (method == "push" && nGetKind(objId) == "MEMBER_ACCESS") {
