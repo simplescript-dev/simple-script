@@ -151,6 +151,8 @@ VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**四
 - 代码**命运已定为消除**(同一轮或上一轮决策判定要被消除 / 替换) → 显式跳过并说明"属于 X 决策要消除的范围,审查无意义"
 - **禁止**把跳过理由写成"时间不够" / "改动很小" / "对齐风格无益"(这些是绕过,不是合理跳过)
 
+**simplify 采纳/拒绝记账(档位门槛)**:标准改 / 大改的 commit message 必须加一行,格式 `simplify 采纳: <项>; 拒绝: <项>(<≤20 字依据>)`,依据必须点**否决类目**(可读性 / scope 错位 / 反例具体命名),禁 "本轮限 X scope" / "与任务无关" 这种套话;**无 simplify 建议或全采纳 → 不写这行**(不凑"无")。微改 / 纯文档 / 纯配置豁免。目的:补位 `feedback_human_readable_code` 可读性对 reuse/quality/efficiency 的 veto 行权留痕 —— memory 跨 compact 可失、对话缓冲区跨轮丢,git log 是唯一持久可 grep 入口。
+
 ### 2. 提交:commit
 
 `git status` 有未提交改动 → commit(`/commit` 或手工),消息遵循 conventional commits。commit **必须**落在同一轮对话里,**不许跨轮补**。
