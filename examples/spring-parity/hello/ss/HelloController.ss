@@ -58,6 +58,16 @@ class DeepNest {
     pent5i: Array<Array<Array<Array<Array<int>>>>>
 }
 
+class Tag {
+    color: string
+    priority: int
+}
+
+class OrderMeta {
+    customer: string
+    metadata: Map<string, Tag>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -186,6 +196,29 @@ class HelloController {
             pi = pi + 1
         }
         return "name=" + d.name + ",isum=" + isum + ",psum=" + psum
+    }
+
+    // I021-requestbody-nested-map(D130) — Map<string, UserClass> 反序列化:enterprise REST API
+    // metadata / tags / 自定义键值对(K8s ConfigMap、Stripe metadata、AWS tags 高频形态);
+    // size + total 求和顺序无关 byte-identical Java HashMap 遍历;.get("urgent") 单 key 命中
+    // 直接对齐 Java Map.get。
+    @PostMapping(path = "/orders/meta")
+    function createOrderMeta(@RequestBody order: OrderMeta): string {
+        let totalPriority = 0
+        const keys = order.metadata.keys()
+        let i = 0
+        while (i < keys.length()) {
+            const t = order.metadata.get(keys[i])
+            if (t != null) {
+                totalPriority = totalPriority + t.priority
+            }
+            i = i + 1
+        }
+        const urgent = order.metadata.get("urgent")
+        if (urgent != null) {
+            return "customer=" + order.customer + ",urgent.color=" + urgent.color + ",size=" + order.metadata.size() + ",total=" + totalPriority
+        }
+        return "customer=" + order.customer + ",size=" + order.metadata.size() + ",total=" + totalPriority
     }
 
     @GetMapping(path = "/agent")

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 class User {
     public String name;
@@ -68,6 +69,16 @@ class DeepNest {
     public List<List<List<OrderCell>>> cube3c;
     public List<List<List<List<String>>>> tess4s;
     public List<List<List<List<List<Integer>>>>> pent5i;
+}
+
+class Tag {
+    public String color;
+    public int priority;
+}
+
+class OrderMeta {
+    public String customer;
+    public Map<String, Tag> metadata;
 }
 
 @RestController
@@ -145,6 +156,17 @@ public class HelloController {
                     for (List<Integer> p1 : p2)
                         for (Integer v : p1) psum += v;
         return "name=" + d.name + ",isum=" + isum + ",psum=" + psum;
+    }
+
+    @PostMapping("/orders/meta")
+    public String createOrderMeta(@RequestBody OrderMeta order) {
+        int totalPriority = 0;
+        for (Tag t : order.metadata.values()) totalPriority += t.priority;
+        Tag urgent = order.metadata.get("urgent");
+        if (urgent != null) {
+            return "customer=" + order.customer + ",urgent.color=" + urgent.color + ",size=" + order.metadata.size() + ",total=" + totalPriority;
+        }
+        return "customer=" + order.customer + ",size=" + order.metadata.size() + ",total=" + totalPriority;
     }
 
     @GetMapping("/agent")

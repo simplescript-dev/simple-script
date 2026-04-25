@@ -1,36 +1,43 @@
-// I021-requestbody — per-class @ClassName_deserialize codegen 拆出独立 file
-// (从 gen_type_ops.ss 拆出,F1 ≤ 600 物理拆 — 嵌套 closure 工作 + 嵌套字段 case 后
-//  gen_type_ops.ss > 600,按 feedback_600_split_not_inline 物理拆,按 feedback_structure_not_linecount
-//  拆判据为「deserialize 单一职能」与 drop/clone/ctor 自然解耦)。
-//
-// 模块职能:**仅 @RequestBody 引用 class 的 per-class deserializer 编译期自动生成**
-// — 与 ss_drop_X / ss_deep_clone_X / ss_shallow_clone_X 全 class 自动生成对称形态分流;
-// 嵌套 user class 字段递归调 + transitive closure 扩展 deserializerTargets;
+// per-class @ClassName_deserialize codegen — 仅 @RequestBody 引用的 class 编译期自动生成。
 // 字段缺失 fallback 默认值(int=0/string=""/bool=0/double=0.0,严格 4xx 留 I021-requestbody-validation)。
+// SSoT 单点解码入口 emitDeserializeForType(ssType, jsonNodeR) -> i64 reg 详见 docs/3-decisions/D130-deserializer-ssot-converge.md。
 
 // invoke sentinel kind == "RequestBody" 分支注册 deserializerTargets(eval/method_call.ss),
 // codegen module 末尾(codegen.ss emitGlobalsAndCode 收尾)调 emitPendingDeserializers
 // 仅对实际需要的 class emit,避免 jnGet* 调用污染未 import lib/json.ss 的程序。
 let deserializerTargets: Map<string, int> = new Map()
 
-// I021-requestbody-nested-array(-primitive)(-array) — Array<UserClass | int | string | double | bool>
-// 单层 + Array<Array<X>> 双层(及任意层 N>1 — 递归终止条件:内层 X ∈ {int/string/double/bool/UserClass})。
-// UserClass elemType 走 <Elem>_deserialize 递归路径(c3361c9 落地),primitive elemType 走
-// jnArrayGetInt/String/Double/Bool raw helper(a096fd0 落地);Array<X> elemType 走第 6 路递归
-// emitArrayDeserializeInto 自身(本子档落地);Map<> 留 -map 子档返 0 fallback。
+// I021-requestbody-nested-array(-primitive)(-array) — Array<X> 字段判断;X ∈ {UserClass /
+// int / string / double / bool / Array<Y> 任意层},递归终止 X ∈ {scalar / UserClass}。
 function isArrayDeserializable(ft: string): int {
     if (ft.startsWith("Array<") == 0 || ft.endsWith(">") == 0) { return 0 }
     const et = extractContainerElemType(ft)
     if (isUserClass(et) == 1) { return 1 }
     if (et == "int" || et == "string" || et == "double" || et == "bool") { return 1 }
     if (isArrayDeserializable(et) == 1) { return 1 }
+    if (isMapDeserializable(et) == 1) { return 1 }
+    return 0
+}
+
+// I021-requestbody-nested-map(D130) — Map<string, V> 字段判断;V ∈ {scalar / UserClass /
+// Array<Y> / Map<string, Z>}。key 限 string(JSON object key 标准形态),非 string key 留
+// I021-requestbody-nested-map-typed-key 子档;extractContainerElemType 已支持 Map<K,V> 返 V
+// (gen_rc.ss:220-232)。
+function isMapDeserializable(ft: string): int {
+    if (ft.startsWith("Map<") == 0 || ft.endsWith(">") == 0) { return 0 }
+    const vt = extractContainerElemType(ft)
+    if (isUserClass(vt) == 1) { return 1 }
+    if (vt == "int" || vt == "string" || vt == "double" || vt == "bool") { return 1 }
+    if (isArrayDeserializable(vt) == 1) { return 1 }
+    if (isMapDeserializable(vt) == 1) { return 1 }
     return 0
 }
 
 // I021-requestbody-nested — 嵌套 user class 字段递归调 <NestedClass>_deserialize,
 // 嵌套 class 通过 outer class 字段间接引用,单遍 BFS 出队即 emit + 字段扫描入队;
-// `deserializerTargets.has` 入队 guard 同时充当 visited(set 后即拒绝再入队),
-// Map.keys() 初始 snapshot 也是 unique,故初始 workList 与扩展项均不重复。
+// `deserializerTargets.has` 入队 guard 同时充当 visited(set 后即拒绝再入队)。
+// **D130 BFS 扩 Array<UserClass> + Map<string, UserClass> value class** 入队 transitive
+// closure(同一字段类型路径递归剥皮直到拿 base elem)。
 function emitPendingDeserializers() {
     let workList: Array<string> = deserializerTargets.keys()
     let i = 0
@@ -50,13 +57,10 @@ function emitPendingDeserializers() {
             if (isUserClass(ft) == 1 && deserializerTargets.has(ft) == 0) {
                 deserializerTargets.set(ft, 1)
                 workList = workList.push(ft)
-            } else if (isArrayDeserializable(ft) == 1) {
-                // I021-requestbody-nested-array(-primitive)(-array) — Array<UserClass> 单层
-                // (b79aa97 升维 cover collection)+ Array<Array<UserClass>> 嵌套(本子档双层
-                // 任意层 unwrap)。外层 elemType 仍是 Array<X> 时递归剥皮直到拿 base elem,
-                // base 是 UserClass 才入队;primitive elem 不入队(走 lib/json raw helper)。
+            } else if (isArrayDeserializable(ft) == 1 || isMapDeserializable(ft) == 1) {
+                // Array<X> / Map<string, X> 递归剥皮直到拿 base elem,base 是 UserClass 才入队
                 let inner = extractContainerElemType(ft)
-                while (inner.startsWith("Array<") == 1) {
+                while (inner.startsWith("Array<") == 1 || inner.startsWith("Map<") == 1) {
                     inner = extractContainerElemType(inner)
                 }
                 if (isUserClass(inner) == 1 && deserializerTargets.has(inner) == 0) {
@@ -68,18 +72,83 @@ function emitPendingDeserializers() {
     }
 }
 
-// I021-requestbody-nested-array(-primitive)(-array) — Array<X> 字段反序列化 inline emit body。
-// 接受已有的 array 子 nodeId reg 名(由调用方从 jnGetField 或 jnArrayGet 拿到),返回
-// final array ptr reg 名;helper 自身不 store 任何 dst(由调用方在外层用 finalArrR store
-// 字段槽 / 内层 push i64 转换源)。**第 6 路递归 emitArrayDeserializeInto 自身** —
-// elemType startsWith "Array<" 时 inner array node = jnArrayGet(outer, idx),递归取 inner ptr
-// + ptrtoint i64 + ss_arrayPush 外层(D013 list-append 单签 i64);递归终止条件:elemType
-// ∈ {int/string/double/bool/UserClass}。RC 契约:外层 push 内层 ptr 不 retain(transfer);
-// 内层 push string elem 必 emitRetainForType(jnArrayGetString 返 jnStr 内部 ptr 未持新 RC)。
+// I021-D130 — emitDeserializeForType:从 JSON nodeId 反序列化为 SS 类型 T,返回 i64 reg
+// 名(持反序列化结果)。**SSoT 单点解码入口** — 所有"from nodeId emit i64 of type T"职能
+// 收敛此处,调用方按 T 类型语义解 i64 → 写入字段槽 / push 数组元素 / set Map entry。
+//
+// RC 契约:
+//   - primitive scalar(int/double/bool):无 ptr 不 retain
+//   - string:emitRetainForType(jnAsString 返 jnStr 内部 ptr 未持新 RC)
+//   - UserClass:子 @<C>_deserialize 返新分配 ptr rc=1,transfer ownership 不 retain
+//   - Array<X> / Map<string, X>:容器内层值由递归 emitDeserializeForType 自身负责 RC
+//
+// 调用方 store 语义:
+//   - i32 字段(int/bool):trunc i64 to i32 + store i32
+//   - double 字段:bitcast i64 to double + store double
+//   - ptr 字段(string/UserClass/容器):inttoptr i64 to ptr + store ptr
+//   (emitFieldStoreI64 / 容器循环 push/set 自动正确转换)
+function emitDeserializeForType(ssType: string, jsonNodeR: string): string {
+    if (ssType == "int") {
+        const valR = nextReg()
+        emitIR(`  ${valR} = call i32 @jnAsInt(i32 ${jsonNodeR})`)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = sext i32 ${valR} to i64`)
+        return i64R
+    }
+    if (ssType == "double") {
+        const valR = nextReg()
+        emitIR(`  ${valR} = call double @jnAsDouble(i32 ${jsonNodeR})`)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = bitcast double ${valR} to i64`)
+        return i64R
+    }
+    if (ssType == "string") {
+        const valR = nextReg()
+        emitIR(`  ${valR} = call ptr @jnAsString(i32 ${jsonNodeR})`)
+        emitRetainForType(valR, ssType)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = ptrtoint ptr ${valR} to i64`)
+        return i64R
+    }
+    if (ssType == "bool") {
+        const valR = nextReg()
+        emitIR(`  ${valR} = call i32 @jnAsBool(i32 ${jsonNodeR})`)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = zext i32 ${valR} to i64`)
+        return i64R
+    }
+    if (isUserClass(ssType) == 1) {
+        const ptrR = nextReg()
+        emitIR(`  ${ptrR} = call ptr @${ssType}_deserialize(i32 ${jsonNodeR})`)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = ptrtoint ptr ${ptrR} to i64`)
+        return i64R
+    }
+    if (isArrayDeserializable(ssType) == 1) {
+        const arrPtrR = emitArrayDeserializeInto(jsonNodeR, ssType)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = ptrtoint ptr ${arrPtrR} to i64`)
+        return i64R
+    }
+    if (isMapDeserializable(ssType) == 1) {
+        const mapPtrR = emitMapDeserializeInto(jsonNodeR, ssType)
+        const i64R = nextReg()
+        emitIR(`  ${i64R} = ptrtoint ptr ${mapPtrR} to i64`)
+        return i64R
+    }
+    // fallback i64 0(未支持类型,RC 安全占位 — emit add i64 0, 0 拿 reg 持 0 值)
+    const zR = nextReg()
+    emitIR(`  ${zR} = add i64 0, 0`)
+    return zR
+}
+
+// I021-D130 — Array<X> 字段反序列化 inline emit framework。接受 array 子 nodeId reg 名
+// (调用方从 jnGetField 或上层 jnArrayGet 拿到),返回 final array ptr reg。**inner elem
+// dispatch 全部委托 emitDeserializeForType**(SSoT 收敛 — 7 路 case 单点解码,Array<X> /
+// Map<string, X> 嵌套递归自动 cover)。
 function emitArrayDeserializeInto(arrNodeR: string, arrFieldType: string): string {
     const elemType = extractContainerElemType(arrFieldType)
-    const elemIsPtr = (elemType == "string" || isUserClass(elemType) == 1 || elemType.startsWith("Array<") == 1) ? 1 : 0
-    const newArrFn = elemIsPtr == 1 ? "ss_newArrayPtr" : "ss_newArray"
+    const newArrFn = ssTypeToLLVM(elemType) == "ptr" ? "ss_newArrayPtr" : "ss_newArray"
     const arrLenR = nextReg()
     emitIR(`  ${arrLenR} = call i32 @jnArrayLen(i32 ${arrNodeR})`)
     const initArrR = nextReg()
@@ -101,42 +170,9 @@ function emitArrayDeserializeInto(arrNodeR: string, arrFieldType: string): strin
     emitIR(`  ${condR} = icmp slt i32 ${idxR}, ${arrLenR}`)
     emitIR(`  br i1 ${condR}, label %${bodyLabel}, label %${endLabel}`)
     emitIR(`${bodyLabel}:`)
-    let elemI64R = ""
-    if (isUserClass(elemType) == 1) {
-        const elemNodeR = nextReg()
-        emitIR(`  ${elemNodeR} = call i32 @jnArrayGet(i32 ${arrNodeR}, i32 ${idxR})`)
-        const elemPtrR = nextReg()
-        emitIR(`  ${elemPtrR} = call ptr @${elemType}_deserialize(i32 ${elemNodeR})`)
-        elemI64R = nextReg()
-        emitIR(`  ${elemI64R} = ptrtoint ptr ${elemPtrR} to i64`)
-    } else if (elemType == "int") {
-        const valR = nextReg()
-        emitIR(`  ${valR} = call i32 @jnArrayGetInt(i32 ${arrNodeR}, i32 ${idxR})`)
-        elemI64R = nextReg()
-        emitIR(`  ${elemI64R} = sext i32 ${valR} to i64`)
-    } else if (elemType == "double") {
-        const valR = nextReg()
-        emitIR(`  ${valR} = call double @jnArrayGetDouble(i32 ${arrNodeR}, i32 ${idxR})`)
-        elemI64R = nextReg()
-        emitIR(`  ${elemI64R} = bitcast double ${valR} to i64`)
-    } else if (elemType == "string") {
-        const valR = nextReg()
-        emitIR(`  ${valR} = call ptr @jnArrayGetString(i32 ${arrNodeR}, i32 ${idxR})`)
-        emitRetainForType(valR, elemType)
-        elemI64R = nextReg()
-        emitIR(`  ${elemI64R} = ptrtoint ptr ${valR} to i64`)
-    } else if (elemType == "bool") {
-        const valR = nextReg()
-        emitIR(`  ${valR} = call i32 @jnArrayGetBool(i32 ${arrNodeR}, i32 ${idxR})`)
-        elemI64R = nextReg()
-        emitIR(`  ${elemI64R} = zext i32 ${valR} to i64`)
-    } else if (elemType.startsWith("Array<") == 1) {
-        const innerArrNodeR = nextReg()
-        emitIR(`  ${innerArrNodeR} = call i32 @jnArrayGet(i32 ${arrNodeR}, i32 ${idxR})`)
-        const innerPtrR = emitArrayDeserializeInto(innerArrNodeR, elemType)
-        elemI64R = nextReg()
-        emitIR(`  ${elemI64R} = ptrtoint ptr ${innerPtrR} to i64`)
-    }
+    const elemNodeR = nextReg()
+    emitIR(`  ${elemNodeR} = call i32 @jnArrayGet(i32 ${arrNodeR}, i32 ${idxR})`)
+    const elemI64R = emitDeserializeForType(elemType, elemNodeR)
     const curArrR = nextReg()
     emitIR(`  ${curArrR} = load ptr, ptr ${arrSlotR}, align 8`)
     const newArrR = nextReg()
@@ -152,12 +188,80 @@ function emitArrayDeserializeInto(arrNodeR: string, arrFieldType: string): strin
     return finalArrR
 }
 
-// I021-requestbody — per-class @ClassName_deserialize(i32 nodeId): ClassName 编译期自动生成
-// (mirror ss_drop / ss_deep_clone / ss_shallow_clone 模式 — D018 ObjectLayout TypeInfo +
-//  D022 clone 语义 第四步 deserializer)。nodeId = JsonNode 实例 nodeId 字段 raw int
-// (避免 JsonNode wrapper alloc 开销);字段递归:primitive(int/double/string/bool)调
-// jnGet*(lib/json.ss),嵌套 user class 调 jnGetField + <NestedClass>_deserialize 递归,
-// Array<Class> / Map<K,Class> 留 I021-requestbody-nested-array / -map 子档。
+// I021-D130 — Map<string, X> 字段反序列化 inline emit framework。接受 object 子 nodeId
+// reg 名,返回 final map ptr reg。**inner value dispatch 全部委托 emitDeserializeForType**
+// (SSoT 收敛 — 与 emitArrayDeserializeInto 对称形态)。**val_type=1 写 offset 516** 标记 ptr
+// value(对齐 gen_decls.ss:653-664 用户层 `let m: Map<...> = new Map()` val_type 协议) —
+// Map drop 时 ss_rc_destroy_map 自动级联触发 value drop;keys array 临时变量 emit 末尾
+// ss_rc_release 走 ss_rc_destroy_array_ptrs 自动逐元素释放(jnObjectKeys 内 string 副本)。
+function emitMapDeserializeInto(mapNodeR: string, mapFieldType: string): string {
+    const vType = extractContainerElemType(mapFieldType)
+    const initMapR = nextReg()
+    emitIR(`  ${initMapR} = call ptr @ss_mapNew()`)
+    if (ssTypeToLLVM(vType) == "ptr") {
+        const vtpGepR = nextReg()
+        emitIR(`  ${vtpGepR} = getelementptr i8, ptr ${initMapR}, i64 516`)
+        emitIR(`  store i32 1, ptr ${vtpGepR}, align 4`)
+    }
+    const keysArrR = nextReg()
+    emitIR(`  ${keysArrR} = call ptr @jnObjectKeys(i32 ${mapNodeR})`)
+    const keysLenR = nextReg()
+    emitIR(`  ${keysLenR} = call i32 @ss_arrayLen(ptr ${keysArrR})`)
+    const idxSlotR = nextReg()
+    emitIR(`  ${idxSlotR} = alloca i32, align 4`)
+    emitIR(`  store i32 0, ptr ${idxSlotR}, align 4`)
+    const headLabel = nextLabel("map_loop.head")
+    const bodyLabel = nextLabel("map_loop.body")
+    const endLabel = nextLabel("map_loop.end")
+    emitIR(`  br label %${headLabel}`)
+    emitIR(`${headLabel}:`)
+    const idxR = nextReg()
+    emitIR(`  ${idxR} = load i32, ptr ${idxSlotR}, align 4`)
+    const condR = nextReg()
+    emitIR(`  ${condR} = icmp slt i32 ${idxR}, ${keysLenR}`)
+    emitIR(`  br i1 ${condR}, label %${bodyLabel}, label %${endLabel}`)
+    emitIR(`${bodyLabel}:`)
+    const keyI64R = nextReg()
+    emitIR(`  ${keyI64R} = call i64 @ss_arrayGet(ptr ${keysArrR}, i32 ${idxR})`)
+    const keyPtrR = nextReg()
+    emitIR(`  ${keyPtrR} = inttoptr i64 ${keyI64R} to ptr`)
+    const valNodeR = nextReg()
+    emitIR(`  ${valNodeR} = call i32 @jnGetField(i32 ${mapNodeR}, ptr ${keyPtrR})`)
+    const valI64R = emitDeserializeForType(vType, valNodeR)
+    emitIR(`  call void @ss_mapSet(ptr ${initMapR}, ptr ${keyPtrR}, i64 ${valI64R})`)
+    const idxNextR = nextReg()
+    emitIR(`  ${idxNextR} = add i32 ${idxR}, 1`)
+    emitIR(`  store i32 ${idxNextR}, ptr ${idxSlotR}, align 4`)
+    emitIR(`  br label %${headLabel}`)
+    emitIR(`${endLabel}:`)
+    emitIR(`  call void @ss_rc_release(ptr ${keysArrR})`)
+    return initMapR
+}
+
+// I021-D130 — emitFieldStoreI64:把 emitDeserializeForType 返回的 i64 reg 按 SS 字段类型
+// 语义写入字段槽。3 种存储宽度:i32(int/bool)/double(double bitcast)/ptr(string/UserClass/容器);
+// SSoT 收敛 type-aware store(否则每字段 case 重复 trunc/bitcast/inttoptr 模式)。
+function emitFieldStoreI64(dstR: string, ft: string, valI64R: string) {
+    const llType = ssTypeToLLVM(ft)
+    if (llType == "i32") {
+        const i32R = nextReg()
+        emitIR(`  ${i32R} = trunc i64 ${valI64R} to i32`)
+        emitIR(`  store i32 ${i32R}, ptr ${dstR}, align 8`)
+    } else if (llType == "double") {
+        const dR = nextReg()
+        emitIR(`  ${dR} = bitcast i64 ${valI64R} to double`)
+        emitIR(`  store double ${dR}, ptr ${dstR}, align 8`)
+    } else {
+        const pR = nextReg()
+        emitIR(`  ${pR} = inttoptr i64 ${valI64R} to ptr`)
+        emitIR(`  store ptr ${pR}, ptr ${dstR}, align 8`)
+    }
+}
+
+// per-class @ClassName_deserialize(i32 nodeId): ClassName 编译期自动生成(mirror ss_drop /
+// ss_deep_clone / ss_shallow_clone 模式 — D018 ObjectLayout TypeInfo + D022 clone 语义)。
+// nodeId = JsonNode 实例 raw int(避免 wrapper alloc 开销);字段循环委托 emitDeserializeForType
+// 单点解码 + emitFieldStoreI64 type-aware store(D130)。
 function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: int) {
     regCount = 0
     regTable = []
@@ -180,67 +284,10 @@ function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: 
             const keyConst = addStringConst(p)
             const dstR = nextReg()
             emitIR(`  ${dstR} = getelementptr %${className}, ptr %new, i32 0, i32 ${idx}`)
-            if (ft == "int") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call i32 @jnGetInt(i32 %nodeId.arg, ptr ${keyConst})`)
-                emitIR(`  store i32 ${valR}, ptr ${dstR}, align 8`)
-            } else if (ft == "double") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call double @jnGetDouble(i32 %nodeId.arg, ptr ${keyConst})`)
-                emitIR(`  store double ${valR}, ptr ${dstR}, align 8`)
-            } else if (ft == "string") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call ptr @jnGetString(i32 %nodeId.arg, ptr ${keyConst})`)
-                // string 字段必须 retain:jnGetString 返 jnStr 内部 ptr 未持新 RC,Outer drop
-                // 时 emitFieldReleaseLoop ss_rc_release 字段 → free jnStr 仍持有的 string → 下一个
-                // POST use-after-free。对照 emitClassDeepCloneFn / emitClassCtorBody ptr 字段 store
-                // 前 emitRetainForType 模式(D018 + D022 contract)。
-                emitRetainForType(valR, ft)
-                emitIR(`  store ptr ${valR}, ptr ${dstR}, align 8`)
-            } else if (ft == "bool") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call i32 @jnGetBool(i32 %nodeId.arg, ptr ${keyConst})`)
-                emitIR(`  store i32 ${valR}, ptr ${dstR}, align 8`)
-            } else if (isUserClass(ft) == 1) {
-                // I021-requestbody-nested — 嵌套 user class 字段:jnGetField 拿子 nodeId(int)
-                // + 递归调 <ft>_deserialize(返新 ptr rc=1,emitPendingDeserializers transitive
-                // closure 保证 ft 也在 deserializerTargets 已 emit)+ 直接 store(无 retain;
-                // 子 deserialize 已 transfer ownership,父 ss_drop_<Outer> 链 emit ss_release
-                // 自动级联触发子 drop)。字段缺失 jnGetField 返 0 → 子 deserialize 内部 jnGet*
-                // primitive 走默认值 fallback,生成全默认值嵌套对象 ptr(对齐 primitive 缺失 fallback)。
-                const childIdR = nextReg()
-                emitIR(`  ${childIdR} = call i32 @jnGetField(i32 %nodeId.arg, ptr ${keyConst})`)
-                const childPtrR = nextReg()
-                emitIR(`  ${childPtrR} = call ptr @${ft}_deserialize(i32 ${childIdR})`)
-                emitIR(`  store ptr ${childPtrR}, ptr ${dstR}, align 8`)
-            } else if (isArrayDeserializable(ft) == 1) {
-                // I021-requestbody-nested-array(-primitive)(-array) — Array<UserClass | int |
-                // string | double | bool | Array<X>> 单层 / N=2 双层 / 递归任意层。jnGetField
-                // 拿 array 子 nodeId 后委托 emitArrayDeserializeInto inline emit ss_newArray(tag=1)
-                // 或 ss_newArrayPtr(tag=5)+ jnArrayLen 循环 + 6 路 elemType 分派(原 5 路 + 内层
-                // Array<X> 第 6 路递归 emitArrayDeserializeInto 自身),返 final array ptr。store
-                // 直接 transfer ownership(内层 Array 是新分配 mimalloc ptr 持新 RC=1,无 retain)。
-                // RC 双层契约:外层 push 内层 ptr 不 retain;内层 push string elem 必 retain
-                // (jnStr 内部 ptr 未持新 RC,与 a096fd0 单层 string elem 同模式)。父
-                // ss_drop_<Outer> 链由 emitFieldReleaseLoop 走 Array<X> 字段路径(gen_type_ops.ss
-                // :172),tag=5 逐元素 ss_release_arr → 内层 tag={1|5} elem release 链。
-                const arrNodeR = nextReg()
-                emitIR(`  ${arrNodeR} = call i32 @jnGetField(i32 %nodeId.arg, ptr ${keyConst})`)
-                const finalArrR = emitArrayDeserializeInto(arrNodeR, ft)
-                emitIR(`  store ptr ${finalArrR}, ptr ${dstR}, align 8`)
-            } else {
-                // v0 不支持的字段类型(Map<K,Class>) — emit 默认值 fallback,留 -map 子档完善;
-                // **未被 @RequestBody 引用的 class**(bootstrap 反射 Meta:FieldMeta 等)
-                // 此 deserializer 永不被调用,fallback 仅是"per-class 函数自动生成对称形态"。
-                const llType = ssTypeToLLVM(ft)
-                if (llType == "i32") {
-                    emitIR(`  store i32 0, ptr ${dstR}, align 8`)
-                } else if (llType == "double") {
-                    emitIR(`  store double 0.0, ptr ${dstR}, align 8`)
-                } else {
-                    emitIR(`  store ptr null, ptr ${dstR}, align 8`)
-                }
-            }
+            const childNodeR = nextReg()
+            emitIR(`  ${childNodeR} = call i32 @jnGetField(i32 %nodeId.arg, ptr ${keyConst})`)
+            const valI64R = emitDeserializeForType(ft, childNodeR)
+            emitFieldStoreI64(dstR, ft, valI64R)
             idx = idx + 1
         }
     }

@@ -69,13 +69,8 @@ class JsonNode {
         return jnArrayLen(this.nodeId)
     }
 
-    function asString(): string {
-        return jnStr.getString(`${this.nodeId}`)
-    }
-
-    function asInt(): int {
-        return parseInt(jnInt.getString(`${this.nodeId}`))
-    }
+    function asString(): string { return jnAsString(this.nodeId) }
+    function asInt(): int { return jnAsInt(this.nodeId) }
 
     function getDouble(key: string): double {
         const childId = jnGetField(this.nodeId, key)
@@ -116,13 +111,8 @@ class JsonNode {
         return result
     }
 
-    function asDouble(): double {
-        return parseDouble(jnInt.getString(`${this.nodeId}`))
-    }
-
-    function asBool(): int {
-        return this.asInt()
-    }
+    function asDouble(): double { return jnAsDouble(this.nodeId) }
+    function asBool(): int { return jnAsBool(this.nodeId) }
 
     // Builder methods (object)
     function put(key: string, value: string): JsonNode {
@@ -263,6 +253,31 @@ function jnSetField(objId: int, key: string, childId: int) {
     }
 }
 
+// I021-D130 — by-nodeId raw decode helper(emitDeserializeForType 单点解码入口 SSoT)。
+// 与 by-key (jnGetInt/Double/String/Bool) 和 by-arr+idx (jnArrayGetInt/Double/String/Bool)
+// 三种入口语义不同但解码逻辑收敛到 parseInt / parseDouble / jnStr.getString;后两者
+// 内部都委托本组 jnAs* helper(SSoT)。
+
+function jnAsInt(node: int): int {
+    if (node <= 0) { return 0 }
+    return parseInt(jnInt.getString(`${node}`))
+}
+
+function jnAsDouble(node: int): double {
+    if (node <= 0) { return 0.0 }
+    return parseDouble(jnInt.getString(`${node}`))
+}
+
+function jnAsString(node: int): string {
+    if (node <= 0) { return "" }
+    return jnStr.getString(`${node}`)
+}
+
+function jnAsBool(node: int): int {
+    if (node <= 0) { return 0 }
+    return parseInt(jnInt.getString(`${node}`))
+}
+
 // I021-requestbody — raw int 接口 helper:per-class @ClassName_deserialize codegen
 // emit IR 时直接调 jnGet*(nodeId 是 raw i32,无 JsonNode wrapper alloc 开销)。
 // JsonNode.getString/getInt/getDouble/getBool 是 user 层 method API(line 46-117),
@@ -277,29 +292,10 @@ function jnRoot(node: JsonNode): int {
     return node.nodeId
 }
 
-function jnGetInt(objId: int, key: string): int {
-    const childId = jnGetField(objId, key)
-    if (childId <= 0) { return 0 }
-    return parseInt(jnInt.getString(`${childId}`))
-}
-
-function jnGetDouble(objId: int, key: string): double {
-    const childId = jnGetField(objId, key)
-    if (childId <= 0) { return 0.0 }
-    return parseDouble(jnInt.getString(`${childId}`))
-}
-
-function jnGetString(objId: int, key: string): string {
-    const childId = jnGetField(objId, key)
-    if (childId <= 0) { return "" }
-    return jnStr.getString(`${childId}`)
-}
-
-function jnGetBool(objId: int, key: string): int {
-    const childId = jnGetField(objId, key)
-    if (childId <= 0) { return 0 }
-    return parseInt(jnInt.getString(`${childId}`))
-}
+function jnGetInt(objId: int, key: string): int { return jnAsInt(jnGetField(objId, key)) }
+function jnGetDouble(objId: int, key: string): double { return jnAsDouble(jnGetField(objId, key)) }
+function jnGetString(objId: int, key: string): string { return jnAsString(jnGetField(objId, key)) }
+function jnGetBool(objId: int, key: string): int { return jnAsBool(jnGetField(objId, key)) }
 
 // I021-requestbody-nested-array — Array iter raw int 接口:codegen emit IR 直接走 i32 nodeId
 // 避免 JsonNode wrapper alloc;JsonNode.size()/get(index) 也委托此处,SSoT 收敛。
@@ -349,32 +345,36 @@ function jnArrayGet(node: int, index: int): int {
 // 后查 jnInt / jnStr Map);Phase 4 §247 第二支柱嵌套深化第三轮 primitive 元素数组反序列化
 // 走此 4 helper(int / double / bool 用 jnInt 文本表示 + parseInt/parseDouble;
 // string 用 jnStr 直接 ptr,codegen emit 必 emitRetainForType 持新 RC)。
-function jnArrayGetInt(arrNode: int, idx: int): int {
-    if (arrNode <= 0) { return 0 }
-    const elemId = jnArrayGet(arrNode, idx)
-    if (elemId <= 0) { return 0 }
-    return parseInt(jnInt.getString(`${elemId}`))
-}
+function jnArrayGetInt(arrNode: int, idx: int): int { return jnAsInt(jnArrayGet(arrNode, idx)) }
+function jnArrayGetDouble(arrNode: int, idx: int): double { return jnAsDouble(jnArrayGet(arrNode, idx)) }
+function jnArrayGetString(arrNode: int, idx: int): string { return jnAsString(jnArrayGet(arrNode, idx)) }
+function jnArrayGetBool(arrNode: int, idx: int): int { return jnAsBool(jnArrayGet(arrNode, idx)) }
 
-function jnArrayGetDouble(arrNode: int, idx: int): double {
-    if (arrNode <= 0) { return 0.0 }
-    const elemId = jnArrayGet(arrNode, idx)
-    if (elemId <= 0) { return 0.0 }
-    return parseDouble(jnInt.getString(`${elemId}`))
-}
-
-function jnArrayGetString(arrNode: int, idx: int): string {
-    if (arrNode <= 0) { return "" }
-    const elemId = jnArrayGet(arrNode, idx)
-    if (elemId <= 0) { return "" }
-    return jnStr.getString(`${elemId}`)
-}
-
-function jnArrayGetBool(arrNode: int, idx: int): int {
-    if (arrNode <= 0) { return 0 }
-    const elemId = jnArrayGet(arrNode, idx)
-    if (elemId <= 0) { return 0 }
-    return parseInt(jnInt.getString(`${elemId}`))
+// I021-D130 — Object iter raw helper:emitDeserializeForType Map<string, X> 路径循环
+// 每 key 提取(与 jnArrayLen 对称)。复用既有 jnGetField(node, key) 拿 value 子 nodeId
+// 不新增 jnObjectGet(语义重合避免双轨制)。fieldList 内部 dict repr "k1:v1,k2:v2,..."
+// 拆 "," 拆 ":" 提 key,与 jnGetField 同模式遍历。
+function jnObjectKeys(node: int): Array<string> {
+    let keys: Array<string> = []
+    if (node <= 0) { return keys }
+    const fieldList = jnStr.getString(`${node}`)
+    if (fieldList == "") { return keys }
+    let remaining = fieldList
+    while (remaining != "") {
+        let entry = remaining
+        const ci = remaining.indexOf(",")
+        if (ci >= 0) {
+            entry = remaining.substring(0, ci)
+            remaining = remaining.substring(ci + 1, remaining.length() - ci - 1)
+        } else {
+            remaining = ""
+        }
+        const colonIdx = entry.indexOf(":")
+        if (colonIdx >= 0) {
+            keys = keys.push(entry.substring(0, colonIdx))
+        }
+    }
+    return keys
 }
 
 function jnAddElement(arrId: int, childId: int) {
