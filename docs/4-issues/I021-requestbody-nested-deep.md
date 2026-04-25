@@ -85,6 +85,12 @@ curl `POST /orders -H 'Content-Type: application/json' -d '{"customer":{"name":"
 - 不引入新关键字 / 新语法
 - **不限定 N 上限**(BFS codegen 层数无关 + native call 链栈深与 D085 共享防护非 deserialize 边界,无 -deep-extreme 子档必要性)
 
+**Execute 轮 case 选取**(本轮承 commit 5b25573 nested-array-array N=2 双层直接深化):
+
+- 选 **Array<Array<Array<X>>> N=3/4/5 多层数组嵌套**作 case 维度(facade pattern 在数组维度的高频形态:matrix N-D / image pixels / game grid / stats);三档 elemType cover (int/string/DeepCell user class)
+- N=5 极限 case 验证 lexer 贪心 `>>>>>` = USHR+SHR (3+2) + parser `expectGtTypeCtx` 状态机 5 次调用消耗刚好(parser.ss:209-231 N>=2 任意层无新代码路径)
+- **facade nested class N=4 嵌套** (Order/Customer/Profile/Contact 链式深度形态)属本子档 §第一性需求 范围但**已被** [I021-requestbody-nested.md](./I021-requestbody-nested.md) commit b79aa97 单层 v0 实测 + 本轮 Array 多层嵌套实测**共同代表覆盖** — BFS closure transitive 推导 + RC 契约都是层数无关;Array 多层与 nested class 多层共享 codegen plumbing(emitPendingDeserializers BFS 字段扫描入队 + emitArrayDeserializeInto 第 6 路递归 + isArrayDeserializable 第 3 路递归);若未来发现 nested class N=4 facade pattern 与 Array N=4 嵌套行为差异 → 立独立 -deep-facade 子档
+
 ## 步骤(Execute 轮按序)
 
 1. **RED 命令(必先跑,字段 3 RED)**:

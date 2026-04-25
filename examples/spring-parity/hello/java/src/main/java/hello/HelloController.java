@@ -61,6 +61,15 @@ class OrderMatrix {
     public List<List<String>> labels;
 }
 
+class DeepNest {
+    public String name;
+    public List<List<List<Integer>>> cube3i;
+    public List<List<List<String>>> cube3s;
+    public List<List<List<OrderCell>>> cube3c;
+    public List<List<List<List<String>>>> tess4s;
+    public List<List<List<List<List<Integer>>>>> pent5i;
+}
+
 @RestController
 public class HelloController {
     @GetMapping("/hello")
@@ -119,6 +128,23 @@ public class HelloController {
         int total = 0;
         for (List<Integer> row : m.grid) for (Integer v : row) total += v;
         return "name=" + m.name + ",total=" + total;
+    }
+
+    // parity smoke: only cube3i (N=3 int) + pent5i (N=5 int) suffice for byte-identical;
+    // full 5-elemType coverage in tests/phase5/i021_requestbody_nested_deep.ss
+    @PostMapping("/deep")
+    public String createDeep(@RequestBody DeepNest d) {
+        int isum = 0;
+        for (List<List<Integer>> plane : d.cube3i)
+            for (List<Integer> row : plane)
+                for (Integer v : row) isum += v;
+        int psum = 0;
+        for (List<List<List<List<Integer>>>> p4 : d.pent5i)
+            for (List<List<List<Integer>>> p3 : p4)
+                for (List<List<Integer>> p2 : p3)
+                    for (List<Integer> p1 : p2)
+                        for (Integer v : p1) psum += v;
+        return "name=" + d.name + ",isum=" + isum + ",psum=" + psum;
     }
 
     @GetMapping("/agent")

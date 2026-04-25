@@ -49,6 +49,15 @@ class OrderMatrix {
     labels: Array<Array<string>>
 }
 
+class DeepNest {
+    name: string
+    cube3i: Array<Array<Array<int>>>
+    cube3s: Array<Array<Array<string>>>
+    cube3c: Array<Array<Array<OrderCell>>>
+    tess4s: Array<Array<Array<Array<string>>>>
+    pent5i: Array<Array<Array<Array<Array<int>>>>>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -128,6 +137,55 @@ class HelloController {
             i = i + 1
         }
         return "name=" + m.name + ",total=" + total
+    }
+
+    // parity smoke: 仅消耗 cube3i (N=3 int) + pent5i (N=5 int 极限) 两路足以验证
+    // byte-identical Java 行为;全 5 elemType cover 在 tests/phase5/i021_requestbody_nested_deep.ss
+    @PostMapping(path = "/deep")
+    function createDeep(@RequestBody d: DeepNest): string {
+        let isum = 0
+        let i = 0
+        while (i < d.cube3i.length()) {
+            let plane = d.cube3i[i]
+            let j = 0
+            while (j < plane.length()) {
+                let row = plane[j]
+                let k = 0
+                while (k < row.length()) {
+                    isum = isum + row[k]
+                    k = k + 1
+                }
+                j = j + 1
+            }
+            i = i + 1
+        }
+        let psum = 0
+        let pi = 0
+        while (pi < d.pent5i.length()) {
+            let p4 = d.pent5i[pi]
+            let pj = 0
+            while (pj < p4.length()) {
+                let p3 = p4[pj]
+                let pk = 0
+                while (pk < p3.length()) {
+                    let p2 = p3[pk]
+                    let pl = 0
+                    while (pl < p2.length()) {
+                        let p1 = p2[pl]
+                        let pm = 0
+                        while (pm < p1.length()) {
+                            psum = psum + p1[pm]
+                            pm = pm + 1
+                        }
+                        pl = pl + 1
+                    }
+                    pk = pk + 1
+                }
+                pj = pj + 1
+            }
+            pi = pi + 1
+        }
+        return "name=" + d.name + ",isum=" + isum + ",psum=" + psum
     }
 
     @GetMapping(path = "/agent")
