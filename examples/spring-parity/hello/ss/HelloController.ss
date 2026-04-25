@@ -18,6 +18,16 @@ class Order {
     addr: Address
 }
 
+class Item {
+    name: string
+    price: int
+}
+
+class OrderList {
+    customer: string
+    items: Array<Item>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -53,6 +63,17 @@ class HelloController {
     @PostMapping(path = "/orders")
     function createOrder(@RequestBody order: Order): string {
         return "customer=" + order.customer.name + ",city=" + order.addr.city
+    }
+
+    @PostMapping(path = "/orders-list")
+    function createOrderList(@RequestBody order: OrderList): string {
+        let total = 0
+        let i = 0
+        while (i < order.items.length()) {
+            total = total + order.items[i].price
+            i = i + 1
+        }
+        return "customer=" + order.customer + ",total=" + total
     }
 
     @GetMapping(path = "/agent")

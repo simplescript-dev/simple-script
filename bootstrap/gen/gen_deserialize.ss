@@ -13,6 +13,13 @@
 // 仅对实际需要的 class emit,避免 jnGet* 调用污染未 import lib/json.ss 的程序。
 let deserializerTargets: Map<string, int> = new Map()
 
+// I021-requestbody-nested-array — Array<UserClass> 字段谓词;
+// Array<int> / Array<string> primitive 元素返 0,留 -array-primitive 子档处理。
+function isArrayClass(ft: string): int {
+    if (ft.startsWith("Array<") == 0 || ft.endsWith(">") == 0) { return 0 }
+    return isUserClass(extractContainerElemType(ft))
+}
+
 // I021-requestbody-nested — 嵌套 user class 字段递归调 <NestedClass>_deserialize,
 // 嵌套 class 通过 outer class 字段间接引用,单遍 BFS 出队即 emit + 字段扫描入队;
 // `deserializerTargets.has` 入队 guard 同时充当 visited(set 后即拒绝再入队),
@@ -36,6 +43,15 @@ function emitPendingDeserializers() {
             if (isUserClass(ft) == 1 && deserializerTargets.has(ft) == 0) {
                 deserializerTargets.set(ft, 1)
                 workList = workList.push(ft)
+            } else if (isArrayClass(ft) == 1) {
+                // I021-requestbody-nested-array — Array<UserClass> 字段元素类型递归入队
+                // (b79aa97 单遍 BFS 升维 cover collection 维度;原仅 cover scalar 字段
+                // user class,现 cover array elem class 同一封闭性)。
+                const et = extractContainerElemType(ft)
+                if (deserializerTargets.has(et) == 0) {
+                    deserializerTargets.set(et, 1)
+                    workList = workList.push(et)
+                }
             }
         }
     }
@@ -102,11 +118,63 @@ function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: 
                 const childPtrR = nextReg()
                 emitIR(`  ${childPtrR} = call ptr @${ft}_deserialize(i32 ${childIdR})`)
                 emitIR(`  store ptr ${childPtrR}, ptr ${dstR}, align 8`)
+            } else if (isArrayClass(ft) == 1) {
+                // I021-requestbody-nested-array — Array<UserClass> 字段:jnGetField 拿 array
+                // 子 nodeId + jnArrayLen 拿 length + ss_newArrayPtr(0) 初始空 ptr-array
+                // (D013 list-append 标准 ss_arrayPush 唯一入口,tag=5 ptr 元素 array);
+                // 循环 jnArrayGet(arrNode, idx) 拿元素 nodeId → <ElemClass>_deserialize 拿子 ptr
+                // → ptrtoint i64 → ss_arrayPush(arr, val);**无 retain**(子 deserialize 已 transfer
+                // ownership,push 仅存指针不增 RC,对称 nested v0 字段 store transfer)。
+                // 父 ss_drop_<Outer> 链由 emitFieldReleaseLoop 走 Array<X> 字段 release 路径
+                // (gen_type_ops.ss:172,与 lib/spring/boot/application.ss Array<RouteMeta>
+                // 实战路径同),逐元素自动级联 ss_drop_<Item> + free 容器。
+                const elemType = extractContainerElemType(ft)
+                const arrNodeR = nextReg()
+                emitIR(`  ${arrNodeR} = call i32 @jnGetField(i32 %nodeId.arg, ptr ${keyConst})`)
+                const arrLenR = nextReg()
+                emitIR(`  ${arrLenR} = call i32 @jnArrayLen(i32 ${arrNodeR})`)
+                const initArrR = nextReg()
+                emitIR(`  ${initArrR} = call ptr @ss_newArrayPtr(i32 0)`)
+                const arrSlotR = nextReg()
+                emitIR(`  ${arrSlotR} = alloca ptr, align 8`)
+                emitIR(`  store ptr ${initArrR}, ptr ${arrSlotR}, align 8`)
+                const idxSlotR = nextReg()
+                emitIR(`  ${idxSlotR} = alloca i32, align 4`)
+                emitIR(`  store i32 0, ptr ${idxSlotR}, align 4`)
+                const headLabel = nextLabel("arr_loop.head")
+                const bodyLabel = nextLabel("arr_loop.body")
+                const endLabel = nextLabel("arr_loop.end")
+                emitIR(`  br label %${headLabel}`)
+                emitIR(`${headLabel}:`)
+                const idxR = nextReg()
+                emitIR(`  ${idxR} = load i32, ptr ${idxSlotR}, align 4`)
+                const condR = nextReg()
+                emitIR(`  ${condR} = icmp slt i32 ${idxR}, ${arrLenR}`)
+                emitIR(`  br i1 ${condR}, label %${bodyLabel}, label %${endLabel}`)
+                emitIR(`${bodyLabel}:`)
+                const elemNodeR = nextReg()
+                emitIR(`  ${elemNodeR} = call i32 @jnArrayGet(i32 ${arrNodeR}, i32 ${idxR})`)
+                const elemPtrR = nextReg()
+                emitIR(`  ${elemPtrR} = call ptr @${elemType}_deserialize(i32 ${elemNodeR})`)
+                const elemI64R = nextReg()
+                emitIR(`  ${elemI64R} = ptrtoint ptr ${elemPtrR} to i64`)
+                const curArrR = nextReg()
+                emitIR(`  ${curArrR} = load ptr, ptr ${arrSlotR}, align 8`)
+                const newArrR = nextReg()
+                emitIR(`  ${newArrR} = call ptr @ss_arrayPush(ptr ${curArrR}, i64 ${elemI64R})`)
+                emitIR(`  store ptr ${newArrR}, ptr ${arrSlotR}, align 8`)
+                const idxNextR = nextReg()
+                emitIR(`  ${idxNextR} = add i32 ${idxR}, 1`)
+                emitIR(`  store i32 ${idxNextR}, ptr ${idxSlotR}, align 4`)
+                emitIR(`  br label %${headLabel}`)
+                emitIR(`${endLabel}:`)
+                const finalArrR = nextReg()
+                emitIR(`  ${finalArrR} = load ptr, ptr ${arrSlotR}, align 8`)
+                emitIR(`  store ptr ${finalArrR}, ptr ${dstR}, align 8`)
             } else {
-                // v0 不支持的字段类型(Array<Class>/Map<K,Class>) — emit 默认值 fallback
-                // 留 I021-requestbody-nested-array / -map 子档完善;**未被 @RequestBody 引用的
-                // class**(bootstrap 反射 Meta:FieldMeta 等)此 deserializer 永不被调用,
-                // fallback 仅是"per-class 函数自动生成对称形态"。
+                // v0 不支持的字段类型(Map<K,Class>) — emit 默认值 fallback,留 -map 子档完善;
+                // **未被 @RequestBody 引用的 class**(bootstrap 反射 Meta:FieldMeta 等)
+                // 此 deserializer 永不被调用,fallback 仅是"per-class 函数自动生成对称形态"。
                 const llType = ssTypeToLLVM(ft)
                 if (llType == "i32") {
                     emitIR(`  store i32 0, ptr ${dstR}, align 8`)

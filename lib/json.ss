@@ -61,41 +61,12 @@ class JsonNode {
     }
 
     function get(index: int): JsonNode {
-        const arrStr = jnArr.getString(`${this.nodeId}`)
-        if (arrStr == "") { return new JsonNode(0) }
-        let remaining = arrStr
-        let i = 0
-        while (remaining != "") {
-            let part = remaining
-            const commaIdx = remaining.indexOf(",")
-            if (commaIdx >= 0) {
-                part = remaining.substring(0, commaIdx)
-                remaining = remaining.substring(commaIdx + 1, remaining.length() - commaIdx - 1)
-            } else {
-                remaining = ""
-            }
-            if (i == index) { return new JsonNode(parseInt(part)) }
-            i = i + 1
-        }
-        return new JsonNode(0)
+        return new JsonNode(jnArrayGet(this.nodeId, index))
     }
 
     function size(): int {
-        const t = this.type()
-        if (t == "array") {
-            const arrStr = jnArr.getString(`${this.nodeId}`)
-            if (arrStr == "") { return 0 }
-            let count = 1
-            let remaining = arrStr
-            while (remaining != "") {
-                const ci = remaining.indexOf(",")
-                if (ci < 0) { break }
-                count = count + 1
-                remaining = remaining.substring(ci + 1, remaining.length() - ci - 1)
-            }
-            return count
-        }
-        return 0
+        if (this.type() != "array") { return 0 }
+        return jnArrayLen(this.nodeId)
     }
 
     function asString(): string {
@@ -328,6 +299,49 @@ function jnGetBool(objId: int, key: string): int {
     const childId = jnGetField(objId, key)
     if (childId <= 0) { return 0 }
     return parseInt(jnInt.getString(`${childId}`))
+}
+
+// I021-requestbody-nested-array — Array iter raw int 接口:codegen emit IR 直接走 i32 nodeId
+// 避免 JsonNode wrapper alloc;JsonNode.size()/get(index) 也委托此处,SSoT 收敛。
+function jnArrayLenInternal(arrStr: string): int {
+    if (arrStr == "") { return 0 }
+    let count = 1
+    let remaining = arrStr
+    while (remaining != "") {
+        const ci = remaining.indexOf(",")
+        if (ci < 0) { break }
+        count = count + 1
+        remaining = remaining.substring(ci + 1, remaining.length() - ci - 1)
+    }
+    return count
+}
+
+function jnArrayElemAt(arrStr: string, index: int): string {
+    let remaining = arrStr
+    let i = 0
+    while (remaining != "") {
+        let part = remaining
+        const ci = remaining.indexOf(",")
+        if (ci >= 0) {
+            part = remaining.substring(0, ci)
+            remaining = remaining.substring(ci + 1, remaining.length() - ci - 1)
+        } else { remaining = "" }
+        if (i == index) { return part }
+        i = i + 1
+    }
+    return ""
+}
+
+function jnArrayLen(node: int): int {
+    if (node <= 0) { return 0 }
+    return jnArrayLenInternal(jnArr.getString(`${node}`))
+}
+
+function jnArrayGet(node: int, index: int): int {
+    if (node <= 0) { return 0 }
+    const part = jnArrayElemAt(jnArr.getString(`${node}`), index)
+    if (part == "") { return 0 }
+    return parseInt(part)
 }
 
 function jnAddElement(arrId: int, childId: int) {

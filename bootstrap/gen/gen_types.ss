@@ -140,6 +140,13 @@ function inferArrayElemType(arrId: int): string {
             return inferArrayElemType(nGetI1(arrId))
         }
     }
+    // I021-requestbody-nested-array — MEMBER_ACCESS Array<T>.field elem type;缺此 → `arr[i].field` ss_arrayGet i64 不 cast 至 ptr,user class elem 字段访问失败
+    if (aeKind == "MEMBER_ACCESS") {
+        const moc = resolveObjClass(nGetI1(arrId))
+        if (moc == "") { return "" }
+        const fKey = `${moc}.${nGetS1(arrId)}`
+        if (classFieldTypes.has(fKey) == 1) { return extractContainerElemType(classFieldTypes.getString(fKey)) }
+    }
     return ""
 }
 

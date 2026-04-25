@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 class User {
     public String name;
     public int age;
@@ -26,6 +28,16 @@ class Customer {
 class Order {
     public Customer customer;
     public Address addr;
+}
+
+class Item {
+    public String name;
+    public int price;
+}
+
+class OrderList {
+    public String customer;
+    public List<Item> items;
 }
 
 @RestController
@@ -63,6 +75,13 @@ public class HelloController {
     @PostMapping("/orders")
     public String createOrder(@RequestBody Order order) {
         return "customer=" + order.customer.name + ",city=" + order.addr.city;
+    }
+
+    @PostMapping("/orders-list")
+    public String createOrderList(@RequestBody OrderList order) {
+        int total = 0;
+        for (Item it : order.items) total += it.price;
+        return "customer=" + order.customer + ",total=" + total;
     }
 
     @GetMapping("/agent")

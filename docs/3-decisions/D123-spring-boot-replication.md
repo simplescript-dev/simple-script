@@ -790,6 +790,36 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I021-requestbody-nested-array (2026-04-25)
+
+**触发**:I021-requestbody-nested-array Execute 阶段端到端落地 — Phase 4 §247 第二支柱嵌套深化第二轮(collection 维度,首轮 -nested 是单层 user class 字段维度)。lib/json.ss 扩 jnArrayLen / jnArrayGet raw int 接口 + gen_deserialize.ss isArrayClass 字段 case 落地 + transitive closure BFS 扩 array elem 入队 + inferArrayElemType MEMBER_ACCESS 分支根因修(`arr[i].field` ss_arrayGet i64 不 cast 到 ptr 的 codegen 主路径根因)。**第一性需求**:引 D123 §247 + D129 §94 "@RequestBody | 任意 class(含嵌套 + collection)"— SS 用户 `class OrderList { items: Array<Item> } / @RequestBody order: OrderList` 行为 byte-identical Java `@RequestBody List<Item>` field。
+
+**改动路径**:
+- `lib/json.ss`:加 jnArrayLen(node:int):int + jnArrayGet(node:int, index:int):int(对接 codegen emit IR 直接调,无 JsonNode wrapper alloc;内部 array repr `jnArr Map[id]→"5,7,9"` comma-list 解析,与 JsonNode.size()/get(index) wrapper 同 repr 不同接口层)
+- `bootstrap/gen/gen_deserialize.ss`:加 isArrayClass 谓词(复用 extractContainerElemType + isUserClass) + emitPendingDeserializers BFS 扩 Array<UserClass> 元素类型递归入队 + emitClassDeserializeFn isArrayClass 字段 case(jnGetField → jnArrayLen → ss_newArrayPtr(0) → loop:jnArrayGet → `<Item>_deserialize` → ptrtoint → ss_arrayPush → store,无 retain transfer ownership)
+- `bootstrap/gen/gen_types.ss`:inferArrayElemType 加 MEMBER_ACCESS 分支(根因修;`order.items[i]` 的 array 表达式是 MEMBER_ACCESS,缺此 → ss_arrayGet i64 不 cast 至 ptr,user class elem 字段访问全失败)
+- `examples/spring-parity/hello/ss/HelloController.ss + .java`:加 class Item + class OrderList { customer:string; items:Array<Item> } + @PostMapping("/orders-list") createOrderList(@RequestBody order: OrderList)
+- `tests/phase5/i021_requestbody_nested_array.ss`:新建 4 case(length=2 + 空数组 + length=10 大数组 + raw HTTP POST)
+- `docs/4-issues/I021-requestbody-nested-array.md`:Planned → Done at(本轮 file:line)
+
+**REGRESSION + bump 项 delta 表(实测,OK 项省略)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| F1:bootstrap/gen/gen_types.ss | 778 | 780 | 785 | +5 vs bm | REGRESSION |
+
+**本地抵消路径**:
+- **F1:gen_types.ss**(778 → 785,+7 LOC vs bv)— inferArrayElemType MEMBER_ACCESS 分支落 7 LOC(注释 1 + 代码 6),已压到 naive(复用 extractContainerElemType + early return 短路)。第一版 18 LOC(detailed 注释 + nested if + inline ltIdx/substring) 已压至 7。文件是 gen 层 inferType / resolveObjClass / inferArrayElemType / ssTypeToLLVM 中枢,与 §扩容申报-I019 同前述,物理拆需独立 DXXX 决策非本子档 scope
+
+**新 baseline 预期值(=实测,bump 升 budget_max)**:
+- F1:bootstrap/gen/gen_types.ss budget_max: 780 → 792(7 LOC headroom)
+
+**VCM 实测 vs 预估对照**:I021-requestbody-nested-array §风险 2 预估 lib/json.ss array iter helper 现状不明 — 实测 jnArr Map repr 与 JsonNode.size()/get(index) wrapper 同 repr,raw int 接口剥离 wrapper 直接复用解析 30 LOC 内落地。§风险 1 RC 契约严审 — 实测父 ss_drop_<OrderList> 链 emitFieldReleaseLoop 走 Array<X> 字段 release(gen_type_ops.ss:172,与 lib/spring/boot/application.ss Array<RouteMeta> 实战路径同),逐元素自动级联 ss_drop_<Item> + free 容器,契约不破裂。**未预估根因**:`arr[i].field` codegen 主路径 inferArrayElemType MEMBER_ACCESS 分支缺失(原仅 cover IDENT/METHOD_CALL),实测命中后增分支根因修(本子档 §第一性需求 例子 `total += order.items[i].price` 直接触发);非反射路径形态升级,纯 type inference 主路径扩容。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:
