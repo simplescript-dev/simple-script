@@ -292,6 +292,44 @@ function jnSetField(objId: int, key: string, childId: int) {
     }
 }
 
+// I021-requestbody — raw int 接口 helper:per-class @ClassName_deserialize codegen
+// emit IR 时直接调 jnGet*(nodeId 是 raw i32,无 JsonNode wrapper alloc 开销)。
+// JsonNode.getString/getInt/getDouble/getBool 是 user 层 method API(line 46-117),
+// jnGetString/Int/Double/Bool 是 codegen emit 入口 — 两层接口对称分离。
+// 字段缺失 fallback 默认值(int=0/string=""/bool=0/double=0.0)— v0 简化,严格
+// "字段缺失 4xx" 留 I021-requestbody-validation。
+
+// I021-requestbody — JsonNode → raw nodeId getter:bootstrap sentinel 取 JsonNode.nodeId
+// 字段不直接 GEP %JsonNode struct(避免 lib/json 内部布局 slot 2 leak 到 bootstrap 编译器);
+// 改 emit `call i32 @jnRoot(ptr %node_jn)` 走 SS 函数 ABI,layout 改变本函数兼容自动重译。
+function jnRoot(node: JsonNode): int {
+    return node.nodeId
+}
+
+function jnGetInt(objId: int, key: string): int {
+    const childId = jnGetField(objId, key)
+    if (childId <= 0) { return 0 }
+    return parseInt(jnInt.getString(`${childId}`))
+}
+
+function jnGetDouble(objId: int, key: string): double {
+    const childId = jnGetField(objId, key)
+    if (childId <= 0) { return 0.0 }
+    return parseDouble(jnInt.getString(`${childId}`))
+}
+
+function jnGetString(objId: int, key: string): string {
+    const childId = jnGetField(objId, key)
+    if (childId <= 0) { return "" }
+    return jnStr.getString(`${childId}`)
+}
+
+function jnGetBool(objId: int, key: string): int {
+    const childId = jnGetField(objId, key)
+    if (childId <= 0) { return 0 }
+    return parseInt(jnInt.getString(`${childId}`))
+}
+
 function jnAddElement(arrId: int, childId: int) {
     const existing = jnArr.getString(`${arrId}`)
     if (existing == "") {

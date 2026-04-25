@@ -45,6 +45,7 @@ class PvCtl {
 function main() {
     test("I021-pathvariable 单占位 int — /users/{id} → user=42 GREEN", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/users/42")
         const body = dispatchBody(dispatch(req))
         assertEqual(body, "user=42")
@@ -52,6 +53,7 @@ function main() {
 
     test("I021-pathvariable 多占位 int+int — /u/{uid}/o/{oid} 独立 namespace", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/u/7/o/123")
         const body = dispatchBody(dispatch(req))
         assertEqual(body, "user=7,order=123")
@@ -59,6 +61,7 @@ function main() {
 
     test("I021-pathvariable 静态路由 backward compat — /static 无占位等价旧字面相等", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/static")
         const body = dispatchBody(dispatch(req))
         assertEqual(body, "static:ok")
@@ -66,6 +69,7 @@ function main() {
 
     test("I021-pathvariable string 占位 — /profile/{name} cast 默认 ptr 分派", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/profile/alice")
         const body = dispatchBody(dispatch(req))
         assertEqual(body, "profile:alice")
@@ -73,6 +77,7 @@ function main() {
 
     test("I021-pathvariable 404 路径段数不匹配 — /users/42/extra", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/users/42/extra")
         const body = dispatchBody(dispatch(req))
         assertEqual(body, "not found")

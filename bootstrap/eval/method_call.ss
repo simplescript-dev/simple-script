@@ -156,6 +156,31 @@ function evalMethodCall(astId: int): int {
                                         } else {
                                             invokeExtraArgs = `${invokeExtraArgs}, ptr ${valReg}`
                                         }
+                                    } else if (kindStr == "RequestBody") {
+                                        // I021-requestbody — kindStr == "RequestBody" 分支:POST/PUT/PATCH
+                                        // JSON body → class 反序列化:emit ss_mapGetString(req, "body") + JSON_parse + JsonNode.nodeId 取
+                                        // 字段 + per-class @<ClassName>_deserialize(i32 nodeId) 自动生成
+                                        // (gen_type_ops.ss:emitClassDeserializeFn 模式 mirror ss_drop_X)。
+                                        // ParamSpec.type 存 SS class 名(D123 §253 alignment — 重用 type slot,
+                                        // 不扩 ParamSpec 字段)。body key 直接用 "body"(对齐 lib/http.ss:83
+                                        // I014 split body 入此 key,无 namespace 撞名风险)。
+                                        const typeTv = interpGetField(specObjId, "type")
+                                        const typeStr = interpType(typeTv) == "string" ? interpAsStr(typeTv) : ""
+                                        // 注册 deserializer emit target — codegen.ss emitGlobalsAndCode 末尾
+                                        // emitPendingDeserializers 选择性 emit,避免 jnGet* 污染所有程序。
+                                        deserializerTargets.set(typeStr, 1)
+                                        const bodyKeyConst = addStringConst("body")
+                                        const bodyReg = nextReg()
+                                        emitIR(`  ${bodyReg} = call ptr @ss_mapGetString(ptr ${reqRegPS}, ptr ${bodyKeyConst})`)
+                                        const nodeJnReg = nextReg()
+                                        emitIR(`  ${nodeJnReg} = call ptr @JSON_parse(ptr ${bodyReg})`)
+                                        // jnRoot 走 SS 函数 ABI 取 JsonNode.nodeId,不直接 GEP %JsonNode
+                                        // struct slot — 避免 lib/json 内部布局 leak 到 bootstrap 编译器
+                                        const nodeIdReg = nextReg()
+                                        emitIR(`  ${nodeIdReg} = call i32 @jnRoot(ptr ${nodeJnReg})`)
+                                        const instReg = nextReg()
+                                        emitIR(`  ${instReg} = call ptr @${typeStr}_deserialize(i32 ${nodeIdReg})`)
+                                        invokeExtraArgs = `${invokeExtraArgs}, ptr ${instReg}`
                                     } else if (kindStr == "RequestMap") {
                                         invokeExtraArgs = `${invokeExtraArgs}, ptr ${reqRegPS}`
                                     }

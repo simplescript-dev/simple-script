@@ -267,6 +267,9 @@ function resetCodegen() {
     ctScopeStack = []
     ctCallCounter = 0
     comptimeDepth = 0
+    // I021-requestbody — 防跨编译单元污染:每次 generateToFile 重置 deserializerTargets,
+    // 仅本编译单元 invoke sentinel kind == "RequestBody" 注册的 class 进入 emitPendingDeserializers
+    deserializerTargets = new Map()
     labelCount = 0
     varCounter = 0
     // Function context
@@ -323,6 +326,9 @@ function generateToFile(rootId: int, outFile: string) {
     emitGlobalsAndCode(rootId)
     flushPendingCtClasses()
     generateDeferredSpecializations()
+    // I021-requestbody — module 末尾选择性 emit per-class deserializer
+    // (仅对 invoke sentinel kind == "RequestBody" 实际引用的 class)
+    emitPendingDeserializers()
     irOutFile = ""
     const body = readFile(outFile)
     writeFile(outFile, `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${readFile(`${outFile}.str`)}\n${body}`)

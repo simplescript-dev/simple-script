@@ -22,11 +22,26 @@
 // runtime helper 路径模式匹配(`{name}` 段 buffered commit,防失败早期 set 污染);invoke sentinel
 // 加 kind == "PathVariable" 分支 emit ss_mapGetString(req, "__pv_<name>") 复用 RequestParam
 // cast 通道(int/double/ptr),`__pv_` 独立 namespace 与 query 严格分离。
+//
+// I021-requestbody:@RequestBody POST/PUT/PATCH JSON body → class 反序列化 — comptime 加
+// "RequestBody" kind + RouteMeta 扩 httpMethod slot(GET/POST/PUT/DELETE/PATCH dispatch 区分);
+// dispatcher matchPath 同 path 不同 method 各 route;invoke sentinel kind == "RequestBody" 分支
+// emit ss_mapGetString(req, "body") + JSON_parse + @ClassName_deserialize per-class codegen
+// 自动生成(mirror ss_drop_X / ss_deep_clone_X 模式 — D018 + D022 第四步 deserializer)。
+// body key 直接用 "body"(对齐 lib/http.ss:83 split body 入此 key,无 namespace 撞名风险 —
+// __pv_ 是 path variable name 可能撞 query key 才需 prefix,body 是单值)。
+// RouteMeta.httpMethod 是项目内部 routing 数据扩字段(与 ParamMeta/MethodMeta 反射 Meta 不同),
+// D123 §253 alignment 限定反射 Meta 不扩,RouteMeta 扩 httpMethod 是 routing dispatch 必需。
 
 import { httpServe, httpResponse } from "@/lib/http"
+// I021-requestbody — import lib/json 让 JsonNode struct + JSON_parse + jnGet* 进编译单元;
+// invoke sentinel kind == "RequestBody" emit IR 直接引用 %JsonNode struct + @JSON_parse
+// + @jnGet* per-class deserializer 字段提取 — bootstrap/eval/method_call.ss:159 §RequestBody 分支。
+import { JSON_parse } from "@/lib/json"
 
 class RouteMeta {
     path: string
+    httpMethod: string
     className: string
     methodName: string
     paramSpecs: Array<ParamSpec>
@@ -39,11 +54,12 @@ class ParamSpec {
 }
 
 // ParamSpec.kind 标记,只在本文件 _ssRoutes comptime push 端用(抽常量防拼写错)。
-// **bootstrap 编译器侧** sentinel 同名字面量(`bootstrap/eval/method_call.ss:135, 154`)
+// **bootstrap 编译器侧** sentinel 同名字面量(`bootstrap/eval/method_call.ss:135, 154, 178`)
 // 因跨域无 ct const 共享通道走硬编;改名时两端必须同步。
 const PARAM_KIND_REQUEST_PARAM = "RequestParam"
 const PARAM_KIND_REQUEST_MAP = "RequestMap"
 const PARAM_KIND_PATH_VARIABLE = "PathVariable"
+const PARAM_KIND_REQUEST_BODY = "RequestBody"
 
 const _ssRoutes: Array<RouteMeta> = comptime {
     let arr: Array<RouteMeta> = []
@@ -52,7 +68,13 @@ const _ssRoutes: Array<RouteMeta> = comptime {
             if (cAnn.name == "RestController") {
                 for (m in c.methods) {
                     for (mAnn in m.annotations) {
-                        if (mAnn.name == "GetMapping") {
+                        let httpMethod = ""
+                        if (mAnn.name == "GetMapping") { httpMethod = "GET" }
+                        else if (mAnn.name == "PostMapping") { httpMethod = "POST" }
+                        else if (mAnn.name == "PutMapping") { httpMethod = "PUT" }
+                        else if (mAnn.name == "DeleteMapping") { httpMethod = "DELETE" }
+                        else if (mAnn.name == "PatchMapping") { httpMethod = "PATCH" }
+                        if (httpMethod != "") {
                             let specs: Array<ParamSpec> = []
                             for (p in m.params) {
                                 let matched = 0
@@ -73,6 +95,14 @@ const _ssRoutes: Array<RouteMeta> = comptime {
                                         ))
                                         matched = 1
                                     }
+                                    if (pAnn.name == "RequestBody") {
+                                        specs = specs.push(new ParamSpec(
+                                            kind: PARAM_KIND_REQUEST_BODY,
+                                            name: p.name,
+                                            type: p.type
+                                        ))
+                                        matched = 1
+                                    }
                                 }
                                 if (matched == 0 && p.type == "Map<string, string>") {
                                     specs = specs.push(new ParamSpec(
@@ -84,6 +114,7 @@ const _ssRoutes: Array<RouteMeta> = comptime {
                             }
                             arr = arr.push(new RouteMeta(
                                 path: mAnn.args.getString("path"),
+                                httpMethod: httpMethod,
                                 className: c.name,
                                 methodName: m.name,
                                 paramSpecs: specs
@@ -170,9 +201,10 @@ function matchPath(pattern: string, pathSegs: Array<string>, req: Map<string, st
 
 function dispatch(req: Map<string, string>): string {
     const path = req.get("path")
+    const httpMethod = req.get("method")
     const pathSegs = path.split("/")
     for (r in _ssRoutes) {
-        if (matchPath(r.path, pathSegs, req) == 1) {
+        if (r.httpMethod == httpMethod && matchPath(r.path, pathSegs, req) == 1) {
             // r.invoke(req) — invoke sentinel 自驱展开多 spec(method_call.ss:86-160 §useParamSpecs)
             return httpResponse(200, "text/plain", r.invoke(req))
         }

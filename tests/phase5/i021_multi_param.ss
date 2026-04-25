@@ -49,6 +49,7 @@ class MapCtl {
 function main() {
     test("I021-multi-param 双参 int+int — dispatch 单调用 sentinel 多参展开 GREEN", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/add")
         req.set("x", "10")
         req.set("y", "20")
@@ -58,6 +59,7 @@ function main() {
 
     test("I021-multi-param 三参混合 string+int+double — 全 spec.type 分派 cast", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/mix")
         req.set("s", "hello")
         req.set("n", "42")
@@ -68,6 +70,7 @@ function main() {
 
     test("I021 单参 backward compat regression — hello via dispatch 仍 work", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/single")
         req.set("name", "SS")
         const body = dispatchBody(dispatch(req))
@@ -76,6 +79,7 @@ function main() {
 
     test("I018 RequestMap backward compat — 整 req map 透传 fallback 仍 work", () => {
         let req: Map<string, string> = new Map()
+        req.set("method", "GET")
         req.set("path", "/echo")
         req.set("msg", "ok")
         const body = dispatchBody(dispatch(req))

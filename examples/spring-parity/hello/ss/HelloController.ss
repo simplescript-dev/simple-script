@@ -1,3 +1,8 @@
+class User {
+    name: string
+    age: int
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -23,5 +28,10 @@ class HelloController {
     @GetMapping(path = "/users/{id}")
     function show(@PathVariable(name = "id") id: int): string {
         return "user=" + id
+    }
+
+    @PostMapping(path = "/users")
+    function createUser(@RequestBody user: User): string {
+        return "user=" + user.name + ",age=" + user.age
     }
 }

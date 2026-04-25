@@ -745,6 +745,51 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I021-requestbody (2026-04-25)
+
+**触发**:I021-requestbody Execute 阶段 1+2 端到端落地 — Phase 4 §247 第二支柱 @RequestBody POST/PUT/PATCH JSON body → class 反序列化 root 闭环;路径 A(per-class @ClassName_deserialize codegen 自动生成 + invoke sentinel kind 扩 RequestBody + lib/json.ss primitive helpers + RouteMeta httpMethod + comptime 5 method 识别 + dispatcher matchPath httpMethod 比对)。**第一性需求**:引 D123 §第一性需求 + D129 §5 跨域辨析(V=class 不在 @RequestParam 域,起独立 deserializer 基础能力)— SS 用户 `function createUser(@RequestBody user: User)` 行为 byte-identical Java `@RequestBody User user`,curl POST /users -d '{"name":"alice","age":30}' 返 user=alice,age=30。
+
+**改动路径**:
+- `lib/json.ss`:加 jnGetInt/Double/String/Bool 4 raw int 接口 primitive helpers(对接 codegen emit IR 直接调,无 JsonNode wrapper alloc 开销)
+- `lib/spring/boot/application.ss`:RouteMeta 加 httpMethod slot;PARAM_KIND_REQUEST_BODY const;comptime _ssRoutes 扩 GetMapping/PostMapping/PutMapping/DeleteMapping/PatchMapping 5 method 识别 + RequestBody push spec;dispatcher matchPath httpMethod 比对;import lib/json 让 JsonNode struct + JSON_parse + jnGet* 进编译单元
+- `bootstrap/eval/method_call.ss`:invoke sentinel kind == "RequestBody" 分支 emit `ss_mapGetString(req, "body") + JSON_parse + JsonNode.nodeId 取 + @<ClassName>_deserialize(i32 nodeId)` + 注册 deserializerTargets
+- `bootstrap/gen/gen_type_ops.ss`:emitClassDeserializeFn per-class deserializer 自动生成(mirror ss_drop_X / ss_deep_clone_X / ss_shallow_clone_X 模式 — D018 + D022 第四步);**延迟 emit**:仅对 @RequestBody invoke sentinel 引用的 class emit(避免 jnGet* runtime symbol 污染未 import lib/json.ss 的程序)
+- `bootstrap/gen/codegen.ss`:emitGlobalsAndCode 收尾后调 emitPendingDeserializers + resetCodegen 重置 deserializerTargets 防跨编译单元污染
+- `examples/spring-parity/hello/ss/HelloController.ss`:加 User class + @PostMapping("/users") createUser(@RequestBody user: User)
+- `examples/spring-parity/hello/java/src/main/java/hello/HelloController.java`:Java oracle 同步加 User class + @PostMapping("/users") @RequestBody User user
+- `tests/phase5/i021_requestbody.ss`:新建 6 case(主用例 + 字段顺序乱 + 字段缺失 + 纯 string + double + GET vs POST 区分)
+- `tests/phase5/i021_pathvariable.ss / i021_multi_param.ss`:补 req.set("method", "GET")(dispatcher 加 method 比对后 unit test 模拟应对齐 HTTP layer)
+- `docs/3-decisions/D129-request-param-class-domain.md`:Decided
+- `docs/4-issues/I021-requestbody.md`:Planned → Done at(本轮 file:line)
+
+**REGRESSION + bump 项 delta 表(实测,OK 项省略)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| M2 | 77880 | 77769 | 79098 | +1329 vs bm | REGRESSION |
+| M3b | 1903 | 1902 | 1943 | +41 vs bm | REGRESSION |
+| M5 | 1772 | 1765 | 1792 | +27 vs bm | REGRESSION |
+| N2 | 389400 | 388845 | 395490 | +6645 vs bm | REGRESSION |
+| N3 | 526509 | 533644 | 544648 | +11004 vs bm | REGRESSION |
+
+**本地抵消路径**:
+- **M2 / N2 / N3**(反射模块总 LOC / 字符 / 总字节)— gen_type_ops.ss emitClassDeserializeFn ~50 LOC + emitPendingDeserializers ~10 LOC;method_call.ss sentinel RequestBody 分支 ~20 LOC;codegen.ss reset + emit hook ~5 LOC;总 ~85 LOC 集中反射路径(per-class 函数自动生成 + sentinel 分派)。已无更深结构压榨可能 — emitClassDeserializeFn 字段类型分派 if-elif int/double/string/bool 是最小四分支(jnGet 名族 + LLVM type sig 必须分派;不可合并)
+- **M3b**(反射 char count)— M2 LOC 增长引起的字符数线性增加,无单独抵消空间
+- **M5**(反射模块函数复杂度)— +20 反映 emitClassDeserializeFn 字段递归 emit 必要复杂度(GEP + jnGet call + store 每字段三行 emit),非冗余
+
+**新 baseline 预期值(=实测,bump 升 budget_max)**:
+- M2 budget_max: 77769 → 80000(buffer ~900)
+- M3b budget_max: 1902 → 2000(buffer ~57)
+- M5 budget_max: 1765 → 1830(buffer ~38)
+- N2 budget_max: 388845 → 400000(buffer ~4500)
+- N3 budget_max: 533644 → 550000(buffer ~5350)
+
+**VCM 实测 vs 预估对照**:I021-requestbody §潜在工程风险 5 预估 F1 baseline 漂(bootstrap/gen/class/ +120-200 LOC),实际 emit 路径选 gen_type_ops.ss 而非 class/ 子族(单文件已 ~600 LOC),F1 没单独漂(gen_type_ops.ss 不在 F1 白名单);改动落到聚合 M2/M3b/M5/N2/N3。预估大改 ~300-450 LOC 跨 6-7 文件,实测 ~85 反射 LOC + ~20 lib LOC + ~20 examples/tests LOC,工程量~125 LOC 反射 + ~120 总(< 预估下限 ~300)。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:
