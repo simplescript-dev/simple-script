@@ -218,6 +218,30 @@ function genGlobalVar(id: int) {
     const litType = emitLiteralGlobalInit(`@${name}`, initId)
     if (litType != "") {
         gType = litType
+        // I021-codegen-fix: CONST 字面值同步入 ctVars,防 comptime 引用 fallback 喷 `load`
+        // 到顶层(D128 array/object/map 同模式扩五标量 lit kind + UNARY-Neg)
+        if (nGetS2(id) == "CONST") {
+            const lk = nGetKind(initId)
+            if (lk == "STRING_LIT") {
+                ctVars.set(`:${name}`, `${ctVal(interpNewString(nGetS1(initId)))}`)
+            } else if (lk == "INT_LIT") {
+                ctVars.set(`:${name}`, `${ctVal(interpNewInt(parseInt(nGetS1(initId))))}`)
+            } else if (lk == "DOUBLE_LIT") {
+                ctVars.set(`:${name}`, `${ctVal(interpNewDouble(parseDouble(nGetS1(initId))))}`)
+            } else if (lk == "TRUE_LIT") {
+                ctVars.set(`:${name}`, `${ctVal(interpNewBool(1))}`)
+            } else if (lk == "FALSE_LIT") {
+                ctVars.set(`:${name}`, `${ctVal(interpNewBool(0))}`)
+            } else if (lk == "UNARY" && nGetS1(initId) == "Neg") {
+                const innerId = nGetI1(initId)
+                const innerKind = nGetKind(innerId)
+                if (innerKind == "INT_LIT") {
+                    ctVars.set(`:${name}`, `${ctVal(interpNewInt(0 - parseInt(nGetS1(innerId))))}`)
+                } else if (innerKind == "DOUBLE_LIT") {
+                    ctVars.set(`:${name}`, `${ctVal(interpNewDouble(0.0 - parseDouble(nGetS1(innerId))))}`)
+                }
+            }
+        }
     } else if (nGetKind(initId) == "COMPTIME_EXPR") {
         const ceType = inferType(initId)
         const ceLit = comptimeExprLiteral.getString(`${initId}`)

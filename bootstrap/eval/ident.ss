@@ -21,15 +21,12 @@ function evalIdent(astId: int): int {
     // D112: 全局 type alias fallback(`const T = comptime{...}` 仅 type ctVal 有效,防污染 int/string runtime)
     const ctGlobalVal = ctLookupTypeVal(ctIdName)
     if (ctGlobalVal != 0) { return ctGlobalVal }
-    // D128: 全局 const Array/Object/Map ctVars fallback(D098 §D112 type 同模式扩三 kind);
-    // 全局 const 不入 currentFunc scope,顶级 ctArray/Object/Map 跨函数共享 binding
+    // D128 + I021-codegen-fix: ctVars `:${name}` fallback 接任意 isCt(防 const 字面量在
+    // comptime 块内引用 fallback genIdent 喷 `load` 到顶层;type ct 由 ctLookupTypeVal 优先拦截)
     const ctGlobalKey = `:${ctIdName}`
     if (ctVars.has(ctGlobalKey) == 1) {
         const ctGlobalCt = parseInt(ctVars.getString(ctGlobalKey))
-        if (isCt(ctGlobalCt) == 1) {
-            const ctGlobalPayloadType = interpType(payload(ctGlobalCt))
-            if (ctGlobalPayloadType == "array" || ctGlobalPayloadType == "object" || ctGlobalPayloadType == "map") { return ctGlobalCt }
-        }
+        if (isCt(ctGlobalCt) == 1) { return ctGlobalCt }
     }
     if (comptimeDepth > 0) {
         const ctInterpKey = interpFindScopeKey(ctIdName)
