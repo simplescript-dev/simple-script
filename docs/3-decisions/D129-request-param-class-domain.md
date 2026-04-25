@@ -126,7 +126,7 @@ D067 T? narrow 是 SS 全局 null safety 主策略,Kotlin/Dart 风格(memory `pr
 
 1. **I021 §下轮 list line 68 改写**:`"I021d — @RequestParam V=class(I020c mirror,需 D067 T? narrow 配合可空形参)"` → `"I021d 域归属辨析 — @RequestParam V=class **不在 @RequestParam 域**,跨域问题独立 D129 讨论 → docs/3-decisions/D129-request-param-class-domain.md"`
 2. **未来 V=class 反序列化能力**起独立 issue:
-   - `I021-modelattribute` — @ModelAttribute query string 多 key → class 多字段 binding
+   - `I021-modelattribute` — @ModelAttribute query string 多 key → class 多字段 binding **[Status: Dropped 2026-04-25 — 详 §9 备注 §"I021-modelattribute Dropped 锚"]**
    - `I021-requestbody` — @RequestBody JSON body → class 反序列化
 3. **本 D 文档不动代码** — 纯辨析 + 描述修正(I021 §下轮 list 改写本轮同步);未来 I021-modelattribute / I021-requestbody 实施时再起 lib 层 deserializer 基础能力 issue
 4. **lib 层 deserializer 基础能力**(query → class field map / JSON → class field map)如何落地由未来 I021-modelattribute / I021-requestbody 决策 — 本 D 文档**不预设**实现路径(留独立决策档讨论)
@@ -181,3 +181,8 @@ D067 T? narrow 是 SS 全局 null safety 主策略,Kotlin/Dart 风格(memory `pr
 - **D067 T? narrow alignment**:本 D 文档不破 D067 主策略;未来 I021-modelattribute / I021-requestbody 实施时若涉及 V=class 可空形参,各自子决策段引 D067 narrow 机制(类比 I020c §I020c 子决策段对 D067 alignment 模式)
 - **Status=Decided 锚**:用户 2026-04-25 立项时明示"起草 docs/3-decisions/D129 独立讨论 I021d V=class 域归属",起草 + 独立讨论 暗示用户预留审议空间;同日 next_prompt option a "D129 V=class 域辨析正式 Decided + I021-requestbody 起子档" 用户拍板 = 审议接受 + 锁 Decided + 起 I021-requestbody 子档(本文 §5 line 130 决策落地于 `docs/4-issues/I021-requestbody.md`,I021-modelattribute 留 next 轮择期立项)
 - **I021-requestbody Execute 落地锚**:2026-04-25 next_prompt option a + sub-option b 单轮端到端 Execute 完成(I021-requestbody.md 状态 Planned → Done at 13 file:line);本 D 文档 §5 line 130 "未来 V=class 反序列化能力起独立 I021-requestbody / I021-modelattribute issue" 第二支柱第一半(I021-requestbody)兑现,第二半(I021-modelattribute query string → class 多字段 binding)留 next 轮择期立项
+- **I021-modelattribute Dropped 锚**(2026-04-25):§5 line 129 第二半承诺 I021-modelattribute 翻 **Status: Dropped**(本轮 next_prompt option A+C 用户拍板,与 D129 §5 line 129 标 Dropped + I021-requestheader 起子档承载第四主流注解 同轮决策)
+  - **deferred-reason**:@ModelAttribute 仅在传统 server-rendered 模板(JSP/Thymeleaf form submit)+ multipart 复杂表单字段两类场景使用,纯 REST 微服务/前后端分离架构几乎不碰;Phase 4 三支柱(@PathVariable + @RequestParam + @RequestBody)+ I021-requestheader 第四注解已覆盖现代 REST API 95%+ 真实场景,留 backlog 不开发
+  - **锚源**:本轮(2026-04-25)next_prompt option A 推 I021-modelattribute 起子档时,用户判断"这个东西我怎么没有用过?不重要吧?这个功能可以不实现吧" — 反思 next_prompt 推此 option 时**没反问"这个承诺本身指向真实需求吗"** 漂违 §第一性需求覆盖度排序原则(对应 memory `feedback_root_cause_no_cost`),即时改 A+C 重排消除"为决策而决策"漂移
+  - **跨档历史 trace 保留**:§9 上方 §"未来 V=class 反序列化能力" / §"D067 T? narrow alignment" / §"Status=Decided 锚" / I021-pathvariable §95 / I021-multi-param §82 / I021-requestbody §120/§252/§267/§277/§289 等历史 ModelAttribute 提及保留作辨析当时记录,不批量改写(SSoT 单点登 §9 本锚足,§M §字段 9 deprecate-gate 已跑语义覆盖验证);未来 Claude 触碰这些位置先读 §9 本锚确认 Dropped 状态
+  - **重启路径**:若未来 enterprise 用户实证需求出现(server-rendered 模板回归 / multipart 复杂表单场景),可重新起 I021-modelattribute v0 落地
