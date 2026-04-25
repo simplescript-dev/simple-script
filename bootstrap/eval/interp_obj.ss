@@ -112,36 +112,49 @@ function interpNewVal(kind: string, payload: string): int {
 // (NAMED_ARG ASSIGN)→ key = S1,value = NAMED_ARG.I1 AST id。
 // annListId 非 ANNOTATION_LIST kind 或 <=0 返空数组(abstract FUNC_DECL.I4=1)。
 // ANN InternPool key = `ANN|${annPoolPrefix}.${annName}`(D118 Execute 2 抽出)。
+function buildSingleAnnotationMeta(annNodeId: int, annPoolPrefix: string): int {
+    const amId = interpNewVal("object", "AnnotationMeta")
+    tvMap.set(`${amId}|name`, `${interpNewString(nGetS1(annNodeId))}`)
+    const argsMap = interpNewMap()
+    let posCount = 0
+    for (arp in nGetList(annNodeId).split(",")) {
+        const acId = parseInt(arp)
+        if (acId > 0 && nGetKind(acId) != "NAMED_ARG") { posCount = posCount + 1 }
+    }
+    let posIdx = 0
+    for (arp2 in nGetList(annNodeId).split(",")) {
+        const argId = parseInt(arp2)
+        if (argId <= 0) { continue }
+        let key = ""
+        let valId = 0
+        if (nGetKind(argId) == "NAMED_ARG") {
+            key = nGetS1(argId); valId = nGetI1(argId)
+        } else {
+            key = posCount == 1 ? "value" : `${posIdx}`; valId = argId; posIdx = posIdx + 1
+        }
+        if (valId > 0) { interpMapSet(argsMap, key, interpNewInt(valId)) }
+    }
+    tvMap.set(`${amId}|args`, `${argsMap}`)
+    return internPoolGetOrInsert(`ANN|${annPoolPrefix}.${nGetS1(annNodeId)}`, amId)
+}
+
 function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
     const arr = interpNewArray("")
     if (annListId <= 0 || nGetKind(annListId) != "ANNOTATION_LIST") { return arr }
     for (ap in nGetList(annListId).split(",")) {
         const aId = parseInt(ap)
         if (aId <= 0) { continue }
-        const amId = interpNewVal("object", "AnnotationMeta")
-        tvMap.set(`${amId}|name`, `${interpNewString(nGetS1(aId))}`)
-        const argsMap = interpNewMap()
-        let posCount = 0
-        for (arp in nGetList(aId).split(",")) {
-            const acId = parseInt(arp)
-            if (acId > 0 && nGetKind(acId) != "NAMED_ARG") { posCount = posCount + 1 }
-        }
-        let posIdx = 0
-        for (arp2 in nGetList(aId).split(",")) {
-            const argId = parseInt(arp2)
-            if (argId <= 0) { continue }
-            let key = ""
-            let valId = 0
-            if (nGetKind(argId) == "NAMED_ARG") {
-                key = nGetS1(argId); valId = nGetI1(argId)
-            } else {
-                key = posCount == 1 ? "value" : `${posIdx}`; valId = argId; posIdx = posIdx + 1
-            }
-            if (valId > 0) { interpMapSet(argsMap, key, interpNewInt(valId)) }
-        }
-        tvMap.set(`${amId}|args`, `${argsMap}`)
-        interpArrayPush(arr, internPoolGetOrInsert(`ANN|${annPoolPrefix}.${nGetS1(aId)}`, amId))
+        interpArrayPush(arr, buildSingleAnnotationMeta(aId, annPoolPrefix))
     }
+    return arr
+}
+
+// I021 — PARAM.I4 存单个 ANNOTATION 节点(parser.ss:750);不符合 ANNOTATION_LIST kind。
+// 包为单元素数组,使反射 `p.annotations` for-in 与 class/method/field annotations 同契约。
+function buildAnnotationMetaArrayFromSingle(annNodeId: int, annPoolPrefix: string): int {
+    const arr = interpNewArray("")
+    if (annNodeId <= 0 || nGetKind(annNodeId) != "ANNOTATION") { return arr }
+    interpArrayPush(arr, buildSingleAnnotationMeta(annNodeId, annPoolPrefix))
     return arr
 }
 
@@ -258,6 +271,21 @@ function interpBuildTypeInfo(typeName: string): int {
                 const mKey = `${typeName}.${mName}${keySuffix}`
                 const mmId = interpNewVal("object", "MethodMeta")
                 tvMap.set(`${mmId}|name`, `${interpNewString(mName)}`)
+                // I021 InternPool key 三段 `PRM|<cls>.<mth>.<param>` 防跨 method 同名 param 误 dedup。
+                const pArr = interpNewArray("")
+                for (pp in funcParams(mId).split(",")) {
+                    const pId = parseInt(pp)
+                    if (pId <= 0 || nGetKind(pId) != "PARAM") { continue }
+                    const pName = paramName(pId)
+                    const prmKey = `${typeName}.${mName}.${pName}`
+                    const pmId = interpNewVal("object", "ParamMeta")
+                    tvMap.set(`${pmId}|name`, `${interpNewString(pName)}`)
+                    tvMap.set(`${pmId}|type`, `${interpNewString(nGetS2(pId))}`)
+                    const pAnnArr = buildAnnotationMetaArrayFromSingle(nGetI4(pId), prmKey)
+                    tvMap.set(`${pmId}|annotations`, `${pAnnArr}`)
+                    interpArrayPush(pArr, internPoolGetOrInsert(`PRM|${prmKey}`, pmId))
+                }
+                tvMap.set(`${mmId}|params`, `${pArr}`)
                 const mAnnArr = buildAnnotationMetaArray(nGetI4(mId), `MTH|${mKey}`)
                 tvMap.set(`${mmId}|annotations`, `${mAnnArr}`)
                 interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${mKey}`, mmId))
@@ -272,6 +300,10 @@ function interpBuildTypeInfo(typeName: string): int {
             if (mIdx >= ownCount && mp != "") {
                 const mmId = interpNewVal("object", "MethodMeta")
                 tvMap.set(`${mmId}|name`, `${interpNewString(mp)}`)
+                // I021 — handler-generated methods 无 FUNC_DECL AST,params 填空数组避免
+                // 反射 `m.params` for-in 读未设置字段 NPE。
+                const emptyParams = interpNewArray("")
+                tvMap.set(`${mmId}|params`, `${emptyParams}`)
                 const emptyAnn = interpNewArray("")
                 tvMap.set(`${mmId}|annotations`, `${emptyAnn}`)
                 interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${typeName}.${mp}`, mmId))

@@ -32,9 +32,13 @@ class AnnotationMeta {
 }
 
 // D120 §Phase 1 — 补齐 5 类 Meta。
+// I021 — annotations 对称 FieldMeta/MethodMeta/ClassMeta,承载 param-level annotation
+// (@RequestParam/@PathVariable/…);AST 存于 PARAM.I4 单节点,由
+// interp_obj.ss:buildAnnotationMetaArrayFromSingle 包单元素数组交付。
 class ParamMeta {
     name: string
     type: string
+    annotations: Array<AnnotationMeta>
 }
 
 class MethodMeta {
