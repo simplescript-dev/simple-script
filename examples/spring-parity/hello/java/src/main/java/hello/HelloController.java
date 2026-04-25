@@ -10,4 +10,14 @@ public class HelloController {
     public String hello(@RequestParam(name = "name") String name) {
         return "Hello, " + name + "!";
     }
+
+    @GetMapping("/age")
+    public String age(@RequestParam(name = "n") int n) {
+        return "n=" + n;
+    }
+
+    @GetMapping("/calc")
+    public String calc(@RequestParam(name = "x") double x) {
+        return "x=" + x;
+    }
 }

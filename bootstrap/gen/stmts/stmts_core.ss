@@ -44,7 +44,10 @@ function genContinueStmt() {
 // ── Block driver + comptime body ───────────────────────────
 
 // Run a comptime block body via genBlock without flushing comptimeSS (caller decides).
-function runComptimeBlockBody(bodyId: int) {
+// 返回 ct block 体内 RETURN 的 tvId(0 = 未 RETURN 或 RETURN null);出口 reset
+// interpReturnFlag/Val/Break/Continue,防止 ct 求值的 RETURN flag leak 到下游 codegen
+// (例如 for-in ct unroll 的 interpCheckLoopExit 误判提前 break,只 emit 第一次 iter 的 IR)。
+function runComptimeBlockBody(bodyId: int): int {
     const savedFunc = currentFunc
     const savedTerminated = terminated
     currentFunc = "__comptime__"
@@ -61,6 +64,12 @@ function runComptimeBlockBody(bodyId: int) {
     terminated = savedTerminated
     ctPopScope()
     currentFunc = savedFunc
+    const retVal = interpReturnFlag == 1 ? interpReturnVal : 0
+    interpReturnFlag = 0
+    interpReturnVal = 0
+    interpBreakFlag = 0
+    interpContinueFlag = 0
+    return retVal
 }
 
 function genBlock(blockId: int) {

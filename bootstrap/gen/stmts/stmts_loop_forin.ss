@@ -112,6 +112,7 @@ function genForIn(id: int) {
                 if (interpCheckLoopExit() == 1) { break }
                 ctFi = ctFi + 1
             }
+            ctVars.delete(`${currentFunc}:${itemName}`)
             return
         }
         if (isCt(ctIterVal) == 1 && interpType(payload(ctIterVal)) == "map") {
@@ -126,6 +127,7 @@ function genForIn(id: int) {
                 if (interpCheckLoopExit() == 1) { break }
                 ctMi = ctMi + 1
             }
+            ctVars.delete(`${currentFunc}:${itemName}`)
             return
         }
         if (comptimeDepth > 0) { return }

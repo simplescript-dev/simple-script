@@ -44,15 +44,22 @@ function registerClassMethodRetType(className: string, methodId: int, retType: s
     funcRetTypes.set(baseName, retType)
     const paramList = funcParams(methodId)
     let pCount = 0
+    const mSig = paramSig(paramList)
     if (paramList != "") {
         const parts = paramList.split(",")
         for (p in parts) {
             const pId = parseInt(p)
-            if (pId > 0 && nGetKind(pId) == "PARAM") { pCount = pCount + 1 }
+            if (pId > 0 && nGetKind(pId) == "PARAM") {
+                // I021bc — funcParamTypes class method 路径补全(对称 codegen.ss:107-111 普通函数)。
+                // invoke sentinel (method_call.ss) 按 funcParamTypes[mangled:idx] 分派 cast emit,
+                // V=int → ss_parseInt、V=double → ss_parseDouble、V=string/默认 → ptr 透传。
+                funcParamTypes.set(`${baseName}:${pCount}`, nGetS2(pId))
+                if (mSig != "") { funcParamTypes.set(`${baseName}_${mSig}:${pCount}`, nGetS2(pId)) }
+                pCount = pCount + 1
+            }
         }
     }
     funcParamCount.set(baseName, `${pCount}`)
-    const mSig = paramSig(paramList)
     if (mSig != "") { funcRetTypes.set(`${baseName}_${mSig}`, retType) }
     trackOverload(baseName)
 }

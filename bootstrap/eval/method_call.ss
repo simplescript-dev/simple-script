@@ -93,6 +93,11 @@ function evalMethodCall(astId: int): int {
                 if (cnStr != "" && mnStr != "") {
                     const mangled = `${cnStr}_${mnStr}`
                     // I018 §路径 A — 按 callee 形参数追加 runtime args(callPreRegs reset 之前)
+                    // I021bc — 按 funcParamTypes[mangled:idx] 分派 cast emit:V=int → ss_parseInt
+                    // + i32 / V=double → ss_parseDouble + double / V=string/默认 → ptr 透传。
+                    // 信息源 = gen_registry.ss registerClassMethodRetType 注册端;消费端按目标
+                    // LLVM 类型 emit cast,消除 dispatcher ptr 实参 vs callee i32/double 形参 LLVM
+                    // type mismatch silent miscompile。
                     let invokeExtraArgs = ""
                     if (funcParamCount.has(mangled) == 1 && mcArgList != "") {
                         const expectedPC = parseInt(funcParamCount.getString(mangled))
@@ -104,7 +109,19 @@ function evalMethodCall(astId: int): int {
                                 if (mcArgId2 > 0 && consumed < expectedPC) {
                                     if (callPreRegs.has(`${mcArgId2}`) == 1) {
                                         const aReg = callPreRegs.getString(`${mcArgId2}`)
-                                        invokeExtraArgs = `${invokeExtraArgs}, ptr ${aReg}`
+                                        const ptKey = `${mangled}:${consumed}`
+                                        const ssType = funcParamTypes.has(ptKey) == 1 ? funcParamTypes.getString(ptKey) : ""
+                                        if (ssType == "int") {
+                                            const intReg = nextReg()
+                                            emitIR(`  ${intReg} = call i32 @ss_parseInt(ptr ${aReg})`)
+                                            invokeExtraArgs = `${invokeExtraArgs}, i32 ${intReg}`
+                                        } else if (ssType == "double") {
+                                            const dblReg = nextReg()
+                                            emitIR(`  ${dblReg} = call double @ss_parseDouble(ptr ${aReg})`)
+                                            invokeExtraArgs = `${invokeExtraArgs}, double ${dblReg}`
+                                        } else {
+                                            invokeExtraArgs = `${invokeExtraArgs}, ptr ${aReg}`
+                                        }
                                     } else {
                                         invokeExtraArgs = `${invokeExtraArgs}, ptr null`
                                     }

@@ -257,12 +257,10 @@ function inferType(id: int): string {
     if (kind == "COMPTIME_EXPR") {
         const ceKey = `${id}`
         if (comptimeExprType.has(ceKey) == 1) { return comptimeExprType.getString(ceKey) }
-        runComptimeBlockBody(nGetI1(id))
-        const ceRetFlag = interpReturnFlag
-        const ceRetVal = interpReturnVal
+        const ceRetVal = runComptimeBlockBody(nGetI1(id))
         flushComptimeSS()
         flushComptimeIR()
-        if (ceRetFlag == 1 && ceRetVal > 0) {
+        if (ceRetVal > 0) {
             const ceType = interpType(ceRetVal)
             if (ceType == "int") {
                 comptimeExprType.set(ceKey, "int")

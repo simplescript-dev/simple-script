@@ -696,6 +696,55 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I022 (2026-04-25)
+
+**触发**:I022(ct const Array<UserClass> materialize 漏 push 第 2/3 元素)+ I021bc(typed @RequestParam V=int/V=double cast lowering)双 issue 合并 commit;I022 是 I021bc Execute RED 探测意外发现的前置阻塞根因,先修(`runComptimeBlockBody` 出口 reset interpReturnFlag/Val + ct unroll 出口 ctVars.delete itemName + COMPTIME_EXPR 用返回值)再修 I021bc(funcParamTypes class method 注册补全 + invoke sentinel 按 funcParamTypes 分派 cast emit)。**第一性需求**:引 D123 §第一性需求 —— @RequestParam V 维度从 string 扩到 int/double parity Java oracle byte-identical 兑现,消除 I021 v0 silent miscompile(V=int `n=-1116582928` / V=double `x=4.95e-315` 类型 ptr→i32/double LLVM 不拒);Spring Boot enterprise 尺度 typed param binding 不再被 ct const Array materialize bug + invoke sentinel hardcode ptr 双层阻塞。
+
+**改动路径**:
+- `bootstrap/gen/stmts/stmts_core.ss`:`runComptimeBlockBody` 出口 saved retVal,reset interpReturnFlag/Val/Break/Continue + 改返 retVal: int(I022 单根因双修复点 — 注册端断流 reset)
+- `bootstrap/gen/gen_types.ss`:COMPTIME_EXPR 处理改 `const ceRetVal = runComptimeBlockBody(...)`,删旧 `ceRetFlag = interpReturnFlag` 等 4 行,if 条件改 `ceRetVal > 0`(I022 caller 适配)
+- `bootstrap/gen/stmts/stmts_loop_forin.ss`:ct-array + ct-map unroll 出口加 `ctVars.delete(${currentFunc}:${itemName})`(I022 同根因第二修复点 — itemName ct val leak 阻断)
+- `bootstrap/gen/gen_registry.ss`:`registerClassMethodRetType` 内 PARAM 循环新增 funcParamTypes 双轨注册(`${baseName}:${idx}` + `${baseName}_${mSig}:${idx}`),对称 codegen.ss:107-111 普通函数路径(I021bc 注册端)
+- `bootstrap/eval/method_call.ss`:invoke sentinel for-in 循环改按 `funcParamTypes[mangled:idx]` 分派 cast emit;V=int → ss_parseInt + i32 / V=double → ss_parseDouble + double / V=string/默认 → ptr 透传(I021bc 消费端)
+- `examples/spring-parity/hello/ss/HelloController.ss`:加 `/age` (V=int) + `/calc` (V=double) 路由,与原 `/hello` (V=string) 共存(端到端 multi-V 测试覆盖)
+- `examples/spring-parity/hello/java/src/main/java/hello/HelloController.java`:同步加对应 Java method `@RequestParam int n` / `@RequestParam double x` 保 byte-identical 对齐
+- `docs/4-issues/I022-ct-const-array-materialize.md`:新建归档(Done at 4 file:line)
+- `docs/4-issues/I021bc-typed-request-param-cast.md`:Approved → Done at 多 file:line + 根因表述修订(双层根因 → 单根因双修复点 / 信息流断裂)
+- `docs/3-decisions/D129-request-param-class-domain.md`:V=class 跨域辨析 Drafted(I021d 域归属)
+
+**REGRESSION + AUTO-DRIFT + bump 项 delta 表(实测,OK 项省略)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| M1 | 5260 | 5230 | 5283 | +53 vs bm | REGRESSION |
+| M3a | 12350 | 12290 | 12436 | +146 vs bm | REGRESSION |
+| M4 | 3063 | 3050 | 3081 | +31 vs bm | REGRESSION |
+| M7b | 681 | 676 | 683 | +7 vs bm | REGRESSION |
+| N3 | 526509 | 525616 | 533644 | +8028 vs bm | REGRESSION |
+| F1:bootstrap/gen/gen_decls.ss | 706 | 708 | 730 | +22 vs bm | REGRESSION (stale 上轮残留 +5 + I021bc 误推 +17) |
+
+**本地抵消路径**:
+- **M1 / M3a / M4**(反射路径行数 / 字符 / 节点)— I021bc invoke sentinel cast emit 分支 +20 LOC 集中 method_call.ss(消费端)+ gen_registry.ss funcParamTypes 注册 +5 LOC(注册端);I022 stmts_core/stmts_loop_forin/gen_types 共 +14 LOC(reset flag + delete itemName + caller 改接口)。压榨空间已极限 — 注册端 5 LOC 已 inline 双轨 set 不可压;消费端 cast emit 三分支(int/double/默认)用 if-elif 已最小;无更深结构压榨可能不损可读性
+- **M7b**(invoke sentinel 复杂度)— +7 反映 funcParamTypes 查询 + cast emit 逻辑必要复杂度,非冗余
+- **N3**(总字节)— 主要由 method_call.ss invoke sentinel + gen_registry.ss + 文档累积引起,单 commit 落档不可拆
+- **F1:gen_decls.ss**(730 vs bm=708)stale REGRESSION:**本轮零改 gen_decls.ss**(I021bc 改的是 gen_registry.ss + method_call.ss;I022 改的是 stmts_core/stmts_loop_forin/gen_types),730 是上轮 I021 v0 收关时已存在的 stale 漂(可能 I021 v0 add 的 funcDefaults 路径或 globalInits 调整),baseline 滞后未 record/bump。本轮一并 bump 712→730 收紧 budget,无单独抵消必要(非本轮新引入)
+
+**新 baseline 预期值(=实测,bump 升 budget_max)**:
+- M1 budget_max: 5230 → 5283
+- M3a budget_max: 12290 → 12436
+- M4 budget_max: 3050 → 3081
+- M7b budget_max: 676 → 683
+- N3 budget_max: 525616 → 533644
+- F1:bootstrap/gen/gen_decls.ss budget_max: 708 → 730(stale + I021bc 合并)
+
+**VCM 实测 vs 预估对照槽**:I021bc 文档 §下轮升根路径 §潜在工程风险 4 预估 reflection_linter F1 gen_registry.ss / method_call.ss baseline 漂移 — 实测漂移点更广(M1 / M3a / M4 / M7b / N3)且不在 F1:gen_registry.ss / F1:method_call.ss 单独入榜(说明这两文件 LOC 没单独 F1 budget,改动落到聚合 M*/N*)。预估 ~20-35 LOC 单 commit,实测 I021bc + I022 合并 bootstrap 改动 +44 LOC(I022 14 + I021bc ~30),工程量在 30-50 LOC 区间(I021bc §潜在工程风险 1 升根 callee 端 LLVM 签名验证 实测不需要 — callee 签名走 class_method.ss `resolveTypeParam(nGetS2(pId))` 已正确生成 i32 / double,本 issue 仅修 caller invoke 实参 cast 端)。
+
+**Phase 4 @RequestParam V 维度根因闭环状态**:I021 v0 V=string 路径(2026-04-25 commit 75f0516+8844e5f)+ I022 ct const Array materialize(本轮)+ I021bc V=int/V=double cast lowering(本轮)三 issue 联动覆盖 @RequestParam 域 V=primitive 全集。下一步 V=class 跨域辨析(D129 — 不在 @RequestParam 域,属 @RequestBody / @ModelAttribute);多参 @RequestParam 留 I021-multi-param;@PathVariable / @RequestHeader 各自独立 issue 复用本 issue 的 funcParamTypes + invoke sentinel cast 通道。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:
