@@ -17,6 +17,11 @@
 // ct 元数据自驱展开多 spec 实参表(每个 RequestParam emit ss_mapGetString + typed cast 按
 // spec.type 分派 i32/double/ptr;RequestMap 透传 reqReg),消除多 spec 各发独立 invoke 的
 // silent miscompile。具体在 bootstrap/eval/method_call.ss:86-160 §useParamSpecs 分支。
+//
+// I021-pathvariable:@PathVariable 路径占位符绑参 — comptime 加 "PathVariable" kind + matchPath
+// runtime helper 路径模式匹配(`{name}` 段 buffered commit,防失败早期 set 污染);invoke sentinel
+// 加 kind == "PathVariable" 分支 emit ss_mapGetString(req, "__pv_<name>") 复用 RequestParam
+// cast 通道(int/double/ptr),`__pv_` 独立 namespace 与 query 严格分离。
 
 import { httpServe, httpResponse } from "@/lib/http"
 
@@ -38,6 +43,7 @@ class ParamSpec {
 // 因跨域无 ct const 共享通道走硬编;改名时两端必须同步。
 const PARAM_KIND_REQUEST_PARAM = "RequestParam"
 const PARAM_KIND_REQUEST_MAP = "RequestMap"
+const PARAM_KIND_PATH_VARIABLE = "PathVariable"
 
 const _ssRoutes: Array<RouteMeta> = comptime {
     let arr: Array<RouteMeta> = []
@@ -54,6 +60,14 @@ const _ssRoutes: Array<RouteMeta> = comptime {
                                     if (pAnn.name == "RequestParam") {
                                         specs = specs.push(new ParamSpec(
                                             kind: PARAM_KIND_REQUEST_PARAM,
+                                            name: pAnn.args.getString("name"),
+                                            type: p.type
+                                        ))
+                                        matched = 1
+                                    }
+                                    if (pAnn.name == "PathVariable") {
+                                        specs = specs.push(new ParamSpec(
+                                            kind: PARAM_KIND_PATH_VARIABLE,
                                             name: pAnn.args.getString("name"),
                                             type: p.type
                                         ))
@@ -124,17 +138,52 @@ class SpringApplication {
     }
 }
 
+// matchPath:路径模式匹配 + 占位符 buffered commit。占位符段 `{name}` 先缓冲到本地
+// pvNames/pvValues 数组,**全段成功匹配**后才一次性 `req.set("__pv_<name>", value)` 提交 —
+// 防失败早期 set 污染 req 让后续路由 fallback 看到脏 __pv_<name>。`__pv_` 独立 namespace 与
+// RequestParam query 严格分离。invoke sentinel 端取值见 `bootstrap/eval/method_call.ss:135 §useParamSpecs`。
+function matchPath(pattern: string, pathSegs: Array<string>, req: Map<string, string>): int {
+    const patSegs = pattern.split("/")
+    if (patSegs.length() != pathSegs.length()) { return 0 }
+    let pvNames: Array<string> = []
+    let pvValues: Array<string> = []
+    let i = 0
+    while (i < patSegs.length()) {
+        const patSeg = patSegs[i]
+        const pathSeg = pathSegs[i]
+        const patLen = patSeg.length()
+        if (patLen >= 2 && patSeg.charAt(0) == "{" && patSeg.charAt(patLen - 1) == "}") {
+            pvNames = pvNames.push(patSeg.substring(1, patLen - 2))
+            pvValues = pvValues.push(pathSeg)
+        } else if (patSeg != pathSeg) {
+            return 0
+        }
+        i = i + 1
+    }
+    let j = 0
+    while (j < pvNames.length()) {
+        req.set("__pv_" + pvNames[j], pvValues[j])
+        j = j + 1
+    }
+    return 1
+}
+
 function dispatch(req: Map<string, string>): string {
     const path = req.get("path")
+    const pathSegs = path.split("/")
     for (r in _ssRoutes) {
-        if (r.path == path) {
-            // I021-multi-param — invoke sentinel 数据驱动模式:sentinel 按 r.paramSpecs ct
-            // 元数据自驱展开多 spec 实参表(每个 RequestParam emit ss_mapGetString + typed cast,
-            // RequestMap 透传 reqReg),消除 dispatch 内 spec loop 各发独立 invoke 的多参 silent
-            // miscompile。dispatch 这里单次 r.invoke(req) 调用,具体实参展开见
-            // bootstrap/eval/method_call.ss:86-160 invoke sentinel §useParamSpecs 分支。
+        if (matchPath(r.path, pathSegs, req) == 1) {
+            // r.invoke(req) — invoke sentinel 自驱展开多 spec(method_call.ss:86-160 §useParamSpecs)
             return httpResponse(200, "text/plain", r.invoke(req))
         }
     }
     return httpResponse(404, "text/plain", "not found")
+}
+
+// dispatch 返完整 HTTP response(headers + body),日志/测试场景剥头取 body。
+function dispatchBody(resp: string): string {
+    const sep = "\r\n\r\n"
+    const idx = resp.indexOf(sep)
+    if (idx < 0) { return resp }
+    return resp.substring(idx + 4, resp.length())
 }

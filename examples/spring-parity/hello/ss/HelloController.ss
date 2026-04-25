@@ -19,4 +19,9 @@ class HelloController {
     function add(@RequestParam(name = "x") x: int, @RequestParam(name = "y") y: int): string {
         return "sum=" + (x + y)
     }
+
+    @GetMapping(path = "/users/{id}")
+    function show(@PathVariable(name = "id") id: int): string {
+        return "user=" + id
+    }
 }

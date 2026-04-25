@@ -132,12 +132,17 @@ function evalMethodCall(astId: int): int {
                                     const specObjId = payload(specVal)
                                     const kindTv = interpGetField(specObjId, "kind")
                                     const kindStr = interpType(kindTv) == "string" ? interpAsStr(kindTv) : ""
-                                    if (kindStr == "RequestParam") {
+                                    if (kindStr == "RequestParam" || kindStr == "PathVariable") {
                                         const nameTv = interpGetField(specObjId, "name")
                                         const typeTv = interpGetField(specObjId, "type")
                                         const nameStr = interpType(nameTv) == "string" ? interpAsStr(nameTv) : ""
                                         const typeStr = interpType(typeTv) == "string" ? interpAsStr(typeTv) : ""
-                                        const nameStrConst = addStringConst(nameStr)
+                                        // I021-pathvariable — kind == "PathVariable" 走 __pv_ prefix 隔离 namespace,
+                                        // dispatch matchPath 在 runtime 写 req.set("__pv_<name>", value),sentinel 这里
+                                        // emit ss_mapGetString(req, "__pv_<name>") 取值,与 RequestParam query namespace
+                                        // 分离;cast 通道(int/double/ptr 分派)完全复用 RequestParam 路径,不双轨。
+                                        const lookupKey = kindStr == "PathVariable" ? "__pv_" + nameStr : nameStr
+                                        const nameStrConst = addStringConst(lookupKey)
                                         const valReg = nextReg()
                                         emitIR(`  ${valReg} = call ptr @ss_mapGetString(ptr ${reqRegPS}, ptr ${nameStrConst})`)
                                         if (typeStr == "int") {

@@ -1,6 +1,7 @@
 package hello;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,5 +25,10 @@ public class HelloController {
     @GetMapping("/add")
     public String add(@RequestParam(name = "x") int x, @RequestParam(name = "y") int y) {
         return "sum=" + (x + y);
+    }
+
+    @GetMapping("/users/{id}")
+    public String show(@PathVariable("id") Integer id) {
+        return "user=" + id;
     }
 }

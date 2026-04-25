@@ -18,7 +18,7 @@
 // 注:同 codepath 边际效益评估 — 双 int 仅留主用例 ①,不另设"边界值"重复 case。
 
 import { assertEqual } from "@/lib/test"
-import { dispatch } from "@/lib/spring/boot/application"
+import { dispatch, dispatchBody } from "@/lib/spring/boot/application"
 
 @RestController
 class MultiCtl {
@@ -83,10 +83,3 @@ function main() {
     })
 }
 
-// dispatch 返完整 HTTP response(headers + body),测试只取 body 比对
-function dispatchBody(resp: string): string {
-    const sep = "\r\n\r\n"
-    const idx = resp.indexOf(sep)
-    if (idx < 0) { return resp }
-    return resp.substring(idx + 4, resp.length())
-}
