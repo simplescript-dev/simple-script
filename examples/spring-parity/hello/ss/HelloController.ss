@@ -28,6 +28,14 @@ class OrderList {
     items: Array<Item>
 }
 
+class OrderPrim {
+    customer: string
+    tags: Array<string>
+    scores: Array<int>
+    prices: Array<double>
+    flags: Array<bool>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -74,6 +82,23 @@ class HelloController {
             i = i + 1
         }
         return "customer=" + order.customer + ",total=" + total
+    }
+
+    @PostMapping(path = "/orders-prim")
+    function createOrderPrim(@RequestBody order: OrderPrim): string {
+        let tagSum = ""
+        let i = 0
+        while (i < order.tags.length()) {
+            tagSum = tagSum + order.tags[i]
+            i = i + 1
+        }
+        let scoreSum = 0
+        let j = 0
+        while (j < order.scores.length()) {
+            scoreSum = scoreSum + order.scores[j]
+            j = j + 1
+        }
+        return "customer=" + order.customer + ",tags=" + tagSum + ",scores=" + scoreSum
     }
 
     @GetMapping(path = "/agent")

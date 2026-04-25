@@ -40,6 +40,14 @@ class OrderList {
     public List<Item> items;
 }
 
+class OrderPrim {
+    public String customer;
+    public List<String> tags;
+    public List<Integer> scores;
+    public List<Double> prices;
+    public List<Boolean> flags;
+}
+
 @RestController
 public class HelloController {
     @GetMapping("/hello")
@@ -82,6 +90,15 @@ public class HelloController {
         int total = 0;
         for (Item it : order.items) total += it.price;
         return "customer=" + order.customer + ",total=" + total;
+    }
+
+    @PostMapping("/orders-prim")
+    public String createOrderPrim(@RequestBody OrderPrim order) {
+        String tagSum = "";
+        for (String t : order.tags) tagSum += t;
+        int scoreSum = 0;
+        for (Integer s : order.scores) scoreSum += s;
+        return "customer=" + order.customer + ",tags=" + tagSum + ",scores=" + scoreSum;
     }
 
     @GetMapping("/agent")

@@ -344,6 +344,39 @@ function jnArrayGet(node: int, index: int): int {
     return parseInt(part)
 }
 
+// I021-requestbody-nested-array-primitive — 元素 primitive 解码 raw helper:codegen emit
+// IR 直接调,与 jnGetInt/Double/String/Bool 字段路径同构(委托 jnArrayGet 拿 elem nodeId
+// 后查 jnInt / jnStr Map);Phase 4 §247 第二支柱嵌套深化第三轮 primitive 元素数组反序列化
+// 走此 4 helper(int / double / bool 用 jnInt 文本表示 + parseInt/parseDouble;
+// string 用 jnStr 直接 ptr,codegen emit 必 emitRetainForType 持新 RC)。
+function jnArrayGetInt(arrNode: int, idx: int): int {
+    if (arrNode <= 0) { return 0 }
+    const elemId = jnArrayGet(arrNode, idx)
+    if (elemId <= 0) { return 0 }
+    return parseInt(jnInt.getString(`${elemId}`))
+}
+
+function jnArrayGetDouble(arrNode: int, idx: int): double {
+    if (arrNode <= 0) { return 0.0 }
+    const elemId = jnArrayGet(arrNode, idx)
+    if (elemId <= 0) { return 0.0 }
+    return parseDouble(jnInt.getString(`${elemId}`))
+}
+
+function jnArrayGetString(arrNode: int, idx: int): string {
+    if (arrNode <= 0) { return "" }
+    const elemId = jnArrayGet(arrNode, idx)
+    if (elemId <= 0) { return "" }
+    return jnStr.getString(`${elemId}`)
+}
+
+function jnArrayGetBool(arrNode: int, idx: int): int {
+    if (arrNode <= 0) { return 0 }
+    const elemId = jnArrayGet(arrNode, idx)
+    if (elemId <= 0) { return 0 }
+    return parseInt(jnInt.getString(`${elemId}`))
+}
+
 function jnAddElement(arrId: int, childId: int) {
     const existing = jnArr.getString(`${arrId}`)
     if (existing == "") {
