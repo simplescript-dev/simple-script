@@ -100,7 +100,7 @@ bin/ss clean
 
 **决策记录**：每个确认的设计决策立即写入 `docs/3-decisions/D0NN-*.md`，一个决策一个文件，不等到实现完成再补。多阶段计划的 Phase 进度只写在 D 文档里。下轮提示词收尾**自闭环**两步:(1) 对话输出(让用户审阅措辞) (2) 覆盖写入 `.claude/next_prompt.md`(单次 payload)。terman 内建 `claude-next` preset 监测 PTY 空闲 30s + 光标在 prompt 处,自动 `/clear` + bracketed paste + 30s 观察窗口 + Enter 触发下一轮(见 `docs/terman-auto-next.md`)。两处内容严格一致;用户在 30s 窗口里审阅,Ctrl+C 或键入字符即可中断。preset 读完即 `delete_file` 消费,Claude 不承载跨轮状态累积;Claude 本轮**不执行**任何触发脚本,直接 stop。
 
-**Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。
+**Bug 修复 Harness（强制）**：修 bug 时必须运行 `bin/ss run .claude/harness/common/bug.ss detected <importance> <urgency>`（importance/urgency 为 1-100），读取 stdout 输出的指令并执行。修复后运行 `bin/ss run .claude/harness/common/bug.ss fixed <round> <certainty>`（round 为第几轮，certainty 为 0-100 确定性），按输出指令决定下一步。**轨 1 前置 gate**：detected 后 Execute 第一次修改性 tool call 之前必须产出 `<bug-name>.options.md` 方案对比表（候选 ≥ 3 + 层次标 + 决策行 + 假设破裂标识），跑 `bin/ss build tools/bug_options_linter.ss -o /tmp/bug_options_linter && /tmp/bug_options_linter <bug>.options.md` GATE OK 才允许 Execute。详见 `docs/3-MNK.md` §特定领域 §Bug 修复 Harness §轨 1 + §M §字段 10。
 
 **反射根因 gate（强制）**：触碰反射路径前后必须跑 `bin/ss run tools/reflection_health_linter.ss`；任一物理指标（M1-M7 + N1-N5）高于 `budget_max` 阻断 commit。规则/baseline 2 列制/AUTO-DRIFT 软警告/`bump`+`bump-group` 扩容申报 CLI/scope-aware 判定 见 `docs/3-decisions/D097-reflection-root-cause-metrics.md`；流程层触发范围与 REGRESSION A/B 路径见 `docs/3-MNK.md` §特定领域 §反射路径根因 gate。
 

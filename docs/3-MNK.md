@@ -64,6 +64,7 @@
 | 7 | 对照实验 | **不做这件事,§第一性需求 会被卡吗?** | 必答 yes/no + 一句证据;no → 本轮任务**降级为 backlog 不做**(除非用户明说偏离授权) |
 | 8 | Plan vs Execute + Layer | (a) **Execute**(代码改动)/ **Plan**(方向、清单、调研、巡检);(b) **Layer**: **Issue**(执行单元,docs/4-issues/IXXX) / **Decision**(设计单元,docs/3-decisions/DXXX) / **Implementation**(实施单元,代码 + 测试 + lib + 配置) | Plan 型 VCM ④ 边界 替换为「替代方案对比 + 隐藏假设挑战」;**Layer 跨越触发 stop**:本轮 Layer ≠ PSM 字段 1 引用的上层 D 文档/issue 同 Layer 时,**stop 让用户授权或拆轮**(默认不跨层)。例外:issue 文档 §风险节 / §候选路径节明示 "若 X 则起 DXXX 决策" 类 hard prereq,实测命中即视为本轮跨层授权,但 Decision 文件**必须**先于 Implementation 落地(D 文档独立审查窗口不许吞)。**触发事件**:2026-04-24 I015 §收尾反思 R4 候选 2 — I015 (issue) 实测后内嵌起 D128 (decision) + 实施(implementation) 三层混在一轮,跨多轮反复(I014 同模式),根因是 PSM 字段 8 是 Plan vs Execute 二分缺 Layer 维度。**清单型 Execute 二次校验义务**:Plan 型产出"删/合并/保留"清单(元规则巡检表 / 批量 deprecation 列表 / 批量重命名清单),Execute 阶段**不许**按 Plan 判定一刀切批量执行,必须**为清单每项独立跑 PSM §字段 9 表面/根判定**(含字段 9 新增的"删除前 grep 验证")。Plan 阶段判定是清单层(粗粒度按元规则 yes/no),Execute 阶段判定是实例层(细粒度按"目标已落实"验证),两层不可互相吸收。**触发事件**:2026-04-24 元规则巡检 Plan 判 A11/A14/A18 = N 直接删,Execute 阶段未跑独立判定 → commit 前 grep 验证才发现 3 项均未在合并目标落实,撤回删除。 |
 | 9 | 表面 vs 根 | 本任务**和每个产出项**:根解决 / 表面解决? | **根** → 一句话给出消除的双轨制 / 架构根因;**表面** → 必须同时写「本轮接受表面的成本理由」+「下一轮如何升级到根」;多产出项任务**对每一项**单独标记。**删除 / 合并 / deprecate 类操作专属 gate**:删 memory / 合并 D 文档 / 删除既有规则 / 移除 file:line 锚 前,**必须**先 grep 目标合并位置验证内容已落实(同等 file:line 锚 + 类型语义不丢失 + 触发条件不缺);未落实 → 先迁移再删,不许 Plan 阶段判定"细节 patch / 已合并"即立即 Execute 删除。**grep 不是形式匹配,是语义覆盖** —— 对要删的 memory 或规则块,Why/How to apply 每分句独立 grep,每句都能在合并目标 file:line 找到等价表达;单一关键词 substring 命中不足以判 ✓(2026-04-24 Phase 2 收尾 §字段 9 首次实战补强)。**触发事件**:2026-04-24 元规则巡检 Plan 判 A11 invoke_sentinel = N 直接删,commit 前 grep 发现 D128/I014 都没保留 method_call.ss:75-102 file:line 锚,撤回删除恢复;后续 A14/A18 同理保守缩窄到"合并目标已落实的 A20"删。 |
+| 10 | 方案对比与层次选择(bug 修复类必填) | (a) 列 ≥ 3 候选方案,每候选标层次(**数据层 patch** / **接口层 trap** / **架构层 refactor**);(b) 显式标注"假设破裂入口"(genIdent 在 currentFunc=='' 喷顶层 IR / inferType 在 module 顶层调 codegen IR emit 等),论证每候选在哪层消除/绕过该破裂;(c) 决策行格式 `选 X 因 Y` + 若不选 deeper layer 必须写"为何不选"(scope / break 既有 / 工程量超 phase 预算 等)。**前置 gate**:bug 修复 Execute 第一次修改性 tool call 之前必填,产出 `<bug-name>.options.md` 文件 + 跑 `tools/bug_options_linter.ss` GATE OK 才允许 Execute。**与字段 9 关系**:字段 10 是字段 9 "根/表面"标记的反向自证 — 字段 9 标"根"必有字段 10 选最深可达层论证,标"表面"必有字段 10 列出"为何不选 deeper layer"。**触发事件**:2026-04-25 commit 8844e5f I021 codegen fix — 我提"修 1+修 2 双轨"方案后立即 Edit gen_decls.ss,**用户打断 "要根因修复"** 才反思发现修 1+修 2 是数据层 patch,正确根因应是 + 修 3 接口层 trap;反推流程根因 = MNK 没"前置方案对比"gate,detected 阶段口号无产出物 mechanical 校验,Execute 自由 → 用户抽查永久兜底。本字段消除该入口。 | bug 修复类**必填**;非 bug 修复任务**可省**(Execute 型 refactor / 新功能 / 文档 / 测试补 — 这类没"假设破裂入口"概念,字段 10 不适用)。微改/标准改/大改门槛同字段 1-9 |
 
 ### 唯一例外
 
@@ -195,14 +196,14 @@ Claude 本轮**不执行**任何脚本或 `terman send` —— stop 后 preset �
 
 ### Bug 修复 Harness
 
-修 bug 必须运行:
+修 bug 必须运行(注:harness 路径已迁移至 `.claude/harness/common/bug.ss`,旧 `.harness/common/bug.ss` 路径在 stale 工作树可能残留,以 `.claude/harness/common/bug.ss` 为准):
 
 ```bash
-bin/ss run .harness/common/bug.ss detected <importance> <urgency>
+bin/ss run .claude/harness/common/bug.ss detected <importance> <urgency>
 # 读 stdout 输出的指令执行
 
 # 修复后
-bin/ss run .harness/common/bug.ss fixed <round> <certainty>
+bin/ss run .claude/harness/common/bug.ss fixed <round> <certainty>
 # 按输出决定下一步
 ```
 
@@ -212,7 +213,49 @@ bin/ss run .harness/common/bug.ss fixed <round> <certainty>
 
 **全 PASS** 才允许 commit。机械指标基于不可变特征(exit code / bootstrap 字节比较 / 重新测量数值),**不依赖变量名 grep**(可改名规避)。
 
-**自检 trigger**:想跳过 `.harness/common/bug.ss` / 直接 grep code 找 bug 凭直觉改的瞬间,必须停下问"这是 bug 吗?是 → 必走 harness 双阶段(detected → fixed)+ `.bugfix` 6 gate;否 → 显式写明非 bug 类别(refactor / 新功能 / 文档 / 测试补)"。把"想跳"念头当 trigger,而不是把"必须跑"当事后清单。
+**自检 trigger**:想跳过 `.claude/harness/common/bug.ss` / 直接 grep code 找 bug 凭直觉改的瞬间,必须停下问"这是 bug 吗?是 → 必走 harness 双阶段(detected → fixed)+ `.bugfix` 6 gate;否 → 显式写明非 bug 类别(refactor / 新功能 / 文档 / 测试补)"。把"想跳"念头当 trigger,而不是把"必须跑"当事后清单。
+
+#### 轨 1:detected 阶段强制方案对比表(2026-04-25 commit ?? 立)
+
+**trigger**:bug.ss detected 收到指令"调研多方案 / 不 workaround / 根因解决"后,Execute 第一次修改性 tool call **之前**。
+
+**强制产出物**:`<bug-name>.options.md`(repo root,文件名与 .bugfix 证据 + tests/phase5/<bug>_*.ss regression test 同 prefix)— 方案对比表,格式见 PSM §字段 10:
+
+- 候选 ≥ 3,每候选标层次(数据层 patch / 接口层 trap / 架构层 refactor)
+- 显式标注"假设破裂入口"(genIdent 在 currentFunc=='' / inferType 在 module 顶层调 codegen IR / 等)
+- 论证每候选在哪层消除/绕过该破裂
+- 决策行 `选 X 因 Y` + 若不选 deeper layer 写"为何不选"
+
+**mechanical 校验**:
+
+```bash
+bin/ss build tools/bug_options_linter.ss -o /tmp/bug_options_linter
+/tmp/bug_options_linter <bug-name>.options.md
+# 5 检查 (C1 文件存在 / C2 候选 ≥ 3 / C3 层次标 ≥ 3 / C4 决策行 / C5 假设破裂标识)
+# GATE OK → 允许 Execute;GATE BLOCKED → 不许实施任何修改,补全后重跑
+```
+
+**为何前置而非后置**:
+
+- 后置审查(.bugfix G3 root cause 长度 / G4 net_new_ifs)只查"形式合规",查不了"方案是否选了最深可达根因层"
+- 形式合规通过的"伪根因"在 .bugfix 6 gate 全过(G3 长度够 / same_pattern_count=0 / bootstrap PASS),依赖用户抽查兜底
+- **轨 1 把"根因决策不充分"形态从 (b) 用户抽查迁到 (a) 机械 linter,降低 (b) 触发频率**(MNK §核心原则 (2))
+
+**轨 1 局限(诚实声明)**:
+
+- linter 仅查"形式存在"(候选数 / 层次词 / 决策行 / 假设破裂字串),**不查"内容深度"**(可被八股化:列 3 个数据层包装假装有层次)
+- 内容深度由用户抽查兜底(轨 2 留下轮 D 文档讨论:settings.json hook 监听用户 prompt 关键字"要根因"/"根因解决" → 强制 git stash + 重跑 PSM §字段 9 + §字段 10)
+- linter 不解决"reasoning 任务",只 nudge 我习惯性走方案对比
+
+**触发事件**:2026-04-25 commit 8844e5f I021 codegen fix — 我提"修 1+修 2 双轨"方案后立即 Edit gen_decls.ss,**用户打断"要根因修复"** 才反思发现修 1+修 2 是数据层 patch,正确根因应 + 修 3 接口层 trap(消除 evalIdent fallback genIdent 在 currentFunc=='' 喷顶层 IR 的假设破裂入口)。反推流程根因 = MNK 没"前置方案对比"gate,detected 阶段口号无产出物 mechanical 校验,Execute 自由 → 用户抽查永久兜底。本节消除该入口。
+
+**自证 demonstration**:`i021_codegen_const_literal_comptime_ref.options.md` 是首次产出,linter 5/5 PASS。下次 bug fix 必走本流程。
+
+**诚实声明 — `.claude/harness/common/bug.ss` detected 增强未 commit**:本轮升级时,`.claude/harness/common/bug.ss` 文件 + 依赖 `lib/harness/` 模块均处 untracked 工作树状态(其他会话产物,本轮无审查/管理权限)。**强行 commit 会破坏依赖**(commit `bug.ss` 不带 `lib/harness/` → fresh clone import 失败)。本轮**仅 commit 文档 + 工具**(docs/3-MNK.md + tools/bug_options_linter.ss + CLAUDE.md + 自证 options.md),`bug.ss` detected 增强保留在工作树**不入仓库**。
+
+**这意味着**:轨 1 mechanical 化**入口降级** — 不再是"bug.ss detected 自动 PROMPT 强制指令",而是"Claude 主动读 docs/3-MNK.md §轨 1 + CLAUDE.md §Bug 修复 Harness 后**主动跑** `tools/bug_options_linter.ss`"。强制度从"工具自动喊"降到"Claude 记忆主动跑",**比纯口号好**(linter 仍机械校验产出物形式),**但比理想态弱**(依赖 Claude 跨轮记忆稳定性)。
+
+**待补 commit**:lib/harness/ + .claude/harness/ 整套 commit 落定后(其他会话或 D 文档审查决议),补 bug.ss detected 增强 PROMPT 下游 commit,把入口升回"工具自动喊"。
 
 ### 反射路径根因 gate
 
