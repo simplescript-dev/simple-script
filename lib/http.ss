@@ -75,7 +75,9 @@ function parseRequest(raw: string): Map<string, string> {
             if (colonIdx >= 0) {
                 const hName = line.substring(0, colonIdx).toLowerCase()
                 const hVal = line.substring(colonIdx + 2, line.length() - colonIdx - 2)
-                req.set(hName, hVal)
+                // I021-requestheader: header 入 __hdr_ namespace 与 query 严格分离 — mirror __pv_ prefix 精神;
+                // sentinel 端 lookup `__hdr_<lower-name>`(name 在 comptime push 时已 lowercase normalize)。
+                req.set("__hdr_" + hName, hVal)
             }
         }
     }

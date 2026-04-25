@@ -4,6 +4,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,5 +43,10 @@ public class HelloController {
     @PostMapping("/users")
     public String createUser(@RequestBody User user) {
         return "user=" + user.name + ",age=" + user.age;
+    }
+
+    @GetMapping("/agent")
+    public String agent(@RequestHeader("User-Agent") String ua) {
+        return "ua=" + ua;
     }
 }

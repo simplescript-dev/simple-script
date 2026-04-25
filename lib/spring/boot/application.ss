@@ -60,6 +60,7 @@ const PARAM_KIND_REQUEST_PARAM = "RequestParam"
 const PARAM_KIND_REQUEST_MAP = "RequestMap"
 const PARAM_KIND_PATH_VARIABLE = "PathVariable"
 const PARAM_KIND_REQUEST_BODY = "RequestBody"
+const PARAM_KIND_REQUEST_HEADER = "RequestHeader"
 
 const _ssRoutes: Array<RouteMeta> = comptime {
     let arr: Array<RouteMeta> = []
@@ -99,6 +100,17 @@ const _ssRoutes: Array<RouteMeta> = comptime {
                                         specs = specs.push(new ParamSpec(
                                             kind: PARAM_KIND_REQUEST_BODY,
                                             name: p.name,
+                                            type: p.type
+                                        ))
+                                        matched = 1
+                                    }
+                                    if (pAnn.name == "RequestHeader") {
+                                        // I021-requestheader: name lowercase normalize 与 lib/http.ss:76 一致
+                                        // (Spring `@RequestHeader("User-Agent")` 大小写不敏感 alignment);
+                                        // sentinel emit lookupKey = "__hdr_" + nameStr 不重复 toLowerCase。
+                                        specs = specs.push(new ParamSpec(
+                                            kind: PARAM_KIND_REQUEST_HEADER,
+                                            name: pAnn.args.getString("name").toLowerCase(),
                                             type: p.type
                                         ))
                                         matched = 1

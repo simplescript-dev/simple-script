@@ -34,4 +34,9 @@ class HelloController {
     function createUser(@RequestBody user: User): string {
         return "user=" + user.name + ",age=" + user.age
     }
+
+    @GetMapping(path = "/agent")
+    function agent(@RequestHeader(name = "user-agent") ua: string): string {
+        return "ua=" + ua
+    }
 }
