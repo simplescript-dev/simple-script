@@ -92,7 +92,7 @@ bin/ss clean
 
 **编译器吸收复杂度**：用户不应看到内存管理、类型系统等内部机制的语法暴露。
 
-**Root Cause 优先**：编译器限制是 bug，不是边界条件。当编译器限制迫使 stdlib 或用户代码使用丑陋 workaround，先修编译器。同一个 workaround 出现第二次必须停下修根因，不要记为 "Known limitation" 然后绕过。
+**Root Cause 优先（只从根因解决,不考虑成本,只要最佳）**：编译器限制是 bug，不是边界条件。当编译器限制迫使 stdlib 或用户代码使用丑陋 workaround，先修编译器。同一个 workaround 出现第二次必须停下修根因，不要记为 "Known limitation" 然后绕过。**多选路径下"根因大改 vs 浅层补丁"权衡里,成本(LOC / 工程量 / bootstrap 轮数 / 工作轮数 / linter 短期 regression / 需要先做预削减才能拿余量)不是选次优的合法理由**;最佳的判据是**根因解决度**,不是实施成本。具体:(a) 根因方案 vs workaround → 选根因(含编译器 bug 直接修 codegen / RC 逻辑,不在调用方加 strdup / copy 等 workaround);(b) 大重构 vs 小补丁 → 若根因需大重构,选大重构,即使本轮 LOC 爆炸或多 commit 分步;(c) 主线能力 vs annotation / handler 旁路 → 选主线能力补齐(参考 memory `feedback_no_derive_workaround`);(d) **多候选推荐排序**(同族下游候选 / 设计权衡 / 扩容申报取舍)按**根因解决度 + 第一性需求覆盖度**排,**禁按"工程量最小 / 最经济 / 最快上线 / LOC 最少"作排序依据**;(e) 例外极窄:仅当根因路径**物理上不可达**(需修改不可控外部依赖且无 fork 余地)才允许次优,**"太贵 / 太慢 / 本轮做不完"不算物理不可达**。
 
 **交互式单文档**：每轮等用户明确指定一个文档/文件，逐个问题确认方向再执行。不自动扫 `docs/3-decisions/` 找未完成决策自主挑任务，不顺带修无关文件，不批量推进类似问题。**下轮提示词 payload `.claude/next_prompt.md` 必含关键字 `ultrathink`**,§After Done §下一步提示词 写入后强制跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss`,stdout 出现 `GATE BLOCKED` 即阻断 stop(机械校验,详见 `docs/3-MNK.md §After Done §4.下一步提示词`)。
 
