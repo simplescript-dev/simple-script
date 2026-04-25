@@ -14,4 +14,9 @@ class HelloController {
     function calc(@RequestParam(name = "x") x: double): string {
         return "x=" + x
     }
+
+    @GetMapping(path = "/add")
+    function add(@RequestParam(name = "x") x: int, @RequestParam(name = "y") y: int): string {
+        return "sum=" + (x + y)
+    }
 }

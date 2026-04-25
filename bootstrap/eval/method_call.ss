@@ -99,7 +99,67 @@ function evalMethodCall(astId: int): int {
                     // LLVM 类型 emit cast,消除 dispatcher ptr 实参 vs callee i32/double 形参 LLVM
                     // type mismatch silent miscompile。
                     let invokeExtraArgs = ""
-                    if (funcParamCount.has(mangled) == 1 && mcArgList != "") {
+                    // I021-multi-param — 数据驱动模式:ctObj 含 paramSpecs ct array 字段时,
+                    // sentinel 自驱按 N 个 spec emit ss_mapGetString + cast,生成单次多参 call;
+                    // dispatch 单调用 `r.invoke(req)`,sentinel 内部展开 multi-spec 实参表,消除
+                    // dispatch ct unroll spec loop 各发独立 invoke 的 silent miscompile 双轨。
+                    const psSv = interpGetField(ctObjId, "paramSpecs")
+                    let useParamSpecs = 0
+                    let psArrIdSv = 0
+                    let psLenSv = 0
+                    if (interpType(psSv) == "array") {
+                        psArrIdSv = payload(psSv)
+                        psLenSv = interpArrayLen(psArrIdSv)
+                        if (psLenSv > 0) { useParamSpecs = 1 }
+                    }
+                    if (useParamSpecs == 1 && mcArgList != "") {
+                        // dispatch 写 r.invoke(req) — mcArgList 第一个 mcArgId 对应 req map LLVM reg
+                        const mcArgPartsPS = mcArgList.split(",")
+                        let reqRegPS = ""
+                        for (mcapPS in mcArgPartsPS) {
+                            if (reqRegPS == "") {
+                                const mcArgIdPS = parseInt(mcapPS)
+                                if (mcArgIdPS > 0 && callPreRegs.has(`${mcArgIdPS}`) == 1) {
+                                    reqRegPS = callPreRegs.getString(`${mcArgIdPS}`)
+                                }
+                            }
+                        }
+                        if (reqRegPS != "") {
+                            let psIdx = 0
+                            while (psIdx < psLenSv) {
+                                const specVal = interpArrayGet(psArrIdSv, psIdx)
+                                if (interpType(specVal) == "object") {
+                                    const specObjId = payload(specVal)
+                                    const kindTv = interpGetField(specObjId, "kind")
+                                    const kindStr = interpType(kindTv) == "string" ? interpAsStr(kindTv) : ""
+                                    if (kindStr == "RequestParam") {
+                                        const nameTv = interpGetField(specObjId, "name")
+                                        const typeTv = interpGetField(specObjId, "type")
+                                        const nameStr = interpType(nameTv) == "string" ? interpAsStr(nameTv) : ""
+                                        const typeStr = interpType(typeTv) == "string" ? interpAsStr(typeTv) : ""
+                                        const nameStrConst = addStringConst(nameStr)
+                                        const valReg = nextReg()
+                                        emitIR(`  ${valReg} = call ptr @ss_mapGetString(ptr ${reqRegPS}, ptr ${nameStrConst})`)
+                                        if (typeStr == "int") {
+                                            const intReg = nextReg()
+                                            emitIR(`  ${intReg} = call i32 @ss_parseInt(ptr ${valReg})`)
+                                            invokeExtraArgs = `${invokeExtraArgs}, i32 ${intReg}`
+                                        } else if (typeStr == "double") {
+                                            const dblReg = nextReg()
+                                            emitIR(`  ${dblReg} = call double @ss_parseDouble(ptr ${valReg})`)
+                                            invokeExtraArgs = `${invokeExtraArgs}, double ${dblReg}`
+                                        } else {
+                                            invokeExtraArgs = `${invokeExtraArgs}, ptr ${valReg}`
+                                        }
+                                    } else if (kindStr == "RequestMap") {
+                                        invokeExtraArgs = `${invokeExtraArgs}, ptr ${reqRegPS}`
+                                    }
+                                }
+                                psIdx = psIdx + 1
+                            }
+                        }
+                    }
+                    if (useParamSpecs == 0 && funcParamCount.has(mangled) == 1 && mcArgList != "") {
                         const expectedPC = parseInt(funcParamCount.getString(mangled))
                         if (expectedPC > 0) {
                             const mcArgParts2 = mcArgList.split(",")

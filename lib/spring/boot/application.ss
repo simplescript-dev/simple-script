@@ -10,10 +10,13 @@
 // controllerNames 由 _ssRoutes 派生(去重 className),避免双 comptime block。
 //
 // I021 §路径 A:RouteMeta 扩 paramSpecs: Array<ParamSpec>,comptime 遍历 m.params +
-// p.annotations 提取 (kind, name, type);dispatcher 按 spec.kind 静态展开 invoke 实参表
-// —— RequestParam → `r.invoke(req.get(spec.name))`(I019 ss_mapGetString 路由);
-// RequestMap → `r.invoke(req)`(I018 backward compat,Map<string,string> 整透传)。
-// ParamSpec 是应用层 spec 容器(非反射 Meta),不影响 D123 §253 "不新建 Meta" 合规面。
+// p.annotations 提取 (kind, name, type)。ParamSpec 是应用层 spec 容器(非反射 Meta),
+// 不影响 D123 §253 "不新建 Meta" 合规面。
+//
+// I021-multi-param:dispatcher 单次 `r.invoke(req)` 调用,invoke sentinel 按 r.paramSpecs
+// ct 元数据自驱展开多 spec 实参表(每个 RequestParam emit ss_mapGetString + typed cast 按
+// spec.type 分派 i32/double/ptr;RequestMap 透传 reqReg),消除多 spec 各发独立 invoke 的
+// silent miscompile。具体在 bootstrap/eval/method_call.ss:86-160 §useParamSpecs 分支。
 
 import { httpServe, httpResponse } from "@/lib/http"
 
@@ -30,7 +33,9 @@ class ParamSpec {
     type: string
 }
 
-// dispatcher 实参展开分支 tag;kind 字面 4 处(2 comptime push + 2 runtime 比对)集中抽常量防拼写错。
+// ParamSpec.kind 标记,只在本文件 _ssRoutes comptime push 端用(抽常量防拼写错)。
+// **bootstrap 编译器侧** sentinel 同名字面量(`bootstrap/eval/method_call.ss:135, 154`)
+// 因跨域无 ct const 共享通道走硬编;改名时两端必须同步。
 const PARAM_KIND_REQUEST_PARAM = "RequestParam"
 const PARAM_KIND_REQUEST_MAP = "RequestMap"
 
@@ -123,18 +128,12 @@ function dispatch(req: Map<string, string>): string {
     const path = req.get("path")
     for (r in _ssRoutes) {
         if (r.path == path) {
-            // I021 — ct for-in 展开 paramSpecs;spec.kind 两端 ct string,ct if vanish
-            // 只保留真分支:RequestParam → 从 req map 取命名值(I019 路由 ss_mapGetString);
-            // RequestMap → 整 req 透传(I018 路径)。v0 单参,for-in 仅走 1 次。
-            for (spec in r.paramSpecs) {
-                if (spec.kind == PARAM_KIND_REQUEST_PARAM) {
-                    return httpResponse(200, "text/plain", r.invoke(req.get(spec.name)))
-                }
-                if (spec.kind == PARAM_KIND_REQUEST_MAP) {
-                    return httpResponse(200, "text/plain", r.invoke(req))
-                }
-            }
-            return httpResponse(500, "text/plain", "no paramSpec matched")
+            // I021-multi-param — invoke sentinel 数据驱动模式:sentinel 按 r.paramSpecs ct
+            // 元数据自驱展开多 spec 实参表(每个 RequestParam emit ss_mapGetString + typed cast,
+            // RequestMap 透传 reqReg),消除 dispatch 内 spec loop 各发独立 invoke 的多参 silent
+            // miscompile。dispatch 这里单次 r.invoke(req) 调用,具体实参展开见
+            // bootstrap/eval/method_call.ss:86-160 invoke sentinel §useParamSpecs 分支。
+            return httpResponse(200, "text/plain", r.invoke(req))
         }
     }
     return httpResponse(404, "text/plain", "not found")

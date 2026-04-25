@@ -20,4 +20,9 @@ public class HelloController {
     public String calc(@RequestParam(name = "x") double x) {
         return "x=" + x;
     }
+
+    @GetMapping("/add")
+    public String add(@RequestParam(name = "x") int x, @RequestParam(name = "y") int y) {
+        return "sum=" + (x + y);
+    }
 }
