@@ -12,6 +12,7 @@
 # bump-group M2=80000 M3b=2000 M5=1830 N2=400000 N3=550000 trail=D123#扩容申报-I021-requestbody date=2026-04-22
 # bump M4 3081→3112 trail=D123#§247 date=2026-04-22
 # bump F1:bootstrap/gen/gen_types.ss 778→785 trail=D123#§扩容申报-I021-requestbody-nested-array date=2026-04-25
+# bump F1:bootstrap/parse/parser.ss 813→850 trail=D123#§扩容申报-I021-requestbody-nested-array-array date=2026-04-22
 M1=5330:5283
 M2=79221:80000
 M3a=12534:12436
@@ -27,7 +28,7 @@ N3=546264:550000
 N4=350:350
 N5=0:0
 F1:bootstrap/main.ss=630:630
-F1:bootstrap/parse/parser.ss=813:813
+F1:bootstrap/parse/parser.ss=813:850
 F1:bootstrap/parse/parse_stmts.ss=617:617
 F1:bootstrap/gen/methods/gen_methods.ss=716:716
 F1:bootstrap/gen/gen_calls.ss=695:695

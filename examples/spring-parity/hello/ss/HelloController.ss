@@ -36,6 +36,19 @@ class OrderPrim {
     flags: Array<bool>
 }
 
+class OrderCell {
+    row: int
+    col: int
+    value: string
+}
+
+class OrderMatrix {
+    name: string
+    grid: Array<Array<int>>
+    cells: Array<Array<OrderCell>>
+    labels: Array<Array<string>>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -99,6 +112,22 @@ class HelloController {
             j = j + 1
         }
         return "customer=" + order.customer + ",tags=" + tagSum + ",scores=" + scoreSum
+    }
+
+    @PostMapping(path = "/matrix")
+    function createMatrix(@RequestBody m: OrderMatrix): string {
+        let total = 0
+        let i = 0
+        while (i < m.grid.length()) {
+            let row = m.grid[i]
+            let j = 0
+            while (j < row.length()) {
+                total = total + row[j]
+                j = j + 1
+            }
+            i = i + 1
+        }
+        return "name=" + m.name + ",total=" + total
     }
 
     @GetMapping(path = "/agent")

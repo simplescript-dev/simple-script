@@ -339,7 +339,7 @@ function parseTypeArgList(): string {
         pAdvance()
         typeArgs = listAppendStr(typeArgs, parseTypeAnn())
     }
-    pExpect("GT")
+    expectGtTypeCtx()
     return typeArgs
 }
 

@@ -820,6 +820,36 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I021-requestbody-nested-array-array (2026-04-25)
+
+**触发**:I021-requestbody-nested-array-array Execute 阶段端到端落地 — Phase 4 §247 第二支柱嵌套深化第四轮(N=2 双层 collection,X ∈ {int/string/double/bool/UserClass} 5 路全 cover)。**Plan 子档未列的 lexer/parser 根因 #1**:lexer 把 `>>` emit 为 SHR token,parser 类型上下文 `pExpect("GT")` 见 SHR 即 fail,`Array<Array<X>>` 字面整体不可解析。**根因修 + 增量**:加 `expectGtTypeCtx()` helper(类型上下文专用 `>` 期望,虚拟拆分 SHR=2 GT / USHR=3 GT)+ 替换 3 处 `pExpect("GT")` 为 `expectGtTypeCtx()`。**第一性需求**:引 D123 §247 + D129 §94 "@RequestBody | 任意 class(含嵌套 + collection)"— SS 用户 `class Matrix { grid: Array<Array<int>>; cells: Array<Array<Cell>>; labels: Array<Array<string>> } / @RequestBody m: Matrix` 行为 byte-identical Java `@RequestBody List<List<X>>` field。
+
+**改动路径**:
+- `bootstrap/parse/parser.ss`:加 `pendingGtTokens` 全局 + `expectGtTypeCtx()` 函数(类型上下文专用 `>` 期望,SHR/USHR 虚拟拆分);替换 `parseTypeAnn()` line 805 `pExpect("GT")` → `expectGtTypeCtx()`。**根因消除**:Java 7+/TypeScript/C++ 通用 nested generic close `>>` 同形态,SS 入此族
+- `bootstrap/parse/parse_exprs.ss`:替换 `parseTypeArgList()` `pExpect("GT")` → `expectGtTypeCtx()`(同根因)
+- `bootstrap/gen/gen_deserialize.ss`:`isArrayDeserializable` 谓词扩第三层递归(et 是 `Array<X>` 时递归命中)+ `emitClassDeserializeFn` Array 分支抽 helper `emitArrayDeserializeInto(arrNodeR, arrFieldType)` SSoT 收敛 + 第 6 路 `elemType.startsWith("Array<")` 内层递归 emit + `emitPendingDeserializers` BFS 任意层 unwrap 内层 UserClass 入队
+- `examples/spring-parity/hello/ss/HelloController.ss + .java`:加 class OrderCell + class OrderMatrix { grid: Array<Array<int>>; cells: Array<Array<OrderCell>>; labels: Array<Array<string>> } + @PostMapping("/matrix") createMatrix(@RequestBody m: OrderMatrix)
+- `tests/phase5/i021_requestbody_nested_array_array.ss`:新建 8 case(5 路 elemType + 外非空内空 + 外空 + 全链路 raw HTTP POST)
+
+**REGRESSION + bump 项 delta 表(实测,OK / AUTO-DRIFT 省略)**:
+
+| metric | baseline_value | budget_max | cur | delta | 分类 |
+|---|---|---|---|---|---|
+| F1:bootstrap/parse/parser.ss | 813 | 813 | 845 | +32 vs bm | REGRESSION |
+
+**本地抵消路径**:
+- **F1:parser.ss**(813 → 845,+32 LOC)— `expectGtTypeCtx()` helper 32 LOC(注释 6 + 函数 22 + let + 空行)是根因修复主路径,Java 7+/TS/C++ 通用 nested generic close 拆分实现的最小可读形态(`pendingGtTokens` 状态机 + 4 个分支 GT/SHR/USHR/error)。压注释只能减 6 行 → 826,仍超 813;压函数体破坏 readable rubric a-e(状态机 4 分支不可合并)。结构性最优:**抽 helper 至独立文件 `bootstrap/parse/parse_types.ss`**(parser.ss 当前 845 + parse_stmts/parse_exprs 已物理拆,parse_types.ss 是缺失的同族子族),但需独立 DXXX 决策(parser 子族再拆是 D113 / D114 / D115 同族 mode,非本子档 scope;feedback_structure_not_linecount + feedback_600_split_not_inline 锁拆不压)。本轮按 §B 路径申报扩容 + 留下轮升根
+- **下轮升根路径**:parser.ss 物理拆 parse_types.ss(833+ LOC 阈值触发独立 DXXX 子族决策,跟 D113/D114/D115 同族 mode)
+
+**新 baseline 预期值(=实测,bump 升 budget_max)**:
+- F1:bootstrap/parse/parser.ss budget_max: 813 → 850(5 LOC headroom for 后续 nested-deep / nested-map / nested-optional 子档 lexer/parser 衍生扩容预留)
+
+**VCM 实测 vs 预估对照**:Plan 子档 §风险 1-4 预估 RC 双层契约 / 谓词递归终止 / lib/json 嵌套 nodeId / SSA 命名冲突 — 实测全 cover,无破裂。**未预估根因**:lexer/parser SHR 阻断 `Array<Array<X>>` 解析 — Plan 子档假设单层 `Array<X>` 已通因此双层 `Array<Array<X>>` parser 自然 cover,实测 RED 3 build emit-ir = 0 因 parser fail,**首次工具调用即暴露根因 #1**(grep RED1/RED2 通过但 build RED3 卡 line 1077 SHR);非反射路径形态升级,纯 parser 类型上下文虚拟拆分根因修。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:

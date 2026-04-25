@@ -198,6 +198,38 @@ function pExpect(kind: string) {
     pAdvance()
 }
 
+// I021-requestbody-nested-array-array — 类型上下文 ">" 期望:lexer 把 `>>`/`>>>` emit
+// 为 SHR/USHR 单 token,在嵌套泛型 (Array<Array<X>> / Array<Array<Array<X>>>) 闭合处
+// 必须按"虚拟拆分"消耗:遇 SHR 视作两个 GT(消耗一个,留下一个),USHR 视作三个 GT。
+// pendingGtTokens 是"已虚拟消耗 SHR/USHR 但尚未抵充完毕的 GT 余量",下一次类型上下文
+// expectGtTypeCtx 调用直接递减不动 token。仅类型上下文 (parseTypeAnn / parseTypeArgList)
+// 用此函数;表达式上下文 SHR/USHR 仍走右移运算符路径 (parse_exprs.ss:135)。
+let pendingGtTokens = 0
+
+function expectGtTypeCtx() {
+    if (pendingGtTokens > 0) {
+        pendingGtTokens = pendingGtTokens - 1
+        return
+    }
+    const k = curKind()
+    if (k == "GT") {
+        pAdvance()
+        return
+    }
+    if (k == "SHR") {
+        pendingGtTokens = 1
+        pAdvance()
+        return
+    }
+    if (k == "USHR") {
+        pendingGtTokens = 2
+        pAdvance()
+        return
+    }
+    println(`parse error at line ${curLineNum()}: expected '>', found ${k} '${curValue()}'`)
+    exit(1)
+}
+
 function pExpectIdent(): string {
     if (curKind() != "IDENT") {
         println(`parse error at line ${curLineNum()}: expected identifier, found ${curKind()}`)
@@ -802,7 +834,7 @@ function parseTypeAnn(): string {
                 pAdvance()
                 typeArgs = listAppendStr(typeArgs, parseTypeAnn())
             }
-            pExpect("GT")
+            expectGtTypeCtx()
             return maybeNullable(name + "<" + typeArgs + ">")
         }
         return maybeNullable(name)

@@ -48,6 +48,19 @@ class OrderPrim {
     public List<Boolean> flags;
 }
 
+class OrderCell {
+    public int row;
+    public int col;
+    public String value;
+}
+
+class OrderMatrix {
+    public String name;
+    public List<List<Integer>> grid;
+    public List<List<OrderCell>> cells;
+    public List<List<String>> labels;
+}
+
 @RestController
 public class HelloController {
     @GetMapping("/hello")
@@ -99,6 +112,13 @@ public class HelloController {
         int scoreSum = 0;
         for (Integer s : order.scores) scoreSum += s;
         return "customer=" + order.customer + ",tags=" + tagSum + ",scores=" + scoreSum;
+    }
+
+    @PostMapping("/matrix")
+    public String createMatrix(@RequestBody OrderMatrix m) {
+        int total = 0;
+        for (List<Integer> row : m.grid) for (Integer v : row) total += v;
+        return "name=" + m.name + ",total=" + total;
     }
 
     @GetMapping("/agent")
