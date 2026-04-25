@@ -279,6 +279,14 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             emitIR(`  ${r32} = trunc i64 ${r64} to i32`)
             return r32
         }
+        if (mapV == "double") {
+            // I020b — V=double: ss_mapGet i64 + bitcast to double (mapSet bitcast double→i64 对称).
+            const r64 = nextReg()
+            emitIR(`  ${r64} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
+            const rd = nextReg()
+            emitIR(`  ${rd} = bitcast i64 ${r64} to double`)
+            return rd
+        }
         const r = nextReg()
         emitIR(`  ${r} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
         return r
