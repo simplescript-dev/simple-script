@@ -287,6 +287,16 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             emitIR(`  ${rd} = bitcast i64 ${r64} to double`)
             return rd
         }
+        if (mapV != "" && classFields.has(mapV) == 1) {
+            // I020c — V=class: ss_mapGet i64 + inttoptr to ptr + emitRetainForType (双 RC 统一分派,
+            // V=class 自动选 ss_retain;ss_retain 自带 isnull guard,miss 返 ptr null 时 retain no-op).
+            const r64 = nextReg()
+            emitIR(`  ${r64} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
+            const rp = nextReg()
+            emitIR(`  ${rp} = inttoptr i64 ${r64} to ptr`)
+            emitRetainForType(rp, mapV)
+            return rp
+        }
         const r = nextReg()
         emitIR(`  ${r} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
         return r

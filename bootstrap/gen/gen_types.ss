@@ -404,12 +404,15 @@ function inferType(id: int): string {
                 return channelElemType(chType)
             }
         }
-        // I019/I020a/I020b — Map<K,V>.get dispatch by V (extractMapValueType returns "" for non-Map).
+        // I019/I020a/I020b/I020c — Map<K,V>.get dispatch by V (extractMapValueType returns "" for non-Map).
         if (method == "get") {
             const mgV = extractMapValueType(inferType(mcObj))
             if (mgV == "string") { return "string" }
             if (mgV == "int") { return "int" }
             if (mgV == "double") { return "double" }
+            // I020c — V=class: return "ClassName?" (D067 Kotlin/Dart T? = TS strict V|undefined,
+            // miss 路径 ss_mapGet 返 i64 0 → inttoptr 得 ptr null,用户必须 if (u != null) narrow).
+            if (mgV != "" && classFields.has(mgV) == 1) { return mgV + "?" }
         }
         if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {
             if (method == "values" || method == "names") { return "ptr" }
