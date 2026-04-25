@@ -404,10 +404,11 @@ function inferType(id: int): string {
                 return channelElemType(chType)
             }
         }
-        // I019 — Map<K,string>.get returns string (v0 scope; i64 fallback for other V).
+        // I019/I020a — Map<K,V>.get dispatch by V (extractMapValueType returns "" for non-Map).
         if (method == "get") {
-            const mgT = inferType(mcObj)
-            if (mgT.startsWith("Map<") == 1 && extractMapValueType(mgT) == "string") { return "string" }
+            const mgV = extractMapValueType(inferType(mcObj))
+            if (mgV == "string") { return "string" }
+            if (mgV == "int") { return "int" }
         }
         if (enumReady == 1 && nGetKind(mcObj) == "IDENT" && enumDeclNodes.has(nGetS1(mcObj)) == 1) {
             if (method == "values" || method == "names") { return "ptr" }

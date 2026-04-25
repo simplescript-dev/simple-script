@@ -51,7 +51,7 @@ Derived from Axioms. Each traces to Constraints or Values. Can refine, not viola
 - **N — After Code**:写代码后的 N 个问题(六验 VCM 收工 gate,宣告完成前必答)
 - **K — After Lint**:跑 lint 后的 K 个问题(rule 问答收敛循环,M=2 默认 commit_radius / commit_footer)
 - **Continue NK 循环**:N → K → 改代码 → N → K 反复,直到全 pass
-- **After Done**:收尾 gate 四步(simplify → commit → 流程反思 → next_prompt 自闭环)
+- **After Done**:收尾 gate 三步(simplify → commit → next_prompt 自闭环)
 
 **档位门槛**(决定走多少 gate):微改豁免 / 标准改 字段 1-5 + 六验全 / 大改 九问全 + 六验全 + 独立 commit。
 

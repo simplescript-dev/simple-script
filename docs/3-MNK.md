@@ -8,13 +8,12 @@
 
 ---
 
-## 核心原则(5 条)
+## 核心原则(4 条)
 
 1. **八股 = 形式满足规则但对核心产出零贡献** —— 判据是**反身性**("去掉它核心产出会少什么?"),linter 只查形态不查意图
-2. **终极闸门双支柱**:(a) 高发形态机械 linter 倒逼(覆盖形态) + (b) 用户抽查 + 流程反思强制审视(覆盖内核);新 gate 前自问"升 (a) 还是升 (b)",缺一不可
-3. **反思不是仪式** —— 无改进候选时显式写"无" + 丢弃原因,档位门槛(微改豁免)防反思本身变 checklist 表演
-4. **表面解决必须记账** —— 机械 linter 只校验格式不判真假时,PSM 字段 9 标"下轮升根路径",不藏表面为根
-5. **结论立即落 D 文档或本文档锚** —— 跨轮讨论结论若只留对话缓冲区或 memory,下轮 Claude 读不到,只能偶然命中
+2. **终极闸门**:(a) 高发形态机械 linter 倒逼(覆盖形态) + (b) 用户抽查(覆盖内核);新 gate 前自问"升 (a) 还是升 (b)"
+3. **表面解决必须记账** —— 机械 linter 只校验格式不判真假时,PSM 字段 9 标"下轮升根路径",不藏表面为根
+4. **结论立即落 D 文档或本文档锚** —— 跨轮讨论结论若只留对话缓冲区或 memory,下轮 Claude 读不到,只能偶然命中
 
 ---
 
@@ -25,8 +24,8 @@
 | 档位 | 判据 | M (Before Code) | N (After Code) | NK 循环 | After Done |
 |---|---|---|---|---|---|
 | **微改** | LOC delta ≤ 5 **且** 1 文件 **且** 无签名变 | **豁免** | **豁免** | 豁免 | 仅 next_prompt(simplify 豁免,commit 可合并) |
-| **标准改** | LOC delta 6-100 **或** 2-5 文件 | 字段 1-5 必填(6-10 可省) | 六验全 | 必做 | 全四步 |
-| **大改** | LOC delta > 100 **或** > 5 文件 **或** 新增 D 文档 | 九问全 | 六验全 | 必做 | 全四步 + **独立 commit 禁打包** |
+| **标准改** | LOC delta 6-100 **或** 2-5 文件 | 字段 1-5 必填(6-10 可省) | 六验全 | 必做 | 全三步 |
+| **大改** | LOC delta > 100 **或** > 5 文件 **或** 新增 D 文档 | 九问全 | 六验全 | 必做 | 全三步 + **独立 commit 禁打包** |
 
 **判定细则**:
 
@@ -36,10 +35,10 @@
 - **删文件 / 重命名文件计入"文件数"**,与修改文件同档位影响不打折(元规则巡检 / 批量 deprecation 等清理型任务典型触发;2026-04-24 Phase 2 memory 合并 7 删 + 3 改起初判标准改 VCM §4 才回写大改事件)
 - 档位自报错档 → After Code 发现实际超自报档 → 回写档位 + 补齐缺省 gate,**不许**宣告完成
 - 纯文档 / 纯配置改动仍按档位判(simplify 豁免细则见 §After Done §1 例外)
-- 纯审阅 / 纯问答 / 0 文件 0 代码改动任务 → 档位低于微改,PSM / N / K 全豁免,仅输出答案;用户若明示要求流程反思(如"列候选"),按要求执行
+- 纯审阅 / 纯问答 / 0 文件 0 代码改动任务 → 档位低于微改,PSM / N / K 全豁免,仅输出答案
 - **多 issue 串跑判定**(与 feedback_interactive_one_doc 协同):
   - 一轮内允许跑 **≥ 2 个 issue** 的唯一条件:全部命中**微改**档位(LOC ≤ 5 + 1 文件 + 无签名变)
-  - 全微改 → After Done simplify / 流程反思豁免;**commit 可合并**,但 message 里每个 issue 一项对照 `docs/4-issues/IXXX-*.md` 的 "去掉少什么"(commit_footer Q1)
+  - 全微改 → After Done simplify 豁免;**commit 可合并**,但 message 里每个 issue 一项对照 `docs/4-issues/IXXX-*.md` 的 "去掉少什么"(commit_footer Q1)
   - 任一 issue 触及**标准改 / 大改** → 一轮**只做一个 issue**,其余 issue 立项推迟到下轮 next_prompt
   - `bin/ss run /loop-planner`(若未来实装)或手工规划时必须先按上表判每个 issue 档位,不许靠"感觉这轮能全做完"蒙混
   - 不守此规的典型后果:bootstrap × N 次 trial-and-error 把对话拖到 compact,中途改动丢上下文 → 跨 issue 耦合失控
@@ -141,11 +140,9 @@
 
 ---
 
-## After Done: 收尾 gate 四步必做
+## After Done: 收尾 gate 三步必做
 
-VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**四步必做**动作,按顺序执行,缺一条不许 stop。
-
-**顺序重排说明(2026-04-24 R3 方案 A)**:原顺序 `simplify → commit → 反思 → next_prompt` 有执行层 bug —— 反思候选在 §3 提出后,§4 next_prompt 紧跟 + Claude stop + terman 30s clear 窗口 → 用户回应时间 > 30s 概率高 → 反思落位窗口被 clear 吞掉 → "用户抽查 = 内核闸门"失效。新顺序**反思前置到 commit 之前**,反思 Ok 项的落位改动进入同一条 commit,证据链完整。
+VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**三步必做**动作,按顺序执行,缺一条不许 stop。
 
 ### 1. 代码审查:`/simplify`
 
@@ -158,49 +155,11 @@ VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**四
 
 **simplify 采纳/拒绝记账(档位门槛)**:标准改 / 大改的 commit message 必须加一行,格式 `simplify 采纳: <项>; 拒绝: <项>(<≤20 字依据>)`,依据必须点**否决类目**(可读性 / scope 错位 / 反例具体命名),禁 "本轮限 X scope" / "与任务无关" 这种套话;**无 simplify 建议或全采纳 → 不写这行**(不凑"无")。微改 / 纯文档 / 纯配置豁免。目的:补位 `feedback_human_readable_code` 可读性对 reuse/quality/efficiency 的 veto 行权留痕 —— memory 跨 compact 可失、对话缓冲区跨轮丢,git log 是唯一持久可 grep 入口。
 
-### 2. 流程反思(档位门槛)[反思前置 —— 方案 A]
+### 2. 提交:commit
 
-基于本轮实际走过的流程,审视是否有规则 / gate / 文本需要升级。列 0-N 条候选(无候选**显式写"无"**),以紧凑列表交用户确认。
+`git status` 有未提交改动 → commit(`/commit` 或手工),消息遵循 conventional commits。commit **必须**落在同一轮对话里,**不许跨轮补**。
 
-**反思层级颗粒度硬规则**(2026-04-24 R4 新增):反思候选**必须含至少 1 条结构性反思**(关于 PSM gate / VCM / 工具 / 角色边界 / 层级耦合 / 流程时序的根本机制问题)。**结构性 vs 细节 patch 判据**:"如果本轮没做这件事,下一轮 Claude 接到**任意任务**还会同样卡这一类问题吗?"答 yes → 结构性;答 no → 细节 patch,列入回复末尾的 "follow-up todo" section 不算反思候选。**纯细节 patch 列表**(全部"答 no")= 反思失败,本轮反思候选作废,Claude 必须重做。理由:细节是无穷的,反思方法论必须强制 anchor 到 meta-pattern,否则退化为 patch 表演(B.2 第 7 形态)。**触发事件**:2026-04-24 I015 §收尾反思 R4 — Claude 默认列了"MNK 加 1 行 / 立 1 issue / 改 5 行注释"3 条全细节 patch,被用户当场指出"反思应该从高维层面解决,而不是从细节里面解决,因为细节是无穷的"。
-
-**ultrathink 预置反思 + Claude 自主反思并存规则**(2026-04-24 新增):用户 prompt 里显式预置"反思候选 X" / "ultrathink 反思 Y" 等主题时,预置候选**不吞掉** Claude 同轮主动反思义务 —— Claude 必须**独立于 prompt 预置**再列 0-N 条结构性候选,即使预置主题已涵盖本轮核心反思,也要扫"prompt 预置没覆盖的结构性盲点"(如 runtime bug 诊断方法论 / 工具误判修正 / 层级跨越识别 等)。两者并存的理由:反思机制的内核闸门属性靠 Claude 自主盲点扫描,不靠上轮 prompt 外供;若预置 = 唯一源,反思退化为"命题作文"失去主动性。**触发事件**:2026-04-24 D 文档死指针清零轮 — 用户 prompt 预置"反思候选 1 = 新增 D 文档治理 gate",Claude 同轮又自主发现 (a) 多因素 runtime bug 诊断应隔离变量、(b) ultrathink 预置反思的反身性风险,两条补位结构性候选。
-
-**回应窗口 stop 规则**(方案 A 硬约束):
-- Claude 输出反思候选后,本轮回复**必须在此处 stop**(不连续写 §3 commit / §4 next_prompt)
-- Claude stop 后在对话主循环等用户回应,用户三态:
-  - **Ok** → 同轮继续:落位改动(`principles.md` / 本文档 / D 文档 / `tools/` 新 linter / memory)→ §3 commit(落位改动入同一条 commit,证据链完整)→ §4 next_prompt
-  - **No** → 本轮对话记录里点名"丢弃原因"防下轮重提 → 继续 §3 commit → §4 next_prompt
-  - **待定(立项下轮独立 issue)** → 写 `docs/4-issues/IXXX-*.md`(按 §特定领域 §衍生 issue 归档 命名规范)→ 继续 §3 commit → §4 next_prompt。判据:候选 LOC 估算 > 50 **或** 需前置设计决策未完成 → 立项;同轮落位成本低 → 走 Ok 分支
-- 用户在对话主循环超时未回应(Claude stop 后 terman 30s 窗口 clear) → 反思候选**丢弃**,不跨轮保留(方案 A 硬规则;若本 gate 多次事件发生,未来再加方案 B `.claude/reflection_queue.md` 跨轮兜底)
-- 反思候选**无**时显式写"无" + 跳过 stop,直接连续进入 §3 commit
-
-**档位门槛**:标准改 / 大改必做;微改豁免。
-
-反思不是仪式 —— 是把"用户回合间抽查八股"从隐式习惯升为显式 gate,消除"八股自检元规则靠 Claude 主动提出才触发"的隐式依赖。不写反思段 → 下轮 Claude 不主动想起 → 八股讨论产出丢对话缓冲区 → 跨轮复用脆弱。
-
-**反思落位后 token 预算 gate**:流程反思候选被用户裁决并落位(或 No 丢弃 / 待定立项下轮)后,检查当前上下文已用 token(粗估或 /cost):
-
-- **< 10 万 tokens** → 本轮**继续直接执行**剩余任务(compact 前用户授权的推迟候选 / 简单 Edit / 连带 simplify 补正),**不** stop,不写 next_prompt 进 §4
-- **10-15 万 tokens**(灰区) → 按剩余任务复杂度判:纯替换 / 微改继续,结构性 / 大改 stop 进 §4
-- **> 15 万 tokens** → 立即停手走 §4 下一步提示词(必含 ultrathink 由下轮接管),剩余任务**禁止**在本轮压上下文硬推
-
-**显式打印(强制)**:判断完成后**必须**在对话回复里、§4 下一步提示词**之前**单独打印两行供用户审阅:
-
-```
-token 使用量: ~N 万(粗估 / /cost)
-推荐: 继续本轮 / 灰区(简单继续 / 结构 stop)/ 新循环
-```
-
-不打印 = 判断过程不透明,用户无从质疑估算偏差或档位误判。
-
-目的:反思落位后 Claude 容易惯性 stop 进 §4,丢失"本轮尚可做 + 授权仍在"的执行窗口;上限 15 万防止本轮强推超长对话 → compact 风险 → 跨 compact 授权衔接漏洞(见本文档 §Compact 恢复 gate §跨 compact 用户授权范围收缩)。
-
-### 3. 提交:commit
-
-`git status` 有未提交改动 → commit(`/commit` 或手工),消息遵循 conventional commits。commit **必须**落在同一轮对话里,**不许跨轮补**。**§2 反思 Ok 项的落位改动必须进入同一条 commit**(不许拆成两个 commit —— 拆分 = 反思证据链断,commit log 失去"反思驱动本轮改动"的唯一 grep 入口)。
-
-### 4. 下一步提示词(自闭环两步)
+### 3. 下一步提示词(自闭环两步)
 
 **(a) 最后一条回复**直接输出**下一步简短提示词**(1-3 句、单段、命令式、模仿用户原始风格)
 
@@ -224,7 +183,7 @@ Claude 本轮**不执行**任何脚本或 `terman send` —— stop 后 preset �
 **Plan 型**(动词"验证 / 调研 / 巡检 / 对照")不要求 RED,但**不得**带"改 / 重写 / 去掉 / 修复 / 实现"等变更动词。
 
 **例外**(不写 payload,停下等裁决):
-- 用户明说"不 simplify" / "不 commit" / "不反思" / "不要下一步"
+- 用户明说"不 simplify" / "不 commit" / "不要下一步"
 - 本轮出现未解决 blocker(bootstrap 失败 / 测试红 / reflection_linter GATE 阻断)
 - `$TERMAN_NAME` 为空(非 terman session),preset 不跑(天然降级)
 
@@ -529,7 +488,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | memory 索引一致性 | `memory_index_linter.ss` | `~/.claude/.../memory/MEMORY.md` 索引 vs `feedback_*.md` 文件双向校验(F1 索引漂移 BLOCK / F2 孤立文件 soft warn) | 跨 session memory 索引漂移(指针指向不存在的文件)+ 孤立 memory 文件不被加载;**触发时机**:删/合并 memory 后必跑 + commit 前(配 §特定领域 §memory 治理 gate) |
 | D 文档引用一致性 | `d_doc_index_linter.ss` | 4 路径(bootstrap/tools/CLAUDE.md/docs/3-MNK.md)`D\d{3}\s*§` 引用 vs `docs/3-decisions/D\d{3}*.md` 实存双向校验(F1 死指针 BLOCK / F2 孤立 D 文档 soft warn) | 跨轮 D 文档指针漂移(源码注释指向已删/合并的 D 文档)+ 孤立 D 文档人工审视;**触发时机**:删/合并/重命名 D 文档后必跑 + commit 前(配 §特定领域 §D 文档治理 gate) |
 
-## B.2 未机械化层(6 种形态)
+## B.2 未机械化层(7 种形态)
 
 1. **远距离榨指标** —— 改无关代码压 CC/M5(commit_radius soft 覆盖,未根解)
 2. **凑 VCM 仪式** —— 每项打 ✓ 没真对照(commit_footer 格式外化,未根解)
@@ -537,8 +496,7 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 4. **编造 D 文档段** —— 为让引用有物现起草(未机械化:意图判断)
 5. **文档膨胀** —— 500 字解释其实一句话够(未机械化:价值判断)
 6. **checklist 表演** —— TaskCreate 微步骤凑进度条(未机械化:意图判断)
-7. **细节 patch 反思** —— §After Done §2 反思候选全是 "MNK 加 1 行 / 立 1 issue / 改 N 行注释" 等局部修补,无 meta-pattern 反思(2026-04-24 R4 加硬规则;判据见 §After Done §2 反思层级颗粒度硬规则)
-8. **字符级压缩绕过 gate 阈值** —— F1 / 反射等指标 gate 阈值临近时,用压缩注释 / 合并样板 / 删空行 / 把 overload 族压成大 dispatcher / 多 let 合并单行等**字符级手段**挤进阈值,信号被压没但复杂度仍在(2026-04-20 D113 interp_core.ss 头注释 4→2 行未增功能事件;memory feedback_600_split_not_inline 锚同步;判据:任何"行数即将超 gate 但内容未职责变化"的简化建议 → 改提拆文件 / 拆函数,不改字符密度)
+7. **字符级压缩绕过 gate 阈值** —— F1 / 反射等指标 gate 阈值临近时,用压缩注释 / 合并样板 / 删空行 / 把 overload 族压成大 dispatcher / 多 let 合并单行等**字符级手段**挤进阈值,信号被压没但复杂度仍在(2026-04-20 D113 interp_core.ss 头注释 4→2 行未增功能事件;memory feedback_600_split_not_inline 锚同步;判据:任何"行数即将超 gate 但内容未职责变化"的简化建议 → 改提拆文件 / 拆函数,不改字符密度)
 
 **原理限制**:八股 = "形式上满足规则,对任务核心产出零贡献",判据是**反身性**(回看自己刚写的)+ **语义**(核心产出定义依赖上下文)。linter 查**可观测特征**(指标数、关键字、路径、字串存在),看不见**意图**。同一 for-in→while 改动 D121 场景是八股、独立 refactor 场景合法,linter 无法区分。
 
@@ -547,11 +505,10 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - 九问 PSM 填齐 ≠ 想清楚
 - 六验 VCM 逐项 ✓ ≠ 真对照
 - 收尾 gate N 步走完 ≠ 真产出
-- **流程反思步骤若退化为"每轮答'无'" ≠ 真反思**
 
 档位自报(微改 / 标准改 / 大改)是对这层的部分反制 —— 档位错报 + 实际超档 → 收工 gate 回写补齐暴露漂移。但档位判定本身也可被压字符绕过。
 
-**终极闸门双支柱**(详见 §核心原则 (2)):覆盖形态的机械 linter + 覆盖内核的用户抽查 / 流程反思 —— 缺一不可。
+**终极闸门**(详见 §核心原则 (2)):覆盖形态的机械 linter + 覆盖内核的用户抽查。
 
 ---
 
@@ -570,13 +527,13 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 | F1 600 字符级塞字符 | 压缩 / 合并 / 删空行 | F1 硬阻无 soft warn | §B.2 形态 8 "字符级压缩绕过 gate 阈值" + §M §字段 3 拆分类 RED grep 职责类别 ≥ 3 + memory `feedback_600_split_not_inline` 锚同步 |
 | 简单改也十问 PSM | 仪式不分层 | PFV 粗粒度强制 | §改动分层 三档门槛 |
 | 2026-04-22 VCM (d) 沉积复盘靠自觉 | 八股沉积 | §VCM 无 commit footer 强制 | §K commit_footer |
-| 2026-04-22 八股讨论结论留对话缓冲区 | 跨轮丢失 | 无流程反思 gate | §收尾 gate 第 3 步流程反思 |
+| 2026-04-22 八股讨论结论留对话缓冲区 | 跨轮丢失 | 无流程反思 gate | §收尾 gate 第 3 步流程反思(机制已 2026-04-25 移除,内核闸门归"用户抽查"单点) |
 | 2026-04-22 流程层规则分散 3 处 | 跨轮 Claude 读不全 | 无单一事实源 | **本文档归档(docs/3-MNK.md)** |
 | 2026-04-22 I003 收尾 3 衍生问题只对话提 | 非阻挡问题失踪 | 无 issue 归档 gate | §特定领域 §衍生 issue 归档 + `tools/derived_issue_linter.ss` |
 | 2026-04-22 VCM 缺独立根因验 | 表面伪装根 | "表面 vs 根"只作 §5 (c) 子项被主勾覆盖 | §N VCM §6 根因独立大验 + 五验→六验 |
 | 2026-04-22 VCM §6 RED 跨表假命中 | 表行 RED 裸 grep | §M §字段 3 无表行域内唯一约束 | §M §字段 3 追加表唯一锚约束 |
 | 2026-04-22 CLAUDE.md 五验外链漏扫 | SSoT 术语改后外链分裂 | §M §字段 5 无术语外链扫描义务 | §M §字段 5 追加 SSoT 术语扩展扫描 |
-| 2026-04-24 反思候选跨 clear 丢失 | §After Done 顺序 commit→反思→next_prompt,反思确认窗口被 30s terman clear 吞掉;跨轮断链 → "用户抽查 = 内核闸门"失效 | §核心原则 (2) 内核闸门与执行层时机脱钩;§3 Ok/No 二分未覆盖"待定立项下轮"三态;§M 锚点"第一次工具调用之前"与 §字段 1 "grep 对照"前置义务字面矛盾 | §After Done 顺序重排为 simplify→反思前置→commit→next_prompt(R3 方案 A,反思候选 stop 等用户回应)+ §After Done §3 Ok/No 扩三态含"待定立项下轮"(R2)+ §M PSM 锚点通用化至"第一次修改性 tool call"(R1)|
+| 2026-04-24 反思候选跨 clear 丢失 | §After Done 顺序 commit→反思→next_prompt,反思确认窗口被 30s terman clear 吞掉;跨轮断链 → "用户抽查 = 内核闸门"失效 | §核心原则 (2) 内核闸门与执行层时机脱钩;§3 Ok/No 二分未覆盖"待定立项下轮"三态;§M 锚点"第一次工具调用之前"与 §字段 1 "grep 对照"前置义务字面矛盾 | §After Done 顺序重排为 simplify→反思前置→commit→next_prompt(R3 方案 A,反思候选 stop 等用户回应)+ §After Done §3 Ok/No 扩三态含"待定立项下轮"(R2)+ §M PSM 锚点通用化至"第一次修改性 tool call"(R1)。**R3/R4 反思机制已 2026-04-25 整体移除**(I020a 收尾用户判定:反思机制无法对自身八股化免疫,删除是 Occam 根治,§M PSM 锚点修改保留) |
 | 2026-04-24 D 文档死指针跨轮漂移 | 源码 / 流程文档注释引用 `D\d{3} §` 指向已删/合并的 D 文档,跨轮 Claude 读源码找不到决策背景 hallucinate | `§特定领域 §memory 治理 gate` 已建立 MEMORY.md 层双轨消歧但 D 文档层无对称 gate;A7 follow-up `reflection_health_linter.ss:55,75` D102 注释 stale 属同类漂移 | §特定领域 §D 文档治理 gate + `tools/d_doc_index_linter.ss`(F1 死指针 BLOCK / F2 孤立 D 文档 soft warn);首次实战 10 死 D 号全修(D102/D108/D109/D110/D111/D117/D118/D124/D125/D126 → D097 / D098 / D120 / MNK §XX / feedback_f1_gate_semantic)|
 
 ---

@@ -254,17 +254,33 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             emitIR(`  ${cvR} = inttoptr i64 ${mkey} to ptr`)
             mkey = cvR
         }
-        const r = nextReg()
         if (method == "has") {
+            const r = nextReg()
             emitIR(`  ${r} = call i32 @ss_mapHas(ptr ${objVal}, ptr ${mkey})`)
-        } else if (method == "getString") {
-            emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
-        } else if (objType.startsWith("Map<") == 1 && extractMapValueType(objType) == "string") {
-            // I019 — typed Map<K,string>.get → ss_mapGetString (ptr + @.rt.str.empty on miss).
-            emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
-        } else {
-            emitIR(`  ${r} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
+            return r
         }
+        if (method == "getString") {
+            const r = nextReg()
+            emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
+            return r
+        }
+        const mapV = extractMapValueType(objType)
+        if (mapV == "string") {
+            // I019 — V=string routes ss_mapGetString.
+            const r = nextReg()
+            emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
+            return r
+        }
+        if (mapV == "int") {
+            // I020a — V=int: ss_mapGet i64 + trunc; r64 def must precede r32 (LLVM SSA #-order).
+            const r64 = nextReg()
+            emitIR(`  ${r64} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
+            const r32 = nextReg()
+            emitIR(`  ${r32} = trunc i64 ${r64} to i32`)
+            return r32
+        }
+        const r = nextReg()
+        emitIR(`  ${r} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
         return r
     }
     if (method == "size") { const r = nextReg(); emitIR(`  ${r} = call i32 @ss_mapSize(ptr ${objVal})`); return r }
