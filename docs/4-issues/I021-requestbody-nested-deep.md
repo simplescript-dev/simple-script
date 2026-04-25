@@ -56,7 +56,7 @@ curl `POST /orders -H 'Content-Type: application/json' -d '{"customer":{"name":"
 
 | 候选 | 路径 | 评估 |
 |---|---|---|
-| **A** | **复用 nested v0 plumbing 实测覆盖 N=3/N=4 层**(b79aa97 emitPendingDeserializers BFS 单遍出队即 emit + 字段扫描入队 已自然支持任意层数;本子档 Execute 轮 RED test 验证 closure 计算路径不漏 emit + RC 契约累积不漂移 + emit 顺序拓扑正确;若 BFS 实装漏 N>1 层路径(如某层字段类型扫描漏 → undefined symbol)→ bootstrap/gen 路径补齐) | nested v0 BFS 已就绪零额外设计;[D018](../3-decisions/D018-object-layout-typeinfo.md) per-class deserializer transitive closure BFS 单遍逻辑天然层数无关;[D023](../3-decisions/D023-mimalloc-integration.md) mimalloc N 层 mi_calloc / ss_release 链;[D088 §第一性需求 alignment](../3-decisions/D088-no-runtime-reflection.md) ✅ |
+| **A** | **复用 nested v0 plumbing 实测覆盖任意层数嵌套**(b79aa97 emitPendingDeserializers BFS 单遍出队即 emit + 字段扫描入队 是 codegen 迭代实现层数无关天然任意层数;本子档 Execute 轮 RED test 验证 closure 计算路径不漏 emit + RC 契约累积每层独立成立 + emit 顺序拓扑正确;若 BFS 实装漏 N>1 层路径(如某层字段类型扫描漏 → undefined symbol)→ bootstrap/gen 路径补齐) | nested v0 BFS 已就绪零额外设计;[D018](../3-decisions/D018-object-layout-typeinfo.md) per-class deserializer transitive closure BFS 单遍逻辑天然层数无关;[D023](../3-decisions/D023-mimalloc-integration.md) mimalloc N 层 mi_calloc / ss_release 链;[D088 §第一性需求 alignment](../3-decisions/D088-no-runtime-reflection.md) ✅ |
 | B | 递归 emit(替换 BFS 为 DFS 递归实现) | b79aa97 BFS 已就绪,DFS 递归换 BFS 是无收益的实现层 churn ❌ |
 | C | runtime 栈深检测 / TCO 优化 deserialize 调用链 | 违反 [D088 §第一性需求](../3-decisions/D088-no-runtime-reflection.md);N=4 层 native call stack 充裕,无需 TCO 优化;过度工程 ❌ |
 
@@ -66,26 +66,24 @@ curl `POST /orders -H 'Content-Type: application/json' -d '{"customer":{"name":"
 
 **落地**:
 
-- N=3 层嵌套(`Order { customer: Customer { profile: Profile } }`)实测覆盖
-- N=4 层嵌套(`Order { customer: Customer { profile: Profile { contact: Contact } } }`)实测覆盖
-- N=5 层嵌套(facade pattern 极限测试,验证 BFS closure 不爆栈不漏 emit)
-- emit 顺序拓扑验证:依赖类先于被依赖类 emit(Contact 先于 Profile 先于 Customer 先于 Order),IR 锚验证 emit 顺序
-- RC 契约累积验证:N 层 mi_calloc(rc=1) + N 层 ss_release 链 + 父字段 store 直接 transfer 不 retain(每层都遵守)
-- 测试 IR 锚:`grep "@Contact_deserialize\|@Profile_deserialize\|@Customer_deserialize\|@Order_deserialize" /tmp/t_i021_deep.ll` ≥ 4(N=4 层 4 个 deserializer 都 emit)
+- **任意层数嵌套**(N>=2)— b79aa97 emitPendingDeserializers BFS 是 codegen 迭代实现(while 出队 + 字段扫描入队 + deserializerTargets.has visited guard),codegen 层数无关天然任意层数;本子档不限定 N 上限
+- 实测 stress 手段(非 scope 切分):N=3/4/5 层端到端 case 覆盖 facade pattern 高频形态,作为 Execute 轮 RED → GREEN 验证手段(N=3/4/5 是 case 选取非 scope 边界);通过 = "BFS closure 不漏 emit + RC 契约层数无关每层独立成立" 真实证据
+- emit 顺序拓扑验证:LLVM IR forward declaration 允许调用未 emit 函数(define 顺序无关链接器解析)— 拓扑顺序在 LLVM 链接阶段天然消解;IR 锚 grep 行号是 cross-check 工具非硬约束
+- RC 契约层数无关:每层独立成立 mi_calloc(rc=1) + 父字段 store 直接 transfer 不 retain(同 b79aa97 单层契约模式逐层叠加)+ ss_drop_<Outer> 字段释放级联触发子 ss_release;N 层叠加任一层破裂 → leak / double free,Execute 轮按层独立审视
+- 测试 IR 锚:`grep "@Contact_deserialize\|@Profile_deserialize\|@Customer_deserialize\|@Order_deserialize" /tmp/t_i021_deep.ll` ≥ 4(N=4 层 4 个 deserializer 全 emit,验证 closure BFS 不漏 emit)
 - 全链路 raw HTTP POST `/orders` byte-identical Java oracle
 
 **留下轮**(独立 issue,本 issue Execute 收关 + simplify + commit 后立):
 
-- **I021-requestbody-nested-deep-cycle** — 嵌套 class **循环引用**(`A { b: B }, B { a: A }`)反序列化处理(JSON 自然不支持循环引用,但用户可能误用 → 编译期检测或运行时栈深保护)
-- **I021-requestbody-nested-deep-extreme** — N>10 层极端深度(stress test,验证 closure BFS 不爆栈,与 [D085 stack overflow detection](../3-decisions/D085-stack-overflow-detection.md) 配合)
+- **I021-requestbody-nested-deep-cycle** — 嵌套 class **循环引用**(`A { b: B }, B { a: A }`)反序列化处理 — JSON 树形结构无法表达循环 → 编译期检测要求至少一侧字段 nullable(D067 T?)打破循环;b79aa97 deserializerTargets.has guard 已防 closure 计算无限循环但运行时反序列化未处理
 
 **v0 scope 不做**:
 
-- 不实现循环引用检测(留 -deep-cycle)
-- 不实现 N>10 层极端深度 stress test(留 -deep-extreme)
+- 不实现循环引用检测(留 -deep-cycle;本子档 v0 假设 class 定义无循环)
 - 不实现 N 层混合 collection(`Order { items: Array<Item> { tags: Map<string, Tag> } }`)— 单一维度逐层 cover,留组合维度独立子档
 - 不实现 nullable N 层(留 [I021-requestbody-nested-optional](./I021-requestbody-nested-optional.md))
 - 不引入新关键字 / 新语法
+- **不限定 N 上限**(BFS codegen 层数无关 + native call 链栈深与 D085 共享防护非 deserialize 边界,无 -deep-extreme 子档必要性)
 
 ## 步骤(Execute 轮按序)
 
@@ -149,8 +147,9 @@ curl `POST /orders -H 'Content-Type: application/json' -d '{"customer":{"name":"
 3. **emit 顺序拓扑**:N=4 层 4 个 deserializer 必须按拓扑序 emit(被依赖类先 emit 否则 undefined symbol),BFS 出队顺序对应入队顺序,但**入队是否拓扑**取决于字段扫描顺序(根类 Order 先入队 → 出队 emit Order 时 Customer/Profile/Contact 全在队中,emit 顺序应为 Order, Customer, Profile, Contact 即根优先)。LLVM IR 中 forward declaration 允许调用未 emit 函数(define 顺序无关链接器解析),所以拓扑顺序问题在 LLVM 链接阶段消解;但 IR 锚 grep 行号验证仍可作 cross-check 工具
    - 注:**LLVM IR 函数 define / call 顺序无关链接,emit 顺序拓扑要求弱**;若 emit 顺序问题在 SS bootstrap 编译期触发(genFuncRetTypes 推导依赖未注册类返回类型)→ 严审 codegen.ss initFuncRetTypes 注册路径
 
-4. **N>10 层极端深度爆栈**:b79aa97 BFS 是迭代实现(Map 队列 + while 出队),无递归调用,理论不爆栈;但 deserializer 运行时本身是 N 层 native call 链(ClassA_deserialize 调 ClassB_deserialize 调 ...),N>10 层时 native stack 占用累积
-   - 留 -deep-extreme 子档 stress test(N=20,N=50,N=100 层),配合 [D085 stack overflow detection](../3-decisions/D085-stack-overflow-detection.md)
+4. **运行时 native call 栈深累积**:b79aa97 BFS 是 codegen 迭代实现(Map 队列 + while 出队),codegen 阶段无递归不爆栈;但 **deserializer 运行时**本身是 N 层 native call 链(ClassA_deserialize 调 ClassB_deserialize 调 ...),N>>1 层时 native stack 占用线性累积
+   - 现实 enterprise DTO 通常 N≤10 层(facade 模式典型 3-5 层),native stack 充裕(默认 8MB 容纳 N>>1000 层)
+   - 极端深度边界与 [D085 stack overflow detection](../3-decisions/D085-stack-overflow-detection.md) 共享同一防护 — deserialize 不是边界条件 owner(任何 N>>1 层 native call 链都同等暴露 stack 限制),不需 deserialize 自身做特殊处理 / 不需独立 -deep-extreme 子档(stress 边界与 D085 同源,场景不质变)
 
 5. **循环引用**:`A { b: B }, B { a: A }` JSON 自然不支持(无表示),但 SS class 定义允许;b79aa97 BFS deserializerTargets.has guard 兼任 visited 已防 closure 计算无限循环;运行时 deserialize 调用循环依赖时 — JSON 解析器先报错(JSON 树形结构无环),codegen 阶段不报错
    - 留 -deep-cycle 子档:编译期检测 class 字段循环引用,要求至少一侧字段 nullable(D067 T?)打破循环
@@ -170,5 +169,5 @@ curl `POST /orders -H 'Content-Type: application/json' -d '{"customer":{"name":"
 - 本子档**纯文档起立轮**,Execute 留下下轮(按 §交互式单文档:每轮一目标)
 - nested.md line 72 §留下轮锚 3 + line 130-133 父档已锚 closure,本子档承接
 - D123 §247 Phase 4 §第二支柱 V=class 域辨析锁(D129 §5)已 Decided,本子档执行不再辨析
-- Phase 4 主流注解清单封顶(I021-requestbody-nested.md line 153 锚),本子档为 Phase 4 §第二支柱嵌套深化第四轮(深化 = N>1 层维度实测;首轮 nested.md = N=1 层;二轮 nested-array = collection Array;三轮 nested-map = collection Map)
+- Phase 4 主流注解清单封顶(I021-requestbody-nested.md line 153 锚),本子档为 Phase 4 §第二支柱嵌套深化第四轮(深化 = 任意层数 BFS closure 实测 + RC 契约层数无关每层独立成立验证;首轮 nested.md = N=1 层;二轮 nested-array = collection Array;三轮 nested-map = collection Map)
 - **依赖关系**:本子档 Execute 轮**最好后于** nested-array / nested-map(因 closure BFS 字段扫描分支需对齐 nested-array / -map 新增字段 case),Execute 顺序建议 nested-array → nested-map → nested-deep → nested-optional
