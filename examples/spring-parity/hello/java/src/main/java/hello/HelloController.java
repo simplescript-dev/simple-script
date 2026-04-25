@@ -13,6 +13,21 @@ class User {
     public int age;
 }
 
+class Address {
+    public String city;
+    public String zip;
+}
+
+class Customer {
+    public String name;
+    public int age;
+}
+
+class Order {
+    public Customer customer;
+    public Address addr;
+}
+
 @RestController
 public class HelloController {
     @GetMapping("/hello")
@@ -43,6 +58,11 @@ public class HelloController {
     @PostMapping("/users")
     public String createUser(@RequestBody User user) {
         return "user=" + user.name + ",age=" + user.age;
+    }
+
+    @PostMapping("/orders")
+    public String createOrder(@RequestBody Order order) {
+        return "customer=" + order.customer.name + ",city=" + order.addr.city;
     }
 
     @GetMapping("/agent")

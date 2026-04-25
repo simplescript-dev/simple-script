@@ -11,6 +11,7 @@ import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRe
 import { buildRuntimeCache, runtimeCacheObj, runtimeCacheDecls, useRuntimeCache } from "./rt/gen_rt_cache"
 import { initVarAliases, varCounter, varAliasReady } from "./gen_var_alias"
 import { emitIR, nextReg, nextLabel, addStringConst, irBuf, strConsts, strCount, irOutFile, strOutFile, regCount, regTable, labelCount } from "./gen_emit"
+import { emitPendingDeserializers, deserializerTargets } from "./gen_deserialize"
 
 // ── State ─────────────────────────────────────────────────────
 // IR emit / reg / label / strConsts state + ops moved to gen_emit.ss

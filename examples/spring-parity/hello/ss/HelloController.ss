@@ -3,6 +3,21 @@ class User {
     age: int
 }
 
+class Address {
+    city: string
+    zip: string
+}
+
+class Customer {
+    name: string
+    age: int
+}
+
+class Order {
+    customer: Customer
+    addr: Address
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -33,6 +48,11 @@ class HelloController {
     @PostMapping(path = "/users")
     function createUser(@RequestBody user: User): string {
         return "user=" + user.name + ",age=" + user.age
+    }
+
+    @PostMapping(path = "/orders")
+    function createOrder(@RequestBody order: Order): string {
+        return "customer=" + order.customer.name + ",city=" + order.addr.city
     }
 
     @GetMapping(path = "/agent")

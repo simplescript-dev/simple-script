@@ -197,14 +197,7 @@ function emitFieldReleaseLoop(className: string, fieldStr: string, hasVtable: in
 // ── TypeInfo + drop + clone ──────────────────────────────────
 
 // Emit drop/clone functions and TypeInfo constant per class
-// I021-requestbody — 仅对被 @RequestBody 引用的 class emit per-class deserializer。
-// emitClassTypeInfo 全 class 自动调 emitClassDeserializeFn 会污染所有 program(jnGet*
-// runtime symbol 在没 import lib/json.ss 的程序里 link 错)。改延迟 emit:invoke sentinel
-// kind == "RequestBody" 分支注册 deserializerTargets,codegen module 末尾(codegen.ss
-// emitGlobalsAndCode 收尾)调 emitPendingDeserializers 仅对实际需要的 class emit,与
-// ss_drop_X / ss_deep_clone_X / ss_shallow_clone_X 全 class 自动生成对称形态分流。
-let deserializerTargets: Map<string, int> = new Map()
-
+// (per-class deserializer 拆到 gen_deserialize.ss — F1 ≤ 600 物理拆 + deserialize 单一职能)。
 function emitClassTypeInfo(name: string, fieldStr: string, hasVtable: int) {
     emitClassDropFn(name, fieldStr, hasVtable)
     emitClassDeepCloneFn(name, fieldStr, hasVtable)
@@ -362,92 +355,6 @@ function emitClassDeepCloneFn(className: string, fieldStr: string, hasVtable: in
             } else {
                 // Value types (int, double, bool): direct copy
                 emitIR(`  store ${llType} ${valR}, ptr ${dstR}, align 8`)
-            }
-            idx = idx + 1
-        }
-    }
-    emitIR("  ret ptr %new")
-    emitIR("}")
-    emitIR("")
-}
-
-// I021-requestbody — emit module 末尾(codegen.ss emitGlobalsAndCode 收尾)按
-// deserializerTargets 选择性 emit per-class deserializer,仅对 @RequestBody invoke sentinel
-// 实际引用的 class 生成,避免 jnGet* 调用污染未 import lib/json.ss 的程序。
-function emitPendingDeserializers() {
-    const targets = deserializerTargets.keys()
-    for (cn in targets) {
-        if (cn == "") { continue }
-        if (classFields.has(cn) == 0) { continue }
-        const fieldStr = classFields.getString(cn)
-        const hasVtable = classVtableSlots.has(cn) == 1 ? 1 : 0
-        emitClassDeserializeFn(cn, fieldStr, hasVtable)
-    }
-}
-
-// I021-requestbody — per-class @ClassName_deserialize(i32 nodeId): ClassName 编译期自动生成
-// (mirror ss_drop / ss_deep_clone / ss_shallow_clone 模式 — D018 ObjectLayout TypeInfo +
-//  D022 clone 语义 第四步 deserializer)。nodeId = JsonNode 实例 nodeId 字段 raw int
-// (避免 JsonNode wrapper alloc 开销);字段递归:primitive(int/double/string/bool)调
-// jnGet*(lib/json.ss),嵌套 user class / Array / Map 字段报 codegen 编译错(留
-// I021-requestbody-nested / I021-requestbody-array / I021-requestbody-map)。
-function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: int) {
-    regCount = 0
-    regTable = []
-    emitIR(`define ptr @${className}_deserialize(i32 %nodeId.arg) {`)
-    emitIR("entry:")
-    emitIR(`  %size = ptrtoint ptr getelementptr (%${className}, ptr null, i32 1) to i64`)
-    emitIR("  %new = call ptr @mi_calloc(i64 1, i64 %size)")
-    emitIR("  store i32 1, ptr %new, align 4")
-    emitIR(`  %ti_ptr = getelementptr %${className}, ptr %new, i32 0, i32 1`)
-    emitIR(`  store ptr @${className}_type_info, ptr %ti_ptr, align 8`)
-    if (hasVtable == 1) {
-        emitIR(`  %vt_dst = getelementptr %${className}, ptr %new, i32 0, i32 2`)
-        emitIR(`  store ptr @${className}_vtable, ptr %vt_dst, align 8`)
-    }
-    if (fieldStr != "") {
-        let idx = fieldStartIdx(hasVtable)
-        const parts = fieldStr.split(",")
-        for (p in parts) {
-            const ft = classFieldTypes.has(`${className}.${p}`) == 1 ? classFieldTypes.getString(`${className}.${p}`) : "int"
-            const keyConst = addStringConst(p)
-            const dstR = nextReg()
-            emitIR(`  ${dstR} = getelementptr %${className}, ptr %new, i32 0, i32 ${idx}`)
-            if (ft == "int") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call i32 @jnGetInt(i32 %nodeId.arg, ptr ${keyConst})`)
-                emitIR(`  store i32 ${valR}, ptr ${dstR}, align 8`)
-            } else if (ft == "double") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call double @jnGetDouble(i32 %nodeId.arg, ptr ${keyConst})`)
-                emitIR(`  store double ${valR}, ptr ${dstR}, align 8`)
-            } else if (ft == "string") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call ptr @jnGetString(i32 %nodeId.arg, ptr ${keyConst})`)
-                // I021-requestbody — string 字段必须 retain:jnGetString 返 jnStr 内部 ptr 未持新 RC,
-                // User drop 时 emitFieldReleaseLoop 会 ss_rc_release name 字段 → free jnStr 仍持有
-                // 的 string → 下一个 POST use-after-free。对照 emitClassDeepCloneFn:351 / emitClassCtorBody:271
-                // ptr 字段 store 前 emitRetainForType 模式(D018 + D022 contract)。
-                emitRetainForType(valR, ft)
-                emitIR(`  store ptr ${valR}, ptr ${dstR}, align 8`)
-            } else if (ft == "bool") {
-                const valR = nextReg()
-                emitIR(`  ${valR} = call i32 @jnGetBool(i32 %nodeId.arg, ptr ${keyConst})`)
-                emitIR(`  store i32 ${valR}, ptr ${dstR}, align 8`)
-            } else {
-                // v0 不支持的字段类型(Array/Map/嵌套 user class) — emit 默认值 fallback
-                // 留 I021-requestbody-nested / I021-requestbody-array / I021-requestbody-map 子档
-                // 完善;**未被 @RequestBody 引用的 class**(bootstrap 反射 Meta:FieldMeta 等)
-                // 此 deserializer 永不被调用,fallback 仅是"per-class 函数自动生成对称形态"
-                // (mirror ss_drop_X / ss_deep_clone_X 全 class 自动生成)。
-                const llType = ssTypeToLLVM(ft)
-                if (llType == "i32") {
-                    emitIR(`  store i32 0, ptr ${dstR}, align 8`)
-                } else if (llType == "double") {
-                    emitIR(`  store double 0.0, ptr ${dstR}, align 8`)
-                } else {
-                    emitIR(`  store ptr null, ptr ${dstR}, align 8`)
-                }
             }
             idx = idx + 1
         }
