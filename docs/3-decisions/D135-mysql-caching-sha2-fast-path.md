@@ -443,7 +443,7 @@ D134 §A.7:
 
 # 附录 B: 实施日志
 
-### Phase 0: D 文档落盘 [✓] Done at commit `<本轮 commit hash>` (2026-04-26)
+### Phase 0: D 文档落盘 [✓] Done at commit `571e54d` (2026-04-26)
 
 - ✓ PSM 九问填表(响应正文 + §A.6)
 - ✓ D135 文档骨架完成(此文件)
