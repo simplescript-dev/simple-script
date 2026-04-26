@@ -1,6 +1,6 @@
 # D133: SQLite C 链路彻底剥离 + lib/java/sql driver-agnostic 重构
 
-**Status:** Phase 2 Done at `bootstrap/gen/gen_runtime.ss:8,30` + `gen_runtime.ss` declare 段删除 + `gen/rt/gen_rt_system.ss:320-484` (164 行 SQLite bindings 段全删) + `gen/gen_registry.ss:128-129` (funcRetTypes 2 行删) — Phase 3 待 Execute
+**Status:** Phase 4 Done at `bootstrap/main.ss:612-614` (旧 612-617 段删 3 行 sqliteObj fileExists 块 + 614 musl-gcc 拼接删 `${sqliteObj}` token) + `vendor/sqlite3.h` (640KB git rm) + `vendor/sqlite3.o` (1.3MB rm — untracked) — `nm bin/ss | grep -c sqlite3_` 269→0 + bootstrap stage2==stage3 二次固定点 byte-identical 通过(双 GREEN 锚 — Phase 4 提前兑现)— Phase 5 (lib/spring 依赖断裂修 + docs 撤段) 待 Execute
 **Depends on:**
 - CLAUDE.md §项目本质 L7 axiom("应用层 stdlib 用纯 SS 模块实现,不引入应用层 C 库;只有底层基础设施(mimalloc 分配器)允许链接 C")
 - CLAUDE.md §项目技术规则 §Root Cause 优先 L101-103("第一法则,无例外")
@@ -442,13 +442,38 @@ axiom 字面区分清晰,本 D 不挑战 axiom,只兑现 axiom。
     - `tests/phase5/harness_bug/main.ss`:编译成功 + runtime SegFault(dumped core)(数据/IR runtime bug,与 SQLite 路径零关联)
   - **结论**:3 新 fail = pre-existing latent bug 由 Phase 2 间接暴露,不计入 Phase 2 GREEN 范围(Phase 2 GREEN 标准 = bootstrap stage1 编译过,§D6 §148-153,不含 bin/ss test)。Phase 6 列锚处理(若属 SQLite 弃用 tests)或开独立 issue(若属 latent codegen / lib 链路 bug,与 D133 范围正交)。grep `^import.*lib/java/sql` 三 fail 测试 = 0 命中,证 transitive lib/java/sql 链非根因
 
-### Phase 3: link line + vendor/sqlite3.o 删除 [待 Execute]
+### Phase 3: link line + vendor/sqlite3.o 删除 [✅ Done]
 
-(待回填)
+- 改动 1:`bootstrap/main.ss`
+  - 旧 L612-614(3 行):删 `let sqliteObj = ""` + `if (fileExists("vendor/sqlite3.o") == 1) { sqliteObj = "vendor/sqlite3.o" }` + `if (fileExists("../vendor/sqlite3.o") == 1) { sqliteObj = "../vendor/sqlite3.o" }`
+  - 旧 L617(新 L614):musl-gcc 拼接删 `${sqliteObj}` token,从 `musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} ${sqliteObj} -o ${outputFile} -lm` → `musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} -o ${outputFile} -lm`
+  - 物理瘦身:main.ss -3 行(sqliteObj 块整体删除)
+- 改动 2:vendor 物理删除
+  - `git rm vendor/sqlite3.h`(640KB,git tracked)
+  - `rm -f vendor/sqlite3.o`(1.3MB,untracked 编译产物 — 不在 git 追踪)
+  - 总计 1.95MB 项目根减少(对偶 mimalloc axiom 例外保留:`vendor/mimalloc.o` 块 L609-610 不动)
+- **R1 风险锚兑现(rm 顺序敏感)**:严格按"Edit main.ss → bootstrap stage2==stage3 验固定点 → vendor rm → bootstrap 二次验"双 GREEN 锚顺序执行 — 第一次 bootstrap 时 vendor/sqlite3.{o,h} 仍在(但 main.ss 已删 fileExists 检查 + ${sqliteObj} 拼接,musl-gcc 链接命令不再传 sqlite3.o → stage3 重 link 后 nm bin/ss SQLite 符号已 = 0);第二次 bootstrap 时 vendor 已删,bootstrap 仍正常完成 → 证 main.ss 完全不再依赖 SQLite vendor 文件
+- **RED 验证**(承 RED 命令 4 段全 = 0):
+  - `grep -nE "sqliteObj|vendor/sqlite3" bootstrap/main.ss | wc -l` = 0(原 4)
+  - `ls -la vendor/sqlite3.* 2>/dev/null | wc -l` = 0(原 2)
+  - `nm bin/ss | grep -c sqlite3_` = 0(原 269 — Phase 3 关键 GREEN 判据,从 C ABI 符号物理切净)
+  - `grep -rnE "sqlite3_|sqliteObj|vendor/sqlite|jdbc:sqlite|sqlite::memory" bootstrap/ build.sh | wc -l` = 0(原 4 — bootstrap/main.ss 4 处全清,build.sh 本就 0)
+- **GREEN 验证**:
+  - 第一次 `./build.sh bootstrap`(main.ss 改后 + vendor 未删)三阶段固定点 stage2 == stage3 byte-identical 通过 + nm bin/ss SQLite 符号 = 0(stage3 link 命令不传 sqlite3.o)
+  - 第二次 `./build.sh bootstrap`(vendor 物理删除后)三阶段固定点 stage2 == stage3 byte-identical 二次通过 — 证 vendor 物理删除对 bootstrap 路径零冲击,double GREEN 锚收敛
+- **R3 风险锚兑现(stage2 != stage3 byte-identical)**:实测两次 bootstrap 均 stage2 == stage3 byte-identical,证 link 命令字符串差异不影响 IR 生成(IR 在 stage1 → stage2 阶段确定,与 link 阶段隔离)
+- **R4 风险锚兑现(build.sh 引用 vendor/sqlite3.o)**:Phase 3 RED 4 已确认 build.sh = 0 命中,无需 build.sh 改动
+- **R5 风险锚兑现(rm -f 物理删除不可逆)**:`vendor/sqlite3.h` 由 git rm 标记 staged for delete,git status 显示 `D vendor/sqlite3.h`;`vendor/sqlite3.o` 为 untracked 编译产物(用户未 git add),物理删后 git 追踪状态无变化
+- **R6 风险锚兑现(stage1 用旧 bin/ss link sqlite3.o,stage3 才清零)**:实测 stage3 重 link 后 nm bin/ss SQLite 符号 = 0,与 R6 预测一致(stage3 才物理切)
+- **不变量保留**:D018 / D022 / D025 / D088 / D123 / D130-132 不动;**mimalloc C link axiom 例外保留**(`bootstrap/main.ss:609-610` `let mimallocObj = ""` + `if (fileExists("vendor/mimalloc.o") == 1) { mimallocObj = ... }` 块未动,§A.6 区分:mimalloc = 内存分配器基础设施,SQLite = 应用层 stdlib);bootstrap stage2 == stage3 byte-identical 双次通过
 
-### Phase 4: 三阶段固定点验证 [待 Execute]
+### Phase 4: 三阶段固定点验证 [✅ Done — 与 Phase 3 同 commit 提前兑现]
 
-(待回填)
+- **GREEN 验证(承 Phase 3 双次 bootstrap)**:
+  - 第一次 `./build.sh bootstrap`(main.ss 改后 + vendor 未删)stage2 == stage3 byte-identical
+  - 第二次 `./build.sh bootstrap`(vendor 物理删除后)stage2 == stage3 byte-identical
+- **§Principles 7 Phase 边界 = commit 边界**:Phase 4 单独 commit 边界与 Phase 3 合并,因 Phase 4 唯一行为标准 = bootstrap 三阶段固定点验证,而该验证在 Phase 3 改 main.ss + 删 vendor 时已实测两次通过 — 不再需要独立空 commit 重复验证(§D6 §148-153 标准已兑现)
+- **结论**:Phase 4 自动收关,与 Phase 3 同 commit 宣告;Phase 5(lib/spring 依赖断裂修 + docs 撤段)从下轮起立
 
 ### Phase 5: 依赖 lib + 文档更新 + 断裂清单 [待 Execute]
 

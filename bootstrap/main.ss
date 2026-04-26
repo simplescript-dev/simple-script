@@ -609,12 +609,9 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     let mimallocObj = ""
     if (fileExists("vendor/mimalloc.o") == 1) { mimallocObj = "vendor/mimalloc.o" }
     if (fileExists("../vendor/mimalloc.o") == 1) { mimallocObj = "../vendor/mimalloc.o" }
-    let sqliteObj = ""
-    if (fileExists("vendor/sqlite3.o") == 1) { sqliteObj = "vendor/sqlite3.o" }
-    if (fileExists("../vendor/sqlite3.o") == 1) { sqliteObj = "../vendor/sqlite3.o" }
     let rtObj = ""
     if (useRuntimeCache == 1) { rtObj = runtimeCacheObj }
-    if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} ${sqliteObj} -o ${outputFile} -lm`) != 0) {
+    if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} -o ${outputFile} -lm`) != 0) {
         println("error: linking failed")
         exit(1)
     }
