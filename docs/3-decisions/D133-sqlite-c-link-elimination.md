@@ -1,6 +1,6 @@
 # D133: SQLite C 链路彻底剥离 + lib/java/sql driver-agnostic 重构
 
-**Status:** Phase 0 起立
+**Status:** Phase 1 Done at `lib/java/sql.ss:1-55` — Phase 2 待 Execute
 **Depends on:**
 - CLAUDE.md §项目本质 L7 axiom("应用层 stdlib 用纯 SS 模块实现,不引入应用层 C 库;只有底层基础设施(mimalloc 分配器)允许链接 C")
 - CLAUDE.md §项目技术规则 §Root Cause 优先 L101-103("第一法则,无例外")
@@ -389,9 +389,23 @@ axiom 字面区分清晰,本 D 不挑战 axiom,只兑现 axiom。
 - D133 文档骨架完成
 - 等用户审阅措辞 OK 后下轮起 Phase 1
 
-### Phase 1: lib/java/sql.ss 接口重构 [待 Execute]
+### Phase 1: lib/java/sql.ss 接口重构 [✅ Done]
 
-(下一轮 RED → GREEN 后回填 commit hash + bootstrap 固定点结果)
+- 改动:`lib/java/sql.ss` 重写 216 行 → 55 行(driver-agnostic 接口契约)
+- ResultSet / Statement / Connection 全部 `class` → `interface`,删 `data:string` / `dbHandle:string` / `currentRow:int` / `rowCount:int` / `columns:string` 等 SQLite-shape 字段
+- 删 `ss_sqlite3_close` 直调(原 Connection.close() body)
+- 删 `ss_sqlite3_open` / `ss_sqlite3_query` / `ss_sqlite3_exec` 直调(原 stmtExecuteQuery/stmtExecuteUpdate/DriverManager_getConnection body)
+- 删 `rsGetValue` 字符串切割实现(48 行)+ `rsNext` (3 行) + `stmtExecuteQuery` (21 行) + `stmtExecuteUpdate` (3 行)
+- `DriverManager_getConnection(url)` 改 placeholder `println + exit(1)`(check_return.ss:23 已注册 exit() 为 noreturn,无需 return 占位)
+- **RED 验证**:`grep -nE "ss_sqlite3|dbHandle:\s*string|^class (Connection|Statement|ResultSet)" lib/java/sql.ss | wc -l` = 0(原 15)
+- **GREEN 验证**:`./build.sh bootstrap` 三阶段固定点 stage2 == stage3 通过(超出 Phase 1 标准的 stage1 编译过 — 因 bootstrap 编译器自身不依赖 lib/java/sql,故接口改动对 bootstrap 路径零冲击)
+- **依赖破裂确认**(R2 风险锚兑现,Phase 5 修复):
+  - `lib/spring/jdbc.ss:4` import `rsNext, stmtExecuteQuery, stmtExecuteUpdate` 已破(三函数全删)
+  - `lib/spring/data.ss:5` 同上 + `:75` `conn.dbHandle` 字段访问已破(Connection interface 无字段)
+  - `lib/com/zaxxer/hikari.ss:24` `this.conn.close()` 接口方法调用 OK(无破)
+  - `lib/jakarta/sql.ss` import `Connection, DriverManager` OK(无破)
+  - 上述破裂 Phase 5 集中修复(转 placeholder / 暂撤,等 D134 ready)
+- **不变量保留**:D018(对象布局)/ D022(clone 语义)/ D025(interface dispatch)/ D088 / D123 / D130-132 不动,mimalloc C link axiom 例外保留
 
 ### Phase 2: bootstrap SQLite declare/define/registry 删除 [待 Execute]
 
