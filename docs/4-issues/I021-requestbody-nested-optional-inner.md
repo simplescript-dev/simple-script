@@ -262,12 +262,15 @@ store ptr %9, ptr %6, align 8  ; → store ptr null,完全丢弃 tags 字段数�
 
 **升根 D131 子决策**:[D131-deserialize-predicate-strip-nullable-inner.md](../3-decisions/D131-deserialize-predicate-strip-nullable-inner.md) Decided(2026-04-26)— 谓词层 `isArrayDeserializable` / `isMapDeserializable` 加 `stripNullableCG(et/vt)` 后再判 isUserClass(et)/Array(et)/Map(et)/primitive(et) 路径;extractContainerElemType + emitArrayDeserializeInto/emitMapDeserializeInto 内透传不动,nullable case 复用 commit 29c3148 emitDeserializeForType 主路径。
 
-**本子档 Execute 阶段下轮路径**(D131 GREEN + I021 v0 ship 同轮):
-- D131 §4 修 `bootstrap/gen/gen_deserialize.ss:12-23 isArrayDeserializable` + `:25-34 isMapDeserializable`(谓词内 stripNullableCG inner)
-- 新建 `tests/phase5/i021_requestbody_nested_optional_inner.ss` 7 case(本子档 §步骤 §3)
-- spring-parity hello + Java oracle 对称(本子档 §步骤 §2)
-- emit-ir grep `@jnIsNullOrMissing|opt_present|opt_done` ≥ 4 GREEN
-- bootstrap 三阶段固定点 + reflection_health_linter GATE PASS
+**本子档 Execute 阶段路径**(D131 GREEN + I021 v0 ship 同轮 commit 74ddc48 兑现):
+- D131 §4 修 `bootstrap/gen/gen_deserialize.ss:14-19 isArrayDeserializable + :28-33 isMapDeserializable + :64-72 emitPendingDeserializers BFS`(谓词内 stripNullableCG inner) ✓
+- D131 §4.5 同源补 `bootstrap/gen/gen_types.ss:417 inferType .get + bootstrap/gen/gen_builtins.ss:302-313 genMapMethod .get`(Execute 阶段实测发现的 §4 边界扩 — extractMapValueType 返 "Tag?" 后 classFields.has 不命中导致 LET 分配 ptr 而 RHS i64 → llc store mismatch) ✓
+- 新建 `tests/phase5/i021_requestbody_nested_optional_inner.ss` 7 case(本子档 §步骤 §3) ✓
+- spring-parity hello + Java oracle 对称(本子档 §步骤 §2) ✓
+- emit-ir grep `@jnIsNullOrMissing` = 3 + `opt_present|opt_done` = 8 + Tag_deserialize = 1(BFS strip 入队验证) ≥ 1 ✓
+- bootstrap 三阶段固定点 stage2==stage3 PASS + reflection_health_linter F1 GATE PASS(gen_types.ss cur=791 ≤ bm=792)+ phase4 27/27 + phase5 192/196(0 regression — 4 baseline FAIL 与改动前一致) ✓
+
+**本子档 status**:Done at <bootstrap/gen/gen_deserialize.ss:14-19,28-33,64-72 + bootstrap/gen/gen_types.ss:417 + bootstrap/gen/gen_builtins.ss:302-313 + tests/phase5/i021_requestbody_nested_optional_inner.ss + examples/spring-parity/hello/{ss,java}/HelloController.{ss,java}>(commit 74ddc48 — Phase 4 §247 第二支柱嵌套深化第八轮收关)
 
 ## 备注
 

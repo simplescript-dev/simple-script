@@ -146,7 +146,16 @@ extractContainerElemType("Array<Tag?>") = "Tag?" 既有正确返回(`bootstrap/g
 
 ### 4.4 emitPendingDeserializers BFS 字段扫描
 
-`emitPendingDeserializers`(gen_deserialize.ss:41-)BFS 字段扫描需配合 stripNullableCG —— 待 Execute 阶段实测决定是否需要扩(若 `class Outer { tags: Array<Tag?> }` 字段扫描未把 Tag 入队 → 需补)。
+`emitPendingDeserializers`(gen_deserialize.ss:41-)BFS 字段扫描需配合 stripNullableCG —— Execute 阶段实测确认**确需补**(`class Outer { tags: Array<Tag?> }` BFS 出 ft="Array<Tag?>" → extractContainerElemType="Tag?" → isUserClass("Tag?")=0 → Tag 不入队 → @Tag_deserialize 链接错误)。修法:`ftStripped = stripNullableCG(ft)` + 递归剥皮中每层 extractContainerElemType 后再 stripNullableCG。
+
+### 4.5 Map.get codegen 同源补(Execute 阶段发现的 §4 边界扩)
+
+D131 §4.1/4.2/4.3 谓词 + BFS 修后,Map.get inferType / dispatch 路径**同源根因**(extractMapValueType 返 "Tag?" 后 classFields.has("Tag?")=0 → 落 default i64 fallback,导致 `let v = order.items.get(...)` LET 走 ptr alloca 但 RHS 为 i64 → llc store mismatch):
+
+- `bootstrap/gen/gen_types.ss:417` inferType `.get()` —— `mgV = stripNullableCG(extractMapValueType(...))` 后参与 scalar / class / 容器分派
+- `bootstrap/gen/gen_builtins.ss:302-313` genMapMethod `.get()` —— `mapVStripped = stripNullableCG(mapV)` 触 V=class 走 ss_mapGet i64 + inttoptr ptr + ss_retain(isnull guard 自带覆盖 nullable null value 路径)
+
+Array INDEX 路径不需补(`emitI64ToValue("Tag?", ...)` → ssTypeToLLVM("Tag?") = ptr per gen_types.ss:682 → 自动 inttoptr i64 to ptr,既有正确)。
 
 ## 5. RC 契约保留(D131 修不动 RC 语义)
 
@@ -212,9 +221,10 @@ D130 §SSoT 收敛假设"per-class deserializer 单点 emitDeserializeForType in
 
 - **触发事件**:2026-04-26 I021-requestbody-nested-optional-inner Execute 阶段第一步 emit-ir 实测(子档 §风险 1+2 升根触发);本 D131 D 文档 + 子档 Execute 同轮落地(Decision + Implementation 双层 — 子档 §风险 2 锚明跨 Layer Decision,本 D131 D 文档承载 Decision 层,子档 Execute 阶段承载 Implementation 层,**本轮先 D 文档 + next_prompt,Execute 留下轮**)
 - **Layer 跨越**:D131 D 文档 = Decision 层,本轮单 Layer 写 D 文档 + 不主动改 codegen / 测试(避免单轮 Layer 混 — feedback `feedback_interactive_one_doc.md` + MNK §字段 8)
-- **本 D 文档 status**:Decided(2026-04-26 谓词层 stripNullableCG inner 修方案锁定);Done at <bootstrap/gen/gen_deserialize.ss:isArrayDeserializable + isMapDeserializable + emitPendingDeserializers BFS>(待 Execute 阶段下轮兑现)
+- **本 D 文档 status**:Decided(2026-04-26 谓词层 stripNullableCG inner 修方案锁定);Done at <bootstrap/gen/gen_deserialize.ss:14-19 isArrayDeserializable + :28-33 isMapDeserializable + :64-72 emitPendingDeserializers BFS + bootstrap/gen/gen_types.ss:417 inferType .get + bootstrap/gen/gen_builtins.ss:302-313 genMapMethod .get>(commit 74ddc48 本轮 Execute 兑现 — 7 case 全 PASS + bootstrap 三阶段固定点 + reflection_health_linter F1 GATE PASS + phase4 27/27 + phase5 192/196 0 regression)
 - **不变量保留**:D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期展开消除运行时反射 + D130 emitDeserializeForType SSoT 单点解码 + D067 null safety T? 概念锚(memory `project_null_safety_design.md`) + commit 29c3148 emitDeserializeForType nullable case alloca slot + jnIsNullOrMissing + opt_present/opt_done labels 主路径
 - **回头观察点**:
-  - emitPendingDeserializers BFS 字段扫描是否需配合 stripNullableCG inner(若 `class Outer { tags: Array<Tag?> }` BFS 未把 Tag 入队 → 需补)— Execute 阶段实测决定
+  - ~~emitPendingDeserializers BFS 字段扫描是否需配合 stripNullableCG inner~~ — Execute 阶段实测**确认需补**(D131 §4.4 已锚 + commit 74ddc48 兑现)
+  - ~~Map.get codegen 是否需对称补 stripNullableCG~~ — Execute 阶段实测**确认需补**(D131 §4.5 已锚 + commit 74ddc48 兑现 — inferType + genMapMethod 双处)
   - `Array<Tag?>?` 容器自身 + inner 双层 nullable(留 I021-requestbody-nested-optional-container 子档,本 D131 不 cover 双层 nullable 仅 cover inner 单层)
   - 后续 enum / Optional<T> / Tuple<X, Y> 加 emitDeserializeForType case 时,谓词层 isXxxDeserializable 是否需对称加 stripNullableCG inner(预期是 — 本 D131 修法成模版可复制)
