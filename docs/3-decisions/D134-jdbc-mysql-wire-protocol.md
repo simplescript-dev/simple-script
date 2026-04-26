@@ -630,7 +630,7 @@ D133 §A.6 区分:
 
 **不变量保留**:D018 / D022 / D025 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/crypto SHA-1 + wire packet API 全保留;handshake.ss 单向依赖 lib/binary + lib/com/mysql/wire + lib/crypto,无循环。
 
-### Phase 4: lib/com/mysql/query.ss + ResultSet [✓] Done at commit `<PHASE4_HASH>`
+### Phase 4: lib/com/mysql/query.ss + ResultSet [✓] Done at commit `32098ac` (2026-04-26)
 
 **关键调研发现**:
 
