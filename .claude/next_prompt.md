@@ -1,53 +1,68 @@
-ultrathink Execute 落地 D132 §4.1 maybeNullable + pendingGtTokens guard + I021-requestbody-nested-deep-optional v0 端到端反序列化 — 承本轮 commit D132 D 文档锁定根因(parser SHR/USHR 拆分中间状态 inner maybeNullable 错位消耗 outer `?` token 致类型字符串错位 `Array<Array<Tag>?>` 而非 `Array<Array<Tag>>?`)+ 候选 A 修法选定(parser.ss:790-796 +1 LOC `if (pendingGtTokens > 0) { return baseType }` 物理 surgical 修)+ 风险锚 ≥ 6(R1 H1 实测假退路 / R2 表达式上下文副作用 0 / R3 generic 类型参数副作用 0 / R4 RC 契约不动 / R5 BFS 多层 stripNullableCG / R6 form 1+2 + 3-6 一并 ship 切分决策)。
+ultrathink Execute D132 §10 三轴自动 cover 实测验证 — N=3+ USHR + N=2 任意 M 层 nullable + generic class/method 类型参数副作用 — Phase 4 §247 第二支柱嵌套深化第十二轮(收关 vs 升根分流轮)
 
-Execute 落地步骤(单 commit 一并 ship):
+承上轮 commit(D132 §10 实测验证 Plan 节起立 + 8 sub-section + 锚指 4 行)+ commit e75b6ea(D132 §4.1 parser maybeNullable + pendingGtTokens guard +1 LOC + I021-requestbody-nested-deep-optional v0 9 case + spring-parity 6 fixture ship)。
 
-1. **parser.ss maybeNullable +1 LOC guard**(D132 §4.1):
-```ss
-function maybeNullable(baseType: string): string {
-+   if (pendingGtTokens > 0) { return baseType }    // SHR/USHR 拆分中,? 归 outer
-    if (curKind() == "QUESTION") {
-        pAdvance()
-        return baseType + "?"
-    }
-    return baseType
-}
-```
+下轮 Execute 单 Layer 落地 — 按 D132 §10.6 RED 命令实测 → §10.4 分流:命中(三轴全 cover)→ 加 ~3-5 case 测试 + 父档 §status reconciliation + Phase 4 §247 第二支柱嵌套深化封顶记录 + 一并 ship;不命中(任一轴破裂)→ 停手不动 codegen,改写 next_prompt 转 D133 独立 D 文档子决策起立单 Layer。
 
-2. **Execute 第一步实测分流 H1 物理验证**(D132 §6 + §8):
+三轴 RED 命令(D132 §10.6 完整版,Execute 第一步):
+
 ```bash
-./build.sh bootstrap
-bin/ss build /tmp/t_deep_optional.ss --emit-ir > /tmp/t.ll
-grep -nA 50 'OrderMatrixOpt_deserialize' /tmp/t.ll | head -50
-# 期望 IR: 字段 jnGetField 后 alloca + jnIsNullOrMissing + opt_present/opt_done labels
-# 若 IR 仍现 outer 直 jnArrayLen / inner 误 wrap → H1 假 → 升根 D132' 候选 B codegen normalize
+# 1. /tmp/t_n3_optional.ss 5 fixture(N=3 USHR + N=2 任意 M nullable)
+cat > /tmp/t_n3_optional.ss <<'EOF'
+class Tag { name: string }
+class OrderCubeOpt { customer: string; cube: Array<Array<Array<Tag>>>? }                       # 轴 A N=3 USHR
+class OrderTriCubeOpt { customer: string; cube: Map<string, Map<string, Map<string, Tag>>>? }  # 轴 A Map N=3
+class OrderTagsArrTripleOpt { customer: string; tags: Array<Array<Tag?>?>? }                   # 轴 B N=2 三 ?
+class OrderArrMapTripleOpt { customer: string; entries: Array<Map<string, Tag?>>? }            # 轴 B 混合
+class OrderMapArrTripleOpt { customer: string; lists: Map<string, Array<Tag?>?>? }             # 轴 B Map N=2 三 ?
+function main() { let o = new OrderCubeOpt(); o.customer = "alice"; print(o.customer) }
+EOF
+
+# 2. emit-ir 验证 IR 结构(三轴 grep 阈值)
+bin/ss build /tmp/t_n3_optional.ss --emit-ir > /tmp/t.ll
+grep -cE '@jnIsNullOrMissing' /tmp/t.ll                # ≥ 12
+grep -cE 'opt_present|opt_done' /tmp/t.ll              # ≥ 多层(三层 nullable 各自消)
+grep -cE 'jnArrayLen|jnObjectKeys' /tmp/t.ll           # ≥ N=3 多层链
+grep -cE '@Tag_deserialize' /tmp/t.ll                  # ≥ 5
+
+# 3. 抽 IR body 看 N=3 + N=2 三 ? 结构(grep 数量是 lower bound,必须看结构)
+sed -n "$(grep -n 'define ptr @OrderCubeOpt_deserialize' /tmp/t.ll | head -1 | cut -d: -f1),+90p" /tmp/t.ll
+# 期望 N=3:字段层 alloca i64 + jnIsNullOrMissing + opt_present 内 outer arr_loop + middle arr_loop +
+#   inner arr_loop + 最内 @Tag_deserialize 四层链;outer `?` 字段层归 outer 不下沉
+sed -n "$(grep -n 'define ptr @OrderTagsArrTripleOpt_deserialize' /tmp/t.ll | head -1 | cut -d: -f1),+70p" /tmp/t.ll
+# 期望 N=2 三 ?:字段层 outer null guard + 中层 element nullable case + 内层 element nullable case 三层
+
+# 4. 轴 C generic 副作用 + bootstrap 固定点 + reflection
+./build.sh bootstrap                                   # PASS Stage 2 == Stage 3
+bin/ss test tests/phase4/                              # 27/27 PASS(承 commit e75b6ea baseline)
+bin/ss test tests/phase5/                              # baseline 4 failure 与 D132 无关 confirmed
+bin/ss run tools/reflection_health_linter.ss          # GATE PASS no regressions
 ```
 
-3. **新建 tests/phase5/i021_requestbody_nested_deep_optional.ss** 8-10 case(笛卡尔积 + 任意 N×M 同构剥皮形态推广):
-   - case 1-2: form 1 `Array<Tag?>?` outer present + inner mixed null → tags=N,nulls=M / outer null/missing → no-tags
-   - case 3-4: form 2 `Map<string, Tag?>?` 同源 outer/inner 笛卡尔积
-   - case 5: form 3 `Array<Array<Tag>>?` outer present 二层嵌套 + outer null/missing 三态
-   - case 6: form 4 `Map<string, Map<string, Tag>>?` outer present 二层 Map 嵌套 + outer null/missing
-   - case 7: form 5/6 `Array<Map<string, Tag>>?` / `Map<string, Array<Tag>>?` 混合 + outer 三态
-   - case 8: 全链路 raw HTTP POST 6 endpoint × 4 场景 byte-identical Java oracle smoke
-   - case 9: RC stress 50 次循环 outer null + outer non-null + inner null + inner non-null 字段 outer drop → no leak / no segfault
-   - case 10: emit-ir 锚 grep `@jnIsNullOrMissing|opt_present|opt_done|jnArrayLen|jnObjectKeys|@Tag_deserialize` ≥ 13(D132 §6 GREEN)
+风险锚 ≥ 6(承 D132 §10.3 R1-R6 — 详 D132 §10.3 行号):
+- R1 N=3+ USHR pendingGtTokens=2 拆分 + 中层 maybeNullable guard 同源 cover(轴 A §10.2 推证 6 步;实测命中预期 ≥ 99%;破裂 → 升根 D133-N3-USHR-strip)
+- R2 任意 M 层 nullable 笛卡尔积 cover(轴 B §10.2 推证 5 步;破裂 → 升根 D133-M-layer-nullable-strip)
+- R3 generic class/method 类型参数副作用(轴 C §10.2 推证;phase4 全套测试 baseline e75b6ea PASS,regression 概率 < 1%;破裂 → 升根 maybeNullable guard scope 缩窄)
+- R4 D131 谓词层多层递归 stripNullableCG(N=3+ 谓词三级递归;破裂 → 升根 D131 §4 边界扩)
+- R5 BFS emitPendingDeserializers 多层 stripNullableCG(N=3+ transitive closure;破裂 → 升根 D131 §4.4 BFS 多层 stripNullableCG 边界扩)
+- R6 决策预审 — Phase 4 §247 第二支柱嵌套深化封顶 vs 留观察(三轴全 cover → §10.5 选 A 收关 / 任一轴破裂 → 选 B 推迟)
 
-4. **examples/spring-parity/hello/ss/HelloController.ss + .java** 加 6 fixture(`OrderTagsArrDeepOpt` / `OrderTagsMapDeepOpt` / `OrderMatrixOpt` / `OrderGroupsOpt` / `OrderArrMapOpt` / `OrderMapArrOpt`)+ Java oracle 对称 `List<Tag>` / `Map<String, Tag>` Spring 默认 nullable;Tag 类复用既有。
+不变量保留(承 D132 §10.7):D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期反射禁 + D130 emitDeserializeForType SSoT 单点解码 + D131 谓词层 stripNullableCG inner + D067 null safety T? 概念锚 + D132 maybeNullable + pendingGtTokens guard 全形态自动 cover + commit e75b6ea 9 case + 6 fixture spring-parity ship。
 
-5. **回头观察点验证**(D132 §9):
-   - N=3 形态 `Array<Array<Array<Tag>>>?` USHR 拆分 + outer `?` 自动 cover(加 1-2 case)
-   - N=2 + 中层 + 外层多 `?` `Array<Array<Tag?>?>?` 任意 M 自动 cover(加 1-2 case)
-   - generic class / generic method 类型参数副作用(phase4 全套测试无 regression)
+Layer:Execute(下轮)单 Layer 落地 — 按 §10.6 RED 命令实测 → §10.4 分流;命中加测试 ship 收关 / 不命中升根 D133 起立(分流锚)。
 
-6. **VCM 六验**:bootstrap 三阶段固定点 PASS + reflection_health_linter F1 GATE PASS no regressions + phase4/5 0 regression + RC stress no leak + spring-parity byte-identical + d_doc_index_linter PASS。
+下轮 Execute 落地预期 commit message:
+- 命中(三轴全 cover):`feat(I021-requestbody-nested-deep-optional-N3,D132,D131,D130,D067,D123,D129): D132 §10 修法 generality 三轴自动 cover 实测验证 — N=3+ USHR + N=2 任意 M 层 nullable + generic 类型参数副作用三轴 ship — 第四次自动 cover 真零 codegen 场景 — Phase 4 §247 第二支柱嵌套深化第十二轮收关轮`
+- 不命中(任一轴破裂):`feat(D133-<破裂轴>,D132): D132 §10 三轴实测 <破裂轴> 破裂 — D133-<破裂轴> 起立锁定根因 + 候选修法选定 + 风险锚 ≥ 6 — Phase 4 §247 第二支柱嵌套深化第十二轮升根 D 文档子决策起立轮`
 
-7. **D132 status 同轮兑现**:`docs/3-decisions/D132-deep-optional-nesting-strip.md §9 备注 status` Edit 从 `Decided + Done at 留下下轮` → `Decided + Done at bootstrap/parse/parser.ss:790-796 maybeNullable + pendingGtTokens guard(commit <hash>)`。
+D132 §10 单一事实源:
+- §10.1 三轴 RED 命令 scope
+- §10.2 假设链推证(轴 A N=3+ USHR 6 步 + 轴 B M 层 nullable 5 步 + 轴 C generic 副作用 4 步)
+- §10.3 风险锚 ≥ 6(R1-R6)
+- §10.4 Execute 落地分流锚(命中 / 不命中)
+- §10.5 决策预审(Phase 4 §247 收关 vs 留观察)
+- §10.6 RED 命令完整版(下轮 Execute 第一步)
+- §10.7 不变量保留
+- §10.8 Layer 跨越 / Plan vs Execute
 
-8. **I021 子档 §status reconciliation 同轮兑现**:`docs/4-issues/I021-requestbody-nested-deep-optional.md §status` Edit 从 `Done at: 无` → `Done at: bootstrap/parse/parser.ss:790-796 + tests/phase5/i021_requestbody_nested_deep_optional.ss + examples/spring-parity/hello/ss/HelloController.ss(commit <hash>)`。
-
-9. **simplify 4 agent 复审**(reuse / quality / efficiency / readability per `feedback_human_readable_code` 5 rubric a-e — readability veto)。
-
-10. **commit message format**:`feat(I021-requestbody-nested-deep-optional,D132,D131,D130,D067,D123,D129): D132 §4.1 parser maybeNullable + pendingGtTokens guard +1 LOC 物理 surgical 修 + I021 v0 8-10 case + spring-parity 6 fixture + RC stress 50 次循环 — 任意 N×M nullable + 嵌套递归同构剥皮根因 ship — 笛卡尔积真零 codegen 场景对照 -inner 首次部分命中 + -container 首次完全命中 + -deep-optional 部分破裂转 D132 后第三次自动 cover 真零 codegen — Phase 4 §247 第二支柱嵌套深化第十一轮 D132 起立 + Execute 落地轮`。
-
-D132 §备注 D131 §4 边界扩 vs D132 独立新档 取舍已锚选 D132 独立新档(议题尺度跨 parser/codegen + 修法物理位置跨文件 + D 文档治理避免污染 D131 history),不扩 D131。本轮决策归档锁定后 Execute 落地直接 RED→GREEN 不再 Plan(memory `feedback_execute_when_doc_locked.md`)。
+I021-requestbody-nested-deep-optional 子档 §status 已 Done at commit e75b6ea(parser.ss:790-800 + 9 case + 6 fixture);下轮 Execute 命中 → 子档 §status reconciliation 加 "§10 N=3+ USHR + N=2 任意 M nullable + generic 类型参数副作用三轴自动 cover ship at <test 文件 line>";D132 §status 加 "§10 三轴自动 cover 实测验证 Done at <test 文件 + emit-ir 锚>";D123 §247 加 "第十二轮 D132 §10 三轴自动 cover 验证 — Phase 4 §第二支柱嵌套深化收关"。

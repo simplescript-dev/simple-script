@@ -331,11 +331,11 @@ grep -nA 30 'OrderMatrixOpt_deserialize' /tmp/t.ll | head -40
 - **Layer 跨越**:D132 D 文档 = Decision 层,本轮单 Layer 写 D 文档 + Edit I021 子档 §status 同步 + Write next_prompt + 不主动改 codegen / 测试(避免单轮 Layer 混 — feedback `feedback_interactive_one_doc.md` + MNK §字段 8)
 - **本 D 文档 status**:Plan 起立(2026-04-26)+ Decided(根因 H1 锁定 + 候选 A 修法选定 + +1 LOC 物理修)+ **Done at `bootstrap/parse/parser.ss:790-800 maybeNullable + pendingGtTokens guard`(本轮 Execute 落地)**;I021 子档测试 + spring-parity 同 commit ship(详见 §备注 §status reconciliation 锚)
 - **不变量保留**:D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期展开消除运行时反射 + D130 emitDeserializeForType SSoT 单点解码 + D131 谓词层 stripNullableCG inner + D067 null safety T? 概念锚(memory `project_null_safety_design.md`) + commit 29c3148 emitDeserializeForType nullable case alloca slot + jnIsNullOrMissing + opt_present/opt_done labels 主路径
-- **回头观察点**(Execute 阶段验证):
-  - 修后 N=3+ 形态自动 cover 验证(`Array<Array<Array<Tag>>>?` / `Map<string, Map<string, Map<string, Tag>>>?` USHR 拆分 + outer `?`) — 预期同源 cover(§4.2 形态 9)
-  - 修后任意 M 层 nullable 笛卡尔积自动 cover 验证(`Array<Array<Tag?>?>?` / `Array<Map<string, Tag?>>?` 等)— 预期同源 cover(§4.2 形态 8)
-  - parser SHR/USHR + nullable 联动是否影响 generic class / generic method / generic function 类型参数解析(parseTypeAnn 复用)— 预期不影响(maybeNullable 仅在类型参数末尾调,泛型 class/method 类型参数列表内层调用同 pendingGtTokens 协议)— Execute 阶段 phase4 全套测试无 regression 验证
-  - I021-requestbody-nested-deep-optional Execute 落地后 form 1+2 ship 切分 vs 一并 ship 决策 — 预期一并 ship(D132 修后 6 fixture 同源覆盖,无切分需要)
+- **回头观察点**(Execute 阶段验证 — 详 §10 实测验证 Plan):
+  - 修后 N=3+ 形态自动 cover 验证(`Array<Array<Array<Tag>>>?` / `Map<string, Map<string, Map<string, Tag>>>?` USHR 拆分 + outer `?`) — 预期同源 cover(§4.2 形态 9 + §10.2 轴 A 推证 + §10.6 RED 命令)
+  - 修后任意 M 层 nullable 笛卡尔积自动 cover 验证(`Array<Array<Tag?>?>?` / `Array<Map<string, Tag?>>?` 等)— 预期同源 cover(§4.2 形态 8 + §10.2 轴 B 推证 + §10.6 RED 命令)
+  - parser SHR/USHR + nullable 联动是否影响 generic class / generic method / generic function 类型参数解析(parseTypeAnn 复用)— 预期不影响(maybeNullable 仅在类型参数末尾调,泛型 class/method 类型参数列表内层调用同 pendingGtTokens 协议)— Execute 阶段 phase4 全套测试无 regression 验证(详 §10.2 轴 C 推证 + §10.6 RED 命令)
+  - I021-requestbody-nested-deep-optional Execute 落地后 form 1+2 ship 切分 vs 一并 ship 决策 — 已选一并 ship(本 D 文档 §status Done at commit e75b6ea — 同 commit 6 fixture 笛卡尔积全形态)
 - **依赖关系**:本 D132 不依赖 D131 文本演进(D131 选 A 谓词层 stripNullableCG inner 修保留有效);D132 修后 D131 谓词层无需扩,D131 §4 边界扩不立(本 D 文档 §备注 D131 §4 边界扩 vs D132 独立新档 取舍 line 锚)
 - **风险锚 ≥ 3**:
   - **R1 H1 实测假风险**:§8 反向 / 备选 §H1 不命中回退路径锚 — 退路 H2 codegen 同构剥皮 normalize(候选 B 升根 D132' 独立 D 文档),实测命中预期 ≥ 99%
@@ -344,4 +344,139 @@ grep -nA 30 'OrderMatrixOpt_deserialize' /tmp/t.ll | head -40
   - **R4 D131 / D130 / D067 联动 RC 契约风险**:D132 修不动 codegen / RC 路径,RC 契约 §5 表既有保留;Execute 阶段 RC stress 50 次循环 + Valgrind / mimalloc no-leak 验证
   - **R5 BFS transitive closure emitPendingDeserializers 在 N=3+ 自动 cover 风险**:D131 §4.4 BFS while 循环既有多层 stripNullableCG,parser 修后输入字符串规范,BFS 多层 stripNullableCG 等价工作 — 验证 N=3+ 形态 BFS 入队正确(`grep "@Tag_deserialize" /tmp/t.ll` ≥ 1)
   - **R6 form 1+2 ship 切分 vs 一并 ship 决策风险**:Execute 阶段下下轮 commit 切分(form 1+2 已 ship-ready 不需 D132 修法 → 单独先 ship vs 与 form 3-6 一并 ship 等 D132 落地)— 预期一并 ship(同 commit 6 fixture 笛卡尔积全形态测试一致性 + commit history 干净 + D132 commit message 一次锚定 — 切分会造成 form 1+2 重复 commit 噪声)
-- **后续 issue 自动 cover 路径**:任意 N×M nullable + 嵌套递归同构剥皮全形态在 D132 修后自动 cover,**Phase 4 §247 第二支柱嵌套深化收关**(后续若有 enum / Optional<T> / Tuple<X, Y> / Set<X> 等容器类型扩展,maybeNullable + pendingGtTokens 修法对所有泛型类型字符串规范形态有效,不需独立子档)
+- **后续 issue 自动 cover 路径**:任意 N×M nullable + 嵌套递归同构剥皮全形态在 D132 修后自动 cover,**Phase 4 §247 第二支柱嵌套深化收关候选**(待 §10 三轴实测验证命中后封顶;若三轴破裂分流升根 D133 则收关推迟。后续若有 enum / Optional<T> / Tuple<X, Y> / Set<X> 等容器类型扩展,maybeNullable + pendingGtTokens 修法对所有泛型类型字符串规范形态有效,不需独立子档)
+
+## 10. Execute 阶段实测验证 Plan(下下轮 — 三轴自动 cover 验证)
+
+> 锚明 §备注 §回头观察点 line 334-338 三轴(N=3+ USHR / N=2 任意 M 层 nullable / generic 类型参数副作用)的 RED 命令 + 风险锚 + 假设链 + Execute 落地分流路径,让下下轮 Execute 直接按 Plan 实施不依赖跨轮记忆推断假设链。承本 D 文档 §status Done at commit e75b6ea(parser.ss:790-800 +1 LOC + 9 case + 6 fixture spring-parity ship)。
+
+### 10.1 三轴 RED 命令 scope
+
+**轴 A — N=3+ USHR 拆分 + outer `?`**:`Array<Array<Array<Tag>>>?` / `Map<string, Map<string, Map<string, Tag>>>?` 等 USHR(`>>>`)拆分 pendingGtTokens=2 + outer `?` 形态(D132 §4.2 形态 9 推证范围)。
+
+**轴 B — N=2 任意 M 层 nullable 笛卡尔积**:`Array<Array<Tag?>?>?` 三 `?`(中层 + 内层 + 外层) / `Array<Map<string, Tag?>>?` / `Map<string, Array<Tag?>?>?` 等任意 M 层 `?` 位置组合(D132 §4.2 形态 8 推证范围)。
+
+**轴 C — generic class / method 类型参数副作用**:parseTypeAnn 复用于 generic class `class Box<T>` / generic function `function f<T>(x: T)` 类型参数解析,maybeNullable + pendingGtTokens guard 协议同源应用 — 验证修后无 regression。
+
+### 10.2 假设链推证(三轴自动 cover 物理证明)
+
+**轴 A 推证**(D132 §4.2 形态 9 / `Array<Array<Array<Tag>>>?` Token 流末段:`Tag, USHR, QUESTION`):
+
+| Step | 调用栈 | cursor | pendingGtTokens | 行为 |
+|---|---|---|---|---|
+| 1 | innermost expectGtTypeCtx | USHR | 0 → 2 | USHR=3 GT,消 1 留 2,pAdvance → QUESTION |
+| 2 | innermost maybeNullable("Tag") | QUESTION | 2 | **D132 guard 触发**(pendingGtTokens > 0)→ return "Tag" 不消 QUESTION ✓ |
+| 3 | middle expectGtTypeCtx | QUESTION | 2 → 1 | pendingGtTokens > 0 递减,不动 token |
+| 4 | middle maybeNullable("Array<Tag>") | QUESTION | 1 | **D132 guard 触发** → return "Array<Tag>" 不消 QUESTION ✓ |
+| 5 | outer expectGtTypeCtx | QUESTION | 1 → 0 | pendingGtTokens > 0 递减归零,不动 token |
+| 6 | outer maybeNullable("Array<Array<Tag>>") | QUESTION | 0 | curKind=QUESTION ≠ guard → pAdvance + return "Array<Array<Tag>>?" ✓ |
+
+→ parser 输出规范形态 `"Array<Array<Array<Tag>>>?"` ✓ N=3 USHR + outer 自动 cover。**N≥4 形态**(假设有 `>>>>` SHR+USHR 双合并)不存在(lexer 仅合并 SHR / USHR 两档,N=4 走 USHR + 单 GT 拆 = pendingGtTokens=2 + 1 GT 闭合, Token 流不变形)— 任意 N 层自动 cover。
+
+**轴 B 推证**(D132 §4.2 形态 8 / `Array<Array<Tag?>?>?` 三 `?` Token 流:`Tag, QUESTION, GT, QUESTION, GT, QUESTION`):
+
+| Step | 调用栈 | cursor | pendingGtTokens | 行为 |
+|---|---|---|---|---|
+| 1 | innermost maybeNullable("Tag") | QUESTION | 0 | curKind=QUESTION ≠ guard → pAdvance + return "Tag?" ✓ |
+| 2 | middle expectGtTypeCtx | GT | 0 | GT 单 token,pAdvance → QUESTION,pendingGtTokens 不动 |
+| 3 | middle maybeNullable("Array<Tag?>") | QUESTION | 0 | curKind=QUESTION → pAdvance + return "Array<Tag?>?" ✓ |
+| 4 | outer expectGtTypeCtx | GT | 0 | GT 单 token,pAdvance → QUESTION |
+| 5 | outer maybeNullable("Array<Array<Tag?>?>") | QUESTION | 0 | curKind=QUESTION → pAdvance + return "Array<Array<Tag?>?>?" ✓ |
+
+→ parser 输出规范形态 `"Array<Array<Tag?>?>?"` ✓ 三 `?`(中层 + 内层 + 外层)各层 GT 单 token + maybeNullable 各自消一 QUESTION 自动 cover。**任意 M 层 `?` 位置组合**:每层 `?` 由该层 maybeNullable 在 GT 闭合后消;若某层有 SHR/USHR 合并(轴 A+B 交叉),则按 D132 guard 推迟到 outer 闭合后正确归 outer — N×M 全形态(轴 A+B 笛卡尔积)自动 cover。
+
+**轴 C 推证**(generic class/method 类型参数解析复用 parseTypeAnn):
+
+1. **物理位置共享**:`class Box<T>` / `function f<T>(x: T)` 类型参数列表解析复用 parseTypeAnn 入口(`bootstrap/parse/parser.ss:824 IDENT generic 路径` + parseTypeParams / parseGenericParamList)
+2. **maybeNullable + pendingGtTokens 协议同源**:类型参数末端 `>` / `>>` / `>>>` 闭合走相同 expectGtTypeCtx;若类型参数本身含 `?`(如 `Box<T?>`)则同 D132 guard 协议
+3. **本轮 commit e75b6ea baseline 验证**:phase4/27 + phase5/192 已验 PASS(无 generic 测试 regression),修后 D132 guard 不影响 phase4 generic 测试既有
+4. **下下轮 Execute 验证**:phase4 全套(含 generic class/function 测试)+ phase5 全套(含 D132 9 case + 现有所有 nullable 测试)再跑一遍,exit 0 即 cover
+
+### 10.3 风险锚 ≥ 6
+
+- **R1 N=3+ USHR pendingGtTokens=2 拆分 + 中层 maybeNullable guard 触发同源 cover**:轴 A §10.2 推证 6 步 — 若实测发现 N=3+ USHR 错位(如 cursor 上 QUESTION 被 middle / innermost 错位消)→ 升根独立 D 文档 D133-N3-USHR-strip(暂名),Execute 轮停手不动 codegen,改写 next_prompt 转 D 文档单 Layer。**实测命中预期 ≥ 99%**(token 流推证 + lexer USHR 单 token 合并规则物理一致性)。
+- **R2 任意 M 层 nullable 笛卡尔积 cover**:轴 B §10.2 推证 5 步 — 若 `Array<Array<Tag?>?>?` 三 `?` 实测错位(中层 / 内层 `?` 被错位归 outer 或 outer 被错位下沉)→ 升根 D133-M-layer-nullable-strip(暂名)。**实测命中预期 ≥ 99%**(各层 GT 单 token 不触 SHR 合并,maybeNullable 各自独立消 QUESTION)。
+- **R3 generic class/method 类型参数副作用**:轴 C §10.2 推证 — phase4 全套测试 baseline PASS(本轮 commit e75b6ea 27/27 验证) → 下下轮 Execute 第一步重跑 phase4 全套验证修后等价。若 phase4 generic 测试 regression(如 `class Box<T>` / `function f<T>` 类型参数解析失效)→ 升根 maybeNullable guard scope 缩窄(从所有 parseTypeAnn 缩到字段类型 only)— **实测 regression 概率 < 1%**(maybeNullable 仅 type-position 调用,与表达式上下文 SHR/USHR 物理隔离 — D132 §备注 R2 已锚)。
+- **R4 D131 谓词层多层递归 stripNullableCG**(`isArrayDeserializable` / `isMapDeserializable` 在 N=3+ 形态)— D131 §4.1+4.2 既有谓词 stripNullableCG inner 单层递归,N=3+ 形态需谓词三级递归(Array<Array<Array<Tag>>> → et=Array<Array<Tag>> → etStripped=Array<Array<Tag>> → isArrayDeserializable("Array<Array<Tag>>")=1 二级递归 → et=Array<Tag> → etStripped=Array<Tag> → isArrayDeserializable("Array<Tag>")=1 三级递归 → et=Tag → isUserClass("Tag")=1 → 返 1)— 既有谓词函数递归调用支持任意深度。**风险**:若实测 N=3+ 谓词递归断点 → 升根 D131 §4 边界扩(独立 D 文档子决策)。
+- **R5 BFS emitPendingDeserializers 多层 stripNullableCG**(N=3+ transitive closure):D131 §4.4 既有 BFS while 循环 + ftStripped = stripNullableCG(ft) 单层 strip + extractContainerElemType 多层递归剥;N=3+ 形态 BFS 入队需 transitive 多层剥皮(`Array<Array<Array<Tag>>>?` → ftStripped="Array<Array<Array<Tag>>>" → BFS extract et="Array<Array<Tag>>" → 入队继续 BFS extract et="Array<Tag>" → 入队 → extract et="Tag" → @Tag_deserialize 入 transitive closure)— 既有 BFS 多层递归 cover。验证锚:`grep "@Tag_deserialize" /tmp/t.ll` ≥ 1 表 transitive closure 入队正确。**风险**:若 BFS 在 N=3+ 形态某层 stripNullableCG 漏调(如只在第一层 strip 而内层 extract 后未再 strip)→ Tag 不入队 → @Tag_deserialize undefined symbol → 升根 D131 §4.4 BFS 多层 stripNullableCG 边界扩。
+- **R6 决策预审 — Phase 4 §247 第二支柱嵌套深化封顶 vs 留观察后续容器类型扩展**:三轴全 cover → §10.5 选 A(§247 第二支柱嵌套深化收关 + 后续 enum/Optional<T>/Tuple<X,Y>/Set<X> 等容器扩展不需独立 D 文档子档,留独立 issue 观察 maybeNullable + pendingGtTokens 修法对所有泛型类型字符串规范形态有效);三轴破裂某轴 → §10.5 选 B(§247 收关推迟到 D133 子决策落地后)。
+
+### 10.4 Execute 落地分流锚
+
+**命中分流(预期 ≥ 99%)**:
+- 三轴全 cover:5 fixture 测试加挂 `tests/phase5/i021_requestbody_nested_deep_optional.ss`(在现有 9 case 上扩 ~3-5 case 覆盖 N=3+ + N=2 任意 M nullable 形态;`OrderCubeOpt` / `OrderTriCubeOpt` / `OrderTagsArrTripleOpt` / `OrderArrMapTripleOpt` / `OrderMapArrTripleOpt`)
+- I021-requestbody-nested-deep-optional 子档 §status reconciliation:加"§10 N=3+ USHR + N=2 任意 M nullable + generic 类型参数副作用三轴自动 cover ship at <test 文件 line>"
+- D132 §status:加"§10 三轴自动 cover 实测验证 Done at <test 文件 + emit-ir 锚>"
+- D123 §247 章节加锚:"第十二轮 D132 §10 三轴自动 cover 验证 — Phase 4 §第二支柱嵌套深化收关"
+- commit 一并 ship:`feat(I021-requestbody-nested-deep-optional-N3,D132,D131,D130,D067,D123,D129): D132 修法 generality 实测验证 — N=3+ USHR + N=2 任意 M 层 nullable + generic 类型参数副作用三轴自动 cover ship — 第四次自动 cover 真零 codegen 场景 — Phase 4 §247 第二支柱嵌套深化第十二轮收关轮`
+
+**不命中分流**:
+- 任一轴破裂 → 升根独立 D 文档子决策(暂名 D133-N3-USHR-strip / D133-M-layer-nullable-strip / D133-generic-typearg-side-effect 按破裂轴命名)
+- Execute 轮停手不动 codegen / 测试 / I021 子档,改写 next_prompt 转 D 文档子决策起立单 Layer
+- 待 D 文档锁定后再回 Execute 落地
+
+### 10.5 决策预审 — Phase 4 §247 第二支柱嵌套深化封顶 vs 留观察
+
+| 候选 | 路径 | 评估 |
+|---|---|---|
+| **A** | **三轴全 cover → §247 第二支柱嵌套深化收关** | D132 修法物理位置在 parser 类型解析层 maybeNullable + pendingGtTokens guard 协议,**对所有泛型类型字符串规范形态有效**(不仅 Array/Map);后续 enum / Optional<T> / Tuple<X,Y> / Set<X> 等容器扩展加 emitDeserializeForType case 时,parser 输出已规范,谓词 + 委托递归既有正确 — 自动 cover 不需独立 D 文档子档,留独立 issue 观察。**§247 第二支柱嵌套深化第十二轮收关** ✓ |
+| B | 留观察后续容器类型扩展 → §247 不收关待容器扩展时回观 | 保守选项 — 适用于三轴破裂某轴需 D133 升根场景(D132 修法 scope 未完全证明,留 D133 落地后再回判) |
+
+**选 A 条件**:三轴全 cover(轴 A N=3+ USHR + 轴 B 任意 M nullable + 轴 C generic 类型参数副作用)— 若三轴全 PASS 则 D123 §247 章节加 "第十二轮 D132 §10 三轴自动 cover 验证 — 第二支柱嵌套深化收关" 锚。
+**选 B 条件**:任一轴破裂 — D133 升根独立 D 文档子决策 落地后再回判收关候选。
+
+### 10.6 RED 命令完整版(下下轮 Execute 第一步实测)
+
+```bash
+# 1. 新建 /tmp/t_n3_optional.ss 5-7 fixture(N=3 USHR + N=2 任意 M nullable)
+cat > /tmp/t_n3_optional.ss <<'EOF'
+class Tag { name: string }
+
+# 轴 A:N=3 USHR + outer `?`
+class OrderCubeOpt { customer: string; cube: Array<Array<Array<Tag>>>? }
+class OrderTriCubeOpt { customer: string; cube: Map<string, Map<string, Map<string, Tag>>>? }
+
+# 轴 B:N=2 + 三 `?`(中层 + 内层 + 外层)
+class OrderTagsArrTripleOpt { customer: string; tags: Array<Array<Tag?>?>? }
+class OrderArrMapTripleOpt { customer: string; entries: Array<Map<string, Tag?>>? }
+class OrderMapArrTripleOpt { customer: string; lists: Map<string, Array<Tag?>?>? }
+
+# 轴 C:generic class/method 类型参数副作用 — 由 phase4 全套测试 regression 兜底
+function main() {
+    let o = new OrderCubeOpt(); o.customer = "alice"
+    print(o.customer)
+}
+EOF
+
+# 2. emit-ir 验证 IR 结构
+bin/ss build /tmp/t_n3_optional.ss --emit-ir > /tmp/t.ll
+grep -cE '@jnIsNullOrMissing' /tmp/t.ll                # ≥ 12(5 fixture × 多层 nullable case 链)
+grep -cE 'opt_present|opt_done' /tmp/t.ll              # ≥ 多层(三层 nullable 形态各自消)
+grep -cE 'jnArrayLen|jnObjectKeys' /tmp/t.ll           # ≥ N=3 多层链
+grep -cE '@Tag_deserialize' /tmp/t.ll                  # ≥ 5(每 fixture × 1 transitive closure)
+
+# 3. 抽 IR body 看 N=3 结构
+sed -n "$(grep -n 'define ptr @OrderCubeOpt_deserialize' /tmp/t.ll | head -1 | cut -d: -f1),+90p" /tmp/t.ll
+# 期望 N=3:字段 jnGetField → alloca i64 slot + jnIsNullOrMissing + opt_present 内 outer arr_loop +
+#   middle arr_loop + inner arr_loop + 最内 @Tag_deserialize 四层链;outer `?` 字段层归 outer
+
+# 4. 抽 IR body 看 N=2 三 `?` 结构
+sed -n "$(grep -n 'define ptr @OrderTagsArrTripleOpt_deserialize' /tmp/t.ll | head -1 | cut -d: -f1),+70p" /tmp/t.ll
+# 期望:字段层 outer `?` null guard + 中层 `?` element nullable case + 内层 `?` 元素 nullable case 三层
+
+# 5. 轴 C 验证 — bootstrap 固定点 + phase4 全套测试无 regression
+./build.sh bootstrap                                   # PASS Stage 2 == Stage 3
+bin/ss test tests/phase4/                              # 27/27 PASS(承本轮 commit e75b6ea baseline)
+bin/ss test tests/phase5/                              # baseline 4 failure 与 D132 无关 confirmed
+bin/ss run tools/reflection_health_linter.ss          # GATE PASS no regressions
+```
+
+### 10.7 不变量保留
+
+D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期展开消除运行时反射 + D130 emitDeserializeForType SSoT 单点解码 + D131 谓词层 stripNullableCG inner + D067 null safety T? 概念锚(memory `project_null_safety_design.md`)+ D132 maybeNullable + pendingGtTokens guard 全形态自动 cover + 本轮 commit e75b6ea 9 case + 6 fixture spring-parity ship。
+
+### 10.8 Layer 跨越 / Plan vs Execute
+
+- 本节(D132 §10)= **Plan 型 Decision sub-section 增量** — 写下下轮 Execute 实测验证 Plan,本轮不动 codegen / 测试 / I021 子档 §status,Execute 留下下轮
+- 下下轮 = **Execute 型 Implementation 层** — 按 §10.6 RED 命令实测 → §10.4 命中加测试 ship 收关 / 不命中升根 D133 起立(分流锚)
+- 单 Layer 不混(MNK §字段 8 — Decision sub-section 增量与 Execute Implementation 跨 Layer 拆轮)
