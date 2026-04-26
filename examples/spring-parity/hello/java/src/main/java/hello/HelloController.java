@@ -104,6 +104,16 @@ class OrderTagsMap {
     public Map<String, Tag> items;
 }
 
+class OrderTagsArrOpt {
+    public String customer;
+    public List<Tag> tags;
+}
+
+class OrderTagsMapOpt {
+    public String customer;
+    public Map<String, Tag> items;
+}
+
 class BigOrder {
     public String customer;
     public Map<String, List<Integer>> iaGroups;
@@ -263,6 +273,26 @@ public class HelloController {
             else nullCount++;
         }
         return "customer=" + order.customer + ",items=" + itemCount + ",nulls=" + nullCount;
+    }
+
+    // I021-requestbody-nested-optional-container(D130 SSoT + D131 谓词层第二次自动 cover) — 容器自身
+    //   nullable Array<Tag>? / Map<String, Tag>? 反序列化;Jackson 默认 List<Tag>/Map<String,Tag> 字段
+    //   missing/null → null,与 SS Array<Tag>? / Map<string, Tag>? 对称;spring-parity smoke 仅消耗
+    //   customer + length/size if non-null(避 Tag 格式跨语言差异)。
+    @PostMapping("/orders/tags-opt")
+    public String createOrderTagsArrOpt(@RequestBody OrderTagsArrOpt order) {
+        if (order.tags != null) {
+            return "customer=" + order.customer + ",tags=" + order.tags.size();
+        }
+        return "customer=" + order.customer + ",no-tags";
+    }
+
+    @PostMapping("/orders/items-opt")
+    public String createOrderTagsMapOpt(@RequestBody OrderTagsMapOpt order) {
+        if (order.items != null) {
+            return "customer=" + order.customer + ",items=" + order.items.size();
+        }
+        return "customer=" + order.customer + ",no-items";
     }
 
     @GetMapping("/agent")

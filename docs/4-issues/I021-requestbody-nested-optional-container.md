@@ -348,9 +348,18 @@ opt_done.714:
 - RC stress 50 次循环(混合 null + 非 null 字段 outer drop)→ no leak / no segfault
 - **零 codegen 改动**(`git diff --stat HEAD -- bootstrap/ lib/` 空输出)— SSoT 设计意图第二次实测兑现 — 真零 codegen 场景对照 -inner 首次部分命中需 D131 升根
 
+## status
+
+- **Done at**:
+  - `tests/phase5/i021_requestbody_nested_optional_container.ss:1-181`(7 case 全 PASS)
+  - `examples/spring-parity/hello/ss/HelloController.ss:94-102`(双 fixture class)+ `:361-377`(双 @PostMapping)
+  - `examples/spring-parity/hello/java/src/main/java/hello/HelloController.java:107-115`(双 fixture class)+ `:281-296`(双 @PostMapping)
+  - **零 codegen 改动**:`git diff --stat HEAD -- bootstrap/ lib/` = 空(假设命中分支兑现 — D130 SSoT + D131 谓词层联动设计意图第二次自动 cover 真零 codegen 场景 confirmed)
+- **Decided**(本子档 v0):D130 SSoT + D131 谓词层第二次自动 cover 假设命中 — `Array<Tag>?` / `Map<string,Tag>?` / `Array<int>?` 容器自身 nullable 字段层 nullable case + 谓词层 stripNullableCG inner + emitArrayDeserializeInto / emitMapDeserializeInto 嵌套 + 内层 @Tag_deserialize / primitive 反序列化 transfer 三层联动(无独立 codegen 改动);v0 scope 不含 N=2 双层 nullable / nullable primitive elem / 显式默认值,留独立子档
+
 ## 备注
 
-- 本子档**Plan 起立(commit d4e236c)+ Execute 阶段第一步实测验证(commit 待本轮 — 假设命中 真零 codegen 场景 confirmed)** —— Execute 主线落地(测试 + spring-parity + 7 case + bootstrap 固定点 + RC stress)留下轮(按 §交互式单文档:每轮一目标 + 子档预审 §风险 1+5 锚假设命中后 Execute 落地不再升根,单 Layer 不混)
+- 本子档**Plan 起立(commit d4e236c)+ Execute 第一步实测验证(commit d9ec866)+ Execute 落地(commit 本轮 — 7 case 全 PASS + 6 场景 byte-identical Java oracle + RC stress 50 次循环 + bootstrap 固定点 PASS + 双 linter GATE PASS)** —— **真零 codegen 场景**完全兑现(`git diff --stat HEAD -- bootstrap/ lib/` = 空)— D130 SSoT + D131 谓词层第二次自动 cover 假设命中 confirmed,对照 -inner 子档(commit 74ddc48)首次部分命中需 D131 升根
 - D067 物理 D 文档不存在(`ls docs/3-decisions/D067*.md` = No such file),SSoT 在 memory `project_null_safety_design.md` + bootstrap/checker `check_stmts.ss:57/218/325` + `check_narrow.ss:12-26`;本子档**显式标 D067 概念锚不创新死链 markdown link**(feedback `feedback_user_literal_vs_d_ssot.md` 引用前 ls 真身防虚锚);父档既有 `[D067 null safety](../3-decisions/D067-null-safety.md)` 死链沿用 issue 层惯例(d_doc_index_linter scope 不含 docs/4-issues/),本子档不主动修父档死链(out of scope)
 - D123 §247 Phase 4 §第二支柱已 Decided + 第八轮 Done(commit 74ddc48),本子档执行不再辨析
 - D129 §94 @RequestBody 域含嵌套含 nullable 已 Decided,本子档接续 nullable 维度向 outer 容器扩展

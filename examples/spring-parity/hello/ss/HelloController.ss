@@ -91,6 +91,16 @@ class OrderTagsMap {
     items: Map<string, Tag?>
 }
 
+class OrderTagsArrOpt {
+    customer: string
+    tags: Array<Tag>?
+}
+
+class OrderTagsMapOpt {
+    customer: string
+    items: Map<string, Tag>?
+}
+
 class BigOrder {
     customer: string
     iaGroups: Map<string, Array<int>>
@@ -338,6 +348,32 @@ class HelloController {
             i = i + 1
         }
         return "customer=" + order.customer + ",items=" + itemCount + ",nulls=" + nullCount
+    }
+
+    // I021-requestbody-nested-optional-container(D130 SSoT + D131 谓词层第二次自动 cover) — 容器自身
+    //   nullable user class 集合反序列化:Array<Tag>?(`tags`)/ Map<string, Tag>?(`items`)。enterprise
+    //   REST API PATCH 半更新 / DTO 可选集合字段高频形态;narrow 走 `let tags = order.tags` IDENT 形态
+    //   (D067 现状 extractNullCheckVar 限 IDENT,member access narrow 留 D067 子档);spring-parity
+    //   smoke 仅消耗 customer + length/size if non-null(避 Tag toString 跨语言格式差异);3 场景对齐
+    //   Java Spring(present / null / 字段缺失 — Jackson 默认 List<Tag>/Map<String,Tag> 字段 nullable);
+    //   full 7 case cover 在 tests/phase5/i021_requestbody_nested_optional_container.ss(本测试文件
+    //   内闭环不 spring-parity 出口)。
+    @PostMapping(path = "/orders/tags-opt")
+    function createOrderTagsArrOpt(@RequestBody order: OrderTagsArrOpt): string {
+        let tags = order.tags
+        if (tags != null) {
+            return "customer=" + order.customer + ",tags=" + tags.length()
+        }
+        return "customer=" + order.customer + ",no-tags"
+    }
+
+    @PostMapping(path = "/orders/items-opt")
+    function createOrderTagsMapOpt(@RequestBody order: OrderTagsMapOpt): string {
+        let items = order.items
+        if (items != null) {
+            return "customer=" + order.customer + ",items=" + items.size()
+        }
+        return "customer=" + order.customer + ",no-items"
     }
 
     @GetMapping(path = "/agent")
