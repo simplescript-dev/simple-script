@@ -51,6 +51,32 @@ class OrderMapArrOpt {
     lists: Map<string, Array<Tag>>?
 }
 
+// D132 §10 三轴自动 cover —— 轴 A N=3 USHR + outer ` + 轴 B N=2 任意 M 层 nullable
+class OrderCubeOpt {
+    customer: string
+    cube: Array<Array<Array<Tag>>>?
+}
+
+class OrderTriCubeOpt {
+    customer: string
+    cube: Map<string, Map<string, Map<string, Tag>>>?
+}
+
+class OrderTagsArrTripleOpt {
+    customer: string
+    tags: Array<Array<Tag?>?>?
+}
+
+class OrderArrMapTripleOpt {
+    customer: string
+    entries: Array<Map<string, Tag?>>?
+}
+
+class OrderMapArrTripleOpt {
+    customer: string
+    lists: Map<string, Array<Tag?>?>?
+}
+
 @RestController
 class OrderTagsArrDeepOptCtl {
     @PostMapping(path = "/orders/tags-deep-opt")
@@ -177,6 +203,77 @@ class OrderMapArrOptCtl {
                 i = i + 1
             }
             return "customer=" + order.customer + ",total=" + total
+        }
+        return "customer=" + order.customer + ",no-lists"
+    }
+}
+
+@RestController
+class OrderCubeOptCtl {
+    @PostMapping(path = "/orders/cube-opt")
+    function createOrderCubeOpt(@RequestBody order: OrderCubeOpt): string {
+        let c = order.cube
+        if (c != null) {
+            let total = 0
+            let i = 0
+            while (i < c.length()) {
+                let plane = c[i]
+                let j = 0
+                while (j < plane.length()) {
+                    total = total + plane[j].length()
+                    j = j + 1
+                }
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",total=" + total
+        }
+        return "customer=" + order.customer + ",no-cube"
+    }
+}
+
+@RestController
+class OrderTriCubeOptCtl {
+    @PostMapping(path = "/orders/tricube-opt")
+    function createOrderTriCubeOpt(@RequestBody order: OrderTriCubeOpt): string {
+        let c = order.cube
+        if (c != null) {
+            return "customer=" + order.customer + ",size=" + c.size()
+        }
+        return "customer=" + order.customer + ",no-cube"
+    }
+}
+
+@RestController
+class OrderTagsArrTripleOptCtl {
+    @PostMapping(path = "/orders/tags-triple-opt")
+    function createOrderTagsArrTripleOpt(@RequestBody order: OrderTagsArrTripleOpt): string {
+        let t = order.tags
+        if (t != null) {
+            return "customer=" + order.customer + ",len=" + t.length()
+        }
+        return "customer=" + order.customer + ",no-tags"
+    }
+}
+
+@RestController
+class OrderArrMapTripleOptCtl {
+    @PostMapping(path = "/orders/entries-triple-opt")
+    function createOrderArrMapTripleOpt(@RequestBody order: OrderArrMapTripleOpt): string {
+        let e = order.entries
+        if (e != null) {
+            return "customer=" + order.customer + ",len=" + e.length()
+        }
+        return "customer=" + order.customer + ",no-entries"
+    }
+}
+
+@RestController
+class OrderMapArrTripleOptCtl {
+    @PostMapping(path = "/orders/lists-triple-opt")
+    function createOrderMapArrTripleOpt(@RequestBody order: OrderMapArrTripleOpt): string {
+        let l = order.lists
+        if (l != null) {
+            return "customer=" + order.customer + ",size=" + l.size()
         }
         return "customer=" + order.customer + ",no-lists"
     }
@@ -356,5 +453,91 @@ function main() {
 
             i = i + 1
         }
+    })
+
+    test("I021-deep-optional ⑩ D132 §10 axis A — N=3 USHR Array<Array<Array<Tag>>>? present 三层 + outer null/missing", () => {
+        let req1: Map<string, string> = new Map()
+        req1.set("path", "/orders/cube-opt")
+        req1.set("method", "POST")
+        req1.set("body", "{\"customer\":\"alice\",\"cube\":[[[{\"name\":\"a\"},{\"name\":\"b\"}]],[[{\"name\":\"c\"}]]]}")
+        assertEqual(dispatchBody(dispatch(req1)), "customer=alice,total=3")
+
+        let req2: Map<string, string> = new Map()
+        req2.set("path", "/orders/cube-opt")
+        req2.set("method", "POST")
+        req2.set("body", "{\"customer\":\"bob\",\"cube\":null}")
+        assertEqual(dispatchBody(dispatch(req2)), "customer=bob,no-cube")
+
+        let req3: Map<string, string> = new Map()
+        req3.set("path", "/orders/cube-opt")
+        req3.set("method", "POST")
+        req3.set("body", "{\"customer\":\"carol\"}")
+        assertEqual(dispatchBody(dispatch(req3)), "customer=carol,no-cube")
+    })
+
+    test("I021-deep-optional ⑪ D132 §10 axis A — N=3 Map<string, Map<string, Map<string, Tag>>>? present 三层 + outer null/missing", () => {
+        let req1: Map<string, string> = new Map()
+        req1.set("path", "/orders/tricube-opt")
+        req1.set("method", "POST")
+        req1.set("body", "{\"customer\":\"dave\",\"cube\":{\"k1\":{\"k2\":{\"k3\":{\"name\":\"x\"}}}}}")
+        assertEqual(dispatchBody(dispatch(req1)), "customer=dave,size=1")
+
+        let req2: Map<string, string> = new Map()
+        req2.set("path", "/orders/tricube-opt")
+        req2.set("method", "POST")
+        req2.set("body", "{\"customer\":\"eve\",\"cube\":null}")
+        assertEqual(dispatchBody(dispatch(req2)), "customer=eve,no-cube")
+
+        let req3: Map<string, string> = new Map()
+        req3.set("path", "/orders/tricube-opt")
+        req3.set("method", "POST")
+        req3.set("body", "{\"customer\":\"frank\"}")
+        assertEqual(dispatchBody(dispatch(req3)), "customer=frank,no-cube")
+    })
+
+    test("I021-deep-optional ⑫ D132 §10 axis B — N=2 三 ? Array<Array<Tag?>?>? present 中外内三层 nullable + outer null/missing", () => {
+        let req1: Map<string, string> = new Map()
+        req1.set("path", "/orders/tags-triple-opt")
+        req1.set("method", "POST")
+        req1.set("body", "{\"customer\":\"grace\",\"tags\":[[{\"name\":\"a\"},null],null,[{\"name\":\"c\"}]]}")
+        assertEqual(dispatchBody(dispatch(req1)), "customer=grace,len=3")
+
+        let req2: Map<string, string> = new Map()
+        req2.set("path", "/orders/tags-triple-opt")
+        req2.set("method", "POST")
+        req2.set("body", "{\"customer\":\"henry\",\"tags\":null}")
+        assertEqual(dispatchBody(dispatch(req2)), "customer=henry,no-tags")
+
+        let req3: Map<string, string> = new Map()
+        req3.set("path", "/orders/tags-triple-opt")
+        req3.set("method", "POST")
+        req3.set("body", "{\"customer\":\"isaac\"}")
+        assertEqual(dispatchBody(dispatch(req3)), "customer=isaac,no-tags")
+    })
+
+    test("I021-deep-optional ⑬ D132 §10 axis B 混合 — Array<Map<string, Tag?>>? + Map<string, Array<Tag?>?>? 跨族三层 nullable", () => {
+        let req1: Map<string, string> = new Map()
+        req1.set("path", "/orders/entries-triple-opt")
+        req1.set("method", "POST")
+        req1.set("body", "{\"customer\":\"jane\",\"entries\":[{\"k1\":{\"name\":\"a\"},\"k2\":null},{\"k3\":{\"name\":\"c\"}}]}")
+        assertEqual(dispatchBody(dispatch(req1)), "customer=jane,len=2")
+
+        let req2: Map<string, string> = new Map()
+        req2.set("path", "/orders/entries-triple-opt")
+        req2.set("method", "POST")
+        req2.set("body", "{\"customer\":\"kate\",\"entries\":null}")
+        assertEqual(dispatchBody(dispatch(req2)), "customer=kate,no-entries")
+
+        let req3: Map<string, string> = new Map()
+        req3.set("path", "/orders/lists-triple-opt")
+        req3.set("method", "POST")
+        req3.set("body", "{\"customer\":\"leo\",\"lists\":{\"a\":[{\"name\":\"x\"},null],\"b\":null}}")
+        assertEqual(dispatchBody(dispatch(req3)), "customer=leo,size=2")
+
+        let req4: Map<string, string> = new Map()
+        req4.set("path", "/orders/lists-triple-opt")
+        req4.set("method", "POST")
+        req4.set("body", "{\"customer\":\"mike\"}")
+        assertEqual(dispatchBody(dispatch(req4)), "customer=mike,no-lists")
     })
 }

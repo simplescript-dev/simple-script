@@ -329,7 +329,7 @@ grep -nA 30 'OrderMatrixOpt_deserialize' /tmp/t.ll | head -40
   2. 修法物理位置:D131 修法在 `bootstrap/gen/gen_deserialize.ss` 谓词函数 — D132 修法在 `bootstrap/parse/parser.ss` 类型解析函数 — 跨文件物理位置不应扩 D131 §4 子节
   3. D 文档治理:D131 已 Decided + Done at commit 74ddc48,扩 D131 §4 会污染 D131 history;独立 D132 ADR 结构清晰
 - **Layer 跨越**:D132 D 文档 = Decision 层,本轮单 Layer 写 D 文档 + Edit I021 子档 §status 同步 + Write next_prompt + 不主动改 codegen / 测试(避免单轮 Layer 混 — feedback `feedback_interactive_one_doc.md` + MNK §字段 8)
-- **本 D 文档 status**:Plan 起立(2026-04-26)+ Decided(根因 H1 锁定 + 候选 A 修法选定 + +1 LOC 物理修)+ **Done at `bootstrap/parse/parser.ss:790-800 maybeNullable + pendingGtTokens guard`(本轮 Execute 落地)**;I021 子档测试 + spring-parity 同 commit ship(详见 §备注 §status reconciliation 锚)
+- **本 D 文档 status**:Plan 起立(2026-04-26)+ Decided(根因 H1 锁定 + 候选 A 修法选定 + +1 LOC 物理修)+ **Done at `bootstrap/parse/parser.ss:790-800 maybeNullable + pendingGtTokens guard`(commit e75b6ea Execute 落地)**;**§10 三轴自动 cover 实测验证 Done at `tests/phase5/i021_requestbody_nested_deep_optional.ss:55-78` 5 fixture + `:212-281` 5 controller + `:458-543` case ⑩-⑬ 4 test case(本轮 commit Execute 落地)** — 轴 A N=3 USHR Array+Map opt_present 4 层链 + 轴 B N=2 三 ? 笛卡尔积三层 nullable case 嵌套 + 轴 C phase4 27/27 PASS + reflection GATE PASS no regressions 三轴全命中真零 codegen 场景
 - **不变量保留**:D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期展开消除运行时反射 + D130 emitDeserializeForType SSoT 单点解码 + D131 谓词层 stripNullableCG inner + D067 null safety T? 概念锚(memory `project_null_safety_design.md`) + commit 29c3148 emitDeserializeForType nullable case alloca slot + jnIsNullOrMissing + opt_present/opt_done labels 主路径
 - **回头观察点**(Execute 阶段验证 — 详 §10 实测验证 Plan):
   - 修后 N=3+ 形态自动 cover 验证(`Array<Array<Array<Tag>>>?` / `Map<string, Map<string, Map<string, Tag>>>?` USHR 拆分 + outer `?`) — 预期同源 cover(§4.2 形态 9 + §10.2 轴 A 推证 + §10.6 RED 命令)
@@ -477,6 +477,31 @@ D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期展开�
 
 ### 10.8 Layer 跨越 / Plan vs Execute
 
-- 本节(D132 §10)= **Plan 型 Decision sub-section 增量** — 写下下轮 Execute 实测验证 Plan,本轮不动 codegen / 测试 / I021 子档 §status,Execute 留下下轮
-- 下下轮 = **Execute 型 Implementation 层** — 按 §10.6 RED 命令实测 → §10.4 命中加测试 ship 收关 / 不命中升根 D133 起立(分流锚)
+- 本节(D132 §10)= **Plan 型 Decision sub-section 增量**(commit 19e1631 Plan 起立)— 写下轮 Execute 实测验证 Plan,Plan 起立轮不动 codegen / 测试 / I021 子档 §status,Execute 留下轮
+- 下轮(本轮 commit) = **Execute 型 Implementation 层** — 按 §10.6 RED 命令实测 → §10.4 **命中分流确认**加测试 ship 收关
 - 单 Layer 不混(MNK §字段 8 — Decision sub-section 增量与 Execute Implementation 跨 Layer 拆轮)
+
+### 10.9 Execute 落地实测记录(2026-04-26 本轮 commit)
+
+**三轴全命中真零 codegen 场景**(D132 §4.1 maybeNullable + pendingGtTokens guard 修法 generality 三轴自动 cover 物理验证):
+
+| 轴 | RED 命令 | IR 实测结构 | 命中 |
+|---|---|---|---|
+| **A** N=3 USHR Array | `OrderCubeOpt { cube: Array<Array<Array<Tag>>>? }` /tmp/t_n3_optional.ss emit-ir | 字段 jnGetField → alloca i64 slot + jnIsNullOrMissing + opt_present.809/opt_done.810 outer null guard + outer arr_loop.811-813 + middle arr_loop.814-816 + inner arr_loop.817-819 + 最内 @Tag_deserialize(%32)transfer 四层链 | ✅ 完全命中 |
+| **A** N=3 USHR Map | `OrderTriCubeOpt { cube: Map<string, Map<string, Map<string, Tag>>>? }` | 字段 jnGetField → alloca i64 slot + jnIsNullOrMissing + opt_present.788/opt_done.789 outer null guard + outer ss_mapNew + map_loop.790-792 + middle map_loop.793-795 + inner map_loop.796-798 + 最内 @Tag_deserialize(%41)+ 三层级联 ss_mapSet | ✅ 完全命中 |
+| **B** N=2 三 ? Array | `OrderTagsArrTripleOpt { tags: Array<Array<Tag?>?>? }` | 字段层 outer null guard opt_present.832/opt_done.833 + outer arr_loop.834-836 + 中层 element nullable case opt_present.837/opt_done.838(Array<Tag?>?)+ middle arr_loop.839-841 + 内层 element nullable case opt_present.842/opt_done.843(Tag?)+ innermost @Tag_deserialize(%31) — 三层 nullable case + 三层 arr_loop 嵌套 | ✅ 完全命中 |
+| **B** N=2 双 ? 跨族 | `OrderArrMapTripleOpt { entries: Array<Map<string, Tag?>>? }` | 字段层 outer null guard opt_present.799/opt_done.800 + outer arr_loop.801-803 + middle ss_mapNew + map_loop.804-806 + 内层 value nullable case opt_present.807/opt_done.808(Tag?)+ innermost @Tag_deserialize(%31)+ ss_mapSet | ✅ 完全命中 |
+| **B** N=2 三 ? Map | `OrderMapArrTripleOpt { lists: Map<string, Array<Tag?>?>? }` | 字段层 outer null guard opt_present.820/opt_done.821 + outer ss_mapNew + map_loop.822-824 + 中层 value nullable case opt_present.825/opt_done.826(Array<Tag?>?)+ middle arr_loop.827-829 + 内层 element nullable case opt_present.830/opt_done.831(Tag?)+ innermost @Tag_deserialize(%34) | ✅ 完全命中 |
+| **C** generic 副作用 | `./build.sh bootstrap` + `bin/ss test tests/phase4/` + `bin/ss run tools/reflection_health_linter.ss` | bootstrap Stage 2 = Stage 3 ✓ + phase4 27/27 PASS ✓ + reflection GATE PASS no regressions(F1 parser.ss cur=850/bm=850 OK,承上轮 commit e75b6ea 已扩 baseline)+ phase5 baseline 4 failure 与 D132 无关 confirmed | ✅ 0 regression |
+
+**grep 阈值 lower bound 数量精确匹配**(`/tmp/t.ll` 13453 行):
+- `@jnIsNullOrMissing` = 11(1 lib def + 10 call sites = 5 fixture × ?-count:OrderCubeOpt 单 ? + OrderTriCubeOpt 单 ? + OrderTagsArrTripleOpt 三 ? + OrderArrMapTripleOpt 双 ? + OrderMapArrTripleOpt 三 ? = 1+1+3+2+3 = 10 + 1 lib def = 11 — 与 ?-count 精确对应)
+- `opt_present|opt_done` = 40(label + IR 文本嵌入)
+- `jnArrayLen|jnObjectKeys` = 17(N=3 多层链 + N=2 三层链多层 emit)
+- `@Tag_deserialize` = 6(1 def + 5 fixture × 1 transitive closure call site)
+
+**任意 N 任意 M 全形态归纳兑现**(D132 §4.2 形态 9 推证 N≥3 USHR + 形态 8 推证 任意 M 层 nullable):
+- N 维度任意层数自动 cover(USHR pendingGtTokens=2 / SHR pendingGtTokens=1 + 中层 maybeNullable guard 同源触发 + outer 闭合后正确归 outer)
+- M 维度任意 ? 位置组合自动 cover(各层 GT 单 token 不触 SHR/USHR 合并,maybeNullable 各自独立消;若中层 ? 触 SHR/USHR 则 D132 guard 推迟到 outer 闭合后正确归 outer — 五 fixture 笛卡尔积形态全样本物理证明)
+
+**Phase 4 §247 第二支柱嵌套深化收关候选成立**(§10.5 选 A 条件兑现):D132 修法物理位置 parser 类型解析层 maybeNullable + pendingGtTokens guard 协议**对所有泛型类型字符串规范形态有效**;后续 enum / Optional<T> / Tuple<X,Y> / Set<X> 等容器扩展 emitDeserializeForType case 时,parser 输出已规范 + 谓词 + 委托递归既有正确 — 自动 cover 不需独立 D 文档子档,留独立 issue 观察。

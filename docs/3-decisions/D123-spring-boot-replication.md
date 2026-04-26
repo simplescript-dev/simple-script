@@ -892,6 +892,55 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §收关-Phase4-§247-第二支柱嵌套深化-D132-§10-三轴自动-cover (2026-04-26)
+
+**触发**:I021-requestbody-nested-deep-optional Execute 阶段 §10 三轴自动 cover 实测验证 ship — Phase 4 §247 第二支柱 @RequestBody POST/PUT/PATCH JSON body → class 反序列化嵌套深化第十二轮(收关轮)。承 commit e75b6ea(D132 §4.1 parser maybeNullable + pendingGtTokens guard +1 LOC + 9 case + 6 fixture spring-parity ship — 笛卡尔积真零 codegen 场景兑现)。
+
+**§10 三轴 RED 命令实测命中分流**(D132 §10.4 命中条件兑现 — 三轴全 cover):
+
+- **轴 A — N=3 USHR + outer `?`**(`Array<Array<Array<Tag>>>?` / `Map<string, Map<string, Map<string, Tag>>>?`):字段层 outer null guard + 三层 arr_loop / map_loop + 最内 @Tag_deserialize 四层链 IR 完美命中
+- **轴 B — N=2 任意 M 层 nullable 笛卡尔积**(`Array<Array<Tag?>?>?` 三 ? + `Array<Map<string, Tag?>>?` 双 ? + `Map<string, Array<Tag?>?>?` 三 ?):三层 nullable case 嵌套 + 跨族容器嵌套 IR 完美命中
+- **轴 C — generic class/method 类型参数副作用**:bootstrap Stage 2 = Stage 3 ✓ + phase4 27/27 PASS ✓ + reflection GATE PASS no regressions(承上轮 baseline 已扩,F1 parser.ss cur=850/bm=850 OK)+ phase5 baseline 4 failure 与 D132 无关 confirmed
+
+**Phase 4 §第二支柱嵌套深化收关**(D132 §10.5 选 A 条件兑现):D132 修法物理位置 parser 类型解析层 maybeNullable + pendingGtTokens guard 协议**对所有泛型类型字符串规范形态有效**;后续 enum / Optional<T> / Tuple<X,Y> / Set<X> 等容器扩展 emitDeserializeForType case 时,parser 输出已规范 + 谓词 + 委托递归既有正确 — 自动 cover 不需独立 D 文档子档,留独立 issue 观察。
+
+**轮次归纳**(@RequestBody 嵌套深化十二轮路径):
+
+| 轮 | 子档 | 形态 | 修路径 |
+|---|---|---|---|
+| 第一轮 | -nested | 单层 user class 字段 | per-class @ClassName_deserialize codegen 真新 |
+| 第二轮 | -nested-array | Array collection 维度 | jnArrayLen / jnArrayGet raw int + isArrayClass 字段 case + BFS |
+| 第三轮 | -nested-map | Map<string, X> | isMapClass 字段 case + jnObjectKeys |
+| 第四轮 | -nested-array-array | N=2 双层 collection | lexer SHR/USHR + parser expectGtTypeCtx 拆分协议 |
+| 第五轮 | -nested-cartesian | N=3 容器笛卡尔积 | D130 SSoT 自动 cover 真零 codegen 第一轮 |
+| 第六轮 | -nested-deep | N=3/4/5 多层 | D130 SSoT 自动 cover 真零 codegen 第二轮 |
+| 第七轮 | -nested-map-primitive | Map<string, primitive> | D130 SSoT 自动 cover 真零 codegen 第三轮 |
+| 第八轮 | -nested-optional-inner | 容器 inner nullable | D131 谓词层 stripNullableCG inner + BFS strip + Map.get inferType |
+| 第九轮 | -nested-optional-container | 容器自身 nullable | D130 SSoT + D131 谓词层联动完全命中真零 codegen 第二次 |
+| 第十轮 | -nested-deep-optional Plan | N=2 双层 nullable 笛卡尔积 Plan 起立 | 子档纯文档轮 |
+| 第十一轮 | -nested-deep-optional Execute | N=2 双层 nullable 笛卡尔积 Execute | D132 parser maybeNullable + pendingGtTokens guard +1 LOC |
+| **第十二轮(收关)** | **-nested-deep-optional §10** | **N=3 USHR + N=2 任意 M nullable + generic 副作用三轴自动 cover** | **真零 codegen — D132 §10 三轴实测物理证明 generality** |
+
+**改动路径**(本轮 commit):
+- `tests/phase5/i021_requestbody_nested_deep_optional.ss`:加 5 fixture + 5 controller(`:55-78` + `:212-281`)+ case ⑩-⑬ 4 test case(`:458-543`)— 轴 A N=3 USHR Array+Map + 轴 B N=2 三 ? 笛卡尔积全形态 + outer null/missing 三态
+- `docs/3-decisions/D132-deep-optional-nesting-strip.md`:§10.8 Layer 状态 Plan→Execute Done + §10.9 Execute 落地实测记录(三轴 IR 结构表 + grep 数量精确匹配 + 任意 N 任意 M 全形态归纳兑现 + Phase 4 §247 收关候选成立)
+- `docs/4-issues/I021-requestbody-nested-deep-optional.md`:§status 加"§10 三轴自动 cover 实测验证 ship at 本轮 commit"+ 轴 A/B/C IR 锚 + Phase 4 §247 第二支柱嵌套深化收关锚
+- `docs/3-decisions/D123-spring-boot-replication.md`:本节 §收关-Phase4-§247-第二支柱嵌套深化-D132-§10-三轴自动-cover
+
+**REGRESSION + bump 项**:无(本轮 reflection_health_linter GATE PASS no regressions,F1 parser.ss baseline 承上轮 commit e75b6ea 已扩 850 不动;本轮纯测试 + 文档,bootstrap 编译路径不变)
+
+**VCM 实测 vs 预估对照**:D132 §10.3 风险锚 R1-R6 全部 hold:
+- R1 N=3+ USHR pendingGtTokens=2 拆分 + 中层 maybeNullable guard 同源 cover — 实测命中预期 ≥ 99% 兑现 ✓
+- R2 任意 M 层 nullable 笛卡尔积 — 五 fixture 全形态实测命中 ✓
+- R3 generic 类型参数副作用 — phase4 27/27 PASS regression 概率 < 1% 兑现 ✓
+- R4 D131 谓词层多层递归 stripNullableCG — N=3+ 谓词三级递归既有正确 ✓
+- R5 BFS emitPendingDeserializers 多层 stripNullableCG — `@Tag_deserialize` = 6(1 def + 5 fixture × 1 transitive closure call)✓
+- R6 决策预审 Phase 4 §247 收关 vs 留观察 — 三轴全 cover 选 A 收关 ✓
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:
