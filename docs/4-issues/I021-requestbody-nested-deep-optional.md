@@ -350,7 +350,7 @@ grep -cE '@Tag_deserialize' /tmp/t.ll                            # = 7 (1 def + 
 - **Plan 起立 + Execute 第一步实测验证 部分破裂 confirmed**(commit 7e3407b — emit-ir 4 条 grep 数量 PASS + IR 结构 form 1+2 双 `?` 完全命中 + form 3-6 单 `?` + N=2 嵌套结构层位漂移)
 - **D132 起立锁定根因**(本轮 commit — `docs/3-decisions/D132-deep-optional-nesting-strip.md`):根因 H1 物理位置 `bootstrap/parse/parser.ss:790-796 maybeNullable` 缺 pendingGtTokens guard,SHR/USHR 拆分中间状态 inner maybeNullable 错位消耗 outer `?` token 致类型字符串错位为 `Array<Array<Tag>?>` 而非 `Array<Array<Tag>>?`;修法选定候选 A — `if (pendingGtTokens > 0) { return baseType }` +1 LOC 物理 surgical 修;任意 N×M nullable + 嵌套递归同构剥皮全形态自动 cover(§4.2 10 形态推证)
 - **Decided**(本子档 v0 部分):D132 锁定后 Execute 落地路径回归本子档 — form 1+2 双 `?` 命中(D131 谓词层既有正确)+ form 3-6 单 `?` + N=2 嵌套修后命中(D132 parser maybeNullable 修)— **笛卡尔积真零 codegen 场景**(承 -container 首次完全命中模式)+ 一并 ship 同 commit
-- **Done at**:无(本轮 + commit 7e3407b 纯文档轮 + D132 起立轮,`git diff --stat HEAD~2 HEAD -- bootstrap/ lib/` = 空);Execute 落地留 D132 GREEN 后下下轮(parser.ss +1 LOC + 8-10 case 测试 + spring-parity 6 fixture 同 commit)
+- **Done at**:`bootstrap/parse/parser.ss:790-800 maybeNullable + pendingGtTokens guard`(D132 §4.1 +1 LOC 物理 surgical 修)+ `tests/phase5/i021_requestbody_nested_deep_optional.ss`(9 case 全 PASS — 笛卡尔积 6 fixture × {present / outer null / outer missing / inner null} + raw HTTP smoke + RC stress 50 次循环)+ `examples/spring-parity/hello/ss/HelloController.ss` + `examples/spring-parity/hello/java/src/main/java/hello/HelloController.java`(6 fixture + 6 endpoint Java oracle 对称)— 一并 ship 同 commit;笛卡尔积**真零 codegen 场景**(D130 SSoT + D131 谓词层联动设计意图第三次自动 cover 兑现 — `git diff --stat HEAD -- bootstrap/gen/ lib/` = 空,parser 修属类型解析层非 codegen 层)
 
 ## 备注
 

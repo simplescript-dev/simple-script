@@ -329,7 +329,7 @@ grep -nA 30 'OrderMatrixOpt_deserialize' /tmp/t.ll | head -40
   2. 修法物理位置:D131 修法在 `bootstrap/gen/gen_deserialize.ss` 谓词函数 — D132 修法在 `bootstrap/parse/parser.ss` 类型解析函数 — 跨文件物理位置不应扩 D131 §4 子节
   3. D 文档治理:D131 已 Decided + Done at commit 74ddc48,扩 D131 §4 会污染 D131 history;独立 D132 ADR 结构清晰
 - **Layer 跨越**:D132 D 文档 = Decision 层,本轮单 Layer 写 D 文档 + Edit I021 子档 §status 同步 + Write next_prompt + 不主动改 codegen / 测试(避免单轮 Layer 混 — feedback `feedback_interactive_one_doc.md` + MNK §字段 8)
-- **本 D 文档 status**:Plan 起立(2026-04-26) + Decided(根因 H1 锁定 + 候选 A 修法选定 + +1 LOC 物理修);Done at 留下下轮(`bootstrap/parse/parser.ss:790-796 maybeNullable + pendingGtTokens guard` Execute 落地 + I021 子档测试 + spring-parity 同 commit)
+- **本 D 文档 status**:Plan 起立(2026-04-26)+ Decided(根因 H1 锁定 + 候选 A 修法选定 + +1 LOC 物理修)+ **Done at `bootstrap/parse/parser.ss:790-800 maybeNullable + pendingGtTokens guard`(本轮 Execute 落地)**;I021 子档测试 + spring-parity 同 commit ship(详见 §备注 §status reconciliation 锚)
 - **不变量保留**:D018 ObjectLayout(RC@0 + TypeInfo@1) + D022 clone 语义 + D088 编译期展开消除运行时反射 + D130 emitDeserializeForType SSoT 单点解码 + D131 谓词层 stripNullableCG inner + D067 null safety T? 概念锚(memory `project_null_safety_design.md`) + commit 29c3148 emitDeserializeForType nullable case alloca slot + jnIsNullOrMissing + opt_present/opt_done labels 主路径
 - **回头观察点**(Execute 阶段验证):
   - 修后 N=3+ 形态自动 cover 验证(`Array<Array<Array<Tag>>>?` / `Map<string, Map<string, Map<string, Tag>>>?` USHR 拆分 + outer `?`) — 预期同源 cover(§4.2 形态 9)

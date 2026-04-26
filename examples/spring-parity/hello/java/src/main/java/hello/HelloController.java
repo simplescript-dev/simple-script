@@ -114,6 +114,36 @@ class OrderTagsMapOpt {
     public Map<String, Tag> items;
 }
 
+class OrderTagsArrDeepOpt {
+    public String customer;
+    public List<Tag> tags;
+}
+
+class OrderTagsMapDeepOpt {
+    public String customer;
+    public Map<String, Tag> items;
+}
+
+class OrderMatrixOpt {
+    public String customer;
+    public List<List<Tag>> matrix;
+}
+
+class OrderGroupsOpt {
+    public String customer;
+    public Map<String, Map<String, Tag>> groups;
+}
+
+class OrderArrMapOpt {
+    public String customer;
+    public List<Map<String, Tag>> entries;
+}
+
+class OrderMapArrOpt {
+    public String customer;
+    public Map<String, List<Tag>> lists;
+}
+
 class BigOrder {
     public String customer;
     public Map<String, List<Integer>> iaGroups;
@@ -293,6 +323,81 @@ public class HelloController {
             return "customer=" + order.customer + ",items=" + order.items.size();
         }
         return "customer=" + order.customer + ",no-items";
+    }
+
+    // I021-requestbody-nested-deep-optional(D132 + D131 + D130)— N=2 双层 nullable 笛卡尔积容器
+    //   反序列化;Jackson 默认 List<Tag>/Map<String,Tag> 字段 missing/null → null,与 SS Array/Map
+    //   `?` 对称;spring-parity smoke 仅消耗 length/size 计数维度避 Tag 格式跨语言差异。
+    @PostMapping("/orders/tags-deep-opt")
+    public String createOrderTagsArrDeepOpt(@RequestBody OrderTagsArrDeepOpt order) {
+        if (order.tags != null) {
+            int count = 0;
+            int nullCount = 0;
+            for (Tag t : order.tags) {
+                if (t != null) count++;
+                else nullCount++;
+            }
+            return "customer=" + order.customer + ",tags=" + count + ",nulls=" + nullCount;
+        }
+        return "customer=" + order.customer + ",no-tags";
+    }
+
+    @PostMapping("/orders/items-deep-opt")
+    public String createOrderTagsMapDeepOpt(@RequestBody OrderTagsMapDeepOpt order) {
+        if (order.items != null) {
+            int count = 0;
+            int nullCount = 0;
+            for (Tag v : order.items.values()) {
+                if (v != null) count++;
+                else nullCount++;
+            }
+            return "customer=" + order.customer + ",items=" + count + ",nulls=" + nullCount;
+        }
+        return "customer=" + order.customer + ",no-items";
+    }
+
+    @PostMapping("/orders/matrix-opt")
+    public String createOrderMatrixOpt(@RequestBody OrderMatrixOpt order) {
+        if (order.matrix != null) {
+            int total = 0;
+            for (List<Tag> row : order.matrix) total += row.size();
+            return "customer=" + order.customer + ",total=" + total;
+        }
+        return "customer=" + order.customer + ",no-matrix";
+    }
+
+    @PostMapping("/orders/groups-opt")
+    public String createOrderGroupsOpt(@RequestBody OrderGroupsOpt order) {
+        if (order.groups != null) {
+            int total = 0;
+            for (Map<String, Tag> inner : order.groups.values()) {
+                if (inner != null) total += inner.size();
+            }
+            return "customer=" + order.customer + ",total=" + total;
+        }
+        return "customer=" + order.customer + ",no-groups";
+    }
+
+    @PostMapping("/orders/entries-opt")
+    public String createOrderArrMapOpt(@RequestBody OrderArrMapOpt order) {
+        if (order.entries != null) {
+            int total = 0;
+            for (Map<String, Tag> m : order.entries) total += m.size();
+            return "customer=" + order.customer + ",total=" + total;
+        }
+        return "customer=" + order.customer + ",no-entries";
+    }
+
+    @PostMapping("/orders/lists-opt")
+    public String createOrderMapArrOpt(@RequestBody OrderMapArrOpt order) {
+        if (order.lists != null) {
+            int total = 0;
+            for (List<Tag> inner : order.lists.values()) {
+                if (inner != null) total += inner.size();
+            }
+            return "customer=" + order.customer + ",total=" + total;
+        }
+        return "customer=" + order.customer + ",no-lists";
     }
 
     @GetMapping("/agent")

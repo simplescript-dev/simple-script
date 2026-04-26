@@ -787,7 +787,12 @@ function parseParams(): string {
 }
 
 // Check for nullable suffix '?' after a parsed type (D067)
+// D132: SHR/USHR 拆分中间状态 (pendingGtTokens > 0) outer 容器尚未闭合,cursor 上的
+// QUESTION 属 outer 不属当前 baseType。inner 必须留给 outer maybeNullable 在 outer
+// expectGtTypeCtx pendingGtTokens 递减归零后消耗,否则 `Array<Array<Tag>>?` 类型字符串
+// 错位为 `Array<Array<Tag>?>`(outer `?` 下沉到 inner element)。
 function maybeNullable(baseType: string): string {
+    if (pendingGtTokens > 0) { return baseType }
     if (curKind() == "QUESTION") {
         pAdvance()
         return baseType + "?"

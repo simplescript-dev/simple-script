@@ -101,6 +101,36 @@ class OrderTagsMapOpt {
     items: Map<string, Tag>?
 }
 
+class OrderTagsArrDeepOpt {
+    customer: string
+    tags: Array<Tag?>?
+}
+
+class OrderTagsMapDeepOpt {
+    customer: string
+    items: Map<string, Tag?>?
+}
+
+class OrderMatrixOpt {
+    customer: string
+    matrix: Array<Array<Tag>>?
+}
+
+class OrderGroupsOpt {
+    customer: string
+    groups: Map<string, Map<string, Tag>>?
+}
+
+class OrderArrMapOpt {
+    customer: string
+    entries: Array<Map<string, Tag>>?
+}
+
+class OrderMapArrOpt {
+    customer: string
+    lists: Map<string, Array<Tag>>?
+}
+
 class BigOrder {
     customer: string
     iaGroups: Map<string, Array<int>>
@@ -374,6 +404,112 @@ class HelloController {
             return "customer=" + order.customer + ",items=" + items.size()
         }
         return "customer=" + order.customer + ",no-items"
+    }
+
+    // I021-requestbody-nested-deep-optional(D132 + D131 + D130)— N=2 双层 nullable 笛卡尔积容器
+    //   反序列化:`Array<Tag?>?` / `Map<string, Tag?>?` 双 `?` form 1/2 + `Array<Array<Tag>>?` /
+    //   `Map<string, Map<string, Tag>>?` / `Array<Map<string, Tag>>?` / `Map<string, Array<Tag>>?`
+    //   单 `?` + N=2 嵌套 form 3-6;spring-parity smoke 仅消耗 length/size 计数维度避 Tag 跨语言
+    //   toString 差异;full 9 case cover 在 tests/phase5/i021_requestbody_nested_deep_optional.ss。
+    @PostMapping(path = "/orders/tags-deep-opt")
+    function createOrderTagsArrDeepOpt(@RequestBody order: OrderTagsArrDeepOpt): string {
+        let tags = order.tags
+        if (tags != null) {
+            let count = 0
+            let nullCount = 0
+            let i = 0
+            while (i < tags.length()) {
+                let t = tags[i]
+                if (t != null) { count = count + 1 } else { nullCount = nullCount + 1 }
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",tags=" + count + ",nulls=" + nullCount
+        }
+        return "customer=" + order.customer + ",no-tags"
+    }
+
+    @PostMapping(path = "/orders/items-deep-opt")
+    function createOrderTagsMapDeepOpt(@RequestBody order: OrderTagsMapDeepOpt): string {
+        let items = order.items
+        if (items != null) {
+            let count = 0
+            let nullCount = 0
+            const keys = items.keys()
+            let i = 0
+            while (i < keys.length()) {
+                let v = items.get(keys[i])
+                if (v != null) { count = count + 1 } else { nullCount = nullCount + 1 }
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",items=" + count + ",nulls=" + nullCount
+        }
+        return "customer=" + order.customer + ",no-items"
+    }
+
+    @PostMapping(path = "/orders/matrix-opt")
+    function createOrderMatrixOpt(@RequestBody order: OrderMatrixOpt): string {
+        let m = order.matrix
+        if (m != null) {
+            let total = 0
+            let i = 0
+            while (i < m.length()) {
+                let row = m[i]
+                total = total + row.length()
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",total=" + total
+        }
+        return "customer=" + order.customer + ",no-matrix"
+    }
+
+    @PostMapping(path = "/orders/groups-opt")
+    function createOrderGroupsOpt(@RequestBody order: OrderGroupsOpt): string {
+        let g = order.groups
+        if (g != null) {
+            let total = 0
+            const keys = g.keys()
+            let i = 0
+            while (i < keys.length()) {
+                let inner = g.get(keys[i])
+                if (inner != null) { total = total + inner.size() }
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",total=" + total
+        }
+        return "customer=" + order.customer + ",no-groups"
+    }
+
+    @PostMapping(path = "/orders/entries-opt")
+    function createOrderArrMapOpt(@RequestBody order: OrderArrMapOpt): string {
+        let e = order.entries
+        if (e != null) {
+            let total = 0
+            let i = 0
+            while (i < e.length()) {
+                let m = e[i]
+                total = total + m.size()
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",total=" + total
+        }
+        return "customer=" + order.customer + ",no-entries"
+    }
+
+    @PostMapping(path = "/orders/lists-opt")
+    function createOrderMapArrOpt(@RequestBody order: OrderMapArrOpt): string {
+        let l = order.lists
+        if (l != null) {
+            let total = 0
+            const keys = l.keys()
+            let i = 0
+            while (i < keys.length()) {
+                let inner = l.get(keys[i])
+                if (inner != null) { total = total + inner.length() }
+                i = i + 1
+            }
+            return "customer=" + order.customer + ",total=" + total
+        }
+        return "customer=" + order.customer + ",no-lists"
     }
 
     @GetMapping(path = "/agent")
