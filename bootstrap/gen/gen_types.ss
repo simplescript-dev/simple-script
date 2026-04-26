@@ -409,12 +409,17 @@ function inferType(id: int): string {
                 return channelElemType(chType)
             }
         }
-        // I019/I020a/I020b/I020c — Map<K,V>.get dispatch by V (extractMapValueType returns "" for non-Map).
+        // I019/I020a/I020b/I020c/I021-cartesian — Map<K,V>.get dispatch by V
+        // (extractMapValueType returns "" for non-Map). I021-cartesian 扩 bool / Array<X> /
+        // Map<K2,V2> 三路:V=非 scalar 容器或 bool 时返 raw V 类型(D130 SSoT 已用 ptrtoint
+        // 保证 i64 编码统一,调用方按 V 容器类型走 inttoptr to ptr + 后续容器 method)。
         if (method == "get") {
             const mgV = extractMapValueType(inferType(mcObj))
             if (mgV == "string") { return "string" }
             if (mgV == "int") { return "int" }
             if (mgV == "double") { return "double" }
+            if (mgV == "bool") { return "bool" }
+            if (mgV.startsWith("Array<") == 1 || mgV.startsWith("Map<") == 1) { return mgV }
             // I020c — V=class: return "ClassName?" (D067 Kotlin/Dart T? = TS strict V|undefined,
             // miss 路径 ss_mapGet 返 i64 0 → inttoptr 得 ptr null,用户必须 if (u != null) narrow).
             if (mgV != "" && classFields.has(mgV) == 1) { return mgV + "?" }

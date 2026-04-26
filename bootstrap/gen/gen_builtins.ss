@@ -271,8 +271,9 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             emitIR(`  ${r} = call ptr @ss_mapGetString(ptr ${objVal}, ptr ${mkey})`)
             return r
         }
-        if (mapV == "int") {
-            // I020a — V=int: ss_mapGet i64 + trunc; r64 def must precede r32 (LLVM SSA #-order).
+        if (mapV == "int" || mapV == "bool") {
+            // I020a — V=int: ss_mapGet i64 + trunc i32(r64 def must precede r32, LLVM SSA #-order).
+            // I021-cartesian — V=bool 同形(SS bool 编码为 i32,与 int trunc 同模式).
             const r64 = nextReg()
             emitIR(`  ${r64} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
             const r32 = nextReg()
@@ -286,6 +287,17 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             const rd = nextReg()
             emitIR(`  ${rd} = bitcast i64 ${r64} to double`)
             return rd
+        }
+        if (mapV.startsWith("Array<") == 1 || mapV.startsWith("Map<") == 1) {
+            // I021-cartesian — V=Array<X> / V=Map<K2,V2>:ss_mapGet i64 + inttoptr ptr +
+            // emitRetainForType (旧 RC 容器,emitRetainForType 自动分派 ss_rc_retain;
+            // ss_rc_retain 自带 isnull guard,miss 返 ptr null 时 retain no-op).
+            const r64 = nextReg()
+            emitIR(`  ${r64} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
+            const rp = nextReg()
+            emitIR(`  ${rp} = inttoptr i64 ${r64} to ptr`)
+            emitRetainForType(rp, mapV)
+            return rp
         }
         if (mapV != "" && classFields.has(mapV) == 1) {
             // I020c — V=class: ss_mapGet i64 + inttoptr to ptr + emitRetainForType (双 RC 统一分派,

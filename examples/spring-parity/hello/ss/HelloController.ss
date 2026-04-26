@@ -76,6 +76,25 @@ class OrderConfig {
     flags: Map<string, bool>
 }
 
+class BigOrder {
+    customer: string
+    iaGroups: Map<string, Array<int>>
+    saGroups: Map<string, Array<string>>
+    daGroups: Map<string, Array<double>>
+    baGroups: Map<string, Array<bool>>
+    caGroups: Map<string, Array<Tag>>
+    iiMaps: Map<string, Map<string, int>>
+    ssMaps: Map<string, Map<string, string>>
+    ddMaps: Map<string, Map<string, double>>
+    bbMaps: Map<string, Map<string, bool>>
+    ccMaps: Map<string, Map<string, Tag>>
+    iMapList: Array<Map<string, int>>
+    sMapList: Array<Map<string, string>>
+    cMapList: Array<Map<string, Tag>>
+    deepMix: Map<string, Map<string, Array<int>>>
+    deepMixR: Array<Array<Map<string, int>>>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -239,6 +258,17 @@ class HelloController {
         const envS = order.tags.get("env")
         const qty = order.scores.get("qty")
         return "customer=" + order.customer + ",sizes=" + order.tags.size() + "/" + order.scores.size() + "/" + order.prices.size() + "/" + order.flags.size() + ",env=" + envS + ",qty=" + qty
+    }
+
+    // I021-requestbody-nested-cartesian(D130) — 嵌套 collection 笛卡尔积 SSoT 端到端锁定
+    // 15 cell 笛卡尔积:Map<string, Array<X>>×5 + Map<string, Map<string, Y>>×5 +
+    //   Array<Map<string, X>>×3 + N=3 混合×2(Map→Map→Array + Array→Array→Map)。
+    // spring-parity smoke 仅消耗 customer + 16 sizes 维度(避跨语言 double / bool / 嵌套
+    //   toString 格式差异);full 15 cell cover 在 tests/phase5/i021_requestbody_nested_cartesian.ss
+    //   (本测试 BigOrderCtl 内闭环)。
+    @PostMapping(path = "/orders/cartesian")
+    function createBigOrder(@RequestBody order: BigOrder): string {
+        return "customer=" + order.customer + ",sizes=" + order.iaGroups.size() + "/" + order.saGroups.size() + "/" + order.daGroups.size() + "/" + order.baGroups.size() + "/" + order.caGroups.size() + "/" + order.iiMaps.size() + "/" + order.ssMaps.size() + "/" + order.ddMaps.size() + "/" + order.bbMaps.size() + "/" + order.ccMaps.size() + "/" + order.iMapList.length() + "/" + order.sMapList.length() + "/" + order.cMapList.length() + "/" + order.deepMix.size() + "/" + order.deepMixR.length()
     }
 
     @GetMapping(path = "/agent")
