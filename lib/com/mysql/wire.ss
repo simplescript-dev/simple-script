@@ -13,9 +13,9 @@
 import { byteToInt } from "@/lib/binary"
 
 class MysqlPacket {
-    let payload: string = ""
-    let payloadLen: int = 0
-    let seqId: int = 0
+    payload: string
+    payloadLen: int
+    seqId: int
 }
 
 // Reads exactly `len` bytes from fd into a fresh buffer. Buffer is pre-allocated
@@ -34,7 +34,7 @@ function readExactBytes(fd: int, len: int): string {
 // Reads one MySQL packet. Returns MysqlPacket with payload, payloadLen, seqId.
 // On EOF or short read returns a packet with payloadLen = -1 (caller checks).
 function readPacket(fd: int): MysqlPacket {
-    const pkt = new MysqlPacket
+    const pkt = new MysqlPacket("", 0, 0)
     const header = readExactBytes(fd, 4)
     if (header == "") {
         pkt.payloadLen = -1

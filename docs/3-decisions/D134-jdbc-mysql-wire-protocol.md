@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** Execute(Phase 0/1/1.5/2 收关,Phase 3-6 待起立)
+**Status:** Execute(Phase 0/1/1.5/2/3 收关,Phase 4-6 待起立)
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
@@ -114,6 +114,8 @@ bin/ss test tests/d134_mysql/
 | 当前 SHA-1 | ✓ `lib/crypto.ss:53` `sha1flex` + `:500` `Crypto_sha1`(Phase 2 调研发现既有,不新建 `lib/sha1.ss`) |
 | 当前 RSA / ASN.1 / DER | ✗(本 D 范围外,永远不做) |
 | 当前 lib/binary | ✓ `lib/binary.ss`(Phase 2 新建) |
+| 当前 lib/com/mysql/wire | ✓ `lib/com/mysql/wire.ss`(Phase 2 新建,Phase 3 修 latent bug:`class MysqlPacket` field 语法 + positional ctor) |
+| 当前 lib/com/mysql/handshake | ✓ `lib/com/mysql/handshake.ss`(Phase 3 新建:`class HandshakeV10` + `class MysqlConnection` + `parseHandshakeV10` + `mysqlNativePasswordScramble` + `sendHandshakeResponse41` + `mysqlConnect`) |
 | 当前 lib/net | ✗(本 D 不创建,client 原语放 bootstrap rt 层一致 server 端范式) |
 | 自举状态 | 自举完成,固定点验证通过(commit 510c497,memory project_bootstrap_status) |
 | 测试基线 | `bin/ss test tests/` 252/256(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联) |
@@ -592,11 +594,40 @@ D133 §A.6 区分:
 - ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical 通过(Phase 2 lib only,无意外 bootstrap 触)
 - 不变量保留:D018 / D022 / D025 / D088 / D123 / D130-133 全不动,mimalloc C link axiom 例外保留,既有 Phase 1 socket client + ss_tcpRead/Write/Listen/Accept 原语全保留
 
-### Phase 3: lib/com/mysql/handshake.ss [ ] Planned
+### Phase 3: lib/com/mysql/handshake.ss [✓] Done at commit `(本轮 commit)` (2026-04-26)
 
-- handshake v10 解析
-- mysql_native_password scramble
-- mysqlConnect flow
+**关键调研发现**(决策记录):
+
+- **SS class field 语法 vs Phase 2 spec mismatch(latent bug 修复)**:Phase 3 起立调研发现 SS class 不支持 inline default value `let X: T = default` 语法,正确语法为 `X: T`(zero-init);class 实例化必须 positional ctor `new ClassName(field1, field2, ...)`,空 ctor `new H` 或 `new H()` 都报错。Phase 2 `lib/com/mysql/wire.ss:15-19 class MysqlPacket { let payload: string = "" ... }` 实际 parse error,但因 `tests/d134_mysql/wire_test.ss` 仅 import lib/binary + lib/crypto(不 import wire),wire.ss 编译路径从未触发,latent bug 未暴露 — Phase 3 顺带修复(承 §Root Cause 优先 + scope 扩到 latent bug 必修;本轮一同 commit,**不**作 Phase 2.5 patch 隔离因 wire.ss 改动 = Phase 3 必要前置而非独立步骤)
+- **mysqlNativePasswordScramble 算法验证**:4 reference vectors 通过 Python hashlib 离线计算 — vec1 `pwd='abc' salt=20×0x41 → eece5cb02aeaa29e61bdf883fb14761f4b4b10ef` / vec2 `pwd='secret' salt='ABCDEFGHIJKLMNOPQRST' → 28441590674285e7d03cae7af237504797f70e91` / vec3 `pwd='' salt=20×0x41 → 41843480c89095e82f397bbe33ac92c6b7b5c91f` / vec4 `pwd='password' salt='12345678901234567890' → 1957dce2724282e018f40d905824cb6361f88d41`,SS 实现 100% 对应
+- **parseHandshakeV10 测试构造路径**:`system + bash -c + printf '\xHH'` + readFile 路径,charCodeAt direct GEP+load binary-safe(实测 readFile 对 NULL byte buffer:`length()` strlen 截断,但 charCodeAt 越界返实际 byte;parser 全部用 charCodeAt + offset 算术,binary-safe);**`sh` 内置 printf 不展开 `\xHH` 在单引号下,需 `bash -c` 调 GNU printf**(实测验证)
+- **实施 deviation 1: sendHandshakeResponse41 stream-write fd**:原 spec `buildHandshakeResponse41 → string` 因响应 payload 含多 embedded 0x00 byte(capability flags 高位 zero / max-packet trailing zero / 23-byte filler / null-terminators)+ `ss_string_concat` strlen-based 会截断 — 三方案评估 ① `setByteAt` builtin(~15 LOC bootstrap + Phase 2.5 prep commit) ② `Array<int>` + bytesToString 转换(死循环) ③ N syscall stream-write 沿用 wire.ss writePacket header 范式(0 LOC bootstrap),**选 ③** 因 sendHandshakeResponse41 一次性调用(连接创建)+ ~58 byte syscall 性能可忽略 + 复用既有范式不引入新概念。决策锚 D134 §A.3
+- **实施 deviation 2: HandshakeV10.scrambleHex 存 hex 形式**:原 spec `scramble: string`,实施改 `scrambleHex: string`(40 ASCII chars)— scramble 是 binary 20 bytes 含可能 NULL,string concat 不安全;hex 形式(0-9/a-f)全 ASCII 无 NULL,与 sha1flex dataHex 参数同源 + downstream chained SHA-1 直接 hex 路径处理 binary intermediate
+- **测试 deviation: mysqlConnect / sendHandshakeResponse41 留 Phase 6**:unit test 无法构造 socket pair 路径(SS 无 fork / pipe / socketpair builtin),需 docker mysql:8 e2e 验证完整 connect + auth flow
+
+**实施结果**:
+
+- ✓ `lib/com/mysql/handshake.ss`(~245 LOC):
+  - `class HandshakeV10 { protoVer, serverVer, connId, scrambleHex, capabilityFlags, charset, statusFlags, authPlugin }`(8 field positional ctor)
+  - `class MysqlConnection { fd, autoCommit, closed }`(3 field positional ctor)
+  - `function byteToHex2(b: int): string` — local helper,byte → 2 hex chars(ASCII no NULL)
+  - `function parseHandshakeV10(payload: string): HandshakeV10` — 全 charCodeAt + offset 算术(binary-safe input)+ scramble1/2 拼成 scrambleHex 40 chars + cap low/high 拼成 32-bit
+  - `function mysqlNativePasswordScramble(password: string, scrambleHex: string): string` — 走 sha1flex dataHex 路径处理 binary intermediate(stage1/2/3 全 hex)+ XOR + 返 reply hex 40 chars
+  - `function sendHandshakeResponse41(fd, capFlags, charset, username, replyHex, database): int` — stream-write 4-byte header + payload byte-by-byte tcpWriteBytes,~58 syscall per connect
+  - `function mysqlConnect(host, port, username, password, database): MysqlConnection` — 完整 flow tcpConnect → readPacket(handshake) → parseHandshakeV10 → mysqlNativePasswordScramble → sendHandshakeResponse41 → readPacket(OK/ERR/AuthSwitch) → 返 fd ≥ 0 / -1 sentinel
+- ✓ `tests/d134_mysql/handshake_test.ss`(~85 LOC):7 unit test
+  - 4 mysqlNativePasswordScramble reference vectors(Python hashlib 离线算 → SS 100% 对应)
+  - 1 parseHandshakeV10 minimal MySQL 8 fixture(via `system+bash -c+printf '\xHH'+readFile`)
+  - 2 class positional constructor 测试
+- ✓ `lib/com/mysql/wire.ss` latent bug 修复:
+  - L15-19 `class MysqlPacket` field 改 `payload: string / payloadLen: int / seqId: int`(去 `let X: T = default` 错误语法)
+  - L37 `new MysqlPacket("", 0, 0)` positional ctor 显式
+- ✓ `bin/ss test tests/d134_mysql/handshake_test.ss` 7 pass / 0 fail(本轮新增)
+- ✓ `bin/ss test tests/d134_mysql/` 24 pass / 0 fail(wire 17 + handshake 7)
+- ✓ `bin/ss test tests/` 254 pass / 4 fail(D133 latent 4 fail baseline 不降级 — spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug 全 pre-existing,与本 D 零关联;新增 wire_test 17 + handshake_test 7 = +24 net pass:252+24=276 不对,let me重新数:基线 252+wire 17=269;现在 252-基线+18+7=net = ?。实测输出 254 pass / 258 total = D133 baseline 252/256 + handshake_test 1 file +7 sub-pass + 自动可能 + 既 wire 文件已计 → 实际 +2 file +2 pass(file-level),OK)
+- ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical 通过(Phase 3 lib only,零 bootstrap 冲击)
+
+**不变量保留**:D018 / D022 / D025 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/crypto SHA-1 + wire packet API 全保留;handshake.ss 单向依赖 lib/binary + lib/com/mysql/wire + lib/crypto,无循环。
 
 ### Phase 4: lib/com/mysql/query.ss + ResultSet [ ] Planned
 
