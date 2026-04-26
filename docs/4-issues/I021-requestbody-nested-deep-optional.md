@@ -347,9 +347,10 @@ grep -cE '@Tag_deserialize' /tmp/t.ll                            # = 7 (1 def + 
 
 ## status
 
-- **Plan 起立 + Execute 第一步实测验证 部分破裂 confirmed**(本轮 commit — emit-ir 4 条 grep 数量 PASS + IR 结构 form 1+2 双 `?` 完全命中 + form 3-6 单 `?` + N=2 嵌套结构层位漂移)
-- **Decided**(本子档 v0 部分):D130 SSoT + D131 谓词层第三次自动 cover 假设**部分破裂** — form 1+2 双 `?` 形态完全命中真零 codegen 场景对照 -inner 首次部分命中 + -container 首次完全命中;form 3-6 单 `?` + N=2 嵌套形态结构层位漂移转独立 D 文档子决策(D132-deep-optional-nesting-strip 暂名 / 或 D131 §4 边界扩);Execute 落地路径待 D 文档锁定后回归
-- **Done at**:无(本轮纯文档实测验证,`git diff --stat HEAD -- bootstrap/ lib/` = 空)
+- **Plan 起立 + Execute 第一步实测验证 部分破裂 confirmed**(commit 7e3407b — emit-ir 4 条 grep 数量 PASS + IR 结构 form 1+2 双 `?` 完全命中 + form 3-6 单 `?` + N=2 嵌套结构层位漂移)
+- **D132 起立锁定根因**(本轮 commit — `docs/3-decisions/D132-deep-optional-nesting-strip.md`):根因 H1 物理位置 `bootstrap/parse/parser.ss:790-796 maybeNullable` 缺 pendingGtTokens guard,SHR/USHR 拆分中间状态 inner maybeNullable 错位消耗 outer `?` token 致类型字符串错位为 `Array<Array<Tag>?>` 而非 `Array<Array<Tag>>?`;修法选定候选 A — `if (pendingGtTokens > 0) { return baseType }` +1 LOC 物理 surgical 修;任意 N×M nullable + 嵌套递归同构剥皮全形态自动 cover(§4.2 10 形态推证)
+- **Decided**(本子档 v0 部分):D132 锁定后 Execute 落地路径回归本子档 — form 1+2 双 `?` 命中(D131 谓词层既有正确)+ form 3-6 单 `?` + N=2 嵌套修后命中(D132 parser maybeNullable 修)— **笛卡尔积真零 codegen 场景**(承 -container 首次完全命中模式)+ 一并 ship 同 commit
+- **Done at**:无(本轮 + commit 7e3407b 纯文档轮 + D132 起立轮,`git diff --stat HEAD~2 HEAD -- bootstrap/ lib/` = 空);Execute 落地留 D132 GREEN 后下下轮(parser.ss +1 LOC + 8-10 case 测试 + spring-parity 6 fixture 同 commit)
 
 ## 备注
 
