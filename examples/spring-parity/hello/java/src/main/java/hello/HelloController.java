@@ -81,6 +81,14 @@ class OrderMeta {
     public Map<String, Tag> metadata;
 }
 
+class OrderConfig {
+    public String customer;
+    public Map<String, String> tags;
+    public Map<String, Integer> scores;
+    public Map<String, Double> prices;
+    public Map<String, Boolean> flags;
+}
+
 @RestController
 public class HelloController {
     @GetMapping("/hello")
@@ -167,6 +175,17 @@ public class HelloController {
             return "customer=" + order.customer + ",urgent.color=" + urgent.color + ",size=" + order.metadata.size() + ",total=" + totalPriority;
         }
         return "customer=" + order.customer + ",size=" + order.metadata.size() + ",total=" + totalPriority;
+    }
+
+    // I021-requestbody-nested-map-primitive(D130) — Map<string, primitive value> 4 vType
+    // 反序列化 enterprise REST API 高频形态(K8s ConfigMap / Stripe metadata / AWS tags / config
+    // store)。spring-parity smoke 仅消耗 string + int 二路(env / qty)维度,避 double / bool 跨语言
+    // 格式差异;full 4-vType coverage 在 tests/phase5/i021_requestbody_nested_map_primitive.ss。
+    @PostMapping("/orders/config")
+    public String createOrderConfig(@RequestBody OrderConfig order) {
+        String envS = order.tags.getOrDefault("env", "");
+        Integer qty = order.scores.getOrDefault("qty", 0);
+        return "customer=" + order.customer + ",sizes=" + order.tags.size() + "/" + order.scores.size() + "/" + order.prices.size() + "/" + order.flags.size() + ",env=" + envS + ",qty=" + qty;
     }
 
     @GetMapping("/agent")

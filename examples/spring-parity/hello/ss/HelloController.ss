@@ -68,6 +68,14 @@ class OrderMeta {
     metadata: Map<string, Tag>
 }
 
+class OrderConfig {
+    customer: string
+    tags: Map<string, string>
+    scores: Map<string, int>
+    prices: Map<string, double>
+    flags: Map<string, bool>
+}
+
 @RestController
 class HelloController {
     @GetMapping(path = "/hello")
@@ -219,6 +227,18 @@ class HelloController {
             return "customer=" + order.customer + ",urgent.color=" + urgent.color + ",size=" + order.metadata.size() + ",total=" + totalPriority
         }
         return "customer=" + order.customer + ",size=" + order.metadata.size() + ",total=" + totalPriority
+    }
+
+    // I021-requestbody-nested-map-primitive(D130) — Map<string, primitive value> 4 vType
+    // 反序列化 enterprise REST API 高频形态(K8s ConfigMap / Stripe metadata / AWS tags / config
+    // store)。spring-parity smoke 仅消耗 string + int 二路(env / qty)维度避 double / bool 跨语言
+    // ss_double_to_string vs Double.toString 格式差异;全 4 vType cover 在
+    // tests/phase5/i021_requestbody_nested_map_primitive.ss(本测试 OrderConfigCtl 内闭环)。
+    @PostMapping(path = "/orders/config")
+    function createOrderConfig(@RequestBody order: OrderConfig): string {
+        const envS = order.tags.get("env")
+        const qty = order.scores.get("qty")
+        return "customer=" + order.customer + ",sizes=" + order.tags.size() + "/" + order.scores.size() + "/" + order.prices.size() + "/" + order.flags.size() + ",env=" + envS + ",qty=" + qty
     }
 
     @GetMapping(path = "/agent")
