@@ -89,6 +89,11 @@ class OrderConfig {
     public Map<String, Boolean> flags;
 }
 
+class OrderOpt {
+    public String customer;
+    public Address addr;
+}
+
 class BigOrder {
     public String customer;
     public Map<String, List<Integer>> iaGroups;
@@ -213,6 +218,16 @@ public class HelloController {
     @PostMapping("/orders/cartesian")
     public String createBigOrder(@RequestBody BigOrder order) {
         return "customer=" + order.customer + ",sizes=" + order.iaGroups.size() + "/" + order.saGroups.size() + "/" + order.daGroups.size() + "/" + order.baGroups.size() + "/" + order.caGroups.size() + "/" + order.iiMaps.size() + "/" + order.ssMaps.size() + "/" + order.ddMaps.size() + "/" + order.bbMaps.size() + "/" + order.ccMaps.size() + "/" + order.iMapList.size() + "/" + order.sMapList.size() + "/" + order.cMapList.size() + "/" + order.deepMix.size() + "/" + order.deepMixR.size();
+    }
+
+    // I021-requestbody-nested-optional — Jackson 默认 missing/null 字段对象 → null
+    //   spring-parity smoke 仅消耗 customer + addr.city if non-null,3 场景对齐 SS。
+    @PostMapping("/orders/optional")
+    public String createOrderOpt(@RequestBody OrderOpt order) {
+        if (order.addr != null) {
+            return "customer=" + order.customer + ",city=" + order.addr.city;
+        }
+        return "customer=" + order.customer + ",no-addr";
     }
 
     @GetMapping("/agent")

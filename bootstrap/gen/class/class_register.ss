@@ -107,6 +107,9 @@ function registerClass(id: int) {
                 } else {
                     fieldNames = listAppendStr(fieldNames, fName)
                     classFieldTypes.set(`${name}.${fName}`, strippedType)
+                    if (fType != strippedType) {
+                        classFieldNullable.set(`${name}.${fName}`, "1")
+                    }
                 }
             }
         }

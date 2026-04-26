@@ -850,6 +850,48 @@ SS 内建(`SS_BUILTIN_ANNOTATIONS`):methodOf, derive, Override, Deprecated, Supp
 
 ---
 
+## §扩容申报-I021-requestbody-nested-optional (2026-04-26)
+
+**触发**:I021-requestbody-nested-optional Execute 阶段端到端落地 — Phase 4 §247 第二支柱嵌套深化**真新 codegen 第一轮**(nullability 维度,前轮 nested-cartesian / nested-map / nested-deep 走 D130 SSoT 自动 cover 零 codegen 改动;本轮 nullable 字段 codegen 真新加 case)。**根因修**:`emitDeserializeForType` 加 nullable T? case 分流(alloca + jnIsNullOrMissing check + 委托 stripped 路径 phi 替代为 alloca slot 持值跨 block load)+ lib/json.ss 加 `jnIsNullOrMissing` raw helper(missing OR JSON null literal 返 1)+ classFieldNullable Map 局部 metadata(D067 codegen invariant 让 classFieldTypes 存 stripped,反序列化路径需 nullable 元数据,加单独 Map 保 invariant 不破)。**第一性需求**:引 D123 §247 + D129 §94 "@RequestBody | 任意 class(含嵌套)" + D067 null safety("Kotlin/Dart 风格,默认非空,T? 可空")— SS 用户 `class Order { addr: Address? }` 反序列化 missing/null 字段 store ptr null 行为 byte-identical Java Spring `addr=null`。**baseline drift 分离**:M1/M3a/M6/M7b baseline 自 2026-04-22 D123#扩容申报-I022 后未 bump,b79aa97 / c3361c9 / 5b25573 / 95eb282 / c52e9b5 / f301e76 / b18850e 七连 commit 未升 baseline.txt(M1/M3a/M6/M7b),累积 baseline drift 至 bv > bm;本轮 cur 在 drift 之上又 +51/+167/+3/+7;扩容值含累积 drift 一起 bump,留 ~1.3% 余量给后续子档。
+
+**改动路径**:
+- `lib/json.ss`:加 `jnIsNullOrMissing(node:int):int` raw helper(missing → 0;JSON null literal nodeType=="null" → 1;否则 0)。codegen emit IR 单一 call 路径,不拆 jnHasField + jnIsNull 双 helper(行为合一 — codegen 拿 nodeId 后 missing/null 都 store ptr null,语义等价单一 helper 减 1 次 call)
+- `bootstrap/gen/gen_deserialize.ss`:`emitDeserializeForType` 加 `stripNullableCG(ssType) != ssType` nullable case(7 路 case 之前 dispatch 优先);emit 模式 alloca i64 + store i64 0 + jnIsNullOrMissing check + br i1 → opt_present / opt_done + opt_present 委托 `emitDeserializeForType(stripped, jsonNodeR)` + store inner i64 + br opt_done + opt_done load i64;`emitClassDeserializeFn` 字段循环加 classFieldNullable.has check 恢复 nullable 标记给 emitDeserializeForType
+- `bootstrap/gen/class/class.ss`:declare `classFieldNullable: Map<string, "1">`,`initClassState()` 内 init Map
+- `bootstrap/gen/class/class_register.ss`:line 109 区域 set classFieldTypes(stripped) 之后,if `fType != strippedType` set `classFieldNullable.set(\`${name}.${fName}\`, "1")`
+- `examples/spring-parity/hello/ss/HelloController.ss + .java`:加 class OrderOpt { customer:string; addr:Address? } + @PostMapping("/orders/optional") createOrderOpt(@RequestBody order:OrderOpt) — narrow 走 `let a = order.addr` IDENT 形态(D067 现状 extractNullCheckVar 限 IDENT,member access narrow 留 D067 子档扩展)
+- `tests/phase5/i021_requestbody_nested_optional.ss`:新建 ~110 行 5 case(addr 存在 / JSON null / 字段缺失 / raw HTTP 三场景 / RC stress 50 次)
+- `docs/4-issues/I021-requestbody-nested-optional.md`:Planned → Done at(本轮 file:line)
+
+**REGRESSION + bump 项 delta 表(实测,OK / AUTO-DRIFT 省略)**:
+
+| metric | baseline_value | budget_max | cur | delta(vs bm) | 分类 |
+|---|---|---|---|---|---|
+| M1  | 5330 | 5283 | 5381 | +98 | REGRESSION(含 baseline drift +47) |
+| M3a | 12534 | 12436 | 12701 | +265 | REGRESSION(含 baseline drift +98) |
+| M6  | 33 | 33 | 36 | +3 | REGRESSION |
+| M7b | 685 | 683 | 692 | +9 | REGRESSION(含 baseline drift +2) |
+
+**本地抵消路径**:
+- **M1**(5283 → 5450,+167)— 控制流总和:本轮 +51 = nullable case 3 IF/BR + 测试 5 case 各含 if/while +20-30。已压到 naive(单一 alloca slot phi 模式;不引入嵌套 if;字段循环 if classFieldNullable.has 单一行)。baseline drift +47 来自前 7 commit(deserialize SSoT D130 + nested-deep / nested-map / nested-cartesian / nested-map-primitive 等控制流累积),与本轮独立。结构性最优:无可压(nullable case 3 IF/BR 是根因 emit 必需);本轮按 §B 路径申报扩容 + 留下轮 baseline drift 单独 issue 立(M1/M3a/M6/M7b 跨 commit drift 巡检)
+- **M3a**(12436 → 12850,+414)— 调用边数:本轮 +167 = nullable case 内 emitDeserializeForType 自递归(+1)+ jnIsNullOrMissing call(+1)+ 测试 5 case 调 dispatch / dispatchBody / parseRequest / assertEqual / makeMap 累积。结构性最优:递归调用是 SSoT 设计意图(D130 §3 候选 A 单一递归入口);测试 case 调用累积是 enterprise REST API 全链路验证必需,无冗余可压
+- **M6**(33 → 36,+3)— 递归函数:本轮 emitDeserializeForType nullable case 内调自身 → 函数体内自调 +1(SCC proxy delta);其余 +2 来自 baseline drift 跨 commit(emitArrayDeserializeInto / emitMapDeserializeInto 等内部委托 emitDeserializeForType 跨函数边界但 SCC proxy 算同一 cycle)。结构性最优:递归是 D130 §3 候选 A SSoT 单一递归入口设计意图,删递归 = 双轨制 ❌
+- **M7b**(683 → 700,+17)— 函数总数:本轮 +7 = jnIsNullOrMissing(+1)+ 测试文件 main(+1)+ 5 个 test arrow(+5)。结构性最优:lib helper + 测试 case 是必需,arrow 是测试框架 callback 形态(test(name, fn))不可合并;baseline drift +2 来自前 commit 累积
+
+**新 baseline 预期值(=实测 + ~1.3% 余量,bump 升 budget_max)**:
+- M1 budget_max:5283 → 5450(余量 +69 容纳后续子档增量)
+- M3a budget_max:12436 → 12850(余量 +149)
+- M6 budget_max:33 → 36(本身小,无余量,与 cur 持平)
+- M7b budget_max:683 → 700(余量 +8)
+
+**VCM 实测 vs 预估对照**:子档 §风险 1 预估 ss_drop_<Outer> 链 nullable 字段释放需 null check — 实测 `ss_release` 自带 isnull guard(line 289-290),空值不触发 mi_free 行为定义良好,**无需新 codegen null check**(契约不破裂,与父档已锚同步)。子档 §风险 2 预估 lib/json.ss nullable helper 现状不明 — 实测 jnGetField missing 返 0(line 244 sentinel)+ JSON null literal 走 jpParseValue line 544 `jnNew("null")`(创 type="null" 有效 nodeId),`jnIsNullOrMissing` 单一 helper 合并 missing(node<=0)与 type=="null" 两路。**未预估根因**:**classFieldTypes 存 stripped 类型**(class_register.ss:100 stripNullableCG 后 set,line 109)— D067 codegen invariant"codegen treats T? same as T",反序列化路径无法直接拿 nullable 信息。**根因方案**:加 classFieldNullable Map 局部 metadata 保 D067 invariant 不破(改 invariant 跨 Layer Decision 不在本子档 scope);emitClassDeserializeFn 字段循环 if classFieldNullable.has → ft = ft + "?" 恢复 nullable 标记给 emitDeserializeForType。下轮升根路径:统一字段 nullable 元数据到 classFieldTypes 单 Map(改 D067 codegen invariant 独立 D 文档讨论)。**子档 §风险 3 预估 D067 narrow 配合**:实测 `extractNullCheckVar` (check_narrow.ss:12-26) 仅 cover IDENT 形态,member access narrow 不生效 — 用户层用 `let a = order.addr; if (a != null) { a.city }` IDENT binding 形态绕(D067 现状合法用法)。下轮升根路径:扩 D067 narrow cover member access(独立 D067 子档)。
+
+**baseline drift 巡检立项**:M1/M3a/M6/M7b 自 D123#扩容申报-I022(2026-04-22)以来未 bump,跨 7 commit 累积 drift +47 / +98 / +0 / +2。立 backlog:I023-baseline-drift-audit(下轮巡检 commit b79aa97 / c3361c9 / 5b25573 / 95eb282 / c52e9b5 / f301e76 / b18850e 是否每 commit 都跑了 reflection_health_linter,缺则补)。
+
+**commit**:(本轮 commit 时追加 hash)
+
+---
+
 ## 参考
 
 - 外部:

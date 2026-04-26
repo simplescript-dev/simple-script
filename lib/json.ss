@@ -297,6 +297,18 @@ function jnGetDouble(objId: int, key: string): double { return jnAsDouble(jnGetF
 function jnGetString(objId: int, key: string): string { return jnAsString(jnGetField(objId, key)) }
 function jnGetBool(objId: int, key: string): int { return jnAsBool(jnGetField(objId, key)) }
 
+// I021-requestbody-nested-optional(D067 + D130) — nullable 反序列化 raw helper:
+// 输入是 jnGetField 拿到的 value nodeId(missing → 0;JSON null literal → nodeType=="null"
+// 的有效 nodeId)。codegen emitDeserializeForType nullable case 走单一 call + br,
+// 返 1 = "store ptr null"(missing OR JSON null literal),返 0 = "委托 stripped 路径"。
+// 不拆 jnHasField + jnIsNull 双路:codegen 拿 nodeId 后行为对齐(都 store ptr null),
+// 单 helper 减少 emit IR 一次 call;has(key) 见 line 85-89 user-facing 不动避免双轨。
+function jnIsNullOrMissing(node: int): int {
+    if (node <= 0) { return 1 }
+    if (jnType.getString(`${node}`) == "null") { return 1 }
+    return 0
+}
+
 // I021-requestbody-nested-array — Array iter raw int 接口:codegen emit IR 直接走 i32 nodeId
 // 避免 JsonNode wrapper alloc;JsonNode.size()/get(index) 也委托此处,SSoT 收敛。
 function jnArrayLenInternal(arrStr: string): int {

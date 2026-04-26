@@ -11,7 +11,12 @@ import { genGenericNewExpr } from "../gen_generic_class"
 // ── Class state ──────────────────────────────────────────────
 
 let classFields = ""     // "ClassName" -> "field1,field2,..."
-let classFieldTypes = "" // "ClassName.field" -> "type"
+let classFieldTypes = "" // "ClassName.field" -> "type" (stripped — D067 codegen invariant)
+// I021-requestbody-nested-optional + D067 — 字段 nullable metadata,emit 反序列化时
+//   恢复 nullable 标记给 emitDeserializeForType。classFieldTypes 保 stripped 不变(D067
+//   codegen invariant);本 Map 局部 metadata 单独 track,反序列化路径 emitClassDeserializeFn
+//   字段循环查此 Map 决定是否走 nullable case。
+let classFieldNullable = "" // "ClassName.field" -> "1" (if field declared as T?)
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
@@ -55,6 +60,7 @@ function initClassState() {
     if (classStateReady == 1) { return }
     classFields = Map()
     classFieldTypes = Map()
+    classFieldNullable = Map()
     classMethods = Map()
     objClasses = Map()
     classParents = Map()

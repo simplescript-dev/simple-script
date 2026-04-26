@@ -76,6 +76,11 @@ class OrderConfig {
     flags: Map<string, bool>
 }
 
+class OrderOpt {
+    customer: string
+    addr: Address?
+}
+
 class BigOrder {
     customer: string
     iaGroups: Map<string, Array<int>>
@@ -269,6 +274,20 @@ class HelloController {
     @PostMapping(path = "/orders/cartesian")
     function createBigOrder(@RequestBody order: BigOrder): string {
         return "customer=" + order.customer + ",sizes=" + order.iaGroups.size() + "/" + order.saGroups.size() + "/" + order.daGroups.size() + "/" + order.baGroups.size() + "/" + order.caGroups.size() + "/" + order.iiMaps.size() + "/" + order.ssMaps.size() + "/" + order.ddMaps.size() + "/" + order.bbMaps.size() + "/" + order.ccMaps.size() + "/" + order.iMapList.length() + "/" + order.sMapList.length() + "/" + order.cMapList.length() + "/" + order.deepMix.size() + "/" + order.deepMixR.length()
+    }
+
+    // I021-requestbody-nested-optional(D067 + D130) — 嵌套 nullable user class 字段
+    // 反序列化:enterprise REST API PATCH 半更新 / 缺失字段优雅降级 高频形态;
+    // narrow 走 `let a = order.addr` IDENT 形态(D067 现状 extractNullCheckVar 限 IDENT,
+    //   member access narrow 留 D067 子档扩展);spring-parity smoke 仅消耗 customer +
+    //   addr.city if non-null,3 场景对齐 Java Spring(addr 存在 / null / 缺失)。
+    @PostMapping(path = "/orders/optional")
+    function createOrderOpt(@RequestBody order: OrderOpt): string {
+        let a = order.addr
+        if (a != null) {
+            return "customer=" + order.customer + ",city=" + a.city
+        }
+        return "customer=" + order.customer + ",no-addr"
     }
 
     @GetMapping(path = "/agent")

@@ -88,6 +88,30 @@ function emitPendingDeserializers() {
 //   - ptr 字段(string/UserClass/容器):inttoptr i64 to ptr + store ptr
 //   (emitFieldStoreI64 / 容器循环 push/set 自动正确转换)
 function emitDeserializeForType(ssType: string, jsonNodeR: string): string {
+    // D067 + I021-requestbody-nested-optional — nullable T?:missing OR JSON null → i64 0;
+    //   stripped 是 Array/Map 时 inner emit 含 head/body/end label,phi predecessor 跟踪
+    //   不安全 → 用 alloca slot 跨 block load。
+    const stripped = stripNullableCG(ssType)
+    if (stripped != ssType) {
+        const slotR = nextReg()
+        emitIR(`  ${slotR} = alloca i64, align 8`)
+        emitIR(`  store i64 0, ptr ${slotR}, align 8`)
+        const isNullR = nextReg()
+        emitIR(`  ${isNullR} = call i32 @jnIsNullOrMissing(i32 ${jsonNodeR})`)
+        const condR = nextReg()
+        emitIR(`  ${condR} = icmp eq i32 ${isNullR}, 0`)
+        const presentLabel = nextLabel("opt_present")
+        const doneLabel = nextLabel("opt_done")
+        emitIR(`  br i1 ${condR}, label %${presentLabel}, label %${doneLabel}`)
+        emitIR(`${presentLabel}:`)
+        const innerI64R = emitDeserializeForType(stripped, jsonNodeR)
+        emitIR(`  store i64 ${innerI64R}, ptr ${slotR}, align 8`)
+        emitIR(`  br label %${doneLabel}`)
+        emitIR(`${doneLabel}:`)
+        const finalR = nextReg()
+        emitIR(`  ${finalR} = load i64, ptr ${slotR}, align 8`)
+        return finalR
+    }
     if (ssType == "int") {
         const valR = nextReg()
         emitIR(`  ${valR} = call i32 @jnAsInt(i32 ${jsonNodeR})`)
@@ -280,7 +304,13 @@ function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: 
         let idx = fieldStartIdx(hasVtable)
         const parts = fieldStr.split(",")
         for (p in parts) {
-            const ft = classFieldTypes.has(`${className}.${p}`) == 1 ? classFieldTypes.getString(`${className}.${p}`) : "int"
+            let ft = classFieldTypes.has(`${className}.${p}`) == 1 ? classFieldTypes.getString(`${className}.${p}`) : "int"
+            // I021-requestbody-nested-optional + D067 — 恢复字段 nullable 标记给
+            //   emitDeserializeForType(D067 codegen invariant 让 classFieldTypes 存 stripped,
+            //   反序列化路径需 nullable 元数据决定 missing/null → store ptr null vs 调子
+            //   <C>_deserialize)。classFieldNullable Map 在 class_register.ss 字段注册时
+            //   set。同源 emitFieldStoreI64 用 stripped ft(ssTypeToLLVM 自然 handle ptr 类型)。
+            if (classFieldNullable.has(`${className}.${p}`) == 1) { ft = ft + "?" }
             const keyConst = addStringConst(p)
             const dstR = nextReg()
             emitIR(`  ${dstR} = getelementptr %${className}, ptr %new, i32 0, i32 ${idx}`)
