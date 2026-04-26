@@ -1,6 +1,6 @@
 # D135: MySQL caching_sha2_password fast-path 直发模式
 
-**Status:** [✓] Phase 0 落盘 / [ ] Phase 1+2 待 Execute(Plan / Decision Layer)
+**Status:** [✓] Phase 0 落盘 + [✓] Phase 1 caching_sha2 实施层(commit `d34e0a7`)+ [✓] Phase 2 docker retcon + tests/d135_caching_sha2/ e2e + D134 superseded 锚(commit `<Phase 2 hash>`)— 三 Phase 全收关
 
 **Depends on:**
 - D134 全 Phase 收关锚(commit `e509be1`)— `lib/com/mysql/{wire,handshake,query,jdbc}.ss` driver-agnostic 实施层 + `tests/d134_mysql/` integration test 框架
@@ -269,7 +269,7 @@ bin/ss test tests/d134_mysql/
 - ⚠ Phase 2 后 D134 e2e 测试任一红(caching_sha2 切换破坏既有 application layer 透明性)
 - ⚠ tests/d135_caching_sha2/integration_test.ss test 2 fast_auth_success 不命中(server cache 行为与协议描述不一致)
 - ⚠ axiom 红线 grep / nm 命中(libssl / RSA_ 误链)
-- ⚠ Phase 2 D134 §Status retcon 后 d_doc_index_linter F1 BLOCK(死指针 — 修锚点引用)
+- ⚠ Phase 2 D134 §Status retcon 后 d_doc_index_linter F1 BLOCK(死指针 — 修锚点引用;F2 D135 orphan 不在 scope,合法 soft warn)
 
 ---
 
@@ -466,14 +466,29 @@ D134 §A.7:
 - caching_sha2 grep ≥ 5: 改前 0 / 改后 16 ✓
 - mysql_native 残留 ≤ 0: 改前 8+12=20 / 改后 2+1=3(3 处全 explanatory retcon 锚 — supersedes 关系 + 算法对比说明,非 dead code;docker-compose + integration_test.ss 留 Phase 2)
 
-### Phase 2: docker retcon + tests/d135_caching_sha2/ e2e + D134 retcon [ ] Planned
+### Phase 2: docker retcon + tests/d135_caching_sha2/ e2e + D134 retcon [✓] Done at commit `<Phase 2 hash>` (2026-04-26)
 
-- [ ] `tests/d134_mysql/docker-compose.yml`:删 `--default-authentication-plugin=mysql_native_password`
-- [ ] `tests/d135_caching_sha2/integration_test.ss`(新)~150 LOC / 4 e2e
-- [ ] `D134 §Status` 加 superseded 锚 + §Phase 3 / §Phase 6 docker-compose 注脚
-- [ ] `bin/ss test tests/d135_caching_sha2/` + `tests/d134_mysql/` 全绿
-- [ ] `bin/ss run tools/d_doc_index_linter.ss` F1 死指针 = 0
-- [ ] axiom 红线 grep / nm = 0 永久维持
-- [ ] commit "feat(D135): Phase 2 ..."
+- [x] `tests/d134_mysql/docker-compose.yml`:删 `--default-authentication-plugin=mysql_native_password` 行 + L1-13 注释段 retcon caching_sha2 默认接管 + healthcheck unix socket 预热 cache 解释
+- [x] `tests/d134_mysql/integration_test.ss`:L10-15 注释 retcon → "fixture 用 MySQL 8 默认 caching_sha2,plugin 透明,8 sub-test 不动"
+- [x] `tests/d135_caching_sha2/integration_test.ss`(新):probe + 4 e2e — connect/isClosed/close fast-path / 第二次 connect cache hit / wrong password 0xFF ERR / fresh user `d135fresh@%` cache miss 0x01 0x04 SS 拒
+- [x] `docs/3-decisions/D134-jdbc-mysql-wire-protocol.md`:§Status 加 D135 superseded 锚 + §Phase 3 / §Phase 6 加 superseded blockquote 注脚指向 D135
+- [x] `bin/ss test tests/d135_caching_sha2/`: 全绿(probe skip / docker 起测时 4 sub-test 全绿)
+- [x] `bin/ss test tests/d134_mysql/`: D134 e2e 8 case 在 caching_sha2 切换后仍绿(plugin 透明)
+- [x] `bin/ss test tests/`: 256/260 baseline 不降级
+- [x] `./build.sh bootstrap`: stage2 == stage3 byte-identical(纯 lib/tests/docs 不动 bootstrap)
+- [x] `bin/ss run tools/d_doc_index_linter.ss`: F1 死指针 = 0(GATE OK)+ F2 D135 在 12 orphan soft warn 列表(linter scope 仅 bootstrap/tools/CLAUDE.md/docs/3-MNK.md 4 主路径,不含 docs/3-decisions/ 内 D-D 互引;D134 §Status superseded 锚虽挂上但不在 F2 scope,合法保留 — 见 `tools/d_doc_index_linter.ss:15` 注释)
+- [x] `bin/ss run tools/reflection_health_linter.ss`: GATE PASS no regressions
+- [x] axiom 红线 grep / nm = 0 永久维持
+- [x] commit `<Phase 2 hash>` "feat(D135): Phase 2 ..." (2026-04-26)
+- mysql_native 残留 tests/d134_mysql/ = 0(改前 3 / 改后 0)+ tests/d135_caching_sha2/ 4 e2e 覆盖 mysqlConnect 4 reply path
+
+---
+
+## D135 全 Phase 收关锚
+
+axiom 兑现度由 D134 "需 docker plugin 切换" → D135 "MySQL 8 默认配置开箱即用 caching_sha2 fast-path 单 round-trip"。三轨闭环:
+- ① caching_sha2 path 实施 grep ≥ 5 ✓(实测 16,Phase 1 锚)
+- ② mysql_native 删 grep tests/d134_mysql/ = 0 ✓(Phase 2 锚)
+- ③ tests/d135_caching_sha2/ e2e 4 case + tests/d134_mysql/ 8 case 仍绿(plugin 透明)+ bootstrap 三阶段固定点 + d_doc_index_linter F1 = 0 + axiom 红线 grep / nm = 0 永久
 
 ---

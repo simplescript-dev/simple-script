@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** ✓ 全 Phase 收关(Phase 0/1/1.5/2/3/4/5/6 全绿;axiom 兑现度 100%)
+**Status:** ✓ 全 Phase 收关(Phase 0/1/1.5/2/3/4/5/6 全绿;axiom 兑现度 100%)+ **D135 supersedes mysql_native_password 实施层** at commit `<Phase 2 hash>` (2026-04-26) — driver 切 caching_sha2_password fast-path 直发模式 + docker `--default-authentication-plugin` 行删除;详见 `docs/3-decisions/D135-mysql-caching-sha2-fast-path.md`
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
@@ -205,6 +205,8 @@ bin/ss test tests/d134_mysql/
 
 #### Phase 3: lib/com/mysql/handshake.ss(handshake v10 + mysql_native_password)
 
+> **2026-04-26 D135 supersedes**: mysql_native_password 实施层删除,driver 切 caching_sha2_password fast-path 直发模式(单 round-trip + 32-byte SHA-256 chained scramble)。本节 Plan 文字保留作历史记录,实际代码层走 D135 §A.2 / §A.3。详见 `docs/3-decisions/D135-mysql-caching-sha2-fast-path.md`。
+
 - **`class HandshakeV10`**:`protoVer:int / serverVer:string / connId:int / scramble:string / capabilityFlags:int / charset:int / statusFlags:int / authPlugin:string`
 - **`function parseHandshakeV10(payload: string): HandshakeV10`**:从 server initial packet 解析
 - **`function buildHandshakeResponse41(...): string`**:capability flags(`CLIENT_PROTOCOL_41 | CLIENT_PLUGIN_AUTH | CLIENT_SECURE_CONNECTION` 等)+ max_packet(16MB)+ charset(utf8 = 33)+ username(null-term)+ auth_response(length-encoded)+ db(null-term, 可选)+ plugin(null-term)
@@ -242,6 +244,8 @@ bin/ss test tests/d134_mysql/
 - **GREEN**:`tests/d134_mysql/spring_jdbc_test.ss`(`JdbcTemplate.execute / queryForList / queryForString / queryForInt` 实测对真 MySQL 实例)+ `bin/ss test tests/` 全绿(`spring/data` 等 transitive 测试不再 placeholder + exit(1))
 
 #### Phase 6: 全测试 + RED → 0 + 最终 axiom 验证
+
+> **2026-04-26 D135 supersedes**: docker-compose `--default-authentication-plugin=mysql_native_password` 行删除,MySQL 8 默认 `caching_sha2_password` 接管;docker healthcheck `mysqladmin ping` 走 unix socket(secure transport)预热 server-side cache,SS TCP connect 命中 fast_auth_success(0x01 0x03)。详见 `docs/3-decisions/D135-mysql-caching-sha2-fast-path.md` §A.1 / §A.3 + `tests/d135_caching_sha2/integration_test.ss`。
 
 - **`tests/d134_mysql/docker-compose.yml`**(新):`mysql:8` 容器 + `MYSQL_ROOT_PASSWORD=test` + `default_authentication_plugin=mysql_native_password` + 端口 mapping
 - **`tests/d134_mysql/integration_test.ss`**(新):完整 e2e — `CREATE TABLE / INSERT / SELECT / UPDATE / DELETE / TRANSACTION` 全场景

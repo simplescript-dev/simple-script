@@ -7,8 +7,11 @@
 //   bin/ss test tests/d134_mysql/integration_test.ss
 //   docker compose -f tests/d134_mysql/docker-compose.yml down -v
 //
-// The fixture pins mysql_native_password globally; D134 Phase 3 scramble path
-// is exercised end-to-end. caching_sha2_password fast-path is left for a sub-D.
+// D135 Phase 2 supersedes: the fixture now uses MySQL 8 default plugin
+// `caching_sha2_password` (the `--default-authentication-plugin` override is
+// gone). The SS driver speaks the fast-path direct mode end-to-end; the
+// authentication plugin is transparent to this Connection / Statement /
+// ResultSet layer so all 8 sub-tests below remain unchanged.
 
 import { assertEqual, assertTrue } from "@/lib/test"
 import { Connection, Statement, ResultSet, DriverManager_getConnection } from "@/lib/java/sql"
