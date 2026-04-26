@@ -1337,37 +1337,13 @@ const created = ResponseEntity.status(HttpStatus.CREATED).body('{"id":1}')
 const notFound = ResponseEntity.notFound()
 ```
 
-### spring/data — JPA Repository (SQLite)
+### spring/data — JPA Repository (placeholder, D134 pending)
 
-```typescript
-import { JpaRepositoryFactory } from "@/lib/spring/data"
+D133 已剥离 SQLite C 链路;`JpaRepository` 当前为 placeholder,任何 CRUD 调用触发 `println + exit(1)`,等 D134(JDBC MySQL wire protocol)落地后接入具体 driver。详见 `docs/3-decisions/D133-sqlite-c-link-elimination.md`。
 
-const repo = JpaRepositoryFactory.create("users")
-repo.save("1", '{"name":"Alice"}')
-const user = repo.findById("1")       // JSON string
-const all = repo.findAll()             // Array<string>
-repo.deleteById("1")
-repo.count()
-```
+### spring/jdbc — JDBC Template (placeholder, D134 pending)
 
-### spring/jdbc — JDBC Template (SQLite)
-
-```typescript
-import { JdbcTemplate, withTransaction } from "@/lib/spring/jdbc"
-
-const db = new JdbcTemplate("app.db")
-db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
-db.update("INSERT INTO users VALUES (1, 'Alice')")
-const rows = db.queryForList("SELECT * FROM users")
-const name = db.queryForString("SELECT name FROM users WHERE id = 1")
-
-// Transaction with auto-rollback on error
-withTransaction(db, (tx: JdbcTemplate): int => {
-    tx.update("INSERT INTO users VALUES (2, 'Bob')")
-    tx.update("INSERT INTO users VALUES (3, 'Carol')")
-    return 1
-})
-```
+D133 已剥离 SQLite C 链路;`JdbcTemplate` 当前为 placeholder,任何方法调用触发 `println + exit(1)`,等 D134 落地后接入。详见 `docs/3-decisions/D133-sqlite-c-link-elimination.md`。
 
 ### jakarta/servlet — Servlet API
 

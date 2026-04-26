@@ -1,19 +1,19 @@
-// spring-data-jpa:2025.1 — JpaRepository (SimpleScript Implementation)
-// Compile-time CRUD over SQLite via JdbcTemplate.
-// Each repository operates on a single table.
+// spring-data-jpa:2025.1 — JpaRepository (D133 Phase 5 placeholder)
+// CRUD over JDBC via JdbcTemplate. Each repository operates on a single table.
+// D133: SQLite C link removed; factory delegates to placeholder JdbcTemplate
+// until D134 (JDBC MySQL wire protocol) lands a concrete driver.
+// See docs/3-decisions/D133-sqlite-c-link-elimination.md
 
-import { Connection, ResultSet, rsNext, stmtExecuteQuery, stmtExecuteUpdate, DriverManager } from "@/lib/java/sql"
+import { Connection, ResultSet, DriverManager } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
 
 // ── JpaRepository ────────────────────────────────────────────
-// Usage:
-//   const repo = JpaRepository.create("sqlite::memory:", "users", "id,name,age")
-//   repo.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER)")
-//   repo.save("name,age", "'Alice',30")
+// Usage (D134 ready 后接入):
+//   const repo = JpaRepositoryFactory.create("jdbc:mysql://host:3306/db", "users", "id,name,age")
+//   repo.execute("CREATE TABLE users (...)")
 //   repo.findAll() → ResultSet
 //   repo.findById(1) → ResultSet
-//   repo.deleteById(1)
-//   repo.count() → int
+// 当前(D133 Phase 5):JdbcTemplate placeholder,任何 CRUD 调用 println + exit(1)
 
 class JpaRepository {
     tableName: string
@@ -71,7 +71,6 @@ class JpaRepository {
 class JpaRepositoryFactory
 
 function JpaRepositoryFactory_create(url: string, tableName: string, columns: string): JpaRepository {
-    const conn = DriverManager.getConnection(url)
-    const jdbc = new JdbcTemplate(conn.dbHandle)
-    return new JpaRepository(tableName, columns, jdbc)
+    println(`JpaRepositoryFactory.create: no driver registered (D133), see D134 — url: ${url}`)
+    exit(1)
 }

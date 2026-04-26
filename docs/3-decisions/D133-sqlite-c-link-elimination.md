@@ -1,6 +1,10 @@
 # D133: SQLite C 链路彻底剥离 + lib/java/sql driver-agnostic 重构
 
-**Status:** Phase 4 Done at `bootstrap/main.ss:612-614` (旧 612-617 段删 3 行 sqliteObj fileExists 块 + 614 musl-gcc 拼接删 `${sqliteObj}` token) + `vendor/sqlite3.h` (640KB git rm) + `vendor/sqlite3.o` (1.3MB rm — untracked) — `nm bin/ss | grep -c sqlite3_` 269→0 + bootstrap stage2==stage3 二次固定点 byte-identical 通过(双 GREEN 锚 — Phase 4 提前兑现)— Phase 5 (lib/spring 依赖断裂修 + docs 撤段) 待 Execute
+**Status:** Phase 5+6 Done — D133 全 Phase 收关,D134 (JDBC MySQL wire protocol) follow-up 起立 ready
+- Phase 5 Done at `lib/spring/jdbc.ss` (50→44 行 — import 删 rsNext/stmtExecute*,dbHandle:string→url:string,5 方法 body + withTransaction 全改 placeholder println+exit(1)) + `lib/spring/data.ss` (78→78 行 — import 删 rsNext/stmtExecute*,L10 注释例改 jdbc:mysql 描述,JpaRepositoryFactory_create body 改 placeholder) + `docs/guide.md:1340-1346` (spring/data + spring/jdbc SQLite 例段撤,改 D134 pending placeholder)
+- Phase 6 Done(同 commit 自动兑现)— RED → 0 三段实测:`grep -nE "dbHandle|stmtExecute|rsNext|sqlite::memory" lib/spring/{jdbc,data}.ss = 0` + `grep -niE "jdbc:sqlite|sqlite::memory" docs/guide.md = 0` + `grep -rnE "ss_sqlite3_|sqliteObj|jdbc:sqlite|sqlite::memory" lib/ docs/ tests/ examples/ --include="*.ss" --include="*.md" | grep -v D133 = 0` + `nm bin/ss | grep -c sqlite3_ = 0`(Phase 3 已 0 维持)
+- bootstrap 三阶段固定点 stage2 == stage3 byte-identical 通过 + lib/spring/{jdbc,data}.ss 单文件 type check OK
+- bin/ss test tests/ = 252 pass / 4 fail(spring_web_params:undefined dispatcherServlet,d096_p4_l2_reactive,harness_task,harness_bug)— 4 fail 全 baseline 6f4e364 已存在 + 全仓库无 dispatcherServlet 定义 + grep 三 fail 测试 `^import.*lib/(java/sql|spring/(data|jdbc))` = 0 命中,pre-existing latent bug 与 D133 零关联,§附录 B Phase 6 列锚
 **Depends on:**
 - CLAUDE.md §项目本质 L7 axiom("应用层 stdlib 用纯 SS 模块实现,不引入应用层 C 库;只有底层基础设施(mimalloc 分配器)允许链接 C")
 - CLAUDE.md §项目技术规则 §Root Cause 优先 L101-103("第一法则,无例外")
@@ -359,17 +363,33 @@ if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} ${sqliteObj
 if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} -o ${outputFile} -lm`) != 0) {
 ```
 
-## A.5 examples / tests / docs 断裂清单(Phase 5 列锚)
+## A.5 examples / tests / docs 断裂清单(Phase 5 实测产出)
 
-**待 Phase 1 启动后用 `grep -rn "@/lib/java/sql\|jdbc:sqlite\|sqlite::memory" tests/ examples/ docs/`** 实际产出,本附录 A.5 留位 Phase 5 commit message 引用。
+Phase 5 实测 grep `@/lib/java/sql\|dbHandle\|stmtExecute\|rsNext\|jdbc:sqlite\|sqlite::memory\|ss_sqlite3_\|sqliteObj` 全仓库源码层(`--include="*.ss" --include="*.md"`,排 `D133-sqlite-c-link-elimination.md` 文档自身):
 
-预期断裂源:
-- `lib/spring/boot/jpa.ss:6` default url 用 SQLite — 改 placeholder
-- `lib/spring/data.ss:11` 注释 SQLite 例 — 改 MySQL placeholder 或撤
-- `docs/guide.md:1343,1356` 用户文档 SQLite 例段 — 撤段并加 "见 D134 MySQL 接入" placeholder
-- 其他 examples / tests **未知,Phase 5 grep 列锚**
+### lib/spring/(本 Phase 转 placeholder + 修)
+- `lib/spring/jdbc.ss:4` import `{ rsNext, stmtExecuteQuery, stmtExecuteUpdate }` 删(只保 ResultSet)
+- `lib/spring/jdbc.ss:9` `dbHandle: string` 删 → `url: string`(语义化,等 D134 接 wire protocol 后用)
+- `lib/spring/jdbc.ss:12,16,20,24,30` `stmtExecuteUpdate` / `stmtExecuteQuery` 调用 5 处全改 `println(...) + exit(1)` placeholder(check_return.ss 已注册 exit() noreturn)
+- `lib/spring/jdbc.ss:38-49` `withTransaction` body 改 placeholder
+- `lib/spring/data.ss:5` import `{ rsNext, stmtExecuteQuery, stmtExecuteUpdate }` 删(保 Connection / ResultSet / DriverManager)
+- `lib/spring/data.ss:10` 注释例 `sqlite::memory:` 改 `jdbc:mysql://host:3306/db`(D134 接入 url 形态)
+- `lib/spring/data.ss:75` `new JdbcTemplate(conn.dbHandle)` 路径整体撤,`JpaRepositoryFactory_create` body 改 placeholder
 
-转 D134 的处理:本 D 不修复,Phase 5 commit message 写"以下断裂等 D134 MySQL ready 后转用,本 D 范围内允许编译失败"。
+### lib/jakarta/sql + lib/com/zaxxer/hikari(driver-agnostic 接口,不动)
+- `lib/jakarta/sql.ss:4` import `{ Connection, DriverManager }` 保留
+- `lib/com/zaxxer/hikari.ss:4` import `{ Connection, DriverManager }` 保留
+- (符合 §A.5 "本 D 不修复" + Phase 1 已 driver-agnostic 范式 — 这两个 lib 只 import 接口与 DriverManager class,不调用已删的 rsNext/stmtExecute*,无破裂)
+
+### docs/guide.md(本 Phase 撤段)
+- `docs/guide.md:1340-1351` `spring/data — JPA Repository (SQLite)` 例段 → 撤,改 placeholder 段说明 D133 已剥离 + D134 pending
+- `docs/guide.md:1353-1370` `spring/jdbc — JDBC Template (SQLite)` 例段 → 撤,改 placeholder 段
+
+### tests/ + examples/(本 D 范围外 — Phase 5 grep 实测 0 命中)
+- `grep -rnE "ss_sqlite3_|sqliteObj|jdbc:sqlite|sqlite::memory|@/lib/java/sql" tests/ examples/ --include="*.ss"` = **0 行命中**
+- 与 §A.5 §6 "本 D 不修复 examples / tests" 定义对齐 — 实测无需转 D134 的死链,§原预期"`lib/spring/boot/jpa.ss:6` default url"亦 grep = 0 命中(boot/jpa.ss 不存在或不含 SQLite url default)
+
+转 D134 的处理:本 D 不引入 driver,所有 placeholder body `println + exit(1)` 等 D134 wire protocol 落地后 body 替换。Phase 5 commit message 显式声明"lib/spring/{jdbc,data}.ss + docs/guide.md SQLite 引用全 placeholder 化,等 D134 ready 后接入"。
 
 ## A.6 与 mimalloc C 链路的区别
 
@@ -475,13 +495,55 @@ axiom 字面区分清晰,本 D 不挑战 axiom,只兑现 axiom。
 - **§Principles 7 Phase 边界 = commit 边界**:Phase 4 单独 commit 边界与 Phase 3 合并,因 Phase 4 唯一行为标准 = bootstrap 三阶段固定点验证,而该验证在 Phase 3 改 main.ss + 删 vendor 时已实测两次通过 — 不再需要独立空 commit 重复验证(§D6 §148-153 标准已兑现)
 - **结论**:Phase 4 自动收关,与 Phase 3 同 commit 宣告;Phase 5(lib/spring 依赖断裂修 + docs 撤段)从下轮起立
 
-### Phase 5: 依赖 lib + 文档更新 + 断裂清单 [待 Execute]
+### Phase 5: 依赖 lib + 文档更新 + 断裂清单 [✅ Done]
 
-(待回填)
+- **改动 1**:`lib/spring/jdbc.ss` 50→44 行
+  - L4 import 删 `rsNext, stmtExecuteQuery, stmtExecuteUpdate`,只保 `ResultSet`(返回类型用)
+  - L9 字段 `dbHandle: string` → `url: string`(语义化,D134 接 wire protocol 后用同字段)
+  - L11-33 5 个方法(execute/update/queryForList/queryForString/queryForInt)body 全改 `println("JdbcTemplate.<method>: no driver registered (D133), see D134 — sql: ${sql}") + exit(1)` placeholder(check_return.ss:23 已注册 exit() noreturn,无 return 占位)
+  - L38-49 `withTransaction(db, fn)` body 改 placeholder(原 BEGIN/COMMIT/ROLLBACK/try-catch 全撤)
+- **改动 2**:`lib/spring/data.ss` 78→78 行(行数不变,内容改)
+  - L5 import 删 `rsNext, stmtExecuteQuery, stmtExecuteUpdate`,保 `Connection, ResultSet, DriverManager`(LSP 占位 + 类型名)
+  - L10 注释例 `JpaRepository.create("sqlite::memory:", ...)` 改 `JpaRepositoryFactory.create("jdbc:mysql://host:3306/db", ...)`(D134 接入 url 形态)
+  - L18-67 JpaRepository 9 方法不动 — 全部委托给 `this.jdbc.<method>` placeholder,运行时触发 jdbc placeholder exit
+  - L73-77 `JpaRepositoryFactory_create(url, tableName, columns)` body 改 placeholder(原 `DriverManager.getConnection(url) + new JdbcTemplate(conn.dbHandle)` 全撤,直接 `println + exit(1)`)
+- **改动 3**:`docs/guide.md:1340-1346`
+  - L1340-1351 `spring/data — JPA Repository (SQLite)` 例段 → `spring/data — JPA Repository (placeholder, D134 pending)` + 一段说明 D133 已剥离 + D134 落地后接入(撤具体 SQLite usage)
+  - L1353-1370 `spring/jdbc — JDBC Template (SQLite)` 例段 → `spring/jdbc — JDBC Template (placeholder, D134 pending)` + 同样说明
+- **改动 4**:本 D §A.5 断裂清单回填实测产出(取代留位)
+- **RED 验证**(严格,只查破坏形态):
+  - 段 1 `grep -nE "dbHandle|stmtExecute|rsNext|sqlite::memory" lib/spring/{jdbc,data}.ss` = 0(原 13)
+  - 段 2 `grep -rnE "@/lib/java/sql" lib/jakarta/ lib/com/` = 2(driver-agnostic 接口保留,符合预期)
+  - 段 3 `grep -niE "jdbc:sqlite|sqlite::memory" docs/guide.md` = 0(原 7)
+  - 段 4 `grep -rnE "ss_sqlite3_|sqliteObj|jdbc:sqlite|sqlite::memory" lib/ docs/ tests/ examples/ --include="*.ss" --include="*.md" | grep -v D133` = 0(原 1)
+- **GREEN 验证**:
+  - `bin/ss check lib/spring/jdbc.ss` = OK
+  - `bin/ss check lib/spring/data.ss` = OK
+  - `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical 通过(承 R4 风险锚 — bootstrap 编译器自身不 import lib/spring/* 故零冲击,与 Phase 1 同样路径)
+  - `nm bin/ss | grep -c sqlite3_` = 0(Phase 3 已 0 维持)
+- **R1 风险锚兑现(placeholder vs 暂撤)**:选 placeholder(`println + exit(1)`)+ 保 type signature + 接口形态,优于暂撤(暂撤会破坏 import 它的 examples/spring-parity 子项目;placeholder 让下游 examples 编译过 + 运行时清晰报错)
+- **R2 风险锚兑现(jakarta/hikari 不动)**:Phase 5 RED 段 2 实测两 lib 只 import `{ Connection, DriverManager }`,无破裂调用,Phase 5 不动符合 §交互式单文档
+- **R3 风险锚兑现(guide.md 撤段保留位)**:撤段后用 placeholder 段保留位置 + 提到 D133/D134 锚链,user 文档完整性保
+- **R4 风险锚兑现(bootstrap 零冲击)**:实测 stage2 == stage3 直接通过,与 Phase 1 同样路径(bootstrap 编译器自身 0 import lib/spring/lib/jakarta/lib/com/zaxxer)
+- **R5 风险锚兑现(examples/spring-parity 不修)**:本 Phase 不动 examples,§A.5 §6 "本 D 不修复 examples / tests" 标准对齐
+- **R6 风险锚兑现(stale .ll 编译产物)**:RED 命令用 `--include="*.ss" --include="*.md"` 排 .ll(若不排,tests/* + examples/spring-parity/hello/ss/main.ll 含 ss_sqlite3_* stale 引用会迷惑 GREEN 判据)
+- **R7 风险锚兑现(lib/spring 单文件 check)**:`bin/ss check lib/spring/{jdbc,data}.ss` 双 OK,确认 import 链 + 字段重命名 + placeholder 改造无 type 残留断裂
+- **不变量保留**:D018 / D022 / D025 / D088 / D123 / D130-132 不动;mimalloc C link axiom 例外保留;`lib/java/sql.ss`(Phase 1 已 driver-agnostic)不动;`lib/jakarta/sql.ss` + `lib/com/zaxxer/hikari.ss`(只 import Connection/DriverManager)不动;`bootstrap/`(Phase 2/3 已清零)不动
 
-### Phase 6: 全测试 + RED → 0 [待 Execute]
+### Phase 6: 全测试 + RED → 0 [✅ Done — 与 Phase 5 同 commit 自动兑现]
 
-(待回填)
+- **GREEN 验证 1(RED → 0)**:Phase 5 RED 4 段全 = 0(见上),已包含 §6 Phase 6 "全仓库源码层 SQLite 引用 = 0" 标准
+- **GREEN 验证 2(全测试)**:`bin/ss test tests/` = **252 passed / 4 failed / 256 total** / 10418ms
+  - **4 fail 全部 pre-existing latent bug,与 D133 范围零关联**(baseline 6f4e364 commit 同 4 fail 已存在):
+    1. `tests/phase5/spring_web_params.ss` — `error: undefined function 'dispatcherServlet'` at L246/260/274/289。`grep -rn "function dispatcherServlet" lib/ --include="*.ss"` = 0 命中(全仓库无定义)+ baseline 6f4e364 同样 fail。与 D133 lib/spring/{jdbc,data}.ss 改动零关联(spring_web_params.ss 仅 import `lib/spring/boot` + `lib/jakarta/servlet`,不 import jdbc/data)
+    2. `tests/phase5/d096_p4_l2_reactive.ss` — `undefined function 'reactive'` lib/reactive 缺导出(Phase 2 §附录 B 已锚)
+    3. `tests/phase5/harness_task/main.ss` — llc ptr-vs-i32 type mismatch codegen bug(Phase 2 §附录 B 已锚)
+    4. `tests/phase5/harness_bug/main.ss` — runtime SegFault(Phase 2 §附录 B 已锚)
+  - **三 fail 测试 grep `^import.*lib/(java/sql|spring/(data|jdbc))` = 0 命中**,证 D133 改动路径与 4 fail 测试链路零交集
+- **GREEN 验证 3(bootstrap 固定点)**:Phase 5 改动后 stage2 == stage3 byte-identical 通过(承 Phase 5 GREEN 验证)
+- **GREEN 验证 4(nm SQLite 符号)**:`nm bin/ss | grep -c sqlite3_` = 0(Phase 3 已 0 维持)
+- **§Principles 7 Phase 边界 = commit 边界**:Phase 6 单独 commit 边界与 Phase 5 合并,因 Phase 6 唯一行为标准(RED → 0 + 全测试无 D133 直接 regression)在 Phase 5 改动后实测全兑现 — 不需独立空 commit 重复验证(§D6 §148-153 标准已兑现,与 Phase 4 同 commit 与 Phase 3 合并的范式对齐)
+- **结论**:Phase 6 自动收关,与 Phase 5 同 commit 宣告;**D133 全 6 Phase 收关,D134 (JDBC MySQL wire protocol) follow-up 起立 ready**
 
 ---
 

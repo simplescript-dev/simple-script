@@ -1,49 +1,44 @@
-// spring-jdbc:7.0 — JdbcTemplate (SimpleScript Implementation)
-// Simplified JdbcTemplate for common SQL operations.
+// spring-jdbc:7.0 — JdbcTemplate (D133 Phase 5 placeholder)
+// D133: SQLite C link removed; JdbcTemplate now placeholder until D134
+// (JDBC MySQL wire protocol) lands a concrete driver.
+// See docs/3-decisions/D133-sqlite-c-link-elimination.md
 
-import { Connection, ResultSet, rsNext, stmtExecuteQuery, stmtExecuteUpdate } from "@/lib/java/sql"
+import { ResultSet } from "@/lib/java/sql"
 
 // ── JdbcTemplate ─────────────────────────────────────────────
 
 class JdbcTemplate {
-    dbHandle: string
+    url: string
 
     function execute(sql: string): int {
-        return stmtExecuteUpdate(this.dbHandle, sql)
+        println(`JdbcTemplate.execute: no driver registered (D133), see D134 — sql: ${sql}`)
+        exit(1)
     }
 
     function update(sql: string): int {
-        return stmtExecuteUpdate(this.dbHandle, sql)
+        println(`JdbcTemplate.update: no driver registered (D133), see D134 — sql: ${sql}`)
+        exit(1)
     }
 
     function queryForList(sql: string): ResultSet {
-        return stmtExecuteQuery(this.dbHandle, sql)
+        println(`JdbcTemplate.queryForList: no driver registered (D133), see D134 — sql: ${sql}`)
+        exit(1)
     }
 
     function queryForString(sql: string, column: string): string {
-        const rs = stmtExecuteQuery(this.dbHandle, sql)
-        if (rs.next() == 1) { return rs.getString(column) }
-        return ""
+        println(`JdbcTemplate.queryForString: no driver registered (D133), see D134 — sql: ${sql}`)
+        exit(1)
     }
 
     function queryForInt(sql: string, column: string): int {
-        const rs = stmtExecuteQuery(this.dbHandle, sql)
-        if (rs.next() == 1) { return rs.getInt(column) }
-        return 0
+        println(`JdbcTemplate.queryForInt: no driver registered (D133), see D134 — sql: ${sql}`)
+        exit(1)
     }
 }
 
 // ── Transaction helper ───────────────────────────────────────
 
 function withTransaction(db: string, fn: fn): int {
-    stmtExecuteUpdate(db, "BEGIN")
-    try {
-        fn()
-        stmtExecuteUpdate(db, "COMMIT")
-        return 0
-    } catch (e) {
-        stmtExecuteUpdate(db, "ROLLBACK")
-        println(`transaction rolled back: ${e}`)
-        return 1
-    }
+    println(`withTransaction: no driver registered (D133), see D134`)
+    exit(1)
 }
