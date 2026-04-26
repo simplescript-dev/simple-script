@@ -106,8 +106,8 @@ bin/ss test tests/d134_mysql/
 
 | 项 | 值 |
 |---|---|
-| 当前 axiom 兑现度 | 100%(D133 接口契约 ✓ + driver 拼装 ✓ + spring 接入 ✓ + docker e2e ✓ + RED 三轨闭环 ✓ + axiom 红线最终验证 ✓ — Phase 6 commit `<TBD>`) |
-| 当前 driver 数 | 1(`MySQL Native Protocol via lib/com/mysql/jdbc.ss`,Phase 5 commit `4529596`,Phase 6 e2e 验证 `<TBD>`) |
+| 当前 axiom 兑现度 | 100%(D133 接口契约 ✓ + driver 拼装 ✓ + spring 接入 ✓ + docker e2e ✓ + RED 三轨闭环 ✓ + axiom 红线最终验证 ✓ — Phase 6 commit `e509be1`) |
+| 当前 driver 数 | 1(`MySQL Native Protocol via lib/com/mysql/jdbc.ss`,Phase 5 commit `4529596`,Phase 6 e2e 验证 `e509be1`) |
 | 当前 server 端 TCP 原语 | ✓(`ss_tcpListen/Accept/Read/Write/WriteBytes/Close`) |
 | 当前 client 端 TCP 原语 | ✗(无 `ss_tcpConnect`,无精确字节读 `ss_tcpReadBytes`) |
 | 当前 SHA-256 | ✓ `lib/sha256.ss` 228 行 |
@@ -706,7 +706,7 @@ D133 §A.6 区分:
 
 **不变量保留**:D018(对象布局)/ D022(clone 语义)/ D025(interface dispatch — Phase 5 兑现 MysqlConnection : Connection + MysqlStatement : Statement + Phase 4 已兑现 MysqlResultSet : ResultSet)/ D068 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/com/mysql/wire + Phase 3 mysql_native_password scramble + Phase 4 query.ss 全保留;jdbc.ss 单向依赖 lib/java/sql + lib/url + lib/com/mysql/{wire,handshake,query},无实际循环(visited set 防重入)。Phase 6(docker e2e + tests/d134_mysql/docker-compose.yml + integration_test.ss + RED 收敛 + axiom 红线 grep 0 命中最终验证)待起立。
 
-### Phase 6: 全测试 + RED → 0 + axiom 红线 [✓] Done at commit `<TBD>` (2026-04-26)
+### Phase 6: 全测试 + RED → 0 + axiom 红线 [✓] Done at commit `e509be1` (2026-04-26)
 
 **关键调研**:
 
