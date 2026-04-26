@@ -238,9 +238,40 @@ curl -X POST 'http://localhost:8080/orders/tags' -H 'Content-Type: application/j
 - D129 §94 "@RequestBody | 任意 class(含嵌套含 nullable 含容器 inner nullable)" 域语义全维度兑现
 - D067 null safety T? narrow 在容器 element 维度反序列化路径实测覆盖
 
+## Execute 阶段第一步实测验证记录(2026-04-26)
+
+**D130 SSoT 自动 cover 假设破裂确认** —— 实测命令:
+
+```bash
+bin/ss build /tmp/t_optional_inner.ss --emit-ir -o /tmp/t.ll > /tmp/t.ll
+grep -cE '@jnIsNullOrMissing' /tmp/t.ll  # = 1(仅 lib/json.ss 函数定义,反序列化路径 0 处)
+grep -cE 'opt_present|opt_done' /tmp/t.ll  # = 0(nullable case 完全未触发)
+```
+
+**OrderTagsArr_deserialize body emit IR**(`/tmp/t.ll:11445-11450`):
+
+```llvm
+%6 = getelementptr %OrderTagsArr, ptr %new, i32 0, i32 3   ; tags 字段
+%7 = call i32 @jnGetField(i32 %nodeId.arg, ptr @.str.421)
+%8 = add i64 0, 0          ; ← emitDeserializeForType fallback(line 163-165)
+%9 = inttoptr i64 %8 to ptr
+store ptr %9, ptr %6, align 8  ; → store ptr null,完全丢弃 tags 字段数据
+```
+
+**根因定位**:`isArrayDeserializable("Array<Tag?>")` → et = "Tag?" → `isUserClass("Tag?")` = 0(classFields.has("Tag?") = 0,注册的是 "Tag" 不带 `?`)→ 谓词返回 0 → emitDeserializeForType 字段层走 fallback `add i64 0, 0`,**根本进不到 emitArrayDeserializeInto**;子档 §风险预案诊断方向"emitArrayDeserializeInto / emitMapDeserializeInto 内 elemType / vType 透传 strip `?`"方向对但物理位置在更上游谓词层(extractContainerElemType + emitArrayDeserializeInto:174+199 / emitMapDeserializeInto:222+254 透传实际正确保留 `?`)。
+
+**升根 D131 子决策**:[D131-deserialize-predicate-strip-nullable-inner.md](../3-decisions/D131-deserialize-predicate-strip-nullable-inner.md) Decided(2026-04-26)— 谓词层 `isArrayDeserializable` / `isMapDeserializable` 加 `stripNullableCG(et/vt)` 后再判 isUserClass(et)/Array(et)/Map(et)/primitive(et) 路径;extractContainerElemType + emitArrayDeserializeInto/emitMapDeserializeInto 内透传不动,nullable case 复用 commit 29c3148 emitDeserializeForType 主路径。
+
+**本子档 Execute 阶段下轮路径**(D131 GREEN + I021 v0 ship 同轮):
+- D131 §4 修 `bootstrap/gen/gen_deserialize.ss:12-23 isArrayDeserializable` + `:25-34 isMapDeserializable`(谓词内 stripNullableCG inner)
+- 新建 `tests/phase5/i021_requestbody_nested_optional_inner.ss` 7 case(本子档 §步骤 §3)
+- spring-parity hello + Java oracle 对称(本子档 §步骤 §2)
+- emit-ir grep `@jnIsNullOrMissing|opt_present|opt_done` ≥ 4 GREEN
+- bootstrap 三阶段固定点 + reflection_health_linter GATE PASS
+
 ## 备注
 
-- 本子档**纯文档起立轮**(Plan 型),Execute 留下下轮(按 §交互式单文档:每轮一目标)
+- 本子档**Plan 起立(commit c68d443)+ Execute 阶段第一步实测验证(commit 待本轮)** —— Execute 主线落地(谓词修 + 7 case + spring-parity)留下轮(按 §交互式单文档:每轮一目标 + 子档预审 §风险 2 锚跨 Layer Decision 单 Layer 不混)
 - D067 物理 D 文档不存在(`ls docs/3-decisions/D067*.md` = No such file),SSoT 在 memory `project_null_safety_design.md` + bootstrap/checker `check_stmts.ss:57/218/325` + `check_narrow.ss:12-26`;本子档**显式标 D067 概念锚不创新死链 markdown link**(feedback `feedback_user_literal_vs_d_ssot.md` 引用前 ls 真身防虚锚);父档既有 `[D067 null safety](../3-decisions/D067-null-safety.md)` 死链沿用 issue 层惯例(d_doc_index_linter scope 不含 docs/4-issues/),本子档不主动修父档死链(out of scope)
 - D123 §247 Phase 4 §第二支柱已 Decided + 第七轮 Done,本子档执行不再辨析
 - D129 §94 @RequestBody 域含嵌套含 nullable 已 Decided,本子档接续 nullable 维度向 inner 扩展
