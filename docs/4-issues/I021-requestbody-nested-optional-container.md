@@ -262,9 +262,95 @@ curl -X POST 'http://localhost:8080/orders/tags-opt' -H 'Content-Type: applicati
 - D129 §94 "@RequestBody | 任意 class(含嵌套含 nullable 含容器自身 nullable)" 域语义全维度兑现
 - D067 null safety T? narrow 在容器字段维度反序列化路径实测覆盖(用户绕路 IDENT narrow 合法路径)
 
+## Execute 阶段第一步实测验证记录(2026-04-26)
+
+**D130 SSoT + D131 谓词层第二次自动 cover 假设命中确认 — 真零 codegen 场景** —— 实测命令:
+
+```bash
+bin/ss build /tmp/t_optional_container.ss --emit-ir > /tmp/t.ll
+grep -cE '@jnIsNullOrMissing' /tmp/t.ll                            # = 3 (1 lib 函数定义 + 双 fixture 字段层各 1 call)
+grep -cE 'opt_present|opt_done' /tmp/t.ll                          # = 8 (双 fixture 各 1 对 label + IR 文本嵌入)
+grep -cE 'jnArrayLen|jnObjectKeys|@Tag_deserialize' /tmp/t.ll      # = 10 (嵌套委托链三层激活)
+```
+
+**实测细分**:
+
+- `call ... @jnIsNullOrMissing` = 2(双 fixture 字段层各 1)
+- `opt_present:` label = 2,`opt_done:` label = 2(双 fixture 各 1 对)
+- `call ... @jnArrayLen` = 3,`call ... @jnObjectKeys` = 1
+- `@Tag_deserialize` 引用 = 3(1 函数定义 + 2 inner element/value transfer)
+- `@OrderTagsArrOpt_deserialize` / `@OrderTagsMapOpt_deserialize` 引用各 = 2(1 定义 + 1 dispatcher call site)
+- `opt_null` label = **0**(优化版 — slot pre-init `store i64 0`,jnIsNullOrMissing=1 直 jump opt_done load 0 = ptr null,**非 bug**)
+
+**OrderTagsArrOpt_deserialize body emit IR**(`/tmp/t.ll:11596-11634`,关键委托链):
+
+```llvm
+%6 = getelementptr %OrderTagsArrOpt, ptr %new, i32 0, i32 3   ; tags 字段 offset
+%7 = call i32 @jnGetField(i32 %nodeId.arg, ptr @.str.421)     ; outer field json node
+%8 = alloca i64, align 8
+store i64 0, ptr %8, align 8                                    ; slot pre-init = ptr null(优化版 opt_null 路径合并)
+%9 = call i32 @jnIsNullOrMissing(i32 %7)                        ; ← D130 SSoT nullable case 字段层激活 ✓
+br i1 %10, label %opt_present.718, label %opt_done.719
+opt_present.718:
+  %11 = call i32 @jnArrayLen(i32 %7)                            ; ← outer node 作 array 操作 §风险 1 通过
+  ; arr_loop.head/body/end 循环
+  %17 = call i32 @jnArrayGet(i32 %7, i32 %15)
+  %18 = call ptr @Tag_deserialize(i32 %17)                      ; ← inner element @Tag_deserialize transfer ✓
+  %21 = call ptr @ss_arrayPush(ptr %20, i64 %19)
+  store i64 %24, ptr %8, align 8                                ; arr_loop.end: store array ptr to slot
+opt_done.719:
+  %25 = load i64, ptr %8, align 8
+  store ptr %26, ptr %6, align 8                                ; ← 字段 store ptr(null 或 array ptr)✓
+  ret ptr %new
+```
+
+**OrderTagsMapOpt_deserialize body emit IR**(`/tmp/t.ll:11541-11579`,关键委托链):
+
+```llvm
+%6 = getelementptr %OrderTagsMapOpt, ptr %new, i32 0, i32 3   ; items 字段 offset
+%7 = call i32 @jnGetField(i32 %nodeId.arg, ptr @.str.419)
+%8 = alloca i64, align 8
+store i64 0, ptr %8, align 8
+%9 = call i32 @jnIsNullOrMissing(i32 %7)                        ; ← nullable case 字段层激活 ✓
+br i1 %10, label %opt_present.713, label %opt_done.714
+opt_present.713:
+  %11 = call ptr @ss_mapNew()
+  store i32 1, ptr %12, align 4                                 ; val_type=1 marker(对象引用)
+  %13 = call ptr @jnObjectKeys(i32 %7)                          ; ← outer node 作 Map 操作
+  ; map_loop.head/body/end 循环
+  %20 = call i32 @jnGetField(i32 %7, ptr %19)
+  %21 = call ptr @Tag_deserialize(i32 %20)                      ; ← inner value @Tag_deserialize transfer ✓
+  call void @ss_mapSet(ptr %11, ptr %19, i64 %22)
+  call void @ss_rc_release(ptr %13)                             ; map_loop.end: keys array drop
+  store i64 %24, ptr %8, align 8
+opt_done.714:
+  store ptr %26, ptr %6, align 8                                ; ← 字段 store ptr ✓
+```
+
+**假设命中验证**(对照 -inner 子档 commit 6e7179e Execute 第一步实测首次部分命中需 D131 升根):
+
+| 维度 | 本子档(`-optional-container` 容器自身 nullable) | -inner 子档(`-optional-inner` 容器 inner nullable) |
+|---|---|---|
+| 实测 grep `@jnIsNullOrMissing` | = 3 ✓ | = 1(仅 lib 定义)❌ |
+| 实测 grep `opt_present\|opt_done` | = 8 ✓ | = 0 ❌ |
+| 嵌套 `@Tag_deserialize` 引用 | = 3 ✓ | inner 字段 fallback `add i64 0, 0` 数据丢弃 ❌ |
+| 假设命中 | **完全命中 — 真零 codegen 场景** ✓ | 部分命中 → 升根 D131 谓词层 stripNullableCG inner |
+| 下轮路径 | Execute 落地(测试 + spring-parity + RC stress 不动 codegen) | D131 修 + I021 v0 ship 同轮 |
+
+**D130 SSoT + D131 谓词层第二次实测验证场景 — 真零 codegen 场景 confirmed** —— per-class deserializer nullable case 字段层主路径 + isArrayDeserializable / isMapDeserializable 谓词层 stripNullableCG inner 联动;Plan 起立 commit d4e236c 假设链全 cover,Execute 第一步实测**双 deserializer 委托链(nullable case 字段层 + emitArrayDeserializeInto / emitMapDeserializeInto 嵌套 + 内层 @Tag_deserialize transfer)三层全 PASS**。
+
+**本子档 Execute 阶段下轮路径**(假设命中分支):
+
+- 新建 `tests/phase5/i021_requestbody_nested_optional_container.ss` 7 case(本子档 §步骤 §3)
+- spring-parity hello + Java oracle 对称 OrderTagsArrOpt / OrderTagsMapOpt fixture 添加(本子档 §步骤 §2)
+- 端到端 raw HTTP POST 三场景 byte-identical Java oracle
+- bootstrap 三阶段固定点 + reflection_health_linter GATE PASS no regressions
+- RC stress 50 次循环(混合 null + 非 null 字段 outer drop)→ no leak / no segfault
+- **零 codegen 改动**(`git diff --stat HEAD -- bootstrap/ lib/` 空输出)— SSoT 设计意图第二次实测兑现 — 真零 codegen 场景对照 -inner 首次部分命中需 D131 升根
+
 ## 备注
 
-- 本子档**Plan 起立(commit 待本轮)+ Execute 留下下轮** —— Execute 主线落地(测试 + spring-parity + 假设实测分流)留下下轮(按 §交互式单文档:每轮一目标 + 子档预审 §风险 1+5 锚 Execute 阶段实测决定升根触发,单 Layer 不混)
+- 本子档**Plan 起立(commit d4e236c)+ Execute 阶段第一步实测验证(commit 待本轮 — 假设命中 真零 codegen 场景 confirmed)** —— Execute 主线落地(测试 + spring-parity + 7 case + bootstrap 固定点 + RC stress)留下轮(按 §交互式单文档:每轮一目标 + 子档预审 §风险 1+5 锚假设命中后 Execute 落地不再升根,单 Layer 不混)
 - D067 物理 D 文档不存在(`ls docs/3-decisions/D067*.md` = No such file),SSoT 在 memory `project_null_safety_design.md` + bootstrap/checker `check_stmts.ss:57/218/325` + `check_narrow.ss:12-26`;本子档**显式标 D067 概念锚不创新死链 markdown link**(feedback `feedback_user_literal_vs_d_ssot.md` 引用前 ls 真身防虚锚);父档既有 `[D067 null safety](../3-decisions/D067-null-safety.md)` 死链沿用 issue 层惯例(d_doc_index_linter scope 不含 docs/4-issues/),本子档不主动修父档死链(out of scope)
 - D123 §247 Phase 4 §第二支柱已 Decided + 第八轮 Done(commit 74ddc48),本子档执行不再辨析
 - D129 §94 @RequestBody 域含嵌套含 nullable 已 Decided,本子档接续 nullable 维度向 outer 容器扩展
