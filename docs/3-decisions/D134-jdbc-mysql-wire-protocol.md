@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** Plan(Phase 0 — D 文档落盘,等用户审阅措辞 OK 后下轮起 Phase 1)
+**Status:** Execute(Phase 0/1/1.5/2 收关,Phase 3-6 待起立)
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
@@ -99,7 +99,8 @@ bin/ss test tests/d134_mysql/
    | `lib/spring/jdbc.ss` | 13-36, 41-44 | `JdbcTemplate.*` + `withTransaction` placeholder body(Phase 5 替换) |
    | `lib/spring/data.ss` | 73-76 | `JpaRepositoryFactory_create` placeholder body(Phase 5 替换) |
    | `lib/com/zaxxer/hikari.ss` | 全文 | vendor 命名空间约定参考(`lib/com/<vendor>/<module>.ss`) |
-   | `lib/sha256.ss` | 1-228 | Phase 2 `lib/sha1.ss` 实现风格参考 |
+   | `lib/sha256.ss` | 1-228 | SHA-2 风格参考(SHA-1 复用 `lib/crypto.ss` 不新建) |
+   | `lib/crypto.ss` | 53 / 500 / 512 / 516 / 520 | `sha1flex` + `Crypto_sha1` + `Crypto_hmacSHA1` + `Crypto_hexToBytes` + `Crypto_bytesToHex`(Phase 2 调研锚定为 SHA-1 SSoT) |
 
 ### Stable Facts
 
@@ -110,9 +111,9 @@ bin/ss test tests/d134_mysql/
 | 当前 server 端 TCP 原语 | ✓(`ss_tcpListen/Accept/Read/Write/WriteBytes/Close`) |
 | 当前 client 端 TCP 原语 | ✗(无 `ss_tcpConnect`,无精确字节读 `ss_tcpReadBytes`) |
 | 当前 SHA-256 | ✓ `lib/sha256.ss` 228 行 |
-| 当前 SHA-1 | ✗(Phase 2 新建 `lib/sha1.ss`) |
+| 当前 SHA-1 | ✓ `lib/crypto.ss:53` `sha1flex` + `:500` `Crypto_sha1`(Phase 2 调研发现既有,不新建 `lib/sha1.ss`) |
 | 当前 RSA / ASN.1 / DER | ✗(本 D 范围外,永远不做) |
-| 当前 lib/binary | ✗(Phase 2 新建) |
+| 当前 lib/binary | ✓ `lib/binary.ss`(Phase 2 新建) |
 | 当前 lib/net | ✗(本 D 不创建,client 原语放 bootstrap rt 层一致 server 端范式) |
 | 自举状态 | 自举完成,固定点验证通过(commit 510c497,memory project_bootstrap_status) |
 | 测试基线 | `bin/ss test tests/` 252/256(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联) |
@@ -177,21 +178,24 @@ bin/ss test tests/d134_mysql/
 - **GREEN**:RED 改后 ≥ 4 + `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical
 - **D025 不变量**:不引入新 IR emit pattern,完全对照 `ss_tcpListen` / `ss_tcpRead` 既有 syscall wrapper 范式
 
-#### Phase 2: lib/binary.ss + lib/sha1.ss + lib/com/mysql/wire.ss
+#### Phase 2: lib/binary.ss + lib/com/mysql/wire.ss(SHA-1 复用 lib/crypto.ss)
 
 - **`lib/binary.ss`** (新):
-  - `function byteToInt(buf: string, offset: int, len: int): int`(little-endian 1/2/3/4/8 byte int 解析)
-  - `function intToBytes(n: int, len: int): string`(little-endian 反向)
-  - `function readLengthEncodedInt(buf: string, offset: int): int`(MySQL length-encoded int,返值;另出 `lengthEncodedIntSize(buf, offset)` 返字节数 — SS 无 tuple)
-  - `function readLengthEncodedString(buf: string, offset: int): string`
-  - `function writeLengthEncodedInt(n: int): string`
-- **`lib/sha1.ss`** (新):SHA-1 hash 实现,对照 `lib/sha256.ss:1-228` 风格,80 round + 5 个 32-bit state(H0-H4),输出 20-byte hash
+  - `function byteToInt(buf: string, offset: int, len: int): int`(little-endian 1/2/3/4/8 byte int 解析,binary-safe — `charCodeAt` direct GEP+load 不走 strlen 边界检查)
+  - `function intToBytes(n: int, len: int): string`(little-endian 反向 — **NULL byte limitation**:`ss_string_concat` strlen-based,任何 byte == 0 截断,Phase 3 用 byte-by-byte 写或扩 builtin)
+  - `function readLengthEncodedInt(buf: string, offset: int): int`(MySQL length-encoded int 返值,NULL marker 0xFB → -1;另出 `lengthEncodedIntSize(buf, offset)` 返字节数 — SS 无 tuple)
+  - `function readLengthEncodedString(buf: string, offset: int): string`(同 NULL byte limitation)
+  - `function writeLengthEncodedInt(n: int): string`(同 NULL byte limitation)
+- **SHA-1**:**复用 `lib/crypto.ss:500 Crypto_sha1` + `:53 sha1flex`(支持 dataHex/prefixHex 路径处理 binary intermediate),Phase 2 调研发现既有实现 + tests/phase5/stdlib_crypto.ss FIPS 180-4 全 vector 已覆盖,不新建 `lib/sha1.ss`**(承 CLAUDE.md §项目本质 复用原则 + §Root Cause 优先 防重复实现;Phase 3 mysql_native_password scramble 需 chained SHA-1 走 `sha1flex(data, "", "", prevHashHex, 0)` 路径)
 - **`lib/com/mysql/wire.ss`** (新):
-  - `function readPacket(fd: int): string`(返 payload — 读 3-byte length + 1-byte seq + payload;seq 内部状态用全局 / class 属性 持有)
-  - `function writePacket(fd: int, seqId: int, payload: string): int`
+  - `class MysqlPacket { let payload: string; let payloadLen: int; let seqId: int }`(用户原 spec 单 string 返 payload,实施 deviate 为 class — 因 payload 可含 embedded 0x00,`payload.length()` 走 `ss_stringLength` strlen 不可信,需独立 `payloadLen` field 持真实长度;同时 `seqId` 也作 field 持承 D134 §3 Phase 2 注释 "seq 内部状态用 class 属性持有")
+  - `function readPacket(fd: int): MysqlPacket`(读 4-byte header + payload buf,失败返 `payloadLen = -1` sentinel)
+  - `function writePacket(fd: int, seqId: int, payload: string, payloadLen: int): int`(用户原 spec 3 args,实施 deviate 为 4 args — 显式 `payloadLen` 因 payload 可含 embedded 0x00 时 `length()` 不可信)
+  - `function readExactBytes(fd: int, len: int): string`(内部 helper,`" ".repeat(len)` 预分配 len-byte 0x20 buf + `tcpReadBytes` 填充)
   - 注意:packet > 16MB 需分包(`payload_length == 0xFFFFFF` 触发续包),本 D Phase 范围处理 ≤ 16MB(MySQL 默认 max_allowed_packet 1MB,绝大多数 query 远小于)
-- **RED**:`ls lib/binary.ss lib/sha1.ss lib/com/mysql/wire.ss = 0`(全不存在)
-- **GREEN**:三文件存在 + 单元测试 `tests/d134_mysql/wire_test.ss`(纯字节计算,不依赖网络)— `bin/ss test tests/d134_mysql/wire_test.ss` 全绿
+- **RED**:`ls lib/binary.ss lib/com/mysql/wire.ss tests/d134_mysql/wire_test.ss 2>&1 \| grep -c "No such" = 3`(全不存在;原 4 个,删 lib/sha1.ss = 3)
+- **GREEN**:三文件存在 + 单元测试 `tests/d134_mysql/wire_test.ss`(纯字节计算,不依赖网络;含 binary 边界 + Crypto.sha1 sanity)— `bin/ss test tests/d134_mysql/wire_test.ss` 全绿
+- **Phase 1.5 patch 前置**:Phase 1 漏注册 `tcpWriteBytes` 在 `bootstrap/checker/checker.ss intFns + funcParamMin/Max + bootstrap/gen/gen_registry.ss funcRetTypes`,binary write 必需(payload < 256 时 header 中段 0x00 byte,strlen-based `tcpWrite` 截断)— Phase 2 起立前补齐,独立 commit + bootstrap 固定点验证(承 §Principles 8 spirit "Phase 1 自包含 bootstrap touch")
 
 #### Phase 3: lib/com/mysql/handshake.ss(handshake v10 + mysql_native_password)
 
@@ -387,7 +391,7 @@ bin/ss test tests/d134_mysql/
 
 - 协议简单:`SHA1(pwd) XOR SHA1(scramble + SHA1(SHA1(pwd)))` — 20-byte 输出,单 round 计算
 - MySQL 8 用户 CREATE 时显式 `IDENTIFIED WITH mysql_native_password BY 'password'` 即可强制使用;Phase 6 docker-compose `default_authentication_plugin=mysql_native_password` 全局配置无兼容问题
-- `lib/sha256.ss:1-228` 已有,SHA-1 实现直接对照风格写 `lib/sha1.ss`,工程量 ≈ 200 LOC
+- **Phase 2 调研发现 `lib/crypto.ss:53 sha1flex + :500 Crypto_sha1` 已实现 + `tests/phase5/stdlib_crypto.ss` FIPS 180-4 全 vector 已覆盖,直接复用,不新建 `lib/sha1.ss`**(承 CLAUDE.md §项目本质 "应用层 stdlib 复用" + Root Cause "防重复"),工程量 = 0 LOC
 
 `caching_sha2_password` fast-path 留 sub-D 理由:
 
@@ -543,25 +547,50 @@ D133 §A.6 区分:
 
 # 附录 B: 实施日志
 
-### Phase 0: D 文档落盘 [⏳ 进行中]
+### Phase 0: D 文档落盘 [✓] Done at commit `5a71af9` (2026-04-26)
 
-- 本轮 PSM 九问填表(响应正文 + §A.8)
-- D134 文档骨架完成(本文件)
-- 改动:`docs/3-decisions/D134-jdbc-mysql-wire-protocol.md`(新)+ `.claude/next_prompt.md`(改 — Phase 1 起立 + ultrathink)
-- 不动代码:`git diff --stat bootstrap/ lib/ tools/ = 0`
-- 等用户审阅措辞 OK 后下轮起 Phase 1
+- ✓ PSM 九问填表(响应正文 + §A.8)
+- ✓ D134 文档骨架完成
+- ✓ 改动:`docs/3-decisions/D134-jdbc-mysql-wire-protocol.md`(新)
+- ✓ 用户审阅 OK,下轮起 Phase 1
 
-### Phase 1: socket client 原语补齐 [ ] Planned
+### Phase 1: socket client 原语补齐 [✓] Done at commit `2bf24d2` (2026-04-26)
 
-- bootstrap/gen/rt/gen_rt_system.ss `emitRuntimeNet()` 加 `ss_tcpConnect` + `ss_tcpReadBytes`
-- bootstrap/gen/gen_registry.ss 加 funcRetTypes 注册
-- bootstrap 三阶段固定点验证
+- ✓ bootstrap/gen/rt/gen_rt_system.ss:258-329 `ss_tcpConnect`(socket+getaddrinfo+connect+sin_port@2 htons patch + IPv4-only)+ `ss_tcpReadBytes`(read-loop alloca-counter 精确字节读)
+- ✓ bootstrap/gen/gen_runtime.ss declare `@connect / @getaddrinfo / @freeaddrinfo`
+- ✓ bootstrap/gen/gen_registry.ss `funcRetTypes.set("tcpConnect","int")` + `tcpReadBytes` + builtinMap names CSV
+- ✓ bootstrap/checker/checker.ss `intFns + twoArgFns(tcpConnect)+ funcParamMin/Max(tcpReadBytes 3)`
+- ✓ bootstrap 三阶段固定点 stage2 == stage3 byte-identical 通过(二次验证)+ bin/ss sync
+- ✓ tests 252 pass / 4 fail = D133 §附录 B Phase 6 latent baseline 不降级
+- /simplify 复核 3 agent 回执:MUST-FIX 1 项应用 + MEDIUM 1 项应用 + HIGH SKIP 1 项 + CONCERN SKIP 1 项
 
-### Phase 2: lib/binary.ss + lib/sha1.ss + lib/com/mysql/wire.ss [ ] Planned
+### Phase 1.5 patch: tcpWriteBytes checker 注册补漏 [✓] Done at commit `9678b3d` (2026-04-26)
 
-- 字节序 + length-encoded int 解析
-- SHA-1 hash(对照 lib/sha256.ss 风格)
-- packet read/write 原语
+- 调研 Phase 2 buf 设计 question 时发现 Phase 1 漏注册 `tcpWriteBytes`(`bootstrap/gen/rt/gen_rt_system.ss:240-246` ss_tcpWriteBytes IR 既有但 `checker.ss intFns + funcParamMin/Max` + `gen_registry.ss funcRetTypes` 全无 → SS 调 `tcpWriteBytes(...)` 报 "undefined function" 实测确认)
+- ✓ bootstrap/checker/checker.ss:278 `intFns` 加 `tcpWriteBytes` + L322-323 加 `funcParamMin/Max.set("tcpWriteBytes", "3")`
+- ✓ bootstrap/gen/gen_registry.ss:140 加 `funcRetTypes.set("tcpWriteBytes", "int")`
+- ✓ bootstrap 三阶段固定点 stage2 == stage3 byte-identical + bin/ss sync
+- ✓ 实测 `tcpWriteBytes(fd, fromCharCode(0), 1)` 写 1 byte 0x00 成功(strlen=0 但 explicit len=1 → binary-safe)
+- 决策:作为 Phase 1 完整化补丁独立 commit(承 §Principles 8 spirit "Phase 1 自包含 bootstrap touch" + §Principles 7 "Phase 边界 = commit 边界")
+
+### Phase 2: lib/binary.ss + lib/com/mysql/wire.ss [✓] Done at commit `(本轮第二 commit)`
+
+**关键调研发现**(决策记录):
+
+- **SHA-1 复用 `lib/crypto.ss`**:Phase 2 起立调研发现 `lib/crypto.ss:53 sha1flex + :500 Crypto_sha1` 已完整实现 + `tests/phase5/stdlib_crypto.ss` FIPS 180-4 全 vector 已覆盖 → **不新建 `lib/sha1.ss`**(承 CLAUDE.md §项目本质 复用原则);Phase 3 mysql_native_password chained SHA-1 走 `sha1flex(data, "", "", prevHashHex, 0)` 路径处理 binary intermediate(sha1flex 通过 dataHex/prefixHex 参数避免 strlen 问题)
+- **`tcpReadBytes` buf 来源决策**:三方案评估 — ① `" ".repeat(len)` 产 len-byte 0x20 buf(`charCodeAt` direct GEP+load 不走 strlen,binary-safe) ② 加 `bufferAlloc` builtin(scope creep) ③ 多次 `tcpRead` 短读重试(strlen 截断 unsafe);**选 ①**,实测 `" ".repeat(8).length() = 8 + charCodeAt(buf, 7) = 32`,验证 0x20 padding + 直接 byte access 工作 — 0 LOC bootstrap 触
+- **写侧 string concat NULL byte limitation**:`ss_string_concat`(`bootstrap/gen/rt/gen_rt_string.ss:14-26`)strlen-based,任何 byte == 0 截断后续 concat,`intToBytes / writeLengthEncodedInt` 返 string 受影响 — 注释明示限制,Phase 3 handshake response 构造时再决方案(setByteAt builtin / Array<int> byte-buffer / 其他);wire.ss `writePacket` 用 byte-by-byte `tcpWriteBytes(fd, fromCharCode(b), 1)` 写 4-byte header 避坑(N+4 syscalls 但功能正确,binary-safe combo)
+- **API deviation from 用户原 spec**:`readPacket(fd) → MysqlPacket class`(原 spec `→ string`,因 payload 可含 embedded 0x00 时 `payload.length()` 走 strlen 不可信,需独立 `payloadLen + seqId` field 持真实状态)+ `writePacket(fd, seqId, payload, payloadLen) → int`(原 spec 3 args,实施 4 args 显式 payloadLen 同上理由)
+
+**实施结果**:
+
+- ✓ `lib/binary.ss`(110 LOC):byteToInt + intToBytes + readLengthEncodedInt + lengthEncodedIntSize + readLengthEncodedString + writeLengthEncodedInt(read 侧全 binary-safe + write 侧 NULL 限制注释)
+- ✓ `lib/com/mysql/wire.ss`(80 LOC):class MysqlPacket + readPacket + writePacket + readExactBytes helper
+- ✓ `tests/d134_mysql/wire_test.ss`(150 LOC):17 unit test 全绿(byteToInt 1/2/3/4-byte LE + offset + intToBytes 1/2-byte non-zero + readLengthEncodedInt < 0xFB / 0xFB NULL / 0xFC / 0xFD markers + lengthEncodedIntSize 全 marker + readLengthEncodedString 1-byte len + 0-byte + writeLengthEncodedInt 1-byte + 0xFA boundary + Crypto.sha1 FIPS 180-4 sanity)
+- ✓ `bin/ss test tests/d134_mysql/wire_test.ss` 17 pass / 0 fail
+- ✓ `bin/ss test tests/` 253 pass / 4 fail(D133 latent 4 fail 不降级 + 新增 wire_test +1 pass = 252+1 = 253,zero regression)
+- ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical 通过(Phase 2 lib only,无意外 bootstrap 触)
+- 不变量保留:D018 / D022 / D025 / D088 / D123 / D130-133 全不动,mimalloc C link axiom 例外保留,既有 Phase 1 socket client + ss_tcpRead/Write/Listen/Accept 原语全保留
 
 ### Phase 3: lib/com/mysql/handshake.ss [ ] Planned
 
