@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** ✓ 全 Phase 收关(Phase 0/1/1.5/2/3/4/5/6 全绿;axiom 兑现度 100%)+ **D135 supersedes mysql_native_password 实施层** at commit `<Phase 2 hash>` (2026-04-26) — driver 切 caching_sha2_password fast-path 直发模式 + docker `--default-authentication-plugin` 行删除;详见 `docs/3-decisions/D135-mysql-caching-sha2-fast-path.md`
+**Status:** ✓ 全 Phase 收关(Phase 0/1/1.5/2/3/4/5/6 全绿;axiom 兑现度 100%)+ **D135 supersedes mysql_native_password 实施层** at commit `1c2e07b` (2026-04-26) — driver 切 caching_sha2_password fast-path 直发模式 + docker `--default-authentication-plugin` 行删除;详见 `docs/3-decisions/D135-mysql-caching-sha2-fast-path.md`
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
