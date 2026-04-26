@@ -297,9 +297,63 @@ curl -X POST 'http://localhost:8080/orders/tags-deep-opt' \
 - D129 §94 "@RequestBody | 任意 class(含嵌套含 nullable 含 N=2 双层 nullable 笛卡尔积)" 域语义全维度兑现
 - D067 null safety T? narrow 在 N=2 双层 nullable 维度反序列化 + for-in body inner narrow 路径实测覆盖(用户绕路 IDENT 双层 narrow 合法路径)
 
+## Execute 阶段第一步实测验证记录(2026-04-26)
+
+**D130 SSoT + D131 谓词层第三次自动 cover 假设部分破裂确认 — 笛卡尔积**部分**命中 + 嵌套维度 outer 单 `?` 层位漂移** —— 实测命令(/tmp/t_deep_optional.ss 6 fixture × N=2 双层笛卡尔积 emit-ir 触发):
+
+```bash
+bin/ss build /tmp/t_deep_optional.ss --emit-ir > /tmp/t.ll       # exit 0,/tmp/t.ll 13288 行
+grep -cE '@jnIsNullOrMissing' /tmp/t.ll                          # = 9 (1 lib def + 8 call sites)
+grep -cE 'opt_present|opt_done' /tmp/t.ll                        # = 32 (label + IR 文本嵌入)
+grep -cE 'jnArrayLen|jnObjectKeys' /tmp/t.ll                     # = 15 (12 call site + IR 嵌入)
+grep -cE '@Tag_deserialize' /tmp/t.ll                            # = 7 (1 def + 6 fixture × call site)
+```
+
+**4 条 grep 阈值数量 PASS**(9/32/15/7 ≥ 7/12/6/7),但**抽 IR body 看结构发现 grep 计数是 lower bound 数量判据,无法区分"双 `?` 双 nullable case 链"vs"单 `?` 层位下沉到 inner element"** — 6 fixture 实际分两类:
+
+| # | Fixture | 字段类型 | outer null guard(字段层 nullable case)| inner null guard | 结构 |
+|---|---|---|---|---|---|
+| 1 | OrderTagsArrDeepOpt | `Array<Tag?>?` (双 `?`)| ✓ jnIsNullOrMissing(`/tmp/t.ll:12846` opt_present.751)| ✓ inner element "Tag?" 走 nullable case opt_present.756 | **完全命中**(双层 nullable case 链 outer→arr_loop→element nullable→@Tag_deserialize)|
+| 2 | OrderTagsMapDeepOpt | `Map<string, Tag?>?` (双 `?`)| ✓ jnIsNullOrMissing(`:13223` opt_present.790)| ✓ inner value "Tag?" 走 nullable case opt_present.795 | **完全命中**(双层 nullable case 链 outer→map_loop→value nullable→@Tag_deserialize)|
+| 3 | OrderMatrixOpt | `Array<Array<Tag>>?` (单 `?` + N=2 嵌套)| ❌ outer 直接 jnArrayLen(`:13066`)无 outer null guard | ❌ 误触发 inner element type `Array<Tag>` 非 nullable 但 IR 包 jnIsNullOrMissing(`:13081` opt_present.777)| **结构层位漂移**(outer `?` 下沉到 inner element 层)|
+| 4 | OrderGroupsOpt | `Map<string, Map<string, Tag>>?` (单 `?` + N=2 Map 嵌套)| ❌ outer 直接 ss_mapNew(`:12908`)无 outer null guard | ❌ 误触发 inner value type `Map<string, Tag>` 非 nullable 但 IR 包 jnIsNullOrMissing(`:12927` opt_present.761)| **结构层位漂移** |
+| 5 | OrderArrMapOpt | `Array<Map<string, Tag>>?` (单 `?` + 混合)| ❌ outer 直接 jnArrayLen(`:13143`)无 outer null guard | ❌ 误触发 inner element type `Map<string, Tag>` 非 nullable 但 IR 包 jnIsNullOrMissing(`:13158` opt_present.785)| **结构层位漂移** |
+| 6 | OrderMapArrOpt | `Map<string, Array<Tag>>?` (单 `?` + 混合)| ❌ outer 直接 ss_mapNew(`:12988`)无 outer null guard | ❌ 误触发 inner value type `Array<Tag>` 非 nullable 但 IR 包 jnIsNullOrMissing(`:13006` opt_present.769)| **结构层位漂移** |
+
+**统一根因(归一,非 form 分类)**:N=2 嵌套 + 单 outer `?`(form 3-6)的 IR 形态等同于把 outer `?` 标记**层位下沉**到 inner element 层 —— outer 字段类型 nullable case **本应**在 emitDeserializeForType 字段层入口(`bootstrap/gen/gen_deserialize.ss:104` `if (stripped != ssType)`)激活,实测**未激活**;但 inner element 类型(本应非 nullable)却被错位包 nullable case wrap。**单一根因猜测**:
+- (a) `bootstrap/gen/class/class_register.ss:100` `strippedType = stripNullableCG(fType)` + `:109` `classFieldTypes.set` 把字段类型 `?` 剥皮存 stripped + `:111` 仅在 `fType != strippedType` 设置 classFieldNullable flag;但 stripNullableCG(`bootstrap/gen/gen_types.ss:700-705`)只剥末尾**单**字符 `?` —— 对 `Array<Tag?>?` 双 `?` 形态字段层确实剥成 `Array<Tag?>`(留 inner `?`)→ form 1+2 双层 nullable case 链 OK;**但对 `Array<Array<Tag>>?` 单 `?` + N=2 嵌套形态字段层剥成 `Array<Array<Tag>>` 后**,`bootstrap/gen/gen_deserialize.ss:323` `if (classFieldNullable.has) { ft = ft + "?" }` 字段恢复 `?` 给 emitDeserializeForType 时, ft 是 `Array<Array<Tag>>?`,字段层 nullable case 应触发 ✓ —— 但 IR 实测未触发,说明字段层 dispatch 在 N=2 嵌套形态丢失某处 stripped 与 nullable 标记的耦合
+- (b) inner 误触发 nullable case:emitArrayDeserializeInto / emitMapDeserializeInto 内部递归 emitDeserializeForType(inner element type, elem node) 时,inner element type 不应带 `?` —— 但 IR 实测 inner element 走了 nullable case,说明 `extractContainerElemType` / inner type 推断在 N=2 嵌套形态把 outer `?` 错位下沉到 inner
+
+**部分破裂 → 转 D 文档子决策**(本子档 §候选 A §假设破裂回退路径锚 line 211-214 + §风险 1+5 兑现):
+
+- form 1+2 双 `?` 笛卡尔积形态(`Array<Tag?>?` / `Map<string,Tag?>?`)= **完全命中**真零 codegen 场景(D130 SSoT + D131 谓词层联动设计意图第三次自动兑现局部成立)
+- form 3-6 单 `?` + N=2 嵌套(`Array<Array<Tag>>?` / `Map<string,Map<string,Tag>>?` / `Array<Map<string,Tag>>?` / `Map<string,Array<Tag>>?`)= **结构层位漂移**(grep 数量命中 + IR 结构破裂)
+- 统一根因不在 form 分类粒度,在 emitDeserializeForType 字段层入口 + classFieldTypes / classFieldNullable / extractContainerElemType **嵌套维度 outer `?` 层位耦合**设计盲点 —— **转独立 D 文档子决策**(暂名 D132-deep-optional-nesting-strip / 或 D131 §4 边界扩),设计任意 N×M nullable + 嵌套递归同构剥皮方案,**本子档 Execute 轮停手不主动改 codegen**,改写下轮 next_prompt 转 D 文档单 Layer
+
+**对照 -inner 子档 commit 6e7179e Execute 第一步实测首次部分命中需 D131 升根 + -container 子档 commit d9ec866 完全命中真零 codegen 场景**(三轮升根/cover 模式归纳):
+
+| 轮次 | 子档 | 实测假设 | 分流 |
+|---|---|---|---|
+| 第一次 | -inner(commit 6e7179e)| `Array<Tag?>` inner nullable | **部分命中需 D131 升根**(谓词层 stripNullableCG inner)|
+| 第二次 | -container(commit d9ec866)| `Array<Tag>?` outer nullable | **完全命中真零 codegen** |
+| **第三次** | **-deep-optional(本子档)** | **N=2 双层 nullable 笛卡尔积** | **部分破裂分两类**(双 `?` 完全命中 + 单 `?` + N=2 嵌套结构层位漂移转 D132 / D131 §4 边界扩)|
+
+**本子档 Execute 阶段下轮路径**(部分破裂分支):
+
+- 停手不动 codegen / lib(`git diff --stat HEAD -- bootstrap/ lib/` = 空)
+- 立独立 D 文档子决策(暂名 D132-deep-optional-nesting-strip / 或 D131 §4 边界扩),设计任意 N×M nullable + 嵌套递归同构剥皮方案
+- 改写下轮 next_prompt 转 D 文档单 Layer 不混 Execute 落地
+- 待 D 文档锁定后再回 I021-requestbody-nested-deep-optional 子档做 Execute 落地(form 1+2 双 `?` 形态可独立先 ship 7 case 测试 + spring-parity / 或与 form 3-6 一并 ship 等 D 文档落地)
+
+## status
+
+- **Plan 起立 + Execute 第一步实测验证 部分破裂 confirmed**(本轮 commit — emit-ir 4 条 grep 数量 PASS + IR 结构 form 1+2 双 `?` 完全命中 + form 3-6 单 `?` + N=2 嵌套结构层位漂移)
+- **Decided**(本子档 v0 部分):D130 SSoT + D131 谓词层第三次自动 cover 假设**部分破裂** — form 1+2 双 `?` 形态完全命中真零 codegen 场景对照 -inner 首次部分命中 + -container 首次完全命中;form 3-6 单 `?` + N=2 嵌套形态结构层位漂移转独立 D 文档子决策(D132-deep-optional-nesting-strip 暂名 / 或 D131 §4 边界扩);Execute 落地路径待 D 文档锁定后回归
+- **Done at**:无(本轮纯文档实测验证,`git diff --stat HEAD -- bootstrap/ lib/` = 空)
+
 ## 备注
 
-- 本子档**Plan 起立轮**(本轮 commit — 纯文档,Execute 留下下轮按假设命中分支决定 codegen 改动 / 升根)
+- 本子档**Plan 起立轮(commit abc006d)+ Execute 第一步实测验证轮(本轮 commit — emit-ir 4 条 grep 数量 PASS + IR 结构 form 1+2 双 `?` 完全命中 + form 3-6 单 `?` + N=2 嵌套结构层位漂移)** —— **部分破裂**确认,转独立 D 文档子决策(D132-deep-optional-nesting-strip 暂名 / 或 D131 §4 边界扩),Execute 落地待 D 文档锁定后回归
 - D067 物理 D 文档不存在(`ls docs/3-decisions/D067*.md` = No such file),SSoT 在 memory `project_null_safety_design.md` + bootstrap/checker `check_stmts.ss:57/218/325` + `check_narrow.ss:12-26`;本子档**显式标 D067 概念锚不创新死链 markdown link**(feedback `feedback_user_literal_vs_d_ssot.md` 引用前 ls 真身防虚锚);父档既有 `[D067 null safety](../3-decisions/D067-null-safety.md)` 死链沿用 issue 层惯例(d_doc_index_linter scope 不含 docs/4-issues/),本子档不主动修父档死链(out of scope)
 - D123 §247 Phase 4 §第二支柱已 Decided + 第八/九轮 Done(commit 74ddc48/d968504),本子档执行不再辨析
 - D129 §94 @RequestBody 域含嵌套含 nullable 已 Decided,本子档接续 nullable 维度向 N=2 双层笛卡尔积扩展
