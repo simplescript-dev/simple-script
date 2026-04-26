@@ -594,7 +594,7 @@ D133 §A.6 区分:
 - ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical 通过(Phase 2 lib only,无意外 bootstrap 触)
 - 不变量保留:D018 / D022 / D025 / D088 / D123 / D130-133 全不动,mimalloc C link axiom 例外保留,既有 Phase 1 socket client + ss_tcpRead/Write/Listen/Accept 原语全保留
 
-### Phase 3: lib/com/mysql/handshake.ss [✓] Done at commit `(本轮 commit)` (2026-04-26)
+### Phase 3: lib/com/mysql/handshake.ss [✓] Done at commit `cf9c3a7` (2026-04-26)
 
 **关键调研发现**(决策记录):
 
