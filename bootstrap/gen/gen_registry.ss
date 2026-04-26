@@ -137,6 +137,7 @@ function initFuncRetTypes() {
     funcRetTypes.set("tcpListen", "int")
     funcRetTypes.set("tcpAccept", "int")
     funcRetTypes.set("tcpWrite", "int")
+    funcRetTypes.set("tcpWriteBytes", "int")
     funcRetTypes.set("tcpConnect", "int")
     funcRetTypes.set("tcpReadBytes", "int")
     funcRetTypes.set("mkdir", "int")

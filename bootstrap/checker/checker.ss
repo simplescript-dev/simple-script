@@ -275,7 +275,7 @@ function initChecker() {
     const strFns = "readLine,readFile,shell,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,_ss_inotify_poll"
     const sf = strFns.split(",")
     for (s in sf) { funcNames.set(s, "string") }
-    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,tcpConnect,tcpReadBytes,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
+    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,tcpWriteBytes,tcpConnect,tcpReadBytes,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
     const intf = intFns.split(",")
     for (i in intf) { funcNames.set(i, "int") }
     const voidFns = "println,print,writeFile,appendFile,exit,tcpClose,test,_ss_inotify_close"
@@ -321,6 +321,8 @@ function initChecker() {
     funcParamMax.set("_ss_inotify_add_watch", "3")
     funcParamMin.set("tcpReadBytes", "3")
     funcParamMax.set("tcpReadBytes", "3")
+    funcParamMin.set("tcpWriteBytes", "3")
+    funcParamMax.set("tcpWriteBytes", "3")
     funcReady = 1
 }
 
