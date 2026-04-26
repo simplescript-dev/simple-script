@@ -85,6 +85,7 @@ curl 三场景:
 - **I021-requestbody-nested-optional-primitive** — nullable primitive 字段(`Order { age: int? }`)反序列化 — primitive 走 boxing / 特殊 sentinel,涉 [D082 nullable primitive boxing](../3-decisions/D082-nullable-primitive-boxing.md) 等独立路径
 - **I021-requestbody-nested-optional-array** — `Array<Class>?` / `Array<Class?>` 双层 nullable(数组本身可空 vs 元素可空)
 - **[I021-requestbody-nested-optional-inner](./I021-requestbody-nested-optional-inner.md)** — 容器 inner nullable(`Array<Tag?>` / `Map<string, Tag?>`)— 元素 / value nullable user class,D130 SSoT 设计意图首次实测验证(commit 29c3148 nullable case 自动 cover 假设链);scope 部分重叠上行 `-optional-array`(分工说明见子档 §备注 §scope 重叠分工)
+- **[I021-requestbody-nested-optional-container](./I021-requestbody-nested-optional-container.md)** — 容器自身 nullable(`Array<Tag>?` / `Map<string, Tag>?`)— 数组 / Map 字段整体可空,D130 SSoT + D131 谓词层第二次实测验证(真零 codegen 场景对照 -inner 首次部分命中需 D131 升根);scope 与上行 `-optional-array` 分工:`-optional-inner` 元素可空 + `-optional-container` 数组本身可空合并取代 -optional-array 锚精神(分工说明见子档 §备注 §scope 重叠分工)
 - **I021-requestbody-nested-optional-default** — Spring `@JsonProperty(defaultValue = "x")` 类似默认值字段(本子档仅 null,默认值留独立子档)
 
 **v0 scope 不做**:
