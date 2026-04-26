@@ -275,7 +275,7 @@ function initChecker() {
     const strFns = "readLine,readFile,shell,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,_ss_inotify_poll"
     const sf = strFns.split(",")
     for (s in sf) { funcNames.set(s, "string") }
-    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
+    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,tcpConnect,tcpReadBytes,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
     const intf = intFns.split(",")
     for (i in intf) { funcNames.set(i, "int") }
     const voidFns = "println,print,writeFile,appendFile,exit,tcpClose,test,_ss_inotify_close"
@@ -310,7 +310,7 @@ function initChecker() {
         funcParamMin.set(o, "1")
         funcParamMax.set(o, "1")
     }
-    const twoArgFns = "writeFile,appendFile,tcpWrite,tcpRead,renameFile,charCodeAt,test,_ss_inotify_poll,watch"
+    const twoArgFns = "writeFile,appendFile,tcpWrite,tcpRead,tcpConnect,renameFile,charCodeAt,test,_ss_inotify_poll,watch"
     const ta = twoArgFns.split(",")
     for (t in ta) {
         funcParamMin.set(t, "2")
@@ -319,6 +319,8 @@ function initChecker() {
     // 3-param builtin (no batch list for 3-arg functions)
     funcParamMin.set("_ss_inotify_add_watch", "3")
     funcParamMax.set("_ss_inotify_add_watch", "3")
+    funcParamMin.set("tcpReadBytes", "3")
+    funcParamMax.set("tcpReadBytes", "3")
     funcReady = 1
 }
 

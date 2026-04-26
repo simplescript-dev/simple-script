@@ -122,6 +122,9 @@ function emitLibcDecls() {
     emitIR("declare i64 @write(i32, ptr, i64)")
     emitIR("declare i32 @close(i32)")
     emitIR("declare i16 @htons(i16)")
+    emitIR("declare i32 @connect(i32, ptr, i32)")
+    emitIR("declare i32 @getaddrinfo(ptr, ptr, ptr, ptr)")
+    emitIR("declare void @freeaddrinfo(ptr)")
     // inotify
     emitIR("declare i32 @inotify_init()")
     emitIR("declare i32 @inotify_add_watch(i32, ptr, i32)")
