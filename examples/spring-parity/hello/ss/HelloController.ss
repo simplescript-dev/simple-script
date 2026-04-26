@@ -81,6 +81,16 @@ class OrderOpt {
     addr: Address?
 }
 
+class OrderTagsArr {
+    customer: string
+    tags: Array<Tag?>
+}
+
+class OrderTagsMap {
+    customer: string
+    items: Map<string, Tag?>
+}
+
 class BigOrder {
     customer: string
     iaGroups: Map<string, Array<int>>
@@ -288,6 +298,46 @@ class HelloController {
             return "customer=" + order.customer + ",city=" + a.city
         }
         return "customer=" + order.customer + ",no-addr"
+    }
+
+    // I021-requestbody-nested-optional-inner(D131) — 容器 inner nullable user class 元素
+    // 反序列化:Array<Tag?>(`tags`)/ Map<string, Tag?>(`items`)。spring-parity smoke 仅消耗
+    // customer + tags/items 计数 + nulls 计数(避 Tag toString 跨语言格式差异);full 7 case
+    // cover 在 tests/phase5/i021_requestbody_nested_optional_inner.ss(本测试 OrderTagsArrCtl
+    // / OrderTagsMapCtl 内闭环)。Java oracle List<Tag>/Map<String,Tag> 元素默认 nullable 对称。
+    @PostMapping(path = "/orders/tags")
+    function createOrderTags(@RequestBody order: OrderTagsArr): string {
+        let tagCount = 0
+        let nullCount = 0
+        let i = 0
+        while (i < order.tags.length()) {
+            let t = order.tags[i]
+            if (t != null) {
+                tagCount = tagCount + 1
+            } else {
+                nullCount = nullCount + 1
+            }
+            i = i + 1
+        }
+        return "customer=" + order.customer + ",tags=" + tagCount + ",nulls=" + nullCount
+    }
+
+    @PostMapping(path = "/orders/items")
+    function createOrderItems(@RequestBody order: OrderTagsMap): string {
+        let itemCount = 0
+        let nullCount = 0
+        const keys = order.items.keys()
+        let i = 0
+        while (i < keys.length()) {
+            let v = order.items.get(keys[i])
+            if (v != null) {
+                itemCount = itemCount + 1
+            } else {
+                nullCount = nullCount + 1
+            }
+            i = i + 1
+        }
+        return "customer=" + order.customer + ",items=" + itemCount + ",nulls=" + nullCount
     }
 
     @GetMapping(path = "/agent")

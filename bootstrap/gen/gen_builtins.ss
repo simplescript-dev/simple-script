@@ -299,14 +299,19 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             emitRetainForType(rp, mapV)
             return rp
         }
-        if (mapV != "" && classFields.has(mapV) == 1) {
+        // I021-requestbody-nested-optional-inner(D131) — V=Tag? strip 后参与 V=class 分派,
+        // ss_retain 自带 isnull guard 同覆盖 nullable null value 路径(JSON null → ss_mapGet
+        // i64 0 → inttoptr ptr null → retain no-op,if (v != null) narrow 解包,与 V=Tag
+        // miss/null 同形)。
+        const mapVStripped = stripNullableCG(mapV)
+        if (mapVStripped != "" && classFields.has(mapVStripped) == 1) {
             // I020c — V=class: ss_mapGet i64 + inttoptr to ptr + emitRetainForType (双 RC 统一分派,
             // V=class 自动选 ss_retain;ss_retain 自带 isnull guard,miss 返 ptr null 时 retain no-op).
             const r64 = nextReg()
             emitIR(`  ${r64} = call i64 @ss_mapGet(ptr ${objVal}, ptr ${mkey})`)
             const rp = nextReg()
             emitIR(`  ${rp} = inttoptr i64 ${r64} to ptr`)
-            emitRetainForType(rp, mapV)
+            emitRetainForType(rp, mapVStripped)
             return rp
         }
         const r = nextReg()

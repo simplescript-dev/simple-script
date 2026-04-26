@@ -94,6 +94,16 @@ class OrderOpt {
     public Address addr;
 }
 
+class OrderTagsArr {
+    public String customer;
+    public List<Tag> tags;
+}
+
+class OrderTagsMap {
+    public String customer;
+    public Map<String, Tag> items;
+}
+
 class BigOrder {
     public String customer;
     public Map<String, List<Integer>> iaGroups;
@@ -228,6 +238,31 @@ public class HelloController {
             return "customer=" + order.customer + ",city=" + order.addr.city;
         }
         return "customer=" + order.customer + ",no-addr";
+    }
+
+    // I021-requestbody-nested-optional-inner(D131) — 容器 inner nullable 元素反序列化
+    //   Jackson 默认 List<Tag> 元素允许 null / Map<String, Tag> value 允许 null,与 SS Array<Tag?> /
+    //   Map<string, Tag?> 对称;spring-parity smoke 仅消耗计数维度避 Tag 格式跨语言差异。
+    @PostMapping("/orders/tags")
+    public String createOrderTags(@RequestBody OrderTagsArr order) {
+        int tagCount = 0;
+        int nullCount = 0;
+        for (Tag t : order.tags) {
+            if (t != null) tagCount++;
+            else nullCount++;
+        }
+        return "customer=" + order.customer + ",tags=" + tagCount + ",nulls=" + nullCount;
+    }
+
+    @PostMapping("/orders/items")
+    public String createOrderItems(@RequestBody OrderTagsMap order) {
+        int itemCount = 0;
+        int nullCount = 0;
+        for (Tag v : order.items.values()) {
+            if (v != null) itemCount++;
+            else nullCount++;
+        }
+        return "customer=" + order.customer + ",items=" + itemCount + ",nulls=" + nullCount;
     }
 
     @GetMapping("/agent")

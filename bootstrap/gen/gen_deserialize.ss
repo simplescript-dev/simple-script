@@ -7,29 +7,36 @@
 // 仅对实际需要的 class emit,避免 jnGet* 调用污染未 import lib/json.ss 的程序。
 let deserializerTargets: Map<string, int> = new Map()
 
-// I021-requestbody-nested-array(-primitive)(-array) — Array<X> 字段判断;X ∈ {UserClass /
-// int / string / double / bool / Array<Y> 任意层},递归终止 X ∈ {scalar / UserClass}。
+// I021-requestbody-nested-array(-primitive)(-array)(-optional-inner D131) — Array<X> 字段
+// 判断;X ∈ {UserClass / int / string / double / bool / Array<Y> 任意层 / 上述任意层之 T?}。
+// D131 §4.1:inner nullable elem(`Array<Tag?>`)被 stripNullableCG 剥皮后参与判定,谓词层
+// 把 `Array<Tag?>` 与 `Array<Tag>` 看作同等可反序列化形态(emit 路径 emitDeserializeForType
+// 自身识别 stripped != orig 走 nullable JSON null/missing → i64 0 分支,主体透传 et 含 `?`)。
 function isArrayDeserializable(ft: string): int {
     if (ft.startsWith("Array<") == 0 || ft.endsWith(">") == 0) { return 0 }
     const et = extractContainerElemType(ft)
-    if (isUserClass(et) == 1) { return 1 }
-    if (et == "int" || et == "string" || et == "double" || et == "bool") { return 1 }
-    if (isArrayDeserializable(et) == 1) { return 1 }
-    if (isMapDeserializable(et) == 1) { return 1 }
+    const etStripped = stripNullableCG(et)
+    if (isUserClass(etStripped) == 1) { return 1 }
+    if (etStripped == "int" || etStripped == "string" || etStripped == "double" || etStripped == "bool") { return 1 }
+    if (isArrayDeserializable(etStripped) == 1) { return 1 }
+    if (isMapDeserializable(etStripped) == 1) { return 1 }
     return 0
 }
 
-// I021-requestbody-nested-map(D130) — Map<string, V> 字段判断;V ∈ {scalar / UserClass /
-// Array<Y> / Map<string, Z>}。key 限 string(JSON object key 标准形态),非 string key 留
-// I021-requestbody-nested-map-typed-key 子档;extractContainerElemType 已支持 Map<K,V> 返 V
-// (gen_rc.ss:220-232)。
+// I021-requestbody-nested-map(D130)(-optional-inner D131) — Map<string, V> 字段判断;V ∈
+// {scalar / UserClass / Array<Y> / Map<string, Z> / 上述任意层之 T?}。key 限 string
+// (JSON object key 标准形态),非 string key 留 I021-requestbody-nested-map-typed-key 子档;
+// extractContainerElemType 已支持 Map<K,V> 返 V(gen_rc.ss:220-232)。D131 §4.2:inner
+// nullable value(`Map<string, Tag?>`)被 stripNullableCG 剥皮后参与判定,emit 路径同 Array
+// 透传规则。
 function isMapDeserializable(ft: string): int {
     if (ft.startsWith("Map<") == 0 || ft.endsWith(">") == 0) { return 0 }
     const vt = extractContainerElemType(ft)
-    if (isUserClass(vt) == 1) { return 1 }
-    if (vt == "int" || vt == "string" || vt == "double" || vt == "bool") { return 1 }
-    if (isArrayDeserializable(vt) == 1) { return 1 }
-    if (isMapDeserializable(vt) == 1) { return 1 }
+    const vtStripped = stripNullableCG(vt)
+    if (isUserClass(vtStripped) == 1) { return 1 }
+    if (vtStripped == "int" || vtStripped == "string" || vtStripped == "double" || vtStripped == "bool") { return 1 }
+    if (isArrayDeserializable(vtStripped) == 1) { return 1 }
+    if (isMapDeserializable(vtStripped) == 1) { return 1 }
     return 0
 }
 
@@ -54,14 +61,17 @@ function emitPendingDeserializers() {
         for (p in parts) {
             if (classFieldTypes.has(`${cn}.${p}`) == 0) { continue }
             const ft = classFieldTypes.getString(`${cn}.${p}`)
-            if (isUserClass(ft) == 1 && deserializerTargets.has(ft) == 0) {
-                deserializerTargets.set(ft, 1)
-                workList = workList.push(ft)
-            } else if (isArrayDeserializable(ft) == 1 || isMapDeserializable(ft) == 1) {
-                // Array<X> / Map<string, X> 递归剥皮直到拿 base elem,base 是 UserClass 才入队
-                let inner = extractContainerElemType(ft)
+            const ftStripped = stripNullableCG(ft)
+            if (isUserClass(ftStripped) == 1 && deserializerTargets.has(ftStripped) == 0) {
+                deserializerTargets.set(ftStripped, 1)
+                workList = workList.push(ftStripped)
+            } else if (isArrayDeserializable(ftStripped) == 1 || isMapDeserializable(ftStripped) == 1) {
+                // Array<X> / Map<string, X> 递归剥皮直到拿 base elem,base 是 UserClass 才入队;
+                // D131 §4.3:每层 extractContainerElemType 后 stripNullableCG 防 inner T?
+                // (`Array<Tag?>` → "Tag?" → strip → "Tag")BFS 漏入队致链接错误。
+                let inner = stripNullableCG(extractContainerElemType(ftStripped))
                 while (inner.startsWith("Array<") == 1 || inner.startsWith("Map<") == 1) {
-                    inner = extractContainerElemType(inner)
+                    inner = stripNullableCG(extractContainerElemType(inner))
                 }
                 if (isUserClass(inner) == 1 && deserializerTargets.has(inner) == 0) {
                     deserializerTargets.set(inner, 1)

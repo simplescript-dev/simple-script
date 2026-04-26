@@ -414,7 +414,8 @@ function inferType(id: int): string {
         // Map<K2,V2> 三路:V=非 scalar 容器或 bool 时返 raw V 类型(D130 SSoT 已用 ptrtoint
         // 保证 i64 编码统一,调用方按 V 容器类型走 inttoptr to ptr + 后续容器 method)。
         if (method == "get") {
-            const mgV = extractMapValueType(inferType(mcObj))
+            // D131 — V=T? strip 后参与下游 scalar / class / 容器分派,miss/null 同 i64 0 → ptr null。
+            const mgV = stripNullableCG(extractMapValueType(inferType(mcObj)))
             if (mgV == "string") { return "string" }
             if (mgV == "int") { return "int" }
             if (mgV == "double") { return "double" }
