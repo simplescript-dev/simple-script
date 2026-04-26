@@ -5,7 +5,7 @@ import { emitRuntimeArrayOps } from "./rt/gen_rt_array"
 import { emitRuntimeIO, emitRuntimeProcess, emitRuntimeMath } from "./rt/gen_rt_io"
 import { emitRuntimeShell } from "./rt/gen_rt_shell"
 import { emitRuntimeMap } from "./rt/gen_rt_map"
-import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeSQLite, emitRuntimeInotify } from "./rt/gen_rt_system"
+import { emitRuntimeFS, emitRuntimeNet, emitRuntimeExceptions, emitRuntimeIsInstance, emitRuntimeInotify } from "./rt/gen_rt_system"
 import { emitRuntimeRef } from "./rt/gen_rt_ref"
 import { emitRuntimeThread } from "./rt/gen_rt_thread"
 import { emitRuntimeChannel } from "./rt/gen_rt_channel"
@@ -27,7 +27,6 @@ function emitRuntimeDefs() {
     emitRuntimeMap()
     emitRuntimeExceptions()
     emitRuntimeIsInstance()
-    emitRuntimeSQLite()
     emitRuntimeInotify()
     emitRuntimeTestFramework()
     emitRuntimeRef()
@@ -129,18 +128,6 @@ function emitLibcDecls() {
     emitIR("declare i32 @poll(ptr, i64, i32)")
     // Sort
     emitIR("declare void @qsort(ptr, i64, i64, ptr)")
-    // SQLite3 C API
-    emitIR("declare i32 @sqlite3_open(ptr, ptr)")
-    emitIR("declare i32 @sqlite3_close(ptr)")
-    emitIR("declare i32 @sqlite3_exec(ptr, ptr, ptr, ptr, ptr)")
-    emitIR("declare i32 @sqlite3_prepare_v2(ptr, ptr, i32, ptr, ptr)")
-    emitIR("declare i32 @sqlite3_step(ptr)")
-    emitIR("declare i32 @sqlite3_finalize(ptr)")
-    emitIR("declare i32 @sqlite3_column_count(ptr)")
-    emitIR("declare ptr @sqlite3_column_name(ptr, i32)")
-    emitIR("declare ptr @sqlite3_column_text(ptr, i32)")
-    emitIR("declare i32 @sqlite3_column_int(ptr, i32)")
-    emitIR("declare i32 @sqlite3_changes(ptr)")
     // Pthreads (D082 Phase 2)
     emitIR("declare i32 @pthread_create(ptr, ptr, ptr, ptr)")
     emitIR("declare i32 @pthread_detach(ptr)")

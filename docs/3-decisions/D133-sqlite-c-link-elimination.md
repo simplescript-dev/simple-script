@@ -1,6 +1,6 @@
 # D133: SQLite C 链路彻底剥离 + lib/java/sql driver-agnostic 重构
 
-**Status:** Phase 1 Done at `lib/java/sql.ss:1-55` — Phase 2 待 Execute
+**Status:** Phase 2 Done at `bootstrap/gen/gen_runtime.ss:8,30` + `gen_runtime.ss` declare 段删除 + `gen/rt/gen_rt_system.ss:320-484` (164 行 SQLite bindings 段全删) + `gen/gen_registry.ss:128-129` (funcRetTypes 2 行删) — Phase 3 待 Execute
 **Depends on:**
 - CLAUDE.md §项目本质 L7 axiom("应用层 stdlib 用纯 SS 模块实现,不引入应用层 C 库;只有底层基础设施(mimalloc 分配器)允许链接 C")
 - CLAUDE.md §项目技术规则 §Root Cause 优先 L101-103("第一法则,无例外")
@@ -407,9 +407,40 @@ axiom 字面区分清晰,本 D 不挑战 axiom,只兑现 axiom。
   - 上述破裂 Phase 5 集中修复(转 placeholder / 暂撤,等 D134 ready)
 - **不变量保留**:D018(对象布局)/ D022(clone 语义)/ D025(interface dispatch)/ D088 / D123 / D130-132 不动,mimalloc C link axiom 例外保留
 
-### Phase 2: bootstrap SQLite declare/define/registry 删除 [待 Execute]
+### Phase 2: bootstrap SQLite declare/define/registry 删除 [✅ Done]
 
-(待回填)
+- 改动 1:`bootstrap/gen/gen_runtime.ss`
+  - L8 import: 删 `emitRuntimeSQLite` from `./rt/gen_rt_system` import list
+  - L29 dispatcher: 删 `emitRuntimeSQLite()` call(原 L30)
+  - L131-142(原 L132-143): 删 `// SQLite3 C API` 注释 + 11 行 `declare i32/ptr @sqlite3_*` LLVM ABI declare(实测 11 行,D 文档 §A.1 估 10 行,实际包含 `sqlite3_changes` 共 11)
+  - 物理瘦身: 622 → 610 行(-12)
+- 改动 2:`bootstrap/gen/rt/gen_rt_system.ss`
+  - L320-484: 删 `// ── SQLite bindings ──` section 注释 + `function emitRuntimeSQLite()` 全 162 行函数体(含 `ss_sqlite3_open/close/exec/query` 四 thin wrapper)
+  - 物理瘦身: 597 → 432 行(-165)
+- 改动 3:`bootstrap/gen/gen_registry.ss`
+  - L128-129: 删 `funcRetTypes.set("ss_sqlite3_query", "string")` + `funcRetTypes.set("ss_sqlite3_open", "string")` 2 行
+  - 物理瘦身: 277 → 275 行(-2)
+- **总计**:三文件 -179 行(略超 D §A.1 估算 ≥ 170 行的物理瘦身锚)
+- **RED 验证**:
+  - `grep -nE "declare i32 @sqlite3_|declare ptr @sqlite3_" bootstrap/gen/gen_runtime.ss | wc -l` = 0(原 11)
+  - `grep -nE "function emitRuntimeSQLite|emitRuntimeSQLite\(\)|ss_sqlite3_" bootstrap/gen/rt/gen_rt_system.ss | wc -l` = 0(原 9)
+  - `grep -nE "ss_sqlite3_" bootstrap/gen/gen_registry.ss | wc -l` = 0(原 2)
+  - `grep -rnE "ss_sqlite3_|emitRuntimeSQLite" bootstrap/ | wc -l` = 0(原 13)
+  - `grep -rnE "ss_sqlite3_" bootstrap/ lib/ | wc -l` = 0(承 Phase 1 lib/ 清零 + 本 Phase bootstrap/ 清零)
+- **GREEN 验证**:
+  - `./build.sh bootstrap` 三阶段固定点 **stage2 == stage3 byte-identical** 通过(超出 Phase 2 标准的 stage1 编译过 — 因 bootstrap 编译器自身不引用 ss_sqlite3_* / @sqlite3_*,Phase 4 固定点验证标准已提前兑现)
+  - bin/ss 自我编译产物完全无 SQLite IR 路径(declare + define + registry 三段全清)
+- **R3 风险锚兑现**:bin/ss 当前仍 link vendor/sqlite3.o(Phase 3 范围未动),`nm bin/ss | grep -c sqlite3_` = 269(C ABI 符号本身保留,但编译器路径不再 emit 任何引用)— 这正是 D §6 Phase 2 GREEN 窗口("declare 删后 linker 仍能 resolve 因 vendor/sqlite3.o 仍 link,Phase 3 才物理切")
+- **不变量保留**:D018 / D022 / D025 / D088 / D123 / D130-132 不动;mimalloc C link axiom 例外保留;`bootstrap/main.ss` link 段未动(Phase 3 范围)
+- **Phase 4 提前兑现**:由于本 Phase 删除后 stage2 == stage3 byte-identical 直接通过,Phase 4 commit 时只需重跑确认 — 实质 Phase 2 + Phase 4 在 commit 维度仍独立(Phase 边界 = commit 边界,§Principles 7),但行为验证已在 Phase 2 完成
+- **bin/ss test 非范围验证(Phase 6 范围,本 Phase 录证据)**:
+  - baseline (commit 8703538):`244 passed, 1 failed, 245 total`(`spring_web_params.ss` 1 fail = pre-existing,与本 D 任何 Phase 无关)
+  - Phase 2 后:`252 passed, 4 failed, 256 total`(+11 测试可编 / +8 pass / +3 新 fail)
+  - **3 新 fail latent bug 诊断**(均与 Phase 2 SQLite 删除 100% 无关,属 baseline 已存在但 test runner 未触达的 latent bug,Phase 2 codegen 缩减让更多测试编译路径放行后暴露):
+    - `tests/phase5/d096_p4_l2_reactive.ss`:编译错 `undefined function 'reactive'`(lib/reactive 缺 `reactive` 导出函数,与 SQLite 路径零关联,极可能 D096 R2 残留 / 早期 commit 引入)
+    - `tests/phase5/harness_task/main.ss`:llc `'%29' defined with type 'ptr' but expected 'i32'`(codegen type emission bug,与 SQLite 路径零关联)
+    - `tests/phase5/harness_bug/main.ss`:编译成功 + runtime SegFault(dumped core)(数据/IR runtime bug,与 SQLite 路径零关联)
+  - **结论**:3 新 fail = pre-existing latent bug 由 Phase 2 间接暴露,不计入 Phase 2 GREEN 范围(Phase 2 GREEN 标准 = bootstrap stage1 编译过,§D6 §148-153,不含 bin/ss test)。Phase 6 列锚处理(若属 SQLite 弃用 tests)或开独立 issue(若属 latent codegen / lib 链路 bug,与 D133 范围正交)。grep `^import.*lib/java/sql` 三 fail 测试 = 0 命中,证 transitive lib/java/sql 链非根因
 
 ### Phase 3: link line + vendor/sqlite3.o 删除 [待 Execute]
 

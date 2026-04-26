@@ -125,8 +125,6 @@ function initFuncRetTypes() {
     funcRetTypes.set("base64Encode", "string")
     funcRetTypes.set("base64Decode", "string")
     funcRetTypes.set("shell", "string")
-    funcRetTypes.set("ss_sqlite3_query", "string")
-    funcRetTypes.set("ss_sqlite3_open", "string")
     funcRetTypes.set("println", "void")
     funcRetTypes.set("print", "void")
     funcRetTypes.set("writeFile", "void")
