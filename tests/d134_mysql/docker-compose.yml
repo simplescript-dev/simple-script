@@ -1,0 +1,31 @@
+# D134 Phase 6 — MySQL 8 fixture for integration_test.ss.
+#
+# Bind 3307 (not 3306) so a host-level mysql:8 (e.g. jarvis-mysql) on 3306
+# does not collide. integration_test.ss connects to 127.0.0.1:3307.
+#
+# `--default-authentication-plugin=mysql_native_password` keeps every user on
+# the legacy plugin so D134 Phase 3 scramble path runs end-to-end. MySQL 8
+# default `caching_sha2_password` requires RSA-OAEP for full auth and is left
+# for a sub-D fast-path follow-up.
+#
+# Bring up:    docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait
+# Tear down:   docker compose -f tests/d134_mysql/docker-compose.yml down -v
+
+services:
+  testss-mysql:
+    image: mysql:8.0
+    container_name: testss-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3307:3306"
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --skip-name-resolve
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-ptest"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+      start_period: 5s

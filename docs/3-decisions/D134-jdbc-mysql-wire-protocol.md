@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** Execute(Phase 0/1/1.5/2/3/4/5 收关,Phase 6 待起立)
+**Status:** ✓ 全 Phase 收关(Phase 0/1/1.5/2/3/4/5/6 全绿;axiom 兑现度 100%)
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
@@ -106,8 +106,8 @@ bin/ss test tests/d134_mysql/
 
 | 项 | 值 |
 |---|---|
-| 当前 axiom 兑现度 | 75%(D133 接口契约 ✓ + driver 拼装 ✓ + spring 接入 ✓ — Phase 6 docker e2e + RED 收敛 + axiom 红线最终验证 ✗) |
-| 当前 driver 数 | 1(`MySQL Native Protocol via lib/com/mysql/jdbc.ss`,Phase 5 commit `4529596`) |
+| 当前 axiom 兑现度 | 100%(D133 接口契约 ✓ + driver 拼装 ✓ + spring 接入 ✓ + docker e2e ✓ + RED 三轨闭环 ✓ + axiom 红线最终验证 ✓ — Phase 6 commit `<TBD>`) |
+| 当前 driver 数 | 1(`MySQL Native Protocol via lib/com/mysql/jdbc.ss`,Phase 5 commit `4529596`,Phase 6 e2e 验证 `<TBD>`) |
 | 当前 server 端 TCP 原语 | ✓(`ss_tcpListen/Accept/Read/Write/WriteBytes/Close`) |
 | 当前 client 端 TCP 原语 | ✗(无 `ss_tcpConnect`,无精确字节读 `ss_tcpReadBytes`) |
 | 当前 SHA-256 | ✓ `lib/sha256.ss` 228 行 |
@@ -118,9 +118,11 @@ bin/ss test tests/d134_mysql/
 | 当前 lib/com/mysql/handshake | ✓ `lib/com/mysql/handshake.ss`(Phase 3 新建:`class HandshakeV10` + `parseHandshakeV10` + `mysqlNativePasswordScramble` + `sendHandshakeResponse41` + `mysqlConnect`;Phase 5 拆 `class MysqlConnection` 改 `mysqlConnect` 返 `int` fd — driver 层独立承载 Connection lifecycle,handshake 层只负 auth 协议 = 单一职责,NAMESPACE COLLISION 根因方案 ②)|
 | 当前 lib/com/mysql/query | ✓ `lib/com/mysql/query.ss`(Phase 4 新建:`class ColumnDef` + `sendQuery` + `parse/readResultSetHeader` + `parse/readColumnDef` + `parseRow` + `isEofPacket` + `class MysqlResultSet : ResultSet` 实现 D025 7 method + `readQueryResultSet`;Phase 5 加 `parseOkPacketAffectedRows` + `readUpdateResult` helper — INSERT/UPDATE/DELETE 响应路径) |
 | 当前 lib/com/mysql/jdbc | ✓ `lib/com/mysql/jdbc.ss`(Phase 5 新建:`class MysqlConnection : Connection` 实现 D025 6 method + `class MysqlStatement : Statement` 实现 D025 4 method + `function getMysqlConnection(url)` strip `jdbc:` prefix + URL_parse 复用 `lib/url.ss` SSoT) |
+| 当前 tests/d134_mysql/integration_test | ✓ `tests/d134_mysql/integration_test.ss`(Phase 6 新建:probe + 8 e2e 测试覆盖 connect/CRUD/transaction/JdbcTemplate/JpaRepository,127.0.0.1:3307 不可达时 println hint + return 不 fail) |
+| 当前 tests/d134_mysql/docker-compose | ✓ `tests/d134_mysql/docker-compose.yml`(Phase 6 新建:mysql:8.0 fixture + 3307:3306 端口避 jarvis-mysql + `--default-authentication-plugin=mysql_native_password` 全局 + healthcheck) |
 | 当前 lib/net | ✗(本 D 不创建,client 原语放 bootstrap rt 层一致 server 端范式) |
-| 自举状态 | 自举完成,固定点验证通过(commit 510c497,memory project_bootstrap_status) |
-| 测试基线 | `bin/ss test tests/` 255/259(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联;Phase 2 wire_test 17 + Phase 3 handshake_test 7(Phase 5 删 MysqlConnection ctor 测同步拆 class)+ Phase 4 query_test 16 + Phase 5 query_test +5 = 21 sub-test 全绿) |
+| 自举状态 | 自举完成,固定点验证通过(commit 510c497,memory project_bootstrap_status;Phase 6 wire.ss readPacket 修后再次 stage2==stage3 byte-identical) |
+| 测试基线 | `bin/ss test tests/` 256/260(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联;Phase 2 wire_test 17 + Phase 3 handshake_test 7 + Phase 4 query_test 16 + Phase 5 query_test +5 + Phase 6 integration_test 8 = 53 sub-test 全绿) |
 
 ### 禁止的 Context 操作
 
@@ -704,10 +706,42 @@ D133 §A.6 区分:
 
 **不变量保留**:D018(对象布局)/ D022(clone 语义)/ D025(interface dispatch — Phase 5 兑现 MysqlConnection : Connection + MysqlStatement : Statement + Phase 4 已兑现 MysqlResultSet : ResultSet)/ D068 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/com/mysql/wire + Phase 3 mysql_native_password scramble + Phase 4 query.ss 全保留;jdbc.ss 单向依赖 lib/java/sql + lib/url + lib/com/mysql/{wire,handshake,query},无实际循环(visited set 防重入)。Phase 6(docker e2e + tests/d134_mysql/docker-compose.yml + integration_test.ss + RED 收敛 + axiom 红线 grep 0 命中最终验证)待起立。
 
-### Phase 6: 全测试 + RED → 0 + axiom 红线 [ ] Planned
+### Phase 6: 全测试 + RED → 0 + axiom 红线 [✓] Done at commit `<TBD>` (2026-04-26)
 
-- tests/d134_mysql/docker-compose.yml + integration_test.ss
-- 三轨闭环 GREEN
-- bootstrap 三阶段固定点最终确认
+**关键调研**:
+
+- **`bin/ss test` 单文件路径不被识别**(本轮调研发现):`bin/ss test tests/d134_mysql/integration_test.ss` 报 `no test files found` — `bin/ss test` 接受目录而非单文件,目录递归扫 `*_test.ss`/`main.ss`。Phase 6 用法收敛:`bin/ss test tests/d134_mysql/` 跑 4 file 全集,或 `bin/ss build + 直 run` 单文件调试。
+- **Docker 29 移除 `docker-compose` v1 binary**:WSL2 Docker Desktop 走 v2 plugin 范式 `docker compose`(空格)替代 `docker-compose`(横线)。docker-compose.yml 文件名兼容,命令行 modernize 落 `docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait` — D134 §3 line 287 spec 文字 `docker-compose -f ...` 留作历史锚,实际命令以现代 `docker compose` 为准。
+- **`version: "3.8"` attribute obsolete**:compose v2 提示 "the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion" — 删除 `version` 字段保持 docker-compose.yml 干净。
+- **3306 端口冲突 jarvis-mysql** — host 已有 jarvis-mysql:8.0 容器占 3306,docker-compose.yml ports 改 `3307:3306` 避冲突。integration_test.ss URL 用 `127.0.0.1:3307`,jarvis-mysql 不污染。spec deviation 锚:D134 §3 spec 默认 3306,Phase 6 改 3307 是 jarvis-mysql 适配。
+- **MYSQL 8 user plugin = `mysql_native_password` 必须显式配**:jarvis-mysql 默认 `caching_sha2_password`(SS Phase 3 不支持);testss-mysql docker-compose `command: --default-authentication-plugin=mysql_native_password` 全局切换,确保 root@% 用 mysql_native_password 走 SS Phase 3 scramble 路径。`docker exec testss-mysql mysql -uroot -ptest -e "SELECT user, host, plugin FROM mysql.user;"` 验证 — root @ % 和 root @ localhost 都是 mysql_native_password。
+- **NAMESPACE COLLISION 根因 #2: `wire.ss readExactBytes` strlen-string-equality bug**(本轮诊断发现):probe 报 "auth response read failed" 但 server 端 general_log `120 Connect root@172.19.0.1 on testdb using TCP/IP` 显示 handshake 已成功!Raw byte trace 揭示:auth OK packet `[7, 0, 0, 2, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]` 第一个 payload byte = 0x00,但 `readExactBytes` 返 `buf` 后 `if (buf == "") return ""` 走 SS strlen-based string equality(`ss_string_equal` strlen → 0 → 等于 ""),误判 short read。读到的 buf 实际有效但被丢。**根因方案**:删 `readExactBytes` 抽象,`readPacket` inline 用 `tcpReadBytes` 返 nread int 直接判断 `if (nread != len)` — 不依赖 string 比较的二进制路径,避免 strlen 在 binary 数据上的不安全行为。lib/com/mysql/wire.ss readPacket 8 行修改解决。
+- **withTransaction fn 闭包简化**(D134 Phase 5 spec 接受):SS `fn: fn` 无 args 无显式签名,fn 内无法捕获 outer conn,实际 transaction 跨连接不生效。integration_test.ss 测试 4 个事务 case 设计:① 单 conn 显式 setAutoCommit(0) + commit 验真 transaction 效果(test 3 commit + test 4 rollback);② withTransaction 封装函数 smoke test 验 fn return 值路径(test 5 return 0 commit / test 6 return -1 rollback)— 不依赖 fn 内 conn 共享。
+
+**实施结果**:
+
+- ✓ `tests/d134_mysql/docker-compose.yml` 新建 ~30 行 — mysql:8.0 + ports 3307:3306 + `--default-authentication-plugin=mysql_native_password` + healthcheck mysqladmin ping
+- ✓ `tests/d134_mysql/integration_test.ss` 新建 ~150 行 — 8 个 e2e 测试覆盖:
+  1. connect + isClosed transitions + close
+  2. CRUD: INSERT / SELECT / UPDATE / DELETE
+  3. transaction commit (single conn)
+  4. transaction rollback (single conn)
+  5. withTransaction commit path returns 0
+  6. withTransaction rollback path returns -1
+  7. JdbcTemplate execute + update + queryForString/Int
+  8. JpaRepository save + count + deleteAll
+- ✓ `lib/com/mysql/wire.ss` 改 — 删 `readExactBytes` 抽象 + `readPacket` inline `tcpReadBytes` nread int 判断短读(根因修 OK packet 第一字节 0x00 触发 strlen-string-equality false-empty bug)
+- ✓ `bin/ss test tests/d134_mysql/` 4 file pass / 0 fail — Phase 5 baseline 3 file → +1 integration_test.ss / 21 → 29 sub-test 全绿
+- ✓ `bin/ss test tests/` 256 pass / 4 fail / 260 total — D133 §附录 B Phase 6 latent 4 fail 基线不降级 + 增 1 file pass(integration_test.ss)
+- ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical(Phase 6 lib/com/mysql/wire.ss readPacket 修 + 新 tests/ 文件,bootstrap 沿用 wire.ss 但 readPacket bug 修不影响 compiler self-bootstrap 任何路径)
+- ✓ 三轨 RED 闭环最终验证:
+  - 轨①driver 替换 grep `lib/spring/{jdbc,data}.ss` = 0 命中(Phase 5 已达成)
+  - 轨②axiom 红线 grep `bootstrap/ lib/ build.sh` = 0 命中(永久维持)
+  - 轨③axiom 红线 nm `bin/ss` = 0 命中(永久维持)
+  - 轨④集成测试 e2e `bin/ss test tests/d134_mysql/` 全绿(Phase 6 新增达成)
+
+**不变量保留**:D018(对象布局)/ D022(clone 语义)/ D025(interface dispatch — Phase 4 + 5 已兑现 MysqlResultSet : ResultSet + MysqlConnection : Connection + MysqlStatement : Statement)/ D068 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/com/mysql/wire + Phase 3 mysql_native_password scramble + Phase 4 query.ss + Phase 5 jdbc.ss + lib/spring driver wiring 全保留。
+
+**Phase 6 完成 = D134 全 Phase 收关**:axiom 兑现度 75% → 100%;driver 拼装 ✓ + spring 接入 ✓ + docker e2e ✓ + RED 三轨闭环 ✓ + axiom 红线最终验证 ✓。
 
 ---

@@ -18,34 +18,27 @@ class MysqlPacket {
     seqId: int
 }
 
-// Reads exactly `len` bytes from fd into a fresh buffer. Buffer is pre-allocated
-// via " ".repeat(len) so it has `len` writable bytes (all 0x20). After the syscall
-// the buffer holds raw bytes including any embedded 0x00 — caller must access via
-// charCodeAt(buf, i) for i in [0, len), never via .length() (which uses strlen).
-// Returns "" on EOF / partial read (signals protocol error to caller).
-function readExactBytes(fd: int, len: int): string {
-    if (len <= 0) { return "" }
-    const buf = " ".repeat(len)
-    const nread = tcpReadBytes(fd, buf, len)
-    if (nread != len) { return "" }
-    return buf
-}
-
 // Reads one MySQL packet. Returns MysqlPacket with payload, payloadLen, seqId.
 // On EOF or short read returns a packet with payloadLen = -1 (caller checks).
+//
+// Short-read detection uses tcpReadBytes' int return (bytes actually read), not
+// `buf == ""`: an OK packet's first byte is 0x00, which would make a buffer-
+// based "empty" check spuriously true via strlen-based string equality.
 function readPacket(fd: int): MysqlPacket {
     const pkt = new MysqlPacket("", 0, 0)
-    const header = readExactBytes(fd, 4)
-    if (header == "") {
+    const header = " ".repeat(4)
+    if (tcpReadBytes(fd, header, 4) != 4) {
         pkt.payloadLen = -1
         return pkt
     }
     pkt.payloadLen = byteToInt(header, 0, 3)
     pkt.seqId = charCodeAt(header, 3)
     if (pkt.payloadLen > 0) {
-        pkt.payload = readExactBytes(fd, pkt.payloadLen)
-        if (pkt.payload == "") {
+        const buf = " ".repeat(pkt.payloadLen)
+        if (tcpReadBytes(fd, buf, pkt.payloadLen) != pkt.payloadLen) {
             pkt.payloadLen = -1
+        } else {
+            pkt.payload = buf
         }
     }
     return pkt
