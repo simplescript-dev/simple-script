@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** Execute(Phase 0/1/1.5/2/3/4 收关,Phase 5-6 待起立)
+**Status:** Execute(Phase 0/1/1.5/2/3/4/5 收关,Phase 6 待起立)
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
@@ -106,8 +106,8 @@ bin/ss test tests/d134_mysql/
 
 | 项 | 值 |
 |---|---|
-| 当前 axiom 兑现度 | 50%(D133 接口契约 ✓ + driver 实现 ✗) |
-| 当前 driver 数 | 0(`DriverManager` placeholder) |
+| 当前 axiom 兑现度 | 75%(D133 接口契约 ✓ + driver 拼装 ✓ + spring 接入 ✓ — Phase 6 docker e2e + RED 收敛 + axiom 红线最终验证 ✗) |
+| 当前 driver 数 | 1(`MySQL Native Protocol via lib/com/mysql/jdbc.ss`,Phase 5 commit `4529596`) |
 | 当前 server 端 TCP 原语 | ✓(`ss_tcpListen/Accept/Read/Write/WriteBytes/Close`) |
 | 当前 client 端 TCP 原语 | ✗(无 `ss_tcpConnect`,无精确字节读 `ss_tcpReadBytes`) |
 | 当前 SHA-256 | ✓ `lib/sha256.ss` 228 行 |
@@ -115,11 +115,12 @@ bin/ss test tests/d134_mysql/
 | 当前 RSA / ASN.1 / DER | ✗(本 D 范围外,永远不做) |
 | 当前 lib/binary | ✓ `lib/binary.ss`(Phase 2 新建) |
 | 当前 lib/com/mysql/wire | ✓ `lib/com/mysql/wire.ss`(Phase 2 新建,Phase 3 修 latent bug:`class MysqlPacket` field 语法 + positional ctor) |
-| 当前 lib/com/mysql/handshake | ✓ `lib/com/mysql/handshake.ss`(Phase 3 新建:`class HandshakeV10` + `class MysqlConnection` + `parseHandshakeV10` + `mysqlNativePasswordScramble` + `sendHandshakeResponse41` + `mysqlConnect`) |
-| 当前 lib/com/mysql/query | ✓ `lib/com/mysql/query.ss`(Phase 4 新建:`class ColumnDef` + `sendQuery` + `parse/readResultSetHeader` + `parse/readColumnDef` + `parseRow` + `isEofPacket` + `class MysqlResultSet : ResultSet` 实现 D025 7 method + `readQueryResultSet` 完整 query response read flow) |
+| 当前 lib/com/mysql/handshake | ✓ `lib/com/mysql/handshake.ss`(Phase 3 新建:`class HandshakeV10` + `parseHandshakeV10` + `mysqlNativePasswordScramble` + `sendHandshakeResponse41` + `mysqlConnect`;Phase 5 拆 `class MysqlConnection` 改 `mysqlConnect` 返 `int` fd — driver 层独立承载 Connection lifecycle,handshake 层只负 auth 协议 = 单一职责,NAMESPACE COLLISION 根因方案 ②)|
+| 当前 lib/com/mysql/query | ✓ `lib/com/mysql/query.ss`(Phase 4 新建:`class ColumnDef` + `sendQuery` + `parse/readResultSetHeader` + `parse/readColumnDef` + `parseRow` + `isEofPacket` + `class MysqlResultSet : ResultSet` 实现 D025 7 method + `readQueryResultSet`;Phase 5 加 `parseOkPacketAffectedRows` + `readUpdateResult` helper — INSERT/UPDATE/DELETE 响应路径) |
+| 当前 lib/com/mysql/jdbc | ✓ `lib/com/mysql/jdbc.ss`(Phase 5 新建:`class MysqlConnection : Connection` 实现 D025 6 method + `class MysqlStatement : Statement` 实现 D025 4 method + `function getMysqlConnection(url)` strip `jdbc:` prefix + URL_parse 复用 `lib/url.ss` SSoT) |
 | 当前 lib/net | ✗(本 D 不创建,client 原语放 bootstrap rt 层一致 server 端范式) |
 | 自举状态 | 自举完成,固定点验证通过(commit 510c497,memory project_bootstrap_status) |
-| 测试基线 | `bin/ss test tests/` 255/259(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联;Phase 2 wire_test 17 + Phase 3 handshake_test 7 + Phase 4 query_test 16 sub-test 全绿) |
+| 测试基线 | `bin/ss test tests/` 255/259(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联;Phase 2 wire_test 17 + Phase 3 handshake_test 7(Phase 5 删 MysqlConnection ctor 测同步拆 class)+ Phase 4 query_test 16 + Phase 5 query_test +5 = 21 sub-test 全绿) |
 
 ### 禁止的 Context 操作
 
@@ -675,11 +676,33 @@ D133 §A.6 区分:
 
 **不变量保留**:D018 / D022 / D025(interface dispatch — Phase 4 兑现 MysqlResultSet : ResultSet 7 method 实现)/ D068(private 修饰符 — Phase 4 应用)/ D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/com/mysql/wire + Phase 3 lib/com/mysql/handshake + lib/crypto SHA-1 全保留;query.ss 单向依赖 lib/binary + lib/com/mysql/wire + lib/java/sql,无循环。Phase 5(lib/com/mysql/jdbc.ss class MysqlConnection : Connection + class MysqlStatement : Statement + lib/java/sql.ss DriverManager_getConnection url dispatch + lib/spring/{jdbc,data}.ss placeholder 替换)待起立。
 
-### Phase 5: DriverManager dispatch + Connection/Statement + lib/spring 接入 [ ] Planned
+### Phase 5: DriverManager dispatch + Connection/Statement + lib/spring 接入 [✓] Done at commit `4529596` (2026-04-26)
 
-- lib/com/mysql/jdbc.ss class MysqlConnection / MysqlStatement
-- lib/java/sql.ss DriverManager_getConnection url 协议分派
-- lib/spring/{jdbc,data}.ss placeholder body 替换
+**关键调研发现**:
+
+- **NAMESPACE COLLISION**:Phase 3 落盘的 `class MysqlConnection { fd, autoCommit, closed }` 与 Phase 5 jdbc.ss `class MysqlConnection : Connection` 同名冲突。三候选(① rename → `RawMysqlConnection` / ② 拆 class 改 `mysqlConnect` 返 `int` fd / ③ 别名 `MysqlJdbcConnection`)按 CLAUDE.md L91 根因解决度第一法则排序,选**根因方案 ②**:handshake.ss 层只负 auth 协议(单一职责 SoC),driver 层 jdbc.ss 独立承载 Connection lifecycle(autoCommit / closed state)。候选 ① 仅 cosmetic rename 没解决 handshake 层职责越界,候选 ③ 别名是 workaround 风格 — 都被根因方案 ② 压一拍。
+- **CIRCULAR IMPORT 实测**:`bootstrap/main.ss resolveInner:186-187` 用 `visitedImports` Map 防重入(`if (visitedImports.has(filePath) == 1) { return "" }`)— sql.ss → jdbc.ss → sql.ss 第二次访问跳过 emit,SS 编译器两阶段(全局 class/interface 收集 + method body 解析)inline 后顺序无所谓,Phase 4 query.ss `class MysqlResultSet : ResultSet` + `import { ResultSet } from "@/lib/java/sql"` 已验证同范式跑通。
+- **JDBC URL 双 scheme + RFC 3986**:`lib/url.ss:411 urlIsValidScheme` 仅接受 alpha+digit+`+-.`,**不允许 `:`** — `jdbc:mysql://...` 整 scheme 被拒。三候选(① 改 lib/url.ss urlIsValidScheme 接受 `:` 影响 RFC 3986 全 URL 解析 / ② strip `jdbc:` 前缀后 URL_parse(`mysql://...` 标准 URI)/ ③ jdbc.ss 自己 inline parse 不复用)选**适配层 ② strip 前缀**:scope 控不影响 lib/url 全路径,且复用 lib/url.ss SSoT(IPv6 `[::1]` / url-encode pwd `%XX` 等路径 driver 层先 ready,sub-D follow-up mysqlConnect 支持时无 driver 层改动)。
+- **OK packet affected rows 解析 helper 加 query.ss 而非 jdbc.ss**(SoT 集中):所有 mysql wire 解析都在 wire.ss + query.ss + handshake.ss,driver 层 jdbc.ss 不应 carry packet parser 责任。`parseOkPacketAffectedRows(payload, payloadLen): int` + `readUpdateResult(fd): int`(返 N >= 0 affected rows / -1 ERR or 短读 or unknown first byte),走 `readPacket(fd)` + 看 first byte。
+- **JdbcTemplate.queryForList 返 ResultSet 不返 Array<Map<string,string>>**:沿用 D025 ResultSet interface streaming model + Phase 4 readQueryResultSet 已 ready;SS Map<string,string> 默认值复杂度避免;且 streaming 路径下 ResultSet 与底层 socket 寿命绑定,Array<Map> 强求 eager load 大表 SELECT * 内存爆。
+- **JdbcTemplate per-call connection lifecycle**:execute / update 每次开 + 关 socket(TCP handshake + MySQL handshake + auth + close)是 Phase 5 spec 接受的"无 pool 简化"(D134 §3 §Phase 5 line 16);queryForList 故意**不**关 connection(streaming socket 共享给 ResultSet,caller 必须 rs.close 才能下次 query)— Connection leak 至进程退出,文档级 caveat,sub-D HikariCP D125+ 解决。
+
+**实施结果**:
+
+- ✓ `lib/com/mysql/jdbc.ss` 新建 ~138 行 — `class MysqlConnection : Connection` 实现 D025 6 method(`createStatement / setAutoCommit / commit / rollback / close / isClosed`,`setAutoCommit` 加 short-circuit 消 redundant state — simplify quality M3;`close()` 走 COM_QUIT 0x01 单字节 payload + tcpClose;`commit/rollback` 走 sendQuery + readUpdateResult)+ `class MysqlStatement : Statement` 实现 D025 4 method(`executeQuery → readQueryResultSet`,`execute / executeUpdate → readUpdateResult`,`close` no-op socket fd 由 Connection 拥有)+ `function getMysqlConnection(url)` strip `jdbc:` prefix + `URL_parse(stripped)` 复用 `lib/url.ss` SSoT(simplify reuse F1 — 删 35 行 inline substring/indexOf 切分,消 5 处 "len - idx - k" 算术 magic)+ `port parseInt` 加 `p > 0` 防御(simplify quality D3)
+- ✓ `lib/com/mysql/handshake.ss` 改 — 删 `class MysqlConnection { fd, autoCommit, closed }` + `mysqlConnect` 返 `int`(NAMESPACE COLLISION 根因方案 ②)+ 4 fail-arm(tcpConnect / handshake read / auth response read / errMsg)统一收敛到单一 errMsg + 末尾 `println("MySQL: " + errMsg) + return -1` 出口(simplify quality D1 — 4 → 1 出口)
+- ✓ `lib/com/mysql/query.ss` 改增量 — `parseOkPacketAffectedRows(payload, payloadLen): int` + `readUpdateResult(fd): int` + 5 个新 unit test(zero rows / one row / large lenenc 2-byte 10000 / non-OK header defensive / empty payload)入 query_test.ss(bash-printf fixture 复用 Phase 3/4 范式)
+- ✓ `lib/java/sql.ss` 改 — `import { getMysqlConnection } from "@/lib/com/mysql/jdbc"`(循环 import 由 visited set 处理)+ `DriverManager_getConnection` 加 `if (url.startsWith("jdbc:mysql://")) return getMysqlConnection(url)`,fallback 兜底保留(其他 url scheme 报错)— 锁定 D134 §A.5 hardcoded scheme dispatch
+- ✓ `lib/spring/jdbc.ss` 改 — `JdbcTemplate.execute / update` per-call 开关 socket(getConnection + createStatement + execute/executeUpdate + close + close)+ `queryForList` streaming(不关 conn,共享 socket)+ `queryForString / queryForInt` 复用 queryForList + 取首行 column 列 + rs.close + `withTransaction` body 替换(setAutoCommit(0) + fn() + r==0 commit / r!=0 rollback + conn.close)
+- ✓ `lib/spring/data.ss` 改 — `JpaRepositoryFactory_create` body 替换 `new JdbcTemplate(url) + new JpaRepository(tableName, columns, jdbc)` 删 placeholder
+- ✓ `tests/d134_mysql/handshake_test.ss` 改 — 同步删 `MysqlConnection` import(line 10)+ 删 `MysqlConnection positional constructor` test(line 72-77),保留 HandshakeV10 + parseHandshakeV10 + scramble 4 vec
+- ✓ `tests/d134_mysql/query_test.ss` 改增量 — 加 5 个 `parseOkPacketAffectedRows` 测试 = 16 → 21 sub-test 全绿
+- ✓ `bin/ss test tests/d134_mysql/` 3 file pass / 0 fail / 21 sub-test 全绿 — Phase 4 不降级 + Phase 5 增 5 sub-test
+- ✓ `bin/ss test tests/` 255 pass / 4 fail / 259 total — D133 §附录 B Phase 6 latent 4 fail 基线不降级
+- ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical(Phase 5 lib only,零 bootstrap 冲击)
+- ✓ /simplify 复核 3 agent 回执:**MUST-FIX 2 项应用**(reuse F1 URL_parse 复用 + quality M3 autoCommit short-circuit)+ **MEDIUM 2 项应用**(quality D1 errMsg 4→1 出口 + quality D3 port p > 0 防御)+ MEDIUM/LOW SKIP(reuse F2 JdbcTemplate per-call helper 抽 — SS fn 类型 + queryForList streaming fork code path,留 D125+ HikariCP 一并 / quality D2 writeIntLE 抽 lib/binary helper — scope 控 / quality D4-D6 + LOW L1-L3 全 SKIP — D133 落盘代码不动 / SQL escape prepared statement sub-D / OK header double-check defensive 合理 / narrate comments D134 协议字段表 SSoT 保留)+ efficiency 全 SKIP(per-call open / URL parse / first byte 顺序 / bash-printf fixture / sendHandshakeResponse41 byte-by-byte 全在 spec acceptance 内冷路径)
+
+**不变量保留**:D018(对象布局)/ D022(clone 语义)/ D025(interface dispatch — Phase 5 兑现 MysqlConnection : Connection + MysqlStatement : Statement + Phase 4 已兑现 MysqlResultSet : ResultSet)/ D068 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/com/mysql/wire + Phase 3 mysql_native_password scramble + Phase 4 query.ss 全保留;jdbc.ss 单向依赖 lib/java/sql + lib/url + lib/com/mysql/{wire,handshake,query},无实际循环(visited set 防重入)。Phase 6(docker e2e + tests/d134_mysql/docker-compose.yml + integration_test.ss + RED 收敛 + axiom 红线 grep 0 命中最终验证)待起立。
 
 ### Phase 6: 全测试 + RED → 0 + axiom 红线 [ ] Planned
 
