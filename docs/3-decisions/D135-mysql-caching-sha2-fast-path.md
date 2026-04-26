@@ -452,13 +452,19 @@ D134 §A.7:
 - ✓ 不动 D134 文件(retcon 留 Phase 2 commit hash known 时回填,承 §Principles 8)
 - 用户审阅 OK 后下轮起 Phase 1
 
-### Phase 1: caching_sha2_password 实施替换 [ ] Planned
+### Phase 1: caching_sha2_password 实施替换 [✓] Done at commit `d34e0a7` (2026-04-26)
 
-- [ ] `lib/com/mysql/handshake.ss`:删 `mysqlNativePasswordScramble` + 加 `cachingSha2Scramble` + 改 `sendHandshakeResponse41` plugin name + 改 `mysqlConnect` fast-path 响应处理
-- [ ] `tests/d134_mysql/handshake_test.ss`:删 4 mysql_native vec + 加 4 caching_sha2 vec(Python hashlib SHA-256 reference)
-- [ ] `bin/ss test tests/d134_mysql/handshake_test.ss` 全绿
-- [ ] `./build.sh bootstrap` 三阶段固定点 stage2 == stage3
-- [ ] commit "feat(D135): Phase 1 ..."
+- [x] `lib/com/mysql/handshake.ss`:删 `mysqlNativePasswordScramble` + 加 `cachingSha2Scramble` + 改 `sendHandshakeResponse41` plugin name + 改 `mysqlConnect` fast-path 响应处理 + 7 协议字节命名常量(simplify 采纳:`AUTH_OK` / `AUTH_MORE_DATA` / `FAST_AUTH_SUCCESS` / `PERFORM_FULL_AUTHENTICATION` / `AUTH_SWITCH_REQUEST` / `ERR_PACKET` / `CACHING_SHA2_REPLY_LEN`)
+- [x] `tests/d134_mysql/handshake_test.ss`:删 4 mysql_native vec + 加 4 caching_sha2 vec(Python hashlib SHA-256 reference)+ parseHandshakeV10 fixture binary retcon `mysql_native_password` → `caching_sha2_password`
+- [x] `bin/ss test tests/d134_mysql/handshake_test.ss`: 6/6 PASS(4 caching_sha2 vec + parseHandshakeV10 fixture + HandshakeV10 constructor)
+- [x] `bin/ss test tests/d134_mysql/`: 4/4 file PASS(integration_test probe skip,wire/query/handshake 全绿)
+- [x] `bin/ss test tests/`: 256/260 PASS(D134 baseline,4 pre-existing fail)
+- [x] `./build.sh bootstrap`: stage2 == stage3 byte-identical(纯 lib 不动 bootstrap)
+- [x] `bin/ss run tools/reflection_health_linter.ss`: GATE PASS no regressions
+- [x] `bin/ss run tools/d_doc_index_linter.ss`: GATE OK F1 = 0(D135 在 F2 orphan soft warn — Phase 2 D134 §Status superseded 锚挂 § 引用后清零)
+- [x] commit `d34e0a7` "feat(D135): Phase 1 ..." (2026-04-26)
+- caching_sha2 grep ≥ 5: 改前 0 / 改后 16 ✓
+- mysql_native 残留 ≤ 0: 改前 8+12=20 / 改后 2+1=3(3 处全 explanatory retcon 锚 — supersedes 关系 + 算法对比说明,非 dead code;docker-compose + integration_test.ss 留 Phase 2)
 
 ### Phase 2: docker retcon + tests/d135_caching_sha2/ e2e + D134 retcon [ ] Planned
 
