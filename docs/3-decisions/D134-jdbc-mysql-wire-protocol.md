@@ -1,6 +1,6 @@
 # D134: JDBC MySQL wire protocol 纯 SS 实现
 
-**Status:** Execute(Phase 0/1/1.5/2/3 收关,Phase 4-6 待起立)
+**Status:** Execute(Phase 0/1/1.5/2/3/4 收关,Phase 5-6 待起立)
 
 **Depends on:**
 - D133 全 Phase 收关锚(commit 510c497)— `lib/java/sql.ss` driver-agnostic interface + `lib/spring/{jdbc,data}.ss` placeholder body
@@ -116,9 +116,10 @@ bin/ss test tests/d134_mysql/
 | 当前 lib/binary | ✓ `lib/binary.ss`(Phase 2 新建) |
 | 当前 lib/com/mysql/wire | ✓ `lib/com/mysql/wire.ss`(Phase 2 新建,Phase 3 修 latent bug:`class MysqlPacket` field 语法 + positional ctor) |
 | 当前 lib/com/mysql/handshake | ✓ `lib/com/mysql/handshake.ss`(Phase 3 新建:`class HandshakeV10` + `class MysqlConnection` + `parseHandshakeV10` + `mysqlNativePasswordScramble` + `sendHandshakeResponse41` + `mysqlConnect`) |
+| 当前 lib/com/mysql/query | ✓ `lib/com/mysql/query.ss`(Phase 4 新建:`class ColumnDef` + `sendQuery` + `parse/readResultSetHeader` + `parse/readColumnDef` + `parseRow` + `isEofPacket` + `class MysqlResultSet : ResultSet` 实现 D025 7 method + `readQueryResultSet` 完整 query response read flow) |
 | 当前 lib/net | ✗(本 D 不创建,client 原语放 bootstrap rt 层一致 server 端范式) |
 | 自举状态 | 自举完成,固定点验证通过(commit 510c497,memory project_bootstrap_status) |
-| 测试基线 | `bin/ss test tests/` 252/256(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联) |
+| 测试基线 | `bin/ss test tests/` 255/259(D133 §附录 B Phase 6 列锚 4 fail = pre-existing latent,与本 D 零关联;Phase 2 wire_test 17 + Phase 3 handshake_test 7 + Phase 4 query_test 16 sub-test 全绿) |
 
 ### 禁止的 Context 操作
 
@@ -629,11 +630,50 @@ D133 §A.6 区分:
 
 **不变量保留**:D018 / D022 / D025 / D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/crypto SHA-1 + wire packet API 全保留;handshake.ss 单向依赖 lib/binary + lib/com/mysql/wire + lib/crypto,无循环。
 
-### Phase 4: lib/com/mysql/query.ss + ResultSet [ ] Planned
+### Phase 4: lib/com/mysql/query.ss + ResultSet [✓] Done at commit `<PHASE4_HASH>`
 
-- COM_QUERY 发包
-- column / row packet 解析
-- class MysqlResultSet : ResultSet
+**关键调研发现**:
+
+- **DEPRECATE_EOF 决策 = legacy EOF 路径**:D134 §3 line 217 spec "本 D 假设 DEPRECATE_EOF 设置 = MySQL 8 default",但 Phase 3 sendHandshakeResponse41 capFlags 实际**未**设 `CLIENT_DEPRECATE_EOF`(0x01000000),server 发送 legacy EOF(0xFE 头 + payload < 9 byte)。Phase 4 与 Phase 3 实际 capFlags 对齐,按 legacy EOF 处理(`isEofPacket(payload, payloadLen): int { 0xFE 头 && < 9 byte → 1 }`)— **不强行回设 DEPRECATE_EOF**(scope 控制,Phase 5 集成时若需可加)。决策 deviation 锚 D134 §3 Phase 4 + 本节实施日志
+- **ColumnDef 字段最小集 = 4 字段决策**(name / colType / columnLen / charset):D134 §3 line 216 描述 packet 含 catalog/schema/table/org_table/name/org_name/charset/column_length/column_type/flags 等(完整集),但 ColumnDef **class field** 由 driver 决定哪些 metadata 必要。MysqlResultSet `getString(col)` linear search 仅需 `name`,future 类型转换可能用 `colType / columnLen / charset` — catalog/schema/table/org_table/org_name 是 wire spec 字段但 driver 不读字段名仅 skip bytes,4 字段最小集减 ctor 复杂度 + 内存,符合 D134 §Principles 7(Phase 边界 = 必要最小集)
+- **MysqlResultSet 6 字段决策**(fd / colCount / colMetadata / currentRow / closed / hasMoreRows):D134 §3 line 220 spec 4 字段 `fd / colMetadata / currentRow / closed`,实施扩 2 字段:① `colCount: int` 双语义 — SELECT 路径=列数(parseRow / colIndex 必需);OK/ERR 路径=哨兵 RESULT_SET_HEADER_OK/ERR(-2/-1,无 row 时 colMetadata=[] 信息无法靠 .length() 还原) ② `hasMoreRows: int` — 三态语义 (closed=0,hasMoreRows=1) 流式中 / (closed=0,hasMoreRows=0) EOF 已读未 close(防 next() 重复读 socket) / (closed=1,hasMoreRows=0) 已 close。删任一字段都丢信息。simplify quality agent M1+M2 SKIP(语义不冗余) + readability agent OK(`hasMoreRows` 动词起头符 d 项,`closed` SS 无 bool 是 idiom)
+- **parse / read 双层 split**:`parseResultSetHeader(payload, payloadLen)` / `parseColumnDef(payload)` / `parseRow(payload, colCount)` 纯解析(payload 来自任何源,test 用 bash printf fixture);`readResultSetHeader(fd) / readColumnDef(fd)` 一行 wrapper 加 `readPacket(fd)` 走 socket。**D134 §A.4 测试性决策** — 单元测试可驱动 parse 部分(无需 socket pair / fork builtin),保留 socket 路径供 Phase 5/6 集成
+- **`skipLengthEncodedString(payload, offset): int` helper 抽出**:`parseColumnDef` 6 次 skip(catalog/schema/table/org_table/org_name 各 1 次 + read 1 次 name)— 复用 `readLengthEncodedInt + lengthEncodedIntSize` 双调用 + offset 推进 + NULL marker(< 0)0 数据 byte 处理。属 query.ss domain-specific(NULL 路径语义),不推回 lib/binary(违反 SSoT 通用层不承载 mysql NULL 语义);simplify reuse agent SKIP(正是双原语正确组合)
+- **multi-line import 是 SS 不支持的语法**(本轮调研发现):初版 query_test.ss 用 multi-line import {\n  parseResultSetHeader,\n  parseColumnDef,\n  ...\n} from "..." 编译报 "parse error at line 56: expected newline or '}', found COMMA"(line 56 是 import 展开后位置不是源文件位置)。Phase 3 handshake_test.ss line 10 与 Phase 2 wire_test.ss line 7 全用单行 import,实测确认 SS parser 仅支持单行 import 语法。query_test.ss 改回单行 import 即过。**latent SS parser 限制**(可记 sub-D follow-up 或 Phase 5+ 修复 — 不在本轮 scope)
+- **测试 deviation: sendQuery / readQueryResultSet 留 Phase 6 docker e2e**:同 Phase 3 mysqlConnect 决策,SS 无 fork/pipe/socketpair builtin 单元测试无法构造 socket pair 路径,完整 query response read flow 需 docker mysql:8 e2e
+
+**实施结果**:
+
+- ✓ `lib/com/mysql/query.ss`(~257 LOC):
+  - `class ColumnDef { name, colType, columnLen, charset }`(4 字段最小集 positional ctor)
+  - 8 个文件级常量:`COM_QUERY=0x03 / NULL_MARKER=0xFB / ERR_HEADER=0xFF / OK_HEADER=0x00 / EOF_HEADER=0xFE / RESULT_SET_HEADER_ERR=-1 / RESULT_SET_HEADER_OK=-2`
+  - `function sendQuery(fd: int, sql: string): int` — packet seq=0,payload=`fromCharCode(COM_QUERY)+sql`,sql 全 ASCII nonzero string concat 安全,直调 `writePacket(fd, 0, payload, sqlLen+1)`
+  - `function parseResultSetHeader(payload, payloadLen): int` — ERR/OK/列计数三分枝
+  - `function readResultSetHeader(fd: int): int` — readPacket(fd) wrapper
+  - `function skipLengthEncodedString(payload, offset): int` — domain-specific helper(NULL marker 不消费数据 byte)
+  - `function parseColumnDef(payload: string): ColumnDef` — 6 次 skip + 1 次 readLengthEncodedString name + 1 byte filler + charset(2 LE) + columnLen(4 LE) + colType(1)
+  - `function readColumnDef(fd: int): ColumnDef` — wrapper
+  - `function isEofPacket(payload, payloadLen): int` — legacy EOF 检测(0xFE 头 + payloadLen < 9)
+  - `function parseRow(payload: string, colCount: int): Array<string>` — 每列 NULL marker(0xFB)→ "" 或 length-encoded string
+  - `class MysqlResultSet : ResultSet` 实现 D025 interface 7 method:`next / getString / getInt / getLong / getDouble / getBoolean / close` + `private function colIndex(col: string): int`(simplify quality M3 落实,private 防 D025 接口外暴露)
+  - `function readQueryResultSet(fd: int): MysqlResultSet` — 完整 query response read flow(header → N column def → legacy EOF discard → return rs with hasMoreRows=1)
+- ✓ `tests/d134_mysql/query_test.ss`(~149 LOC):16 unit test
+  - 5 parseResultSetHeader test(ERR/OK/列计数 1/列计数 5/empty)
+  - 4 isEofPacket test(EOF marker fixture / 非 EOF 错误头 / 非 EOF 长 payload / empty)
+  - 1 parseColumnDef minimal id INT 11 utf8mb3 fixture(via `system+bash -c+printf '\xHH'+readFile`,charCodeAt direct GEP+load binary-safe)
+  - 3 parseRow test(2 列 Alice/42 / NULL 列 0xFB / 1 列 empty string len=0)
+  - 1 ColumnDef positional ctor 契约
+  - 2 MysqlResultSet 测试(positional ctor + getters / getBoolean true 变体 4 case)
+- ✓ `bin/ss test tests/d134_mysql/query_test.ss` 16 pass / 0 fail(本轮新增)
+- ✓ `bin/ss test tests/d134_mysql/` 3 pass / 0 fail(wire + handshake + query 三 file 全绿)
+- ✓ `bin/ss test tests/` 255 pass / 4 fail / 259 total — D133 §附录 B Phase 6 latent 4 fail 基线不降级(spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug 全 pre-existing,与 Phase 4 零关联;新增 query_test.ss 1 file pass = +1 vs Phase 3 baseline 254/4/258)
+- ✓ `./build.sh bootstrap` 三阶段固定点 stage2 == stage3 byte-identical(Phase 4 lib only,零 bootstrap 冲击)
+- ✓ /simplify 复核 4 agent 回执(reuse + quality + efficiency 并发 + readability 否决权):
+  - **MUST-FIX 0** 项
+  - **MEDIUM 落实 3 项**:① quality M3 `MysqlResultSet.colIndex` 加 `private function`(D068 + tests/phase5/private_field.ss 实证 SS 支持)+ 删 test `assertEqual(rs.colIndex(...), N)` 直测 3 行(封装意义 — 通过 `getString` 间接验证已留) ② quality M2 `next()` 双 if 合并为 `if (this.closed != 0 || this.hasMoreRows == 0) { return 0 }` ③ quality M1 `colCount` 字段加 WHY 注释(双语义钉)
+  - **SKIP 锚**:① reuse 1 MEDIUM SKIP(`parseRow` else 分支 read+advance 不能用 skip 替 — skip 只 advance 不 read,改后反 +1 charCodeAt) + 3 LOW SKIP(`colIndex` linear / EOF 检测对偶 / fixture 抽 helper 全 scope 控) ② quality 5 LOW SKIP(`getBoolean` 三 if 链 vs ternary readability 等价 / test 字面量 const 反违 readability rubric a / column type byte single-use inline / `close()` SS 无 break+continue / WHAT-only 注释扫描 0 删除) ③ efficiency 5 SKIP(E1 Array.push O(N²) lib/Array 语义 scope 外 / E2 fused decodeLengthEncoded 1% 收益污染 SSoT API / E3 colIndex Map<string,int> 小 N linear 比 hash 快 / E4 closed/hasMoreRows int 非效率问题 / E5 fixture system call 总耗 < 500ms 微优化) ④ readability NULL_MARKER → COLUMN_NULL_MARKER 非阻断(Phase 5 binary protocol NULL bitmap 时 rename)
+
+**不变量保留**:D018 / D022 / D025(interface dispatch — Phase 4 兑现 MysqlResultSet : ResultSet 7 method 实现)/ D068(private 修饰符 — Phase 4 应用)/ D088 / D123 / D130-133 全不动;mimalloc C link axiom 例外保留;Phase 1/1.5 socket client 原语 + Phase 2 lib/binary + lib/com/mysql/wire + Phase 3 lib/com/mysql/handshake + lib/crypto SHA-1 全保留;query.ss 单向依赖 lib/binary + lib/com/mysql/wire + lib/java/sql,无循环。Phase 5(lib/com/mysql/jdbc.ss class MysqlConnection : Connection + class MysqlStatement : Statement + lib/java/sql.ss DriverManager_getConnection url dispatch + lib/spring/{jdbc,data}.ss placeholder 替换)待起立。
 
 ### Phase 5: DriverManager dispatch + Connection/Statement + lib/spring 接入 [ ] Planned
 
