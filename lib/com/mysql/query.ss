@@ -62,6 +62,35 @@ function readResultSetHeader(fd: int): int {
     return parseResultSetHeader(pkt.payload, pkt.payloadLen)
 }
 
+// Parses the affected rows count from an OK packet payload. OK packet layout
+// (text protocol, CLIENT_PROTOCOL_41 set, no SESSION_TRACK):
+//   1 byte:        header (0x00 — OK; 0xFE counts as OK only when payloadLen < 9
+//                  AND CLIENT_DEPRECATE_EOF is set, not the case here)
+//   lenenc int:    affected rows           ← KEEP
+//   lenenc int:    last_insert_id          (skip)
+//   2 byte LE:     status flags            (skip)
+//   2 byte LE:     warnings count          (skip)
+//   ... rest:      info string             (skip)
+// Returns 0 if header is not OK (caller already filtered ERR — defensive).
+function parseOkPacketAffectedRows(payload: string, payloadLen: int): int {
+    if (payloadLen < 2) { return 0 }
+    if (charCodeAt(payload, 0) != OK_HEADER) { return 0 }
+    return readLengthEncodedInt(payload, 1)
+}
+
+// Reads the response to an INSERT / UPDATE / DELETE / DDL command.
+// Returns:
+//   N >= 0  affected rows (OK packet)
+//   -1      error (ERR packet, short read, or unrecognised first byte)
+function readUpdateResult(fd: int): int {
+    const pkt = readPacket(fd)
+    if (pkt.payloadLen <= 0) { return -1 }
+    const first = charCodeAt(pkt.payload, 0)
+    if (first == ERR_HEADER) { return -1 }
+    if (first == OK_HEADER) { return parseOkPacketAffectedRows(pkt.payload, pkt.payloadLen) }
+    return -1
+}
+
 // Skips one length-encoded string at `offset`, returns the new offset.
 // NULL marker (0xFB) consumes 1 byte of header and zero data bytes.
 function skipLengthEncodedString(payload: string, offset: int): int {

@@ -7,7 +7,7 @@
 // mysqlConnect / sendHandshakeResponse41: real socket flow — Phase 6 docker e2e.
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { parseHandshakeV10, mysqlNativePasswordScramble, HandshakeV10, MysqlConnection } from "@/lib/com/mysql/handshake"
+import { parseHandshakeV10, mysqlNativePasswordScramble, HandshakeV10 } from "@/lib/com/mysql/handshake"
 
 function main() {
     // ── mysqlNativePasswordScramble reference vectors ──────────────
@@ -67,13 +67,6 @@ function main() {
         assertEqual(h.charset, 33)
         assertEqual(h.statusFlags, 2)
         assertEqual(h.authPlugin, "mysql_native_password")
-    })
-
-    test("MysqlConnection positional constructor", () => {
-        const c = new MysqlConnection(-1, 1, 0)
-        assertEqual(c.fd, -1)
-        assertEqual(c.autoCommit, 1)
-        assertEqual(c.closed, 0)
     })
 
     println("All D134 Phase 3 handshake tests passed!")

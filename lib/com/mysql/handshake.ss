@@ -37,12 +37,6 @@ class HandshakeV10 {
     authPlugin: string
 }
 
-class MysqlConnection {
-    fd: int
-    autoCommit: int
-    closed: int
-}
-
 // Parses a handshake v10 packet payload. Layout (per MySQL Native Protocol):
 //   1   protocol version (= 10)
 //   N   server version (null-terminated string)
@@ -210,49 +204,51 @@ function sendHandshakeResponse41(fd: int, capFlags: int, charset: int, username:
 // Full mysqlConnect flow:
 //   tcpConnect → readPacket(handshake) → parseHandshakeV10 →
 //   mysqlNativePasswordScramble → sendHandshakeResponse41 → readPacket(OK / ERR)
-// On any failure, returns MysqlConnection with fd = -1 (caller must check).
+// Returns the authenticated socket fd, or -1 on any failure (caller must check).
+// Driver-layer Connection state (autoCommit / closed) is owned by
+// lib/com/mysql/jdbc.ss class MysqlConnection : Connection — handshake.ss owns
+// only the auth protocol, not connection lifecycle.
 // Diagnostics emitted via println.
-function mysqlConnect(host: string, port: int, username: string, password: string, database: string): MysqlConnection {
-    const conn = new MysqlConnection(-1, 1, 0)
-    const fd = tcpConnect(host, port)
-    if (fd < 0) {
-        println("MySQL: tcpConnect failed")
-        return conn
-    }
-    conn.fd = fd
-
-    const handshakePkt = readPacket(fd)
-    if (handshakePkt.payloadLen <= 0) {
-        println("MySQL: handshake read failed")
-        conn.fd = -1
-        return conn
-    }
-    const h = parseHandshakeV10(handshakePkt.payload)
-    const replyHex = mysqlNativePasswordScramble(password, h.scrambleHex)
-
-    let capFlags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PLUGIN_AUTH
-    if (database.length() > 0) {
-        capFlags = capFlags | CLIENT_CONNECT_WITH_DB
-    }
-    sendHandshakeResponse41(fd, capFlags, h.charset, username, replyHex, database)
-
-    const authPkt = readPacket(fd)
-    if (authPkt.payloadLen <= 0) {
-        println("MySQL: auth response read failed")
-        conn.fd = -1
-        return conn
-    }
-    const firstByte = charCodeAt(authPkt.payload, 0)
+function mysqlConnect(host: string, port: int, username: string, password: string, database: string): int {
     let errMsg = ""
-    if (firstByte == 0xFF) { errMsg = "auth failed (ERR packet)" }
-    // AuthSwitchRequest — server requests a different auth method; Phase 3 only
-    // handles mysql_native_password. caching_sha2 / sha256 fast-path are sub-D.
-    if (firstByte == 0xFE) { errMsg = "server requested AuthSwitch (unsupported in Phase 3)" }
-    if (firstByte != 0x00 && firstByte != 0xFF && firstByte != 0xFE) { errMsg = "unexpected auth response first byte" }
+    let fd = tcpConnect(host, port)
+    if (fd < 0) { errMsg = "tcpConnect failed" }
+
+    let h: HandshakeV10 = new HandshakeV10(0, "", 0, "", 0, 0, 0, "")
+    if (errMsg == "") {
+        const handshakePkt = readPacket(fd)
+        if (handshakePkt.payloadLen <= 0) {
+            errMsg = "handshake read failed"
+        } else {
+            h = parseHandshakeV10(handshakePkt.payload)
+        }
+    }
+
+    if (errMsg == "") {
+        const replyHex = mysqlNativePasswordScramble(password, h.scrambleHex)
+        let capFlags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PLUGIN_AUTH
+        if (database.length() > 0) {
+            capFlags = capFlags | CLIENT_CONNECT_WITH_DB
+        }
+        sendHandshakeResponse41(fd, capFlags, h.charset, username, replyHex, database)
+
+        const authPkt = readPacket(fd)
+        if (authPkt.payloadLen <= 0) {
+            errMsg = "auth response read failed"
+        } else {
+            const firstByte = charCodeAt(authPkt.payload, 0)
+            if (firstByte == 0xFF) { errMsg = "auth failed (ERR packet)" }
+            // AuthSwitchRequest — server requests a different auth method;
+            // Phase 3 only handles mysql_native_password. caching_sha2 /
+            // sha256 fast-path are sub-D.
+            if (firstByte == 0xFE) { errMsg = "server requested AuthSwitch (unsupported in Phase 3)" }
+            if (firstByte != 0x00 && firstByte != 0xFF && firstByte != 0xFE) { errMsg = "unexpected auth response first byte" }
+        }
+    }
+
     if (errMsg != "") {
         println("MySQL: " + errMsg)
-        conn.fd = -1
-        return conn
+        return -1
     }
-    return conn
+    return fd
 }

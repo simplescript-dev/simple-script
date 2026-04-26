@@ -1,8 +1,9 @@
-// spring-data-jpa:2025.1 — JpaRepository (D133 Phase 5 placeholder)
+// spring-data-jpa:2025.1 — JpaRepository.
 // CRUD over JDBC via JdbcTemplate. Each repository operates on a single table.
-// D133: SQLite C link removed; factory delegates to placeholder JdbcTemplate
-// until D134 (JDBC MySQL wire protocol) lands a concrete driver.
+// D134 Phase 5: real factory body — JpaRepositoryFactory.create wires a
+// JdbcTemplate(url) into a JpaRepository(table, columns, jdbc).
 // See docs/3-decisions/D133-sqlite-c-link-elimination.md
+// See docs/3-decisions/D134-jdbc-mysql-wire-protocol.md §3 §Phase 5
 
 import { Connection, ResultSet, DriverManager } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
@@ -71,6 +72,6 @@ class JpaRepository {
 class JpaRepositoryFactory
 
 function JpaRepositoryFactory_create(url: string, tableName: string, columns: string): JpaRepository {
-    println(`JpaRepositoryFactory.create: no driver registered (D133), see D134 — url: ${url}`)
-    exit(1)
+    const jdbc = new JdbcTemplate(url)
+    return new JpaRepository(tableName, columns, jdbc)
 }
