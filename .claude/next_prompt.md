@@ -1,39 +1,41 @@
-ultrathink D137 Phase 2 实施 — lib/spring/data.ss 11 处 JpaRepository CRUD retcon 走 callback。前置:Phase 1 已落地 commit `d2df1ba` 解锁 JdbcTemplate 5 callback 重载(execute/update/queryForList(sql, setter: fn) + queryForString/queryForInt(sql, setter: fn, column)),spring/data.ss 现可消费 setter callback overload。
+ultrathink D137 Phase 3 实施 — tests/d134_mysql/integration_test.ss 11 处含动态值 SQL retcon 走 prepared+setter。前置:Phase 2 已落地 commit `4c28bc0`(JpaRepository 11 处 CRUD callback retcon + placeholders 字段缓存 + buildPlaceholders Array<string>.join 复用 + tests d134_mysql save 调用方 retcon + §F9 锚 SS lambda 参数类型推断 + interface dispatch bug 发现);Phase 1 commit `d2df1ba` 已落锁 JdbcTemplate 5 method callback 重载。
 
 **RED 凭据**(本轮已跑过):
-- `grep -cE '\$\{(id|value|setClauses|vals)\}' lib/spring/data.ss` 期望 > 0(实测 = 7,动态值未 ?化);Phase 2 GREEN 期望 = 0(全 ?化 + setter 注入)
-- `grep -cE '\$\{(this\.tableName|this\.columns|column|cols)\}' lib/spring/data.ss` 期望 > 0(实测 = 10,元数据合法);Phase 2 GREEN 维持 > 0(元数据保留)
-- `grep -c "prepareStatement\|setInt\|setString" lib/spring/data.ss` 期望 = 0(实测 = 0,无 prepared 调用);Phase 2 GREEN 期望 > 0(setter 内调)
+- `grep -cE "VALUES \([0-9]+, '" tests/d134_mysql/integration_test.ss` 期望 > 0(实测 = 4,4 处 INSERT VALUES 含动态字面量未 ?化);Phase 3 GREEN 期望 = 0
+- `grep -cE "WHERE id = [0-9]" tests/d134_mysql/integration_test.ss` 期望 > 0(实测 = 7,7 处 WHERE id = literal 未 ?化);Phase 3 GREEN 期望 = 0
+- 总计 11 处含动态值 SQL 需 retcon(test 2 line 73/75/83/84/89 + test 3 line 100 + test 4 line 113 + test 7 line 138/139/140/141);test 8 (JpaRepository) Phase 2 已 retcon
 
-**改动清单**(D137 §Phase 2 §改动清单 + 11 处元数据 vs 动态值分类表 line 188-202):
+**改动清单**(D137 §Phase 3 §改动清单 + 11 处分类):
 
-1. **11 处分类**(§核心原则 4):data.ss line 30/34/38/42/46/50/54/58/62/66/26 — `${this.tableName}` / `${this.columns}` / `${column}` / `${cols}` 是**元数据**(用户 const,合法保留拼接;MySQL 不允许 prepared statement ? 占位列名/表名);`${id}` / `${value}` / `${setClauses}` / `${vals}` 是**动态值**(?化 + setter)
-2. **findById / findBy / findByInt / existsById / deleteById**(line 38/42/46/50/58):`WHERE id = ${id}` / `WHERE ${column} = '${value}'` 类 — 元数据列名保留,id/value 改 `?` + setter.setInt/setString
-3. **save / update 两 method 签名重设计**(R5 接受 JpaRepository 局部签名破坏,§核心原则 2 仅约束 JdbcTemplate 不破签名):save(values: string) → save(setter: fn);update(id, setClauses: string) → update(id, setter: fn)
-4. **新增 JpaRepository 字段 `placeholders: string`**:constructor 初始化为按 columns 拆分数生成的 `"?, ?, ?"` 串(供 save INSERT 占位使用)
-5. **JpaRepositoryFactory_create 改 constructor**:增 placeholders 参数(基于 columns 字符串内 `,` 数计算)
-6. **业务调用方 retcon**:grep -rn "save\|update" tests/ 找全调用方,save/update 旧字符串签名改 callback 形式
+1. **test 2 CRUD INSERT/SELECT/UPDATE/DELETE**(line 68-92):5 处 SQL ?化 — line 73 INSERT VALUES (?, ?, ?) + setInt/setString/setInt;line 75 SELECT WHERE id = ? + setInt;line 83 UPDATE SET age = ? WHERE id = ? + 双 setInt;line 84 SELECT WHERE id = ? + setInt;line 89 DELETE WHERE id = ? + setInt;改用 `conn.prepareStatement(sql)` + setter + executeUpdate/Query(直 driver 接口,§D136 实证 GREEN 范式)
+2. **test 3 transaction commit**(line 95-105):line 100 INSERT VALUES (?, ?, ?) + 三 setter;同上 prepared 直 driver 路径
+3. **test 4 transaction rollback**(line 108-118):line 113 INSERT VALUES (?, ?, ?) + 三 setter;同上
+4. **test 7 JdbcTemplate**(line 135-143):4 处用 JdbcTemplate Phase 1 callback 重载 — line 138 tmpl.update(sql, setter) + 三 setter;line 139 tmpl.queryForString(sql, setter, column) + setInt;line 140 tmpl.queryForInt(sql, setter, column) + setInt;line 141 tmpl.update(sql, setter) + setInt
+5. **lambda 参数显式标 `(s: PreparedStatement) =>`** 全 11 处 callback(§F9 workaround 持续应用,真根因留 sub-D 修编译器)
+6. **不动 path**:countAll function(line 42-45)无动态值;recreateTable / dropTable / clearAll(line 23-40)DDL 路径 §核心原则 2 旧签名保留;test 1/5/6 无 SQL
 
-**GREEN 标准**(D137 §Phase 2 §GREEN):
+**GREEN 标准**(D137 §Phase 3 §GREEN):
 
 - `./build.sh bootstrap` 三阶段固定点
-- `bin/ss test tests/` 全绿(baseline 259/4/263 不降,4 pre-existing fail 不变)
-- `bin/ss test tests/d134_mysql/` 全绿(旧 jdbc 签名仍可用,Phase 3 才 retcon 调用方)
-- `bin/ss test tests/d135_caching_sha2/` + `tests/d136_prepared_statement/` 全绿(本 Phase 不动)
-- `grep -cE '\$\{(id|value|setClauses|vals)\}' lib/spring/data.ss` = 0(主判据)
-- `grep -cE '\$\{(this\.tableName|this\.columns|column|cols)\}' lib/spring/data.ss` > 0(元数据合法保留)
-- `grep -c "prepareStatement\|setInt\|setString" lib/spring/data.ss` > 0(setter 调用)
+- `bin/ss test tests/d134_mysql/` 5 case 全绿(8 sub-tests 全 PASS)
+- `bin/ss test tests/` 全绿(259/4/263 baseline 不降)
+- `bin/ss test tests/d135_caching_sha2/` 4 case 全绿(§核心原则 7 不动)
+- `bin/ss test tests/d136_prepared_statement/` 5 case 全绿(§核心原则 7 不动)
+- `grep -cE "VALUES \([0-9]+, '" tests/d134_mysql/integration_test.ss` = 0(主判据 1)
+- `grep -cE "WHERE id = [0-9]" tests/d134_mysql/integration_test.ss` = 0(主判据 2)
 - `bin/ss run tools/d_doc_index_linter.ss` F1 = 0
 - `bin/ss run tools/reflection_health_linter.ss` baseline 不升
+- axiom 红线 grep / nm = 0 永久维持(D134 + D135 + D136 全继承)
 
 严格按 D137 §核心原则 1-11 + docs/3-MNK.md §M PSM 九问 + §N VCM 六验执行:
-- §核心原则 1 callback 主线 + §核心原则 4 元数据 vs 动态值 grep 分类(MySQL 不允许 prepared statement ? 占位列名/表名,严防误 ?化致 ER_PARSE_ERROR)
-- §核心原则 6 spring/data.ss 11 处全迁完整性(禁手动跳过任何一处)
-- §核心原则 9 bootstrap 隔离(仅 lib/ + tests/ 改,不动 bootstrap)
-- R4 元数据 vs 动态值分类完整性(Phase 2 grep 逐条标分类 + §5 §Evaluation §3-4 grep 互补交叉验证)
-- R5 save/update 签名重设计致调用方破坏(同 commit 内改 JpaRepository + 所有 save/update 调用方,grep 全调用方实测)
+- §核心原则 1 callback 主线 + §核心原则 4 元数据 vs 动态值 grep 分类
+- §核心原则 6 全迁完整性(11 处全 retcon,metadata-only 路径合法保留需逐项分类标注)
+- §核心原则 7 tests/d135_caching_sha2/ + tests/d136_prepared_statement/ 不动
+- §核心原则 9 bootstrap 隔离(仅 tests/ 改,不动 bootstrap)
+- §F9 lambda 参数显式 type 注解 `(s: PreparedStatement)` 持续应用,真根因留 sub-D 修编译器
+- R3 queryForList streaming socket 与 prepared cursor 兼容性(test 7 line 139/140 tmpl.queryForString/Int 走 callback,内部 queryForList(sql, setter) 复用 — 检验 Phase 1 streaming 模式与 binary protocol 兼容)
 
 **§After Done 三步必走**(收尾 gate):
 1. /simplify 跑 3 agent 并行(reuse / quality / efficiency)
-2. commit(2-commit 范式: feat(D137) Phase 2 实施 → docs(D137) Phase 2 hash 回填 + Status 收关 + next_prompt 指向 Phase 3)
-3. 写下轮 next_prompt 指向 D137 Phase 3(tests/d134_mysql/integration_test.ss 8 case 含动态值 retcon)且必含 ultrathink 关键字 + 跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss` GATE PASS
+2. commit(2-commit 范式:feat(D137) Phase 3 实施 → docs(D137) Phase 3 hash 回填 + Status 收关 + next_prompt 指向 Phase 4)
+3. 写下轮 next_prompt 指向 D137 Phase 4(e2e 闭环 + D136 §F1 D138 编号冲突注释 + Status 收关)且必含 ultrathink 关键字 + 跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss` GATE PASS

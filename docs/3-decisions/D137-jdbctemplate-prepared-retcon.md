@@ -1,6 +1,6 @@
 # D137: JdbcTemplate Prepared Retcon — PreparedStatementSetter Callback Routing
 
-**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba`
+**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0`
 
 **Depends on:**
 - D136 全 Phase 收关锚(commit `b7cb6d5`)— `interface PreparedStatement` + `lib/com/mysql/prepared.ss` MysqlPreparedStatement 实施 + `MysqlConnection.prepareStatement()` driver 拼装 + `tests/d136_prepared_statement/` e2e 已就绪
@@ -440,7 +440,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 - prepareStatement count = 3(execute/update/queryForList 重载内主路径直接调,queryForString/queryForInt 复用 queryForList(sql, setter))→ 满足 §5 §Evaluation 第 2 判据 `> 0` SSoT
 - simplify 采纳: 注释 #1 单行化(删 setInt/setString 例子,保 D 引用 + WHY); 拒绝: 无
 
-### Phase 2: lib/spring/data.ss 11 处 JpaRepository CRUD retcon [✓] Done at commit `<phase2-commit>` (2026-04-27)
+### Phase 2: lib/spring/data.ss 11 处 JpaRepository CRUD retcon [✓] Done at commit `4c28bc0` (2026-04-27)
 
 - data.ss +35/-0(77→112 行):11 处分类落地(§核心原则 4 元数据 vs 动态值)
   - **改 7 处 callback retcon**(动态值 ?化 + setter):save line 33 / findById line 44 / findBy line 51 / findByInt line 58 / existsById line 65 / deleteById line 77 / update line 91
