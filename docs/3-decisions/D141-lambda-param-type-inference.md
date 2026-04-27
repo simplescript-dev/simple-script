@@ -104,7 +104,7 @@
 | **Phase 1** | RED 复现 + 信息源探查 | `/tmp/spike_lambda_untyped.ss`(本轮已写)+ IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ funcParamTypes 时序文档化(H1 破裂确认) | IR 对比 typed/untyped 双路径完成 + 时序探查 fact 入 §1 必读清单 + §A.2 H1 破裂确认 + 新假设 H9/H10 入 §A.2 |
 | **Phase 2** | codegen 阶段反推实施(H1 破裂修正路径)| `bootstrap/checker/check_types.ss:51` ARROW_FUNC 改 `fn(P1,P2,...):R` 结构化签名(类型表达力前置)+ `bootstrap/gen/gen_calls.ss:231 resolveCallArgs` + `gen/methods/method_call.ss` 内 lambda 作 fn/method 实参时反推 PARAM s2 回填(funcParamTypes 在 codegen 阶段已满载)| bootstrap 固定点 PASS + spike untyped → IR `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` GREEN |
 | **Phase 3** | 测试覆盖 + 隐藏假设挑战 | `tests/d141_lambda_inference/` 新增(typed lambda / untyped lambda + setter / 嵌套 lambda / 多参 lambda / 推断失败 fallback 报错诊断)| 5+ test case 全绿 + 隐藏假设 H1-H5 全 PASS |
-| **Phase 4** | workaround cleanup | grep + 删 `lib/spring/data.ss` 6 处 + `tests/d134_mysql/integration_test.ss` 4 处 显式 `(s: PreparedStatement) =>` 注解 | bootstrap 固定点 PASS + d134_mysql 5/5 + d136_prepared_statement 1/1 不降 |
+| **Phase 4** | workaround cleanup | grep + 删 `lib/spring/data.ss` 5 处 + `tests/d134_mysql/integration_test.ss` 6 处 共 11 处显式 `(s: PreparedStatement) =>` 注解(grep 实测真相 — 比 Phase 0 锁定 10 处多 1 处)+ 2 段过时注释回收 | bootstrap 固定点 PASS + d134_mysql 5/5 + d136_prepared_statement 1/1 不降 |
 
 ### Phase 间依赖
 
@@ -367,15 +367,16 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - **Phase 2 兑现漏点 4 处**(测试 end-to-end 暴露):D141 文档承诺"isTypeCompatible startsWith("fn") 路径""indirect call 走 fn 类型的 retType"但代码未落 — Phase 2 测试只跑 method call(`tmpl.update`)+ overloaded callee(skip 类型检查),未触发顶层 fn callee + non-overloaded class method + non-void retType 三个边界。Phase 3 5 测试用例覆盖这些边界,根因修 4 处合并入 Phase 3 commit(`feedback_root_cause_no_cost.md` 第一法则,不延期 Phase 4 / 不分独立 commit)
 - **测试用例 var binding callee 不再依赖**:Phase 2 spike `const f = (s) => ...; f(stmt)` H9 OOD;Phase 3 5 测试全用顶层 function callee(takesSetter / takesBi / consume / takesFn),反推机制 funcParamTypes 注册路径覆盖,H9 不阻 D141 主线
 
-### Phase 4: workaround cleanup [ ] Planned (next)
+### Phase 4: workaround cleanup [✓] Done at commit `70f9457`
 
-- grep `(s: PreparedStatement) =>` lib/spring/data.ss + tests/d134_mysql/integration_test.ss 共 10 处
-- 删除显式类型注解(保留 lambda 体不变)
-- bootstrap 三阶段固定点 + d134_mysql 5/5 + d136_prepared_statement 1/1 全绿
+- (a) grep 实测 11 处显式 `(s: PreparedStatement) =>` 注解(`lib/spring/data.ss` 5 处 line 47/54/61/68/80 + `tests/d134_mysql/integration_test.ss` 6 处 line 169/175/177/179/190/195 — 比 Phase 0 锁定 10 处多 1 处,grep 实测 5+6=11 真相;Phase 0 计数源自 D137 §F9 follow-up 锚点 line 418/460/543/552 + lib 6 处估算,实际 D137 Phase 2-3 落锚后 cleanup 时增量 1 处)
+- (b) 11 处全删 + 2 段过时注释回收(`tests/d134_mysql/integration_test.ss` line 162-165 + line 184-186 "Lambda param annotation `s: PreparedStatement` is required for SS interface dispatch (§F9)" 过时声明删 — D141 反推机制实施后 untyped lambda 走通无需显式注解);lambda body 不变,callee 端 `setter: fn(PreparedStatement):void` 结构化签名(D141 Phase 2.3 已升级)单点信息源
+- (c) VCM 六验全 PASS:bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降 + tests/d141_lambda_inference 5/0/5 + tests/d136_prepared_statement 1/0/1 + tests/d134_mysql 5/0/5(docker `testss-mysql:3307` 实跑 GREEN — 反推机制业务路径全走通,比预期 probe-skip 更强证据)+ reflection_health_linter GATE PASS(F1 全 PASS / Phase 4 不动 bootstrap 不增量)+ d_doc_index_linter F1=0
+- (d) Phase 4 兑现成果总结 — D141 主线 untyped lambda 反推 100% 兑现到用户态:`lib/spring/data.ss` + `tests/d134_mysql` 11 处 workaround 全删 + 业务路径(JpaRepository.findById/findBy/findByInt/existsById/deleteById/save + JdbcTemplate.execute/update/queryForString/queryForInt)全走 untyped lambda 路径 GREEN;callee 端 `fn(PreparedStatement):void` 结构化签名 + 调用方 untyped lambda + 反推回填 PARAM s2 + ARROW_FUNC IR `define <retT> @__arrow_N(ptr %s.arg)` 链路一致;陌生人秒懂判据 PASS(`feedback_human_readable_code.md` a-e)— lambda body 单 expr `stmt.setInt(1, id)` 直接看懂,无样板 noise
 - 三轨 RED 全 GREEN:
-  - `grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration_test.ss` = 0(workaround 全删)
-  - `grep -c "(s) =>" lib/spring/data.ss tests/d134_mysql/integration_test.ss` ≥ 10(untyped lambda 接管)
-  - `bin/ss test tests/d134_mysql tests/d136_prepared_statement` 全绿(根因修后业务路径仍 GREEN)
+  - `grep -c ": PreparedStatement) =>" lib/spring/data.ss tests/d134_mysql/integration_test.ss` = 0(workaround 全删)
+  - `grep -c "(stmt) =>" lib/spring/data.ss` = 5 + `grep -c "(s) =>" tests/d134_mysql/integration_test.ss` = 6(untyped lambda 接管 11 处)
+  - `bin/ss test tests/d134_mysql tests/d136_prepared_statement` 全绿(d134_mysql 5/0/5 + d136 1/0/1 — 反推机制后业务路径不破)
 
 ### Phase 5: 全 Phase 收关 [ ] Planned
 
@@ -433,3 +434,4 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - 2026-04-27 Phase 2 起首 — G1 路径决策锁定(用户对话锁定)— Phase 2 起首查源 `lib/spring/(jdbc+data).ss` 7 处 `setter: fn` 非结构化签名 → 反推空转;§A.1.1 G1/G2/G3 候选对比,选 G1 callee PARAM 结构化签名前置;新假设 H11(结构化必要)/ H12(parser 扩不破)/ H13(反推失败硬错粒度)入档;§Phase 2 拆 2.0/2.1/2.2/2.3/2.4 子步骤;§1 必读清单补 parser.ss:803 + lib/spring/jdbc.ss + lib/spring/data.ss
 - 2026-04-27 Phase 2 完结(commit `636a1b4`)— G1 路径完整实施 5 子步骤(parser/checker/codegen/lib/eval pre-eval)+ 13 file 改 +267/-45 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 259/4/263 baseline 不降 + spike `__arrow_1(ptr %s.arg)` + `call @__iface_PreparedStatement_setInt(...)` GREEN + reflection_health_linter GATE PASS(扩容申报 4 处 F1 D141#扩容申报-Phase2-G1)+ d_doc_index_linter PASS;关键发现 eval pre-eval vs emit 阶段反推时序差异,反推前移到 `eval/method_call.ss + eval/call.ss` pre-eval 之前;H9 var binding callee 仍 OOD scope(spike `const f = (s) =>...;f(psB)` 仍 RED 2 处 TODO,符合文档化)
 - 2026-04-27 Phase 3 完结(commit `40aa152`)— 5 测试用例落锚 `tests/d141_lambda_inference/`(untyped_single + untyped_multi + explicit_override + interface_dispatch + non_structured_callee)挑战 H1/H2/H5/H6/H13 全 PASS;Phase 2 兑现漏点根因修 4 处(isTypeCompatible fn 双向兼容 + indirect call retType 反推 + CALL inferType for fn-typed callee + ARROW_FUNC retT 同步反推 + extractFnRetType helper)合并入 Phase 3 commit(`feedback_root_cause_no_cost.md` 第一法则,不延期 Phase 4 / 不分独立 commit);bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降(259+5/4/263+5)+ d136_prepared_statement 1/0/1 + reflection_health_linter GATE PASS(扩容申报 D141#扩容申报-Phase3 — gen_calls.ss 699→718 / gen_types.ss 847→873)+ d_doc_index_linter F1=0;关键发现 Phase 2 兑现漏点 4 处只在测试 end-to-end 暴露(顶层 fn callee + non-overloaded method call + non-void retType 三边界 Phase 2 未触发)— Phase 3 测试覆盖前置 + 根因修必走 §Root Cause 优先 第一法则,验证 D141 主线"用户写 untyped lambda 不需注解"end-to-end work
+- 2026-04-27 Phase 4 完结(commit `70f9457`)— workaround cleanup 11 处全删(`lib/spring/data.ss` 5 处 line 47/54/61/68/80 + `tests/d134_mysql/integration_test.ss` 6 处 line 169/175/177/179/190/195)+ 2 段过时注释回收(line 162-165 + line 184-186 "required for SS interface dispatch (§F9)" 过时声明 — D141 反推机制实施后 untyped lambda 走通无需注解)+ 2 file 改 +12/-15 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降 + tests/d141_lambda_inference 5/0/5 + tests/d136_prepared_statement 1/0/1 + tests/d134_mysql 5/0/5(docker `testss-mysql:3307` 实跑 GREEN — 反推机制业务路径全走通,比预期 probe-skip 更强证据)+ reflection_health_linter GATE PASS(Phase 4 不动 bootstrap 不增量)+ d_doc_index_linter F1=0;**关键发现 D137 Phase 0 锁定计数 10 处与 grep 实测 11 处 1 处差异**(D137 Phase 2-3 落锚后 cleanup 时增量未回填 D141 §1 必读清单)— 文档治理小坑,Phase 4 §收关锚 + Status 时间线写实测真相 5+6=11 + 历史段保留不动维稳;Phase 4 兑现:D141 主线"用户态 untyped lambda 100% 走通"端到端 close,11 处 workaround 全删 + 业务路径 untyped lambda 路径 GREEN — D135/D136/D137/D140 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填)
