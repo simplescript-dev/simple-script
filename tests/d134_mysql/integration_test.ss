@@ -161,38 +161,35 @@ function main() {
 
     // ── 6. JdbcTemplate execute / update / queryForString / queryForInt ──
     // D137 Phase 3: every JdbcTemplate call retcons to its (sql, setter, ...)
-    // callback overload (D137 §Phase 1 — d2df1ba). Lambda param annotation
-    // `s: PreparedStatement` is required for SS interface dispatch (§F9).
+    // callback overload (D137 §Phase 1 — d2df1ba).
     test("JdbcTemplate execute + update + queryForString/Int", () => {
         clearAll()
         const tmpl = new JdbcTemplate(URL)
-        assertEqual(tmpl.update("INSERT INTO users VALUES (?, ?, ?)", (s: PreparedStatement) => {
+        assertEqual(tmpl.update("INSERT INTO users VALUES (?, ?, ?)", (s) => {
             s.setInt(1, 20)
             s.setString(2, "Trinity")
             s.setInt(3, 35)
         }), 1)
         assertEqual(tmpl.queryForString("SELECT name FROM users WHERE id = ?",
-            (s: PreparedStatement) => { s.setInt(1, 20) }, "name"), "Trinity")
+            (s) => { s.setInt(1, 20) }, "name"), "Trinity")
         assertEqual(tmpl.queryForInt("SELECT age FROM users WHERE id = ?",
-            (s: PreparedStatement) => { s.setInt(1, 20) }, "age"), 35)
+            (s) => { s.setInt(1, 20) }, "age"), 35)
         assertEqual(tmpl.execute("DELETE FROM users WHERE id = ?",
-            (s: PreparedStatement) => { s.setInt(1, 20) }), 1)
+            (s) => { s.setInt(1, 20) }), 1)
         assertEqual(countAll(), 0)
     })
 
     // ── 7. JpaRepository save / count / deleteAll ──────────────────
     // D137 Phase 2: save retcon to PreparedStatementSetter callback.
-    // Lambda param `s: PreparedStatement` is required for interface dispatch
-    // (D137 §F9 — SS lambda untyped-param + vtable dispatch bug).
     test("JpaRepository save + count + deleteAll", () => {
         clearAll()
         const repo = JpaRepositoryFactory_create(URL, "users", "id,name,age")
-        assertEqual(repo.save((s: PreparedStatement) => {
+        assertEqual(repo.save((s) => {
             s.setInt(1, 30)
             s.setString(2, "Neo")
             s.setInt(3, 32)
         }), 1)
-        assertEqual(repo.save((s: PreparedStatement) => {
+        assertEqual(repo.save((s) => {
             s.setInt(1, 31)
             s.setString(2, "Morpheus")
             s.setInt(3, 45)

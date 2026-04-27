@@ -44,28 +44,28 @@ class JpaRepository {
     function findById(id: int): ResultSet {
         return this.jdbc.queryForList(
             `SELECT ${this.columns} FROM ${this.tableName} WHERE id = ?`,
-            (stmt: PreparedStatement) => { stmt.setInt(1, id) }
+            (stmt) => { stmt.setInt(1, id) }
         )
     }
 
     function findBy(column: string, value: string): ResultSet {
         return this.jdbc.queryForList(
             `SELECT ${this.columns} FROM ${this.tableName} WHERE ${column} = ?`,
-            (stmt: PreparedStatement) => { stmt.setString(1, value) }
+            (stmt) => { stmt.setString(1, value) }
         )
     }
 
     function findByInt(column: string, value: int): ResultSet {
         return this.jdbc.queryForList(
             `SELECT ${this.columns} FROM ${this.tableName} WHERE ${column} = ?`,
-            (stmt: PreparedStatement) => { stmt.setInt(1, value) }
+            (stmt) => { stmt.setInt(1, value) }
         )
     }
 
     function existsById(id: int): int {
         return this.jdbc.queryForInt(
             `SELECT COUNT(*) as cnt FROM ${this.tableName} WHERE id = ?`,
-            (stmt: PreparedStatement) => { stmt.setInt(1, id) },
+            (stmt) => { stmt.setInt(1, id) },
             "cnt"
         ) > 0 ? 1 : 0
     }
@@ -77,7 +77,7 @@ class JpaRepository {
     function deleteById(id: int): int {
         return this.jdbc.update(
             `DELETE FROM ${this.tableName} WHERE id = ?`,
-            (stmt: PreparedStatement) => { stmt.setInt(1, id) }
+            (stmt) => { stmt.setInt(1, id) }
         )
     }
 
