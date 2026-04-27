@@ -1,6 +1,6 @@
 # D137: JdbcTemplate Prepared Retcon — PreparedStatementSetter Callback Routing
 
-**Status:** [ ] Phase 0 落盘(本轮 commit 待回填)
+**Status:** [✓] Phase 0 落盘 at commit `bafc25a`
 
 **Depends on:**
 - D136 全 Phase 收关锚(commit `b7cb6d5`)— `interface PreparedStatement` + `lib/com/mysql/prepared.ss` MysqlPreparedStatement 实施 + `MysqlConnection.prepareStatement()` driver 拼装 + `tests/d136_prepared_statement/` e2e 已就绪
@@ -420,10 +420,11 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落盘 [ ] Pending(本轮 commit hash 待回填)
+### Phase 0: D 文档落盘 [✓] Done at commit `bafc25a` (2026-04-27)
 
-- 本文档 Status [ ] → [✓] Phase 0 落盘 at commit `<TBD>`
-- d_doc_index_linter F1 = 0 验证
+- 本文档 Status [✓] Phase 0 落盘 at commit `bafc25a`
+- d_doc_index_linter F1 = 0 验证 PASS(D137 加入未破 referenced Ds)
+- next_prompt_ultrathink_linter PASS 3/3
 
 ### Phase 1: lib/spring/jdbc.ss 5 method callback 重载 [ ] Pending
 
