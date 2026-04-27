@@ -351,7 +351,15 @@ function inferType(id: int): string {
             }
             return "Ref<int>"
         }
-        if (isFnType(getVarType(callee)) == 1 || getVarType(callee) == "i64") { return "i64" }
+        if (isFnType(getVarType(callee)) == 1 || getVarType(callee) == "i64") {
+            // D141 Phase 3 — fn(T):R 结构化时返真实 retType;非结构化退 i64(老兼容)
+            const callFnVT = getVarType(callee)
+            if (callFnVT.startsWith("fn(") == 1) {
+                const callFnRet = extractFnRetType(callFnVT)
+                if (callFnRet != "") { return callFnRet }
+            }
+            return "i64"
+        }
         // Generic function: infer return type from arguments
         if (genericFuncNodes.has(callee) == 1) {
             const grt = inferGenericRetType(callee, nGetList(id), nGetS2(id))
@@ -747,9 +755,20 @@ function extractFnParamType(fnSig: string, idx: int): string {
     return ""
 }
 
+// D141 Phase 3 — 提取 fn(T1,T2):R 中的 R(retType);非结构化 / 缺 ":R" 返 ""。
+function extractFnRetType(fnSig: string): string {
+    if (fnSig.startsWith("fn(") == 0) { return "" }
+    const rparenIdx = fnSig.indexOf(")")
+    if (rparenIdx < 0) { return "" }
+    if (fnSig.length() < rparenIdx + 3) { return "" }
+    return fnSig.substring(rparenIdx + 2, fnSig.length() - rparenIdx - 2)
+}
+
 // 反推回填 ARROW_FUNC PARAM s2:查 funcParamTypes[`${typeCallee}:${argIdx}`] 拿到 callee
 // PARAM 类型,若结构化签名(fn(...))则 extractFnParamType 提取 Pi 反填 ARROW_FUNC PARAM
 // s2;H6 显式优先(已有 s2 不覆盖);H13 非结构化 callee skip(不破现有 setter: fn 路径)。
+// D141 Phase 3 — 同步反推 ARROW_FUNC retT(slot s2 of arrow node)从 callee `fn(...):R`
+// 提取 R 回填,gen_arrows.ss:109 默认 "int" 破裂修正。
 function inferArrowFuncParams(argId: int, typeCallee: string, argIdx: int) {
     if (nGetKind(argId) != "ARROW_FUNC") { return }
     const ptKey = `${typeCallee}:${argIdx}`
@@ -757,19 +776,26 @@ function inferArrowFuncParams(argId: int, typeCallee: string, argIdx: int) {
     const calleeParamType = funcParamTypes.getString(ptKey)
     if (calleeParamType.startsWith("fn(") == 0) { return }  // H13: 非结构化 skip
     const arrowParamList = nGetList(argId)
-    if (arrowParamList == "") { return }
-    const arrParts = arrowParamList.split(",")
-    let pi = 0
-    for (apId in arrParts) {
-        const aPid = parseInt(apId)
-        if (aPid > 0 && nGetKind(aPid) == "PARAM") {
-            if (nGetS2(aPid) == "") {  // H6 显式优先
-                const inferredType = extractFnParamType(calleeParamType, pi)
-                if (inferredType != "") {
-                    nSetS2(aPid, inferredType)
+    if (arrowParamList != "") {
+        const arrParts = arrowParamList.split(",")
+        let pi = 0
+        for (apId in arrParts) {
+            const aPid = parseInt(apId)
+            if (aPid > 0 && nGetKind(aPid) == "PARAM") {
+                if (nGetS2(aPid) == "") {  // H6 显式优先
+                    const inferredType = extractFnParamType(calleeParamType, pi)
+                    if (inferredType != "") {
+                        nSetS2(aPid, inferredType)
+                    }
                 }
+                pi = pi + 1
             }
-            pi = pi + 1
+        }
+    }
+    if (nGetS2(argId) == "") {  // H6 显式优先 — ARROW_FUNC retT 反推
+        const inferredRet = extractFnRetType(calleeParamType)
+        if (inferredRet != "") {
+            nSetS2(argId, inferredRet)
         }
     }
 }

@@ -207,6 +207,12 @@ function isTypeCompatible(declared: string, actual: string): int {
     if (declared == "double" && actual == "int") { return 1 }
     // bool is int in SS
     if ((declared == "bool" && actual == "int") || (declared == "int" && actual == "bool")) { return 1 }
+    // D141 Phase 3 — fn 类型双向兼容:codegen 阶段反推回填 PARAM s2 + 失败硬错(H4/H13);
+    // checker 阶段对 untyped ARROW_FUNC actual="fn" + structured expected="fn(...):R" 放行,
+    // 反向(typed actual + 老 setter: fn expected)亦兼容 H12 既有 callee。
+    const declFn = declared == "fn" || declared.startsWith("fn(") == 1
+    const actualFn = actual == "fn" || actual.startsWith("fn(") == 1
+    if (declFn == 1 && actualFn == 1) { return 1 }
     if (ifaceMethods.has(declared) == 1) { return 1 }
     // Generic type parameters: T is compatible with any concrete type
     if (currentTypeParams != "") {

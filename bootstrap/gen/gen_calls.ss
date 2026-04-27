@@ -510,6 +510,14 @@ function genCall(id: int): string {
 
     // Indirect call: function pointer variable (supports closures via tag bit)
     if (isFnType(getVarType(callee)) == 1 || getVarType(callee) == "i64") {
+        // D141 Phase 3 — 从 callee fn(...):R 反推 indirect retType;非结构化退 i64(老兼容)
+        const calleeVarType = getVarType(callee)
+        let llIndirectRet = "i64"
+        if (calleeVarType.startsWith("fn(") == 1) {
+            const fnRet = extractFnRetType(calleeVarType)
+            if (fnRet == "void") { llIndirectRet = "void" }
+            else if (fnRet != "") { llIndirectRet = ssTypeToLLVM(fnRet) }
+        }
         const fpVal = nextReg()
         emitIR(`  ${fpVal} = load i64, ptr ${varRef(callee)}, align 8`)
         // Check tag bit 0: if set, this is a closure
@@ -532,20 +540,31 @@ function genCall(id: int): string {
         const fnPtr = nextReg()
         emitIR(`  ${fnPtr} = load ptr, ptr ${fnField}, align 8`)
         const closureArgs = args != "" ? `ptr ${closurePtr}, ${args}` : `ptr ${closurePtr}`
-        const r1 = nextReg()
-        emitIR(`  ${r1} = call i64 ${fnPtr}(${closureArgs})`)
+        let r1 = "0"
+        if (llIndirectRet == "void") {
+            emitIR(`  call void ${fnPtr}(${closureArgs})`)
+        } else {
+            r1 = nextReg()
+            emitIR(`  ${r1} = call ${llIndirectRet} ${fnPtr}(${closureArgs})`)
+        }
         emitIR(`  br label %${lblDone}`)
         // Direct path: raw function pointer call
         emitIR(`${lblDirect}:`)
         const fpPtr = nextReg()
         emitIR(`  ${fpPtr} = inttoptr i64 ${fpVal} to ptr`)
-        const r2 = nextReg()
-        emitIR(`  ${r2} = call i64 ${fpPtr}(${args})`)
+        let r2 = "0"
+        if (llIndirectRet == "void") {
+            emitIR(`  call void ${fpPtr}(${args})`)
+        } else {
+            r2 = nextReg()
+            emitIR(`  ${r2} = call ${llIndirectRet} ${fpPtr}(${args})`)
+        }
         emitIR(`  br label %${lblDone}`)
         // Merge
         emitIR(`${lblDone}:`)
+        if (llIndirectRet == "void") { return "0" }
         const r = nextReg()
-        emitIR(`  ${r} = phi i64 [${r1}, %${lblClosure}], [${r2}, %${lblDirect}]`)
+        emitIR(`  ${r} = phi ${llIndirectRet} [${r1}, %${lblClosure}], [${r2}, %${lblDirect}]`)
         return r
     }
 

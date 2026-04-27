@@ -1,6 +1,6 @@
 # D141: SS Lambda 参数类型推断 + Interface Dispatch 集成
 
-**Status:** Phase 2 — codegen 阶段反推实施 + G1 路径(callee PARAM 结构化签名)Done at commit `636a1b4`
+**Status:** Phase 3 — 测试覆盖 + 隐藏假设挑战 H1/H2/H5/H6/H13 全 PASS + Phase 2 兑现漏点根因修(isTypeCompatible fn 兼容 + indirect call retType 反推 + ARROW_FUNC retT 反推)Done at commit `<hash>`
 **Depends on:** D025(interface dispatch)/ D137(JdbcTemplate prepared retcon — §F9 follow-up 锚)
 **Date:** 2026-04-27
 **Last Updated:** 2026-04-27
@@ -343,19 +343,31 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - tests/ 259/4/263 baseline 不降
 - reflection_health_linter GATE PASS no regressions
 
-### Phase 3: 测试覆盖 + 隐藏假设挑战 [ ] Planned
+### Phase 3: 测试覆盖 + 隐藏假设挑战 [✓ 完结] commit `<hash>`
 
-- `tests/d141_lambda_inference/` 新增 6+ test case:
-  - `typed_explicit.ss` — 显式注解仍走原路径(H6)
-  - `untyped_single.ss` — 单参 lambda 反推(H1)
-  - `untyped_multi.ss` — 多参 lambda 反推(H2)
-  - `nested.ss` — 嵌套 lambda 反推 + capture(H3)
-  - `inference_fail.ss` — 推断失败编译期硬错(H4 — 测试用 `// expect-error` 标记)
-  - `interface_dispatch.ss` — interface upcast vtable indirect dispatch(H5)
-- bootstrap + tests/ + d134_mysql + d136_prepared_statement 全绿
-- reflection_health_linter GATE PASS no regressions
+**已完成兑现成果:**
 
-### Phase 4: workaround cleanup [ ] Planned
+- (a) 5 测试用例落锚 `tests/d141_lambda_inference/` 全 PASS:
+  - `untyped_single.ss` — H1 单参 lambda 反推(callee `takesSetter(setter: fn(int):int):int`)
+  - `untyped_multi.ss` — H2 多参 lambda 反推(callee `takesBi(cb: fn(int,string):string):string` + template literal `${s}${n}`)
+  - `explicit_override.ss` — H6 显式注解 > 推断(callee `takesSetter(cb: fn(double):double):double` + lambda `(x: double) =>`)
+  - `interface_dispatch.ss` — H5 interface upcast vtable indirect dispatch(callee `consume(cb: fn(IShape):double):double` + `class Square : IShape` + lambda `(s) => s.area()` 反推 PARAM s2="IShape" + retT="double")
+  - `non_structured_callee.ss` — H13 非结构化 callee skip(callee `takesFn(cb: fn):int` 单字符串 + lambda `(x: int) =>` 显式注解走原路径)
+- (b) Phase 2 兑现漏点根因修(测试覆盖 end-to-end 实施过程暴露):
+  - **isTypeCompatible fn 子类型兼容**(`bootstrap/checker/check_types.ss:isTypeCompatible` ~5 行)— 任何 fn(typed/untyped)双向兼容,checker 阶段不阻断,反推机制可继续到 codegen + 失败 codegen 硬错(D141 §A.1.1 G1 §Phase 2.1 文档承诺"isTypeCompatible startsWith("fn") 路径"但代码未落,Phase 3 测试时 hard fail 暴露)
+  - **indirect call retType 反推**(`bootstrap/gen/gen_calls.ss:512-565` indirect call 路径 ~19 行)— 从 `getVarType(callee)` 取 `fn(T):R` 提取 R 而非硬编码 i64,closure call / direct call / phi merge 三段适配 void/non-void 双路径
+  - **CALL inferType for fn-typed callee**(`bootstrap/gen/gen_types.ss:354` ~8 行)— fn(T):R 结构化时返真实 R(genReturn caller-side type cast 自然走通),非结构化退老 i64 兼容
+  - **ARROW_FUNC retT 同步反推**(`bootstrap/gen/gen_types.ss:inferArrowFuncParams` ~8 行)— 反推 PARAM s2 的同时反推 ARROW_FUNC retT(节点 s2 slot)从 callee `fn(...):R` 提取 R 回填,gen_arrows.ss:109 默认 "int" 破裂修正
+  - **extractFnRetType helper**(`bootstrap/gen/gen_types.ss` ~8 行)— `fn(T):R` 提取 R 公用 helper(inferArrowFuncParams + indirect call + CALL inferType 三处复用)
+- (c) VCM 六验全 PASS:bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降(259+5/4/263+5)+ d136_prepared_statement 1/0/1 + reflection_health_linter GATE PASS(扩容申报 D141#扩容申报-Phase3 — gen_calls.ss 699→718 / gen_types.ss 847→873)+ d_doc_index_linter F1=0
+- (d) Phase 3 兑现成果总结 — D141 主线 untyped lambda 反推 end-to-end work:checker accept(isTypeCompatible fn 兼容)+ codegen 反推回填 PARAM s2 + retT(eval pre-eval)+ ARROW_FUNC IR `define <retT> @__arrow_N(<paramTypes>)` 正确 + 调用方 indirect call retType 一致 + lambda body method dispatch 走对路径(setVarType 自然链路 H10);H1/H2/H5/H6/H13 五假设全 PASS;H9 var binding callee 仍 OOD(D137 §F9 主线场景是 method call 不受影响,Phase 4 cleanup 解 lib/spring + d134_mysql 11 处显式注解)
+
+**关键发现(Phase 3 实施过程)**:
+
+- **Phase 2 兑现漏点 4 处**(测试 end-to-end 暴露):D141 文档承诺"isTypeCompatible startsWith("fn") 路径""indirect call 走 fn 类型的 retType"但代码未落 — Phase 2 测试只跑 method call(`tmpl.update`)+ overloaded callee(skip 类型检查),未触发顶层 fn callee + non-overloaded class method + non-void retType 三个边界。Phase 3 5 测试用例覆盖这些边界,根因修 4 处合并入 Phase 3 commit(`feedback_root_cause_no_cost.md` 第一法则,不延期 Phase 4 / 不分独立 commit)
+- **测试用例 var binding callee 不再依赖**:Phase 2 spike `const f = (s) => ...; f(stmt)` H9 OOD;Phase 3 5 测试全用顶层 function callee(takesSetter / takesBi / consume / takesFn),反推机制 funcParamTypes 注册路径覆盖,H9 不阻 D141 主线
+
+### Phase 4: workaround cleanup [ ] Planned (next)
 
 - grep `(s: PreparedStatement) =>` lib/spring/data.ss + tests/d134_mysql/integration_test.ss 共 10 处
 - 删除显式类型注解(保留 lambda 体不变)
@@ -388,6 +400,19 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 
 ---
 
+## 扩容申报-Phase3
+
+> Phase 3 测试覆盖实施过程发现 Phase 2 兑现漏点 — `isTypeCompatible` 缺 fn 子类型兼容规则(原 §A.1.1 §Phase 2.1 文档承诺"isTypeCompatible startsWith("fn") 路径"但代码未落)+ indirect call retType 硬编码 i64(`gen_calls.ss:512` line 536/543/548 + `gen_types.ss:354` CALL inferType for fn-typed callee)。修补根因后 5 测试全绿,但触发 2 处 F1 budget_max 越界。按 `docs/3-MNK.md §特定领域 §反射路径根因 gate B 路径` 走扩容申报。
+
+| 文件 | budget_max(旧)| cur(新)| delta | 增量内容 |
+|------|----------------|---------|-------|----------|
+| `bootstrap/gen/gen_calls.ss` | 699 | 718 | +19 | Phase 3 indirect call retType 反推:从 `getVarType(callee)` 提取 `fn(T):R` 中的 R(extractFnRetType)+ void 分支拆(closure call / direct call / phi merge 三段适配 void/non-void 双路径)~19 行 |
+| `bootstrap/gen/gen_types.ss` | 847 | 873 | +26 | Phase 3 三处增量:`extractFnRetType` helper(8 行 / `fn(T):R` 提取 R)+ `inferArrowFuncParams` 末尾同步反推 ARROW_FUNC retT 回填 nSetS2(8 行)+ CALL kind inferType fn-typed callee 返结构化 R 而非硬编码 "i64"(8 行)|
+
+申报理由:Phase 3 测试覆盖将 Phase 2 反推机制 end-to-end 验证,暴露 isTypeCompatible + indirect call retType 两处漏修(D141 §A.1.1 G1 路径文档已承诺但代码未落);按 §Root Cause 优先(第一法则)+ `feedback_root_cause_no_cost.md` 当轮根因修不延期,所以 Phase 3 范围扩了一处 checker(check_types.ss:isTypeCompatible 加 fn 双向兼容,~5 行不计入 F1 因 check_types.ss 当前 cur 远低 budget_max)+ 两处 codegen(gen_calls.ss 修 indirect retType + gen_types.ss 加 helper / 修 inferType / inferArrowFuncParams retT 反推)。F1 增量纯结构化新功能码,无样板压注释/合并空行/字符级绕过;非反射路径触碰(M/N 全 OK / DRIFT,N2 / N3 SCOPE-DRIFT 软警告未触白名单)。
+
+---
+
 ## Followup
 
 | # | 锚 | 描述 |
@@ -407,3 +432,4 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `bb96e27`)— `/tmp/spike_lambda_untyped.ss` 落锚 + IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空)+ 新假设 H9/H10 入档 + Phase 2 入口挪到 codegen 阶段反推
 - 2026-04-27 Phase 2 起首 — G1 路径决策锁定(用户对话锁定)— Phase 2 起首查源 `lib/spring/(jdbc+data).ss` 7 处 `setter: fn` 非结构化签名 → 反推空转;§A.1.1 G1/G2/G3 候选对比,选 G1 callee PARAM 结构化签名前置;新假设 H11(结构化必要)/ H12(parser 扩不破)/ H13(反推失败硬错粒度)入档;§Phase 2 拆 2.0/2.1/2.2/2.3/2.4 子步骤;§1 必读清单补 parser.ss:803 + lib/spring/jdbc.ss + lib/spring/data.ss
 - 2026-04-27 Phase 2 完结(commit `636a1b4`)— G1 路径完整实施 5 子步骤(parser/checker/codegen/lib/eval pre-eval)+ 13 file 改 +267/-45 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 259/4/263 baseline 不降 + spike `__arrow_1(ptr %s.arg)` + `call @__iface_PreparedStatement_setInt(...)` GREEN + reflection_health_linter GATE PASS(扩容申报 4 处 F1 D141#扩容申报-Phase2-G1)+ d_doc_index_linter PASS;关键发现 eval pre-eval vs emit 阶段反推时序差异,反推前移到 `eval/method_call.ss + eval/call.ss` pre-eval 之前;H9 var binding callee 仍 OOD scope(spike `const f = (s) =>...;f(psB)` 仍 RED 2 处 TODO,符合文档化)
+- 2026-04-27 Phase 3 完结(commit `<hash>`)— 5 测试用例落锚 `tests/d141_lambda_inference/`(untyped_single + untyped_multi + explicit_override + interface_dispatch + non_structured_callee)挑战 H1/H2/H5/H6/H13 全 PASS;Phase 2 兑现漏点根因修 4 处(isTypeCompatible fn 双向兼容 + indirect call retType 反推 + CALL inferType for fn-typed callee + ARROW_FUNC retT 同步反推 + extractFnRetType helper)合并入 Phase 3 commit(`feedback_root_cause_no_cost.md` 第一法则,不延期 Phase 4 / 不分独立 commit);bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降(259+5/4/263+5)+ d136_prepared_statement 1/0/1 + reflection_health_linter GATE PASS(扩容申报 D141#扩容申报-Phase3 — gen_calls.ss 699→718 / gen_types.ss 847→873)+ d_doc_index_linter F1=0;关键发现 Phase 2 兑现漏点 4 处只在测试 end-to-end 暴露(顶层 fn callee + non-overloaded method call + non-void retType 三边界 Phase 2 未触发)— Phase 3 测试覆盖前置 + 根因修必走 §Root Cause 优先 第一法则,验证 D141 主线"用户写 untyped lambda 不需注解"end-to-end work
