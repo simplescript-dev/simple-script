@@ -601,11 +601,11 @@ D134 §A.7:
 
 ### Phase 3: e2e + JdbcTemplate retcon scope 评估 [✓] Done at commit `<Phase 3 hash 待二阶段回填>` (2026-04-27)
 
-- [✓] `tests/d136_prepared_statement/integration_test.ss`(新,197 LOC)— probe 127.0.0.1:3307 docker unreachable skip(沿 D134 Phase 6 + D135 Phase 2 范式)+ 5 e2e:
-  - test 1 单 param SELECT `SELECT id, name, age FROM users WHERE id = ?` + setInt(1, 1) → 验 id=1 / name="Alice" / age=30
-  - test 2 多 param INSERT `INSERT INTO users VALUES (?, ?, ?)` + setInt(1, 100) / setString(2, "Trinity") / setInt(3, 35) → 验 affected rows = 1 + cross-check SELECT
-  - test 3 多类型多行 SELECT `SELECT id, name, age FROM users ORDER BY id` 不带 param → 验 row count ≥ 3 + Alice/Bob/Trinity 三行字段值精确比对
-  - test 4 NULL 处理 — `INSERT INTO users VALUES (?, ?, ?)` + setInt(1, 200) / setNull(2) / setInt(3, 28) + SELECT 验 name = ""(SS 无 null sentinel,parseBinaryRow NULL bitmap +2 offset 路径锚)
+- [✓] `tests/d136_prepared_statement/integration_test.ss`(新,168 LOC)— probe 127.0.0.1:3307 docker unreachable skip(沿 D134 Phase 6 + D135 Phase 2 范式)+ 独立 `users_d136` table 防 batch parallel 与 D134 `users` 数据竞争 + 5 e2e:
+  - test 1 单 param SELECT `SELECT id, name, age FROM users_d136 WHERE id = ?` + setInt(1, 1) → 验 id=1 / name="Alice" / age=30
+  - test 2 多 param INSERT `INSERT INTO users_d136 VALUES (?, ?, ?)` + setInt(1, 100) / setString(2, "Trinity") / setInt(3, 35) → 验 affected rows = 1(Trinity 行回读由 test 3 多行 SELECT 覆盖,simplify 删 cross-check 子集)
+  - test 3 多类型多行 SELECT `SELECT id, name, age FROM users_d136 ORDER BY id` 不带 param → 验 row count ≥ 3 + Alice/Bob/Trinity 三行字段值精确比对
+  - test 4 NULL 处理 — `INSERT INTO users_d136 VALUES (?, ?, ?)` + setInt(1, 200) / setNull(2) / setInt(3, 28) + SELECT 验 name = ""(SS 无 null sentinel,parseBinaryRow NULL bitmap +2 offset 路径锚)
   - test 5 close 后 Connection 复用 — stmt1.close() 后同 conn 再 prepareStatement stmt2,验 statement_id 独立 + Connection fd 不被 stmt close 关闭
 - [✓] **JdbcTemplate retcon scope 评估**:**defer D137 sub-follow-up**(根因校准非降级,承 §核心原则 §Root Cause)
   - 评估根因:SS class 方法 mangling `@ClassName_methodName` 不含 paramSig(承 CLAUDE.md §符号 mangling 文末"重载 `@func_paramSig`" 仅适用 free function),`update(sql)` + `update(sql, params)` 同 class 必碰撞;新方法名(`updateP` / `updateWithParams`)是 JdbcTemplate API 设计独立题(参数 Array<string> 还需 type code 配套表达 — 单 demo 既不能复用 setInt/setString 类型分派又会设坏先例)

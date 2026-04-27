@@ -7,27 +7,10 @@
 //   bin/ss test tests/d136_prepared_statement/
 //   docker compose -f tests/d134_mysql/docker-compose.yml down -v
 //
-// Coverage of the binary protocol path in lib/com/mysql/prepared.ss:
-//
-//   sendComStmtPrepare → readPrepareOk → readParamDef + readColumnDefList
-//                                  ↓
-//                  MysqlPreparedStatement(setInt/setString/setNull)
-//                                  ↓
-//                          sendComStmtExecute
-//                              ↓        ↓
-//                  readQueryResultSetBinary  readUpdateResult
-//                  (parseBinaryRow stream)   (OK packet)
-//                                  ↓
-//                          sendComStmtClose
-//
-//   Test 1: setInt(1, 1) single-param SELECT (Alice row)
-//   Test 2: setInt + setString + setInt INSERT (multi-param)
-//   Test 3: no-param SELECT * ORDER BY id (multi-row binary result set,
-//           covers parseBinaryRow streaming + multiple types in same row)
-//   Test 4: setNull + setInt NULL handling (NULL bitmap +0/+2 offset
-//           paths — execute request +0, binary row +2)
-//   Test 5: stmt.close() + new prepareStatement on same Connection
-//           (statement_id lifecycle vs Connection fd lifecycle)
+// Uses table `users_d136` (not `users`) to isolate from D134's text-protocol
+// integration test under `bin/ss test tests/` parallel batch — both files
+// connect to the same MySQL instance and would otherwise race on DROP/CREATE
+// of a shared table.
 //
 // JdbcTemplate retcon is deferred to D137 sub-follow-up — see
 // docs/3-decisions/D136-mysql-prepared-statement.md §附录 B Phase 3.
@@ -81,7 +64,7 @@ function main() {
         conn.close()
     })
 
-    // ── 2. Multi-param INSERT ──────────────────────────────────────
+    // ── 2. Multi-param INSERT — Trinity row read back in Test 3 ──
     test("prepareStatement + setInt+setString+setInt + executeUpdate (multi-param INSERT)", () => {
         const conn = DriverManager_getConnection(URL)
         const stmt = conn.prepareStatement("INSERT INTO users_d136 VALUES (?, ?, ?)")
@@ -91,18 +74,6 @@ function main() {
         assertEqual(stmt.executeUpdate(), 1)
         stmt.close()
         conn.close()
-
-        // Cross-check via second prepareStatement
-        const verify = DriverManager_getConnection(URL)
-        const sel = verify.prepareStatement("SELECT name, age FROM users_d136 WHERE id = ?")
-        sel.setInt(1, 100)
-        const rs = sel.executeQuery()
-        assertEqual(rs.next(), 1)
-        assertEqual(rs.getString("name"), "Trinity")
-        assertEqual(rs.getInt("age"), 35)
-        rs.close()
-        sel.close()
-        verify.close()
     })
 
     // ── 3. Multi-row no-param SELECT (binary result set streaming) ──
