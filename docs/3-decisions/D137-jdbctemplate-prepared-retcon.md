@@ -415,6 +415,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 | F6 | HikariCP D125+ Connection Pool | JdbcTemplate per-call Connection lifecycle 是 Phase 5 spec 接受的"无 pool 简化"(D134 §Phase 5 caveat 继承);queryForList 故意不关 Connection 的 leak 仍由 HikariCP D125+ 解决 |
 | F7 | batchUpdate / addBatch / executeBatch | sub-D 评估 — 批量执行 API,依赖 prepared statement cache(D138 cache miss handle);本 D 范围外 |
 | F8 | generated keys retrieval(getGeneratedKeys)| sub-D 评估 — INSERT 后取 auto-increment id,依赖 MySQL OK packet last_insert_id 字段(D134 已 parse);本 D 范围外 |
+| F9 | SS lambda 参数类型推断 + interface dispatch 集成 bug | **Phase 2 实测发现**:`(s) => s.setInt(...)` 无类型注解时 SS interface method dispatch 走错路径(setInt 不写入 MysqlPreparedStatement.paramTypes/paramValues,prepared statement INSERT 全 result=-1);最小隔离 spike `/tmp/spike_lambda_typed.ss` 实证:加 `(s: PreparedStatement) => ...` 后 result=1,无类型注解 result=-1。**workaround**(本 D 已落):`lib/spring/data.ss` 6 处 lambda + `tests/d134_mysql` 2 处 lambda 全显式标 `(s: PreparedStatement) =>`,通过 Java 8+ explicit lambda type 风格规避(memory `feedback_no_derive_workaround` 不视作 fallback dead code — 类型注解是更类型安全的正向写法)。**真根因 sub-D follow-up**(编号待 D 治理后续轮处理,F4 D138 编号冲突独立):修 SS 编译器 lambda 参数类型推断 — 在 lambda 表达式作为 fn 调用实参时,从 fn 接收方的方法 body 内 setter(stmt) 调用上下文反推 lambda 参数类型 = 实际传入参数的静态类型(MysqlPreparedStatement 实现的 PreparedStatement 接口),从而 lambda body 内 `s.setInt(...)` method dispatch 通过 vtable 正确分派。本 D 范围外(§核心原则 9 bootstrap 隔离硬约束)|
 
 ---
 
@@ -439,9 +440,25 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 - prepareStatement count = 3(execute/update/queryForList 重载内主路径直接调,queryForString/queryForInt 复用 queryForList(sql, setter))→ 满足 §5 §Evaluation 第 2 判据 `> 0` SSoT
 - simplify 采纳: 注释 #1 单行化(删 setInt/setString 例子,保 D 引用 + WHY); 拒绝: 无
 
-### Phase 2: lib/spring/data.ss 11 处 JpaRepository CRUD retcon [ ] Pending
+### Phase 2: lib/spring/data.ss 11 处 JpaRepository CRUD retcon [✓] Done at commit `<phase2-commit>` (2026-04-27)
 
-- 待 Phase 2 commit hash 回填
+- data.ss +35/-0(77→112 行):11 处分类落地(§核心原则 4 元数据 vs 动态值)
+  - **改 7 处 callback retcon**(动态值 ?化 + setter):save line 33 / findById line 44 / findBy line 51 / findByInt line 58 / existsById line 65 / deleteById line 77 / update line 91
+  - **保留 4 处 metadata-only**(无动态值,§核心原则 4 合法路径):execute line 29 / findAll line 40 / count line 73 / deleteAll line 84
+- **JpaRepository 字段扩**:`placeholders: string`(line 26)— constructor 4 参数位置(tableName / columns / jdbc / placeholders)
+- **Factory 内部计算 placeholders**:`buildPlaceholders(columns: string)` line 101-106 通过 columns.split(",") + Array<string>.join(", ") 派生 "?, ?, ?";JpaRepositoryFactory_create line 108-112 调用注入到 4 参 constructor
+- **save 签名重设计**(R5 局部破坏 §核心原则 2):`save(cols: string, vals: string)` → `save(setter: fn)` — 内部用 `this.columns + this.placeholders` 元数据派生 SQL `INSERT INTO ${this.tableName} (${this.columns}) VALUES (${this.placeholders})`
+- **update 签名重设计**(R5 局部破坏 §核心原则 2):`update(id: int, setClauses: string)` → `update(setColumns: string, setter: fn)` — caller 写完整 "name=?, age=? WHERE id=?",setter 绑全部 ?(避免嵌套 lambda 复杂性,update 当前 0 调用方 grep 验证破坏面=0)
+- **tests/d134_mysql/integration_test.ss line 145-160 retcon**:test 7 JpaRepository save callback 改 `(s: PreparedStatement) => { s.setInt(1, 30); s.setString(2, "Neo"); s.setInt(3, 32) }` 风格;import 加 PreparedStatement
+- **三轨 RED 全 GREEN**:
+  - `grep -cE '\$\{(id\|value\|setClauses\|vals)\}' lib/spring/data.ss` = 0(动态值 100% ?化)
+  - `grep -cE '\$\{(this\.tableName\|this\.columns\|column\|cols)\}' lib/spring/data.ss` = 10(元数据合法保留 §核心原则 4)
+  - `grep -c "prepareStatement\|setInt\|setString" lib/spring/data.ss` = 6(setter 调用就位)
+- **VCM 六验**:bootstrap 三阶段固定点 + tests/ 259/4/263 baseline 不降 + d134_mysql 5/5 全绿 + d_doc_index_linter GATE OK + reflection_health_linter GATE PASS no regressions
+- **F9 root cause 发现**(本 Phase 实施过程中暴露):lambda `(s) => s.setInt(...)` 无类型注解时 SS interface method dispatch 走错路径(setInt 静默不写入 paramTypes,executeUpdate 返 -1);最小隔离 spike `/tmp/spike_lambda_typed.ss` 实证 typed lambda result=1 / untyped lambda result=-1;**根 vs 表面分层**(PSM §字段 9 回写):
+  - **根**(本 Phase 兑现):11 处 callback retcon = SQL 注入根因解决传递业务层(§第一性需求 末层 ✓);消除双轨制 = 文本协议(`stmt.execute(sql)`)vs prepared 协议(`stmt.setX + executeUpdate`)架构分立(D136 §A.5 + D137 §核心原则 1)
+  - **表面 patch**:lambda 参数显式类型注解(JpaRepository 6 处 + tests 2 处)= 数据层 patch 规避 SS 编译器 lambda 类型推断 bug;**升根路径** = §F9 锚 sub-D 修编译器 lambda 参数类型推断 + interface dispatch 集成
+- simplify 采纳: buildPlaceholders 用 Array<string>.join(", ") 替代 first==1 标志位手卷拼接(reuse agent: 14→5 行,符合 lib/regex.ss:393/439 join 范式);拒绝: lambda 参数显式注解 6 处 helper 抽取(quality agent: §F9 workaround 抽 helper 隐藏类型注解致 F9 修后难 grep 回收 + 单语句 callback 抽间接致可读性净亏)+ placeholders 字段缓存(efficiency agent: constructor 单算每次 save 复用,Spring SimpleJdbcInsert 同范式)+ update 2 参 vs 3 参(quality agent: §6.R5 Spring API 一一映射,setColumns 含 WHERE 是文档化决策)
 
 ### Phase 3: tests/d134_mysql/integration_test.ss 8 case retcon [ ] Pending
 

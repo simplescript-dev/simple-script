@@ -14,7 +14,7 @@
 // ResultSet layer so all 8 sub-tests below remain unchanged.
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { Connection, Statement, ResultSet, DriverManager_getConnection } from "@/lib/java/sql"
+import { Connection, Statement, ResultSet, PreparedStatement, DriverManager_getConnection } from "@/lib/java/sql"
 import { JdbcTemplate, withTransaction } from "@/lib/spring/jdbc"
 import { JpaRepository, JpaRepositoryFactory_create } from "@/lib/spring/data"
 
@@ -143,11 +143,22 @@ function main() {
     })
 
     // ── 7. JpaRepository save / count / deleteAll ──────────────────
+    // D137 Phase 2: save retcon to PreparedStatementSetter callback.
+    // Lambda param `s: PreparedStatement` is required for interface dispatch
+    // (D137 §F9 — SS lambda untyped-param + vtable dispatch bug).
     test("JpaRepository save + count + deleteAll", () => {
         clearAll()
         const repo = JpaRepositoryFactory_create(URL, "users", "id,name,age")
-        assertEqual(repo.save("id,name,age", "30,'Neo',32"), 1)
-        assertEqual(repo.save("id,name,age", "31,'Morpheus',45"), 1)
+        assertEqual(repo.save((s: PreparedStatement) => {
+            s.setInt(1, 30)
+            s.setString(2, "Neo")
+            s.setInt(3, 32)
+        }), 1)
+        assertEqual(repo.save((s: PreparedStatement) => {
+            s.setInt(1, 31)
+            s.setString(2, "Morpheus")
+            s.setInt(3, 45)
+        }), 1)
         assertEqual(repo.count(), 2)
         repo.deleteAll()
         assertEqual(repo.count(), 0)
