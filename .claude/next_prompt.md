@@ -1,32 +1,35 @@
-ultrathink D143 Phase 5 起首 — 全 Phase 收关 + D143 主线 close + Phase 4 commit hash 回填(D141 Phase 5 commit `8f897e7` + D142 Phase 5 commit `0339171` 同模式 docs-only 单 commit 大改档终结)。本轮 Phase 4 已 docs-only 落档(grep 实测 0 命中 `grep -rn 'let \w\+: \w\+ = {' lib/ tests/ --include='*.ss' | grep -v 'explicit_override\|object_literal.ss'` = 0 + lib/+tests/ 全 0 cleanup 候选 — 反映 D141/D142 Phase 4 已清理后 fn/method 实参 OBJ_LITERAL 路径既无既有 workaround 候选 + Phase 3 commit hash 回填 `15f8dfe` + VCM 六验全 PASS:核心代码路径 diff=0 → §1 豁免锚 + tests/d143 6/0/6 + tests/d142 6/0/6 + tests/d141 5/0/5 + reflection_health GATE PASS no regressions + d_doc_index F1=0 10 referenced Ds all live + ultrathink_linter)。
+ultrathink D143 Phase 5 commit hash 回填轮 + 元描述清理 + D144 起首(F1 ternary contextual typing)— D141 Phase 5 hash 回填轮 commit `5fdaf5f` + D142 Phase 5 hash 回填轮 commit `9029be5` 同模式 docs-only 双任务(本 D143 Phase 5 commit 已落 5 Phase 表 + 兑现成果 a-g + Followup F1-F8 锚明确,本轮 hash 回填轮替换 `<TBD>` 占位符 5 处实际 hash + 启动 D144 Phase 0 落档)。
 
-§Phase 5 全 Phase 收关任务清单(D135/D136/D137/D140/D141/D142 范式延续 — 单 commit 大改档终结 Phase 5 docs-only 不分 feat/docs 双 commit):
+§任务清单(D135/D136/D137/D140/D141/D142 范式延续 — 每 D 文档收关后启动下一 D 起首,Phase 5 hash 回填轮 docs-only 单 commit 大改档):
 
-(1) **顶部 Status 行从 Phase 4 改 Phase 5 完结** + 5 Phase commit hash 全列(Phase 0 `50912b4` / Phase 1 `f089738` / Phase 2 `5eb722e` / Phase 3 `15f8dfe` / Phase 4 `<本轮 Phase 4 commit hash 回填>` / Phase 5 `<TBD>` 占位 — 单 commit 不能引用自己 hash 与 D141 Phase 5 commit `8f897e7` + D142 Phase 5 commit `0339171` 范式一致,下轮 hash 回填轮替换);
+(1) **D143 Phase 5 commit hash `<本轮 Phase 5 commit hash>` 回填**(5 处实际 hash 占位符替换)—
+- **line 3 顶部 Status 行** 2 处(`Phase 5 — 全 Phase 收关 [✓] Done at commit \`<TBD>\`` + 5 Phase 表内嵌 `Phase 5 \`<TBD>\``)
+- **line 445 §Phase 5 §章节标题** 1 处(`### Phase 5: 全 Phase 收关 [✓] Done at commit \`<TBD>\` (2026-04-27)`)
+- **line 458 5 Phase 表 Phase 5 行** 1 处(`| Phase 5 | \`<TBD>\` | docs |`)
+- **line 544 Status 时间线 Phase 5 行** 2 处(commit `<TBD>` 自指 + 5 Phase hash 全列内嵌 `Phase 5 \`<TBD>\``)
+- **保留 line 449 说明文字** 不替换(`占位符 \`<TBD>\` Phase 5 单 commit 不能引用自己 hash 用占位符 \`<TBD>\`` — 2 处 `<TBD>` 字面是说明文字非 hash 占位符,与 D141 + D142 Phase 5 commit `5fdaf5f` / `9029be5` 范式一致保留)
 
-(2) **§Phase 5 章节加全 Phase 收关锚 — 兑现成果 a-g 全锁**:
-- **a. C2 接口层 trap 落地** — checker `check_exprs.ss:285` OBJ_LITERAL untyped 放行(D141 ARROW_FUNC + D142 ARRAY_LIT 同模式不硬错)+ `check_types.ss` inferType OBJ_LITERAL case 加 fallback "auto" + `gen_types.ss` helper 三函数(`isClassType` / `extractClassName` / `inferObjLiteralFromType` + `inferObjLiteralFields`)+ inferType OBJ_LITERAL case 加优先读 nGetS2 fallback "ptr" + `gen_calls.ss` + `gen/methods/gen_methods.ss` args 循环加 inferObjLiteralFields(D141/D142 G1 4 落点同模式)+ eval pre-eval 前移三处(`eval/call.ss` + `eval/method_call.ss` + `eval/new_expr.ss` 同 D141/D142 H10 OOD 实证错估修正)+ `class/class_method.ss:genNamedConstructorArgs` H3 嵌套反推 + D084 rewrite 复用扩 fn 实参入口
-- **b. workaround 0 处 cleanup 候选 lib/+tests/ 全 0** — 反映 D141/D142 Phase 4 已清理(D141 lambda 类型注解 11 处 + D142 ctor (NEW_EXPR) 路径 array literal 临时变量绑定 4 处)后,fn/method 实参 OBJ_LITERAL 路径既无既有 workaround 候选;Phase 4 docs-only 降级 LOC delta = 0
-- **c. H1-H13 全 PASS / OOD 标** — H1/H2/H3/H5/H5b/H6/H7/H8 全 PASS + H4 决策行严格模式(LLC error `call ptr @User_new(ptr @.str.85, )` arity error,Followup F6 ctor 默认值机制)+ H5 部分 OOD scope(Array<int>/Map<K,V> 字段反推 OOD,Followup F4 NEW_EXPR ctor positional args 子节点反推漏)+ H13 粒度过松反向问题(倒置类型 segfault silent miscompile + 无 callee context unknown kind LLC error,Followup F8 粒度细化)+ H10 cross-D 实证 SSoT 反思 memory 落档(`feedback_h10_cross_d_verify.md`)+ H9/H11/H12 OOD/弱化标继承(D141/D142 H9 var binding callee skip + 比 D141/D142 H11/H12 都弱)
-- **d. axiom 红线永久 grep = 0** — `feedback_root_cause_no_cost.md`(成本不是选次优的理由)+ `feedback_no_option_menu.md`(三候选论证 + 决策行)+ `feedback_no_derive_workaround.md`(主线能力缺口不允许 annotation 替代)红线 grep 永久 0 — D143 文档治理永久锚
-- **e. d_doc_index_linter PASS** — 10 referenced Ds all live + F1=0 死指针 + F2 soft warn 12 orphan 含 D143 不阻
-- **f. reflection_health_linter GATE PASS** — 扩容申报-Phase2 6 metric bump 永久(M1=5450→5550 / M2=80000→81600 / M4=3109→3250 / N2=400000→408000 / N3=550000→562000 / F1:gen_types.ss=915→970)+ Phase 3+4+5 不动 bootstrap 不增量
-- **g. bootstrap 隔离破例** — D141 §核心原则 5 同位例外:修编译器主线消除 stdlib workaround 是法定 root cause 路径(本 D143 同位继承 — `feedback_root_cause_no_cost.md` 红线)
+(2) **元描述清理** — D143 commit message 元描述如有 `<TBD>` 字面占位符同步检查回填(VCM §字段 9 grep 自证扫描);参 D141 hash 回填轮 commit `5fdaf5f` + D142 commit `9029be5` 同模式
 
-(3) **§Followup F1-F8 锚明确**(line 444-455 已锁,Phase 5 收关确认):
-- F1 ternary contextual typing 候选 D144 入口 — D141 §Followup F3 + D142 §Followup F2 同模式
-- F2 Map literal contextual typing — array literal 同模式 sub-D(D142 §Followup F5 同位)
-- F3 Tuple literal contextual typing — array literal 同模式 sub-D(D142 §Followup F6 同位)
-- **F4 NEW_EXPR ctor 实参子节点反推**(OBJ_LITERAL + ARRAY_LIT 同形)— D142 §Followup F7 + D143 §F4 同根因合并 sub-D 锚(`bootstrap/gen/class/class.ss:288-301 genNewExpr` args 循环未调 `inferObjLiteralFields` / `inferArrayLitElems`,Phase 3 H5 with Array<int> 字段实测铁证 LLC error `expected 'i32'`)
-- F5 bidirectional type checking 全局 — C3 候选废案,留 SS 类型系统 v2(D026/D027 落地后再开 D 文档,D141 §Followup F5 + D142 §A.3 同位)
-- **F6 object literal partial fields + class ctor 默认值** — Phase 3 H4 实测 LLC error 严格模式决策行落档,sub-D 锁此场景(扩 D084 ctor 默认值机制 + 字段值类型一致性 checker 阶段硬错)
-- F7 object literal spread `{...base, name: "X"}` 反推 — array literal SPREAD 同模式 sub-D
-- **F8 反推失败粒度细化**(H4 + H13 同形)— Phase 3 H13 实测铁证粒度过松反向问题:(a) 倒置类型 silent miscompile segfault + (b) 无 callee context `let x = { name: "X" }` unknown kind LLC error;sub-D 锁此场景(checker 阶段加字段值与 ctor PARAM 类型一致性检查 + var decl no annot + no callee context 时 OBJ_LITERAL 走硬错诊断)
+(3) **VCM 六验全 PASS 预期**:
+- §1 工程豁免:本回填轮 docs-only 不动 bootstrap/lib/tools/tests → `git diff --stat HEAD -- bootstrap/ lib/ tools/ tests/` 空输出
+- §2 行为:`grep -c "Phase 5: 全 Phase 收关 \[✓\] Done at commit \`<本轮 Phase 5 hash>\`" docs/3-decisions/D143-*.md` ≥ 1
+- §3 反向:`grep -c '<TBD>' docs/3-decisions/D143-*.md` = 2(仅 line 449 说明文字残留,5 处实际 hash 占位符全回填)
+- §4 边界:替换为 §A.1 候选对比 / §A.2 隐藏假设挑战(D141/D142 范式)
+- §5 路线:`grep -c "D135/D136/D137/D140/D141/D142 范式延续" docs/3-decisions/D143-*.md` ≥ 5
+- §6 根因:Phase 5 §收关锚 + 兑现成果 a-g + Status 时间线 Phase 5 行 主线 close 永久锚定单一事实源 D 文档 + git log 双轨
 
-(4) **D141 §Followup F2 + D142 §Followup F1 主线 close** — D143 object literal contextual typing 反推机制单 sub-D 闭环;Followup F1-F8 入下一 D 文档启动队列(F1 ternary contextual typing 候选 D144 入口);
+(4) **Linter 三验全 GREEN 预期**:`bin/ss run tools/d_doc_index_linter.ss` GATE OK 10 referenced Ds all live(F1=0 死指针 / F2 soft warn 12 orphan 含 D143 不阻)+ `bin/ss run tools/reflection_health_linter.ss` GATE PASS no regressions(本回填轮不动 bootstrap F1 不增量)+ `bin/ss run tools/next_prompt_ultrathink_linter.ss` PASS 3/3(本轮 next_prompt 含 ultrathink 关键字)
 
-(5) **Status 时间线增 Phase 5 行 + Phase 4 commit hash 回填**(本轮 Phase 4 commit hash 占位 `<TBD>` 替换为实际值);
+(5) **D144 起首候选 next_prompt 写入**(回填轮内启动 Phase 0)— F1 ternary contextual typing(D141 §Followup F3 + D142 §Followup F2 + D143 §Followup F1 同模式合并锚)候选起首:
+- **场景**:`cond ? a : b` 在 fn 实参 `Maybe<int>` 时反推分支类型 — TS / Java 8+ contextual typing 主线
+- **G1 同模式扩**:checker `check_exprs.ss:TERNARY case` 改返 `branchType` 结构化(与 ARROW_FUNC `fn(P,...):R` + ARRAY_LIT `Array<elemType>` + OBJ_LITERAL `class<ClassName>` 同形)+ codegen 阶段反推回填 + funcParamTypes SSoT 复用(无 callee 升级前置,比 D141 H11 弱)+ eval pre-eval 时序前移(`eval/call.ss + eval/method_call.ss + eval/new_expr.ss` 三处通用 pre-eval 之前同模式)+ 失败硬错粒度(D141/D142/D143 H13 同模式)
+- **§A.1 三主候选**:C1 数据层 patch(废,零散 fallback 与 D141/D142/D143 §A.1 C1 同形)/ **C2 接口层 trap**(选,D141/D142/D143 G1 同模式复刻)/ C3 架构层 refactor(废,scope 爆炸留 SS 类型系统 v2,D141 §Followup F5 + D142 §A.3 + D143 §A.3 已锁此候选废)
+- **§A.1.1 实施路径**:G1 D141/D142/D143 同模式复刻(选)/ G2 callsite 双向反推(废)/ G3 接受 gap(废)
+- **§A.2 H1-H13 隐藏假设挑战**(D141/D142/D143 §A.2 同模式扩):H1 funcParamTypes Maybe<T> 时序 + H2 ternary 分支类型一致性 + H3 嵌套 ternary 反推 + H4 fallback 编译期硬错粒度 + H5 interface upcast PASS + H6 显式优先 + H7 baseline 不破 + H8 reflection GATE + H9 var binding callee OOD(D141/D142/D143 H9 同模式继承)+ H10 ternary eval pre-eval 时序(D141/D142/D143 H10 同模式)+ H11 callee PARAM `Maybe<T>` 已结构化 + H12 parser 不需扩 + H13 反推失败硬错粒度
+- **Phase 0-5 计划草案**(D141/D142/D143 5 Phase 同模式):Phase 0 D 文档落档 → Phase 1 RED 复现 + 信息源探查 → Phase 2 codegen 阶段反推实施 + G1 D141/D142/D143 同模式复刻 → Phase 3 测试覆盖 + 隐藏假设挑战 → Phase 4 workaround cleanup → Phase 5 全 Phase 收关 D144 主线 close
+- **Followup F1+**(D141/D142/D143 §Followup 合并队列):F1 Map literal contextual typing(D142 §F5 + D143 §F2 同位)/ F2 Tuple literal(D142 §F6 + D143 §F3 同位)/ F3 NEW_EXPR ctor 实参子节点反推(D142 §F7 + D143 §F4 同根因合并 sub-D)/ F4 partial fields + ctor 默认值(D143 §F6 同位)/ F5 spread `{...base, name: "X"}` 反推(D143 §F7 同位)/ F6 反推失败粒度细化(D143 §F8 H4+H13 同形)/ F7 bidirectional v2 留 SS 类型系统 v2(D141 §F5 + D142 §A.3 + D143 §A.3 同位)
+- **D 文档命名**:`docs/3-decisions/D144-ternary-contextual-typing.md`
+- 参考范式:**D141 Phase 0 commit `b1becb0` + D142 Phase 0 commit `3fb3ea2` + D143 Phase 0 commit `50912b4`** 同模式 D 文档结构(Status / 核心目标 / 核心原则 / Context / Tools / Orchestration / State / Evaluation / Constraints / §A.1 主候选 + §A.1.1 实施路径 + §A.2 隐藏假设 / §A.3 废案 / Phase 0-5 计划草案 / Followup)
 
-(6) **Phase 5 docs-only 1 file 改 — 不动 bootstrap / lib / tests / tools**(D135/D136/D137/D140/D141 范式延续 — 单 commit 大改档终结 Phase 5 docs-only);
-
-VCM 六验全 PASS 预期(Phase 5 docs-only 不动 bootstrap):核心代码路径 diff=0 → VCM §1 豁免锚 + tests/d143 6/0/6 + tests/d142 6/0/6 + tests/d141 5/0/5 + reflection_health GATE PASS no regressions + d_doc_index PASS 10 referenced Ds all live + ultrathink_linter PASS;**Phase 5 兑现成果**:D143 主线 object literal contextual typing 反推机制 6 Phase 全闭环 — Phase 0 落档 → Phase 1 RED 探查 + H1/H10 同模式实证 → Phase 2 G1 路径实施 + H3 嵌套反推 + spike `Y:18` + `Z@Earth` GREEN → Phase 3 测试覆盖 6/0/6 全绿 + H1-H8 全 PASS + H4/H5/H13 决策行落档 + Followup F4/F6/F8 加锚 + H10 cross-D memory 落档 → Phase 4 workaround cleanup docs-only 降级(lib/+tests/ 全 0 cleanup 候选)→ **Phase 5 全 Phase 收关 D143 主线 close** — D141 §Followup F2 + D142 §Followup F1 主线 close;Followup F1-F8 入下一 D 文档启动队列(F1 ternary contextual typing 候选 D144 入口);D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 5 commit `0339171` 同模式)。
+D135/D136/D137/D140/D141/D142/D143 范式延续(单 commit 大改档 docs only — Phase 5 hash 回填轮 + D144 Phase 0 起首 docs only 单 file 双 task);**关键发现:本轮 D143 Phase 5 commit 是单 commit 不能引用自己 hash 范式终结 — 下轮 hash 回填轮替换 5 处占位符为实际 commit hash 后,D143 主线全 6 Phase commit hash 全实测 git log 落实**(与 D141 Phase 5 commit `8f897e7` + hash 回填轮 commit `5fdaf5f` 范式一致 + D142 Phase 5 commit `0339171` + hash 回填轮 commit `9029be5` 范式一致)。
