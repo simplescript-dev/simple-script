@@ -33,6 +33,10 @@ function evalCall(astId: int): int {
                 inferArrowFuncParams(callArgIdR, callResolvedR, callArgIdxR)
                 // D142 Phase 2: ARRAY_LIT 反推前移 — D141 H10 同模式
                 inferArrayLitElems(callArgIdR, callResolvedR, callArgIdxR)
+                // D143 Phase 2: OBJ_LITERAL 反推前移 + D084 rewrite NEW_EXPR — D141/D142 H10 同模式
+                // (eval/call.ss line 86 pre-eval `genVal(callArgId)` 之前 OBJ_LITERAL 必须 rewrite,
+                // 否则 genVal unknown kind fallback "ptr 0" silent miscompile;D143 Phase 2 H10 实证修正)
+                inferObjLiteralFields(callArgIdR, callResolvedR, callArgIdxR)
                 callArgIdxR = callArgIdxR + 1
             }
         }

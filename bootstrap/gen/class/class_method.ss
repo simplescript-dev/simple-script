@@ -118,6 +118,16 @@ function genNamedConstructorArgs(className: string, argList: string): string {
         if (argId > 0 && nGetKind(argId) == "NAMED_ARG") {
             const argName = nGetS1(argId)
             const valId = nGetI1(argId)
+            // D143 Phase 2: 嵌套 OBJ_LITERAL 反推(H3)— field 值若是 OBJ_LITERAL,
+            // 用 classFieldTypes[`${className}.${argName}`] 反推 inner className + D084 rewrite
+            // (与 eval/new_expr.ss pre-eval 反推前移对偶 — codegen 路径补漏防 inner OBJ_LITERAL
+            // 走 NEW_EXPR ctor args 路径未经 eval pre-eval 时漏 rewrite)
+            if (valId > 0 && nGetKind(valId) == "OBJ_LITERAL") {
+                const fieldKey = `${className}.${argName}`
+                if (classFieldTypes.has(fieldKey) == 1) {
+                    inferObjLiteralFromType(valId, classFieldTypes.getString(fieldKey))
+                }
+            }
             const val = genExpr(valId)
             const vType = inferType(valId)
             namedVals.set(argName, val)

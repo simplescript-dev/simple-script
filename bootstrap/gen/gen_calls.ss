@@ -279,6 +279,9 @@ function resolveCallArgs(callee: string, argList: string, typeCallee: string): s
                 inferArrowFuncParams(argId, typeCallee, argIdx)
                 // D142 Phase 2: untyped array literal 反推 — Array<T> elemType 回填 ARRAY_LIT nSetS2
                 inferArrayLitElems(argId, typeCallee, argIdx)
+                // D143 Phase 2: untyped object literal 反推 — class 名回填 OBJ_LITERAL nSetS2 +
+                // D084 rewrite OBJ_LITERAL → NEW_EXPR(走 NEW_EXPR genNamedConstructorArgs 路径)
+                inferObjLiteralFields(argId, typeCallee, argIdx)
                 let val = genExpr(argId)
                 let vType = inferType(argId)
                 const ptKey = `${typeCallee}:${argIdx}`

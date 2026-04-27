@@ -69,6 +69,15 @@ function checkerInferType(nodeId: int): string {
         if (arrHomo == 1 && arrInfer != "") { return `Array<${arrInfer}>` }
         return "Array"
     }
+    if (kind == "OBJ_LITERAL") {
+        // D143 Phase 2: OBJ_LITERAL inferType — 反推回填发生在 codegen 阶段(nGetS2),
+        // checker 阶段 nGetS2 仍空 → fallback "auto" 让 isTypeCompatible 放行(declared="User"
+        // + actual="auto" return 1)。codegen 阶段反推得 className 后 D084 rewrite NEW_EXPR
+        // 走 NEW_EXPR 路径(line 116);反推得而 checker 已读到 → 优先返 className 与 NEW_EXPR 同形。
+        const objClsS2 = nGetS2(nodeId)
+        if (objClsS2 != "") { return objClsS2 }
+        return "auto"
+    }
     if (kind == "ARROW_FUNC") {
         // D141 Phase 2.1: ARROW_FUNC inferType 返结构化签名 fn(P1,...):R(H11)
         // 全 PARAM s2="" 时降级为单一 "fn"(向后兼容 isTypeCompatible startsWith("fn") + typeSig "f" 路径)

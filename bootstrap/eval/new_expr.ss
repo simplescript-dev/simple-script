@@ -21,6 +21,24 @@ function evalNewExpr(astId: int): int {
     let newCtArgVals: Array<string> = []
     let newCtNamedArgs = new Map()
     const newArgList = nGetList(astId)
+    // D143 Phase 2: NAMED_ARG OBJ_LITERAL 嵌套反推前移 — D141/D142 H10 同模式
+    // (eval/new_expr.ss line 38 pre-eval `genVal(nGetI1(newArgId))` 之前 inner OBJ_LITERAL
+    // 必须 rewrite,否则 genVal unknown kind fallback "ptr 0" silent miscompile;H3 嵌套链路)
+    if (comptimeDepth == 0 && newArgList != "") {
+        const newArgPartsR = newArgList.split(",")
+        for (napR in newArgPartsR) {
+            const newArgIdR = parseInt(napR)
+            if (newArgIdR > 0 && nGetKind(newArgIdR) == "NAMED_ARG") {
+                const napValId = nGetI1(newArgIdR)
+                if (napValId > 0 && nGetKind(napValId) == "OBJ_LITERAL") {
+                    const napFieldKey = `${newClassName}.${nGetS1(newArgIdR)}`
+                    if (classFieldTypes.has(napFieldKey) == 1) {
+                        inferObjLiteralFromType(napValId, classFieldTypes.getString(napFieldKey))
+                    }
+                }
+            }
+        }
+    }
     if (newArgList != "") {
         const newArgParts = newArgList.split(",")
         for (nap in newArgParts) {

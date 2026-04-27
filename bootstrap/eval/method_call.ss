@@ -61,6 +61,8 @@ function evalMethodCall(astId: int): int {
                     inferArrowFuncParams(mcArgIdR, mcResolvedR, mcArgIdxR)
                     // D142 Phase 2: ARRAY_LIT 反推前移 — D141 H10 同模式(genVal pre-eval 之前回填 nSetS2)
                     inferArrayLitElems(mcArgIdR, mcResolvedR, mcArgIdxR)
+                    // D143 Phase 2: OBJ_LITERAL 反推前移 + D084 rewrite NEW_EXPR — D141/D142 H10 同模式
+                    inferObjLiteralFields(mcArgIdR, mcResolvedR, mcArgIdxR)
                     mcArgIdxR = mcArgIdxR + 1
                 }
             }
