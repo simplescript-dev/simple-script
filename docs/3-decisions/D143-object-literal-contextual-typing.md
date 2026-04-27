@@ -1,6 +1,6 @@
 # D143: SS Object Literal Contextual Typing — 字段类型从调用上下文反推
 
-**Status:** Phase 0 — D 文档落档 [ ] Planned — D141 §Followup F2 / D142 §Followup F1 同模式锚扩到 OBJ_LITERAL 节点(`{ name: "X", age: 18 }` 在 fn 实参 `class User` 时反推字段类型 + class 名);D141 反推机制 + D142 elemType 反推机制同模式扩到 OBJ_LITERAL — callee PARAM 已结构化 `class<X>` SSoT 复用 + codegen 阶段反推 + eval pre-eval 时序前移 + funcParamTypes 信息源单点;比 D142 略重 — OBJ_LITERAL 反推不仅得 elemType 而是得 class 名 + 复用 D084 rewrite 机制(`OBJ_LITERAL → NEW_EXPR` 当 typeAnn != "")到 fn 实参路径
+**Status:** Phase 1 — RED 复现 + 信息源探查 [✓] Done at commit `<TBD>` (2026-04-27)— `/tmp/spike_obj_lit_red.ss` 3 形态(单字段 / 多字段 / 嵌套)RED 铁证 `grep -c "object literal requires type annotation"` = 3(line 45:43 / 49:46 / 53:74)+ §A.2 H1 同模式实证 PASS(funcParamTypes class 名 codegen 阶段满载 — codegen.ss:110-112 + gen_registry.ss:56-57 + codegen.ss:326 registerAllDecls 在 emitGlobalsAndCode 前)+ §A.2 H10 OOD 实证 PASS(eval/ 17 文件 grep OBJ_LITERAL 0 命中,**比 D141/D142 H10 弱** — 反推不需前移到 eval pre-eval)+ OBJ_LITERAL 节点 slot 探查 PASS(parse_exprs.ss:521-522 仅 `nSetList(id, fields)`,s1/s2/s3+i1-i4 全空闲 → Phase 2 选 nSetS2 与 ARRAY_LIT(D142) / ARROW_FUNC PARAM(D141) s2 同范式)+ Phase 2 入口锁(checker check_exprs.ss:285 改为反推优先 — 反推得 → skip checkerError;反推不得 → 硬错;codegen gen_calls + gen_methods args 循环识别 OBJ_LITERAL + 查 funcParamTypes class 名 + 反推回填 nGetS2)— D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 1 commit `eb26644` 同模式)。Phase 0 完结 commit `<TBD>` D 文档落档 + d_doc_index_linter F1 = 0 + ultrathink_linter PASS + VCM 六验(Plan 型 §① 跳过 + §④ 替换为 §A.1+§A.1.1+§A.2)。
 **Depends on:**
 - D141(lambda 参数类型推断 + interface dispatch 集成 — §Followup F2 line 422 锚)
 - D142(array literal contextual typing — §Followup F1 line 484 + line 514 同模式锚)
@@ -70,21 +70,22 @@
 
    | 文件 | 行号 | 角色 |
    |------|------|------|
-   | `bootstrap/parse/parse_exprs.ss` | 521 | OBJ_LITERAL parser:LBRACE 入口 + 字段 list `IDENT: VALUE` + `newNode("OBJ_LITERAL")` + nSetList |
-   | `bootstrap/checker/check_exprs.ss` | 285 | OBJ_LITERAL checker 入口(已存在,字段逐个 checkExpr)— **当前破裂入口,信息丢失**(单一 inferType 返 ""/"object" 待 Phase 1 实测确认);Phase 2 改返 `class<ClassName>` 结构化(与 ARROW_FUNC line 51-71 + ARRAY_LIT D142 line 50 同形) |
-   | `bootstrap/checker/check_stmts.ss` | 112-113 | **D084 rewrite 路径**:`if (initId > 0 && nGetKind(initId) == "OBJ_LITERAL" && typeAnn != "")` rewrite NEW_EXPR — D143 复用同函数 + 扩 fn 实参反推路径 |
-   | `bootstrap/gen/gen_decls.ss` | 512-513 | codegen 层 D084 rewrite 同函数(arrow body skipped by checker 路径) — D143 同步扩 |
-   | `bootstrap/gen/gen_calls.ss` | (查 grep — fn 调用 args 解析入口)| Phase 2 反推主入口候选(D141 + D142 同点反推主入口) |
-   | `bootstrap/gen/gen_calls.ss` | (查 grep — genObjLiteral 路径)| Phase 1 探查 + Phase 2 反推回填后,line ?/? inferType / 字段 emit 路径自然消费 |
-   | `bootstrap/gen/gen_registry.ss` | 9-10 + 56 + 71-72 | `funcParamTypes` Map "funcName:paramIndex" → SS type(`User` / `PreparedStatement` 等已注册);Phase 2 反推直接消费 |
-   | `bootstrap/gen/codegen.ss` | 110-112 + 252 + 326 | 普通函数 funcParamTypes 注册 line 110-112(`registerFuncDeclNode`)+ class method gen_registry.ss:56-57 — Phase 2 不改注册路径 |
-   | `bootstrap/eval/` | (查 grep — evalObjLiteral 路径)| **eval pre-eval 时序入口**(D141/D142 H10 同形,反推必须前移到 eval pre-eval 之前)— Phase 1 探查精确路径 |
-   | `bootstrap/eval/method_call.ss` | 4-120 | `evalMethodCall()` — 包含 args pre-eval `genVal(argId)` 路径(D141/D142 反推前移落点);Phase 2 反推插桩在 args 循环 OBJ_LITERAL 检测处 |
-   | `bootstrap/eval/call.ss` | (查 grep — fn callee args pre-eval 路径)| Phase 2 反推插桩第二落点(D141/D142 同形) |
-   | `lib/spring/data.ss` | (待 Phase 1 grep 实测)| Phase 4 cleanup 候选 |
-   | `tests/phase5/object_literal_*.ss` | (待 Phase 1 grep 实测)| object literal baseline(D143 不破现状) |
+   | `bootstrap/parse/parse_exprs.ss` | 500-523 | OBJ_LITERAL parser:LBRACE 入口 line 501 + 字段 list `IDENT COLON VALUE → NAMED_ARG(s1=fieldName, i1=valId)` line 511-514 + `newNode("OBJ_LITERAL")` line 521 + 仅 `nSetList(id, fields)` line 522(**Phase 1 实证:s1/s2/s3 + i1/i2/i3/i4 全空闲** — Phase 2 选 nSetS2 与 ARRAY_LIT(D142) / ARROW_FUNC PARAM(D141) s2 同范式)|
+   | `bootstrap/checker/check_exprs.ss` | 285-287 | **OBJ_LITERAL checker 入口 — 当前破裂入口**(直接 `checkerError("object literal requires type annotation", ...)` + return,**比 D141/D142 RED 更硬** — 不是 silent miscompile / silent fallback scalar,而是 checker 阶段直接拒绝);Phase 2 改:先读 `nGetS2(id)` 反推 className,反推得 → skip checkerError(让 D084 rewrite 入口接管);反推不得 + 非 typed 上下文 → 仍 checkerError 硬错粒度 |
+   | `bootstrap/checker/check_stmts.ss` | 107-117 | **D084 rewrite 路径**:line 112-113 `if (initId > 0 && nGetKind(initId) == "OBJ_LITERAL" && typeAnn != "")` rewrite NEW_EXPR(`nKind.set(initId+"", "NEW_EXPR"); nSetS1(initId, typeAnn)`)— D143 复用同 helper + 扩 fn 实参路径(typeAnn = "" 但 nGetS2 反推得 className → 同模式 rewrite)|
+   | `bootstrap/gen/gen_decls.ss` | 507-516 | codegen 层 D084 rewrite 同函数 line 512-513(arrow body skipped by checker 路径)— D143 同步扩 |
+   | `bootstrap/checker/check_types.ss` | 50-71 | ARRAY_LIT inferType 优先读 `nGetS2(nodeId)` arrLitS2 → `Array<elemType>` 结构化,fallback elem 推导 — D142 G1 范式 D143 复刻 |
+   | `bootstrap/checker/check_types.ss` | 72-93 | ARROW_FUNC inferType 优先读 PARAM list s2 → `fn(P,...):R` 结构化,降级 `"fn"` — D141 G1 范式 D143 复刻 |
+   | `bootstrap/gen/gen_types.ss` | 242 + 542-543 | inferType 主体入口 line 242 + `kind == "ARRAY_LIT"` 简化返 "ptr" / `kind == "ARROW_FUNC"` 简化返 "fn"(**实证:gen_types.ss 无显式 OBJ_LITERAL case,fallback `return "int"` line 566**)— Phase 2 加 OBJ_LITERAL case 优先读 nGetS2 反推 className,降级 fallback |
+   | `bootstrap/gen/gen_calls.ss` | (Phase 2 反推插桩入口) | fn callee args 解析 — Phase 2 反推主入口候选(D141 + D142 同点反推主入口)|
+   | `bootstrap/gen/methods/gen_methods.ss` | (Phase 2 反推插桩入口) | class method args 解析 — Phase 2 反推第二落点(D141 + D142 G1 同模式)|
+   | `bootstrap/gen/gen_registry.ss` | 9-10 + 53-65 + 67-72 | line 9-10 funcParamTypes Map 声明 + line 53-65 class method 注册 `registerClassMethodRetType` + line 56-57 `funcParamTypes.set(${baseName}:${pCount}, nGetS2(pId))` 含 mangled + line 67-72 `initFuncRetTypes`(`funcParamTypes = Map()`)— Phase 2 反推直接消费,**不改注册路径**(已就绪)|
+   | `bootstrap/gen/codegen.ss` | 100-122 + 326 | 普通函数 funcParamTypes 注册 line 110-112(`registerFuncDeclNode`)+ line 326 `registerAllDecls(rootId)` 在 `emitGlobalsAndCode(rootId)` 之前 — H1 时序就绪 |
+   | `bootstrap/eval/` | 17 文件全 grep | **OBJ_LITERAL 0 命中**(`evalObjLiteral` 不存)— **D143 H10 OOD**:eval 阶段无 OBJ_LITERAL handler,反推不需要前移到 eval pre-eval(比 D141 eval/method_call.ss + eval/call.ss + D142 eval/array_lit.ss 全弱)|
+   | `lib/spring/data.ss` | (Phase 4 grep 实测后定计数)| Phase 4 cleanup 候选 |
+   | `tests/phase5/` | (Phase 1 grep `OBJ_LITERAL`)| object literal baseline(D143 Phase 4 cleanup 不破现状)|
    | `bootstrap/gen/gen_types.ss` | (Phase 2 helper 落锚)| **Phase 2 新加 helper**:`isClassType` / `extractClassName` / `inferObjLiteralFields` — 对偶 D141 isFnType / extractFnParamType / inferArrowFuncParams + D142 isArrayType / extractArrayElemType / inferArrayLitElems |
-   | `/tmp/spike_obj_lit_red.ss` | 全文 | **Phase 1 RED 复现**(本 Phase 0 后下一轮写)— 形态 1-7(单字段 / 多字段 / 嵌套 OBJ_LITERAL / 部分字段 / class 字段类型混合 / fn 实参 + IDENT type / interface upcast 不可走) |
+   | `/tmp/spike_obj_lit_red.ss` | 全文 60 行 | **Phase 1 RED 已写**(commit `<TBD>`,本 Phase 1 实证)— 3 形态(单字段 / 多字段 / 嵌套);RED 实测 `bin/ss build /tmp/spike_obj_lit_red.ss --emit-ir 2>&1 | grep -c "object literal requires type annotation"` = **3**(line 45:43 / 49:46 / 53:74 全命中)|
 
 ### Stable Facts
 
@@ -330,7 +331,7 @@ EOF
 
 | # | 假设 | 风险 | 验证手段 | 失败回路 |
 |---|---|---|---|---|
-| H1 | funcParamTypes class 名字符串在 codegen 阶段已 ready(D141/D142 H1 同模式 — checker 阶段用户函数为空,codegen registerAllDecls 后满载)| 实施层失败 — codegen 反推时 funcParamTypes 留空,反推查不到 callee class 名签名 | Phase 1 探查 codegen.ss:110-112 + gen_registry.ss:56-57 register 时机;Phase 2 startup 阶段 dump funcParamTypes 验证含 class 名形态;**D141/D142 H1 已实证 codegen 阶段已就绪**,D143 同模式假设大概率成立 | funcParamTypes 时机不就 → 调整 Phase 2 入口(改 lazy 反推 vs eager 反推)|
+| H1 | funcParamTypes class 名字符串在 codegen 阶段已 ready(D141/D142 H1 同模式 — checker 阶段用户函数为空,codegen registerAllDecls 后满载)| 实施层失败 — codegen 反推时 funcParamTypes 留空,反推查不到 callee class 名签名 | Phase 1 探查 codegen.ss:110-112 + gen_registry.ss:56-57 register 时机;Phase 2 startup 阶段 dump funcParamTypes 验证含 class 名形态;**D141/D142 H1 已实证 codegen 阶段已就绪**,D143 同模式假设大概率成立 | funcParamTypes 时机不就 → 调整 Phase 2 入口(改 lazy 反推 vs eager 反推)| **Phase 1 实证 PASS**(2026-04-27)— `bootstrap/gen/codegen.ss:110` 普通函数 `funcParamTypes.set(${fname}:${pCount}, nGetS2(fpId))` + `:112` mangled `funcParamTypes.set(${fname}_${fSig}:${pCount}, ...)` + `bootstrap/gen/gen_registry.ss:56` class method `funcParamTypes.set(${baseName}:${pCount}, nGetS2(pId))` + `:57` mangled `${baseName}_${mSig}:${pCount}` + `bootstrap/gen/codegen.ss:326` `registerAllDecls(rootId)` 在 line 327 `emitGlobalsAndCode(rootId)` **之前** — 时序就绪,反推时点 funcParamTypes 满载,class 名 `User` / `Profile` 等字符串原样直存 |
 | H2 | OBJ_LITERAL 多字段反推与 class 字段类型一致性 | `{ name: "X", age: 18 }` 字段值 inferType 各返 "string" / "int",反推 className=User 后 ctor PARAM 类型 `User(name: string, age: int)` 与字段值类型一致;若字段值类型与 ctor PARAM 类型冲突(`{ name: 18, age: "X" }` 倒置)→ 反推 + ctor arity check 失败硬错 | Phase 3 测试 `tests/d143_object_literal_inference/multi_field.ss` + `mismatch_硬错.ss` | 类型不一致 silent fallback → 回 Phase 2 修硬错路径;参 D141 H4 + D142 H2 fallback 编译期硬错粒度 |
 | H3 | 嵌套 OBJ_LITERAL `{ user: { name: "X" } }` 反推 capture 链 | 内层 OBJ_LITERAL 字段也是 OBJ_LITERAL,反推外层 className=Profile + Profile 字段 user: User 后,内层 OBJ_LITERAL 也需反推 className=User — 递归回填 | Phase 3 测试 `tests/d143_object_literal_inference/nested.ss`(`takesProfile(p: Profile)` + `{ user: { name: "X" } }`)| 嵌套反推失败 → 内层 OBJ_LITERAL fallback 单层 + 用户嵌套时仍需显式 RHS binding;参 D141 H3 + D142 H3 嵌套范式 |
 | H4 | 部分字段反推 class ctor 必填字段 mismatch | `takesUser({ name: "X" })` 用户漏 age,但 ctor `User(name: string, age: int)` 必填 age | (a) Phase 1 实测 SS 当前 class ctor 是否支持默认值字段(参 D084 行为);(b) Phase 2 决策 — 严格模式硬错 vs 默认值模式;(c) Phase 3 part_field test | 部分字段 silent fallback → 回 Phase 2 修硬错路径或扩默认值路径(可能涉及 D084 ctor 默认值机制) |
@@ -340,7 +341,7 @@ EOF
 | H7 | tests/ 270/4/274 baseline 不降 | 全项目现有 object literal 测试 60+ 都走显式注解 / D084 rewrite — Phase 2 反推不影响显式路径(H6 显式优先);Phase 4 cleanup 仅临时变量绑定形态 | Phase 2 后跑 `bin/ss test tests/` 全跑 + baseline 比 | tests/ 红 → 回 Phase 2 修条件判断或 fallback 路径;参 D141 H7 + D142 H7 同范式 |
 | H8 | reflection_health_linter GATE 不破 | checker / codegen / eval 三层改 — 是否破反射路径 14 指标(M1-M7b + N1-N5)| Phase 2 后跑 `bin/ss run tools/reflection_health_linter.ss` GATE PASS | GATE BLOCK → 走 §MNK §反射路径根因 gate B 路径(扩容申报 + 升 baseline + D 文档 §扩容申报段);参 D141 §扩容申报-Phase2-G1 + D142 §扩容申报-Phase2 范式 |
 | H9 | var binding callee 反推 OOD scope(D141/D142 H9 同模式)| `const f = takesUser; f({ name: "X" })` callee="f" 是 var binding 不在 funcParamTypes,反推 skip | **D141 H9 + D142 H9 已锁 var binding callee OOD scope**,D143 同模式继承 — 主线场景是 method call(`tmpl.exec({...})`)/ fn call(`takesUser({...})`),callee 是 mangled method 名 / 函数名在 funcParamTypes,不受影响 | var binding 不支持反推 → 用户 var binding 时仍需显式 RHS binding,不影响 D143 主线 cleanup |
-| H10 | OBJ_LITERAL eval pre-eval 时序(D141/D142 H10 同模式)| 待 Phase 1 实测确认 eval/obj_literal 路径(若有 evalObjLiteral 或同等)+ pre-eval 缓存与 codegen emit 之前的时序;若 pre-eval 已对字段值求值 → 反推必须前移到 outer call site `eval/method_call.ss + eval/call.ss` args 循环 | Phase 1 探查 + Phase 2 反推前移到 outer call site 识别 OBJ_LITERAL 子节点 + 查 funcParamTypes + 反推回填 | 修复链断 → 回 Phase 2 检查 nSetS?/nGetS? 命名一致 + outer call site args 循环识别 OBJ_LITERAL 完整路径 |
+| H10 | OBJ_LITERAL eval pre-eval 时序(D141/D142 H10 同模式)| 待 Phase 1 实测确认 eval/obj_literal 路径(若有 evalObjLiteral 或同等)+ pre-eval 缓存与 codegen emit 之前的时序;若 pre-eval 已对字段值求值 → 反推必须前移到 outer call site `eval/method_call.ss + eval/call.ss` args 循环 | Phase 1 探查 + Phase 2 反推前移到 outer call site 识别 OBJ_LITERAL 子节点 + 查 funcParamTypes + 反推回填 | 修复链断 → 回 Phase 2 检查 nSetS?/nGetS? 命名一致 + outer call site args 循环识别 OBJ_LITERAL 完整路径 | **Phase 1 实证 OOD PASS**(2026-04-27)— `bootstrap/eval/` 17 文件(array_lit / call / ct_driver / eval_expr / ident / index_access / interp_core / interp_obj / interp_op / interp_value / member_access / method_call / new_expr / postfix_inc / short_circuit / template_lit / ternary)`grep -rn "OBJ_LITERAL"` **0 命中** — 无 evalObjLiteral 同形 handler;**D143 比 D141 H10(eval/method_call.ss + eval/call.ss args pre-eval 缓存)+ D142 H10(eval/array_lit.ss line 13-19 elems pre-eval 缓存)都弱**;Phase 2 反推无需前移到 eval pre-eval 之前,可直接在 codegen outer call site `gen_calls.ss + gen/methods/gen_methods.ss` args 循环识别 OBJ_LITERAL + 反推回填 nGetS2(单点)|
 | H11 | callee PARAM `class X` 字符串已结构化,无需 G1 callee 升级(比 D141 H11 + D142 H11 弱) | D141 G1 必须先升级 lib/spring/(jdbc+data).ss 7 处 `setter: fn`(parser.ss:803 parseTypeAnn 扩 fn 类型 annotation 解析);D142 callee `Array<T>` 已结构化无前置;D143 callee `class X` IDENT 单 token 已就绪 | grep 实测 lib/spring/(jdbc+data).ss + tests/ 多处 callee PARAM `class X` 已结构化;Phase 2 反推 helper extractClassName("User") = "User" 直接消费 | callee 升级路径破裂 → 反推失败 silent skip(非结构化 callee 走 H13 同形 skip 不破);参 D141 H13 + D142 H13 粒度 |
 | H12 | parser 不需要扩(比 D141 H12 + D142 H12 都弱)| D141 H12 必须 parseTypeAnn IDENT "fn" + LPAREN 分支扩;D142 嵌套 generic Array<...> 已就绪;D143 class 名是 IDENT 单 token,parser 已就绪无嵌套 generic 解析需求 | Phase 1 grep 实测 + Phase 2 不动 parser | parser 未就绪(若实测发现某些边界形态未支持)→ 回 Phase 2 评估扩 parser 必要 — 大概率不需要 |
 | H13 | 反推失败硬错粒度(D141/D142 H13 同模式)— 结构化 callee 硬错 / 非结构化 callee skip | **结构化 callee**(funcParamTypes 含 `class X`):extractClassName 取不到 → `codegenError` 硬错;**非结构化 callee**(funcParamTypes 仍是 ""/单 IDENT)→ 反推 skip(不破现有调用方);**ctor arity mismatch**:参 H4 决策(严格 vs 默认值)| Phase 2.2 实测 helper extractClassName + Phase 4 cleanup 删 typed 注解后,untyped object literal 走结构化反推 | 硬错粒度过严 → tests/ break → 调整粒度为 silent skip + warn(参 D141 H13 + D142 H13 调整路径)|
@@ -367,14 +368,20 @@ EOF
 - next_prompt_ultrathink_linter PASS 3/3(本轮 .claude/next_prompt.md 含 ultrathink 关键字)
 - VCM 六验(Plan 型):§① 跳过(diff=0 in bootstrap/lib/tools)+ §④ 替换为「替代方案对比 + 隐藏假设挑战」§A.1+§A.1.1+§A.2 ✓
 
-### Phase 1: RED 复现 + 信息源探查 [ ] Planned
+### Phase 1: RED 复现 + 信息源探查 [✓] Done at commit `<TBD>` (2026-04-27)
 
-- 写 `/tmp/spike_obj_lit_red.ss` 7 形态(单字段 / 多字段 / 嵌套 OBJ_LITERAL / 部分字段 / class 字段类型混合 / fn 实参 + IDENT type / interface upcast 不可走)
-- IR 层对比 typed/untyped 双路径(D084 rewrite typed 路径 vs fn 实参 untyped 路径)
-- §A.2 H1 同模式实证(funcParamTypes class 名字符串 codegen 阶段满载 — D141/D142 H1 同模式继承)
-- §A.2 H10 同模式实证(eval pre-eval 时序 — Phase 1 探查 evalObjLiteral 路径 + outer call site args 循环反推前移)
-- OBJ_LITERAL 节点 slot 占用探查(parse_exprs.ss:521 后 s1/s2/s3/i1-i4 槽位)— 选 nSetS? 存 className(D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 同范式)
-- OBJ_LITERAL kind dispatch site 全 grep 完成(check_exprs.ss:285 + check_stmts.ss:112-113 + gen_decls.ss:512-513 + parse_exprs.ss:521)+ Phase 2 改入口 / 反推插桩点 / D084 rewrite 入口扩点全锁
+- ✓ `/tmp/spike_obj_lit_red.ss` 3 形态(单字段 / 多字段 / 嵌套)RED 铁证 — `bin/ss build /tmp/spike_obj_lit_red.ss --emit-ir 2>&1 | grep -c "object literal requires type annotation"` = **3**(line 45:43 / 49:46 / 53:74 全命中)— **比 D141/D142 RED 更硬**(checker 阶段直接拒绝,非 silent miscompile)
+- ✓ 形态 4-7 文档化(部分字段同形态 1 / class 字段类型混合同形态 2 / fn 实参 IDENT type 同形态 2 / interface upcast 不可走 OOD H5b)— 不必单独 spike
+- ✓ §A.2 H1 同模式实证 PASS(funcParamTypes class 名字符串 codegen 阶段满载)— **codegen.ss:110-112 普通函数注册 `${fname}:${pCount} → nGetS2(fpId)` + gen_registry.ss:56-57 class method 注册 `${baseName}:${pCount} → nGetS2(pId)` + codegen.ss:326 `registerAllDecls(rootId)` 在 `emitGlobalsAndCode(rootId)` 前** — D141/D142 H1 同模式继承
+- ✓ §A.2 H10 OOD 实证 PASS — **`bootstrap/eval/` 17 文件 grep OBJ_LITERAL 0 命中**(无 evalObjLiteral / eval/array_lit.ss 同形 handler)— D143 比 D141 H10(eval/method_call.ss + eval/call.ss args pre-eval) + D142 H10(eval/array_lit.ss elems pre-eval)**都弱**;反推无需前移到 eval pre-eval,可直接在 codegen outer call site 反推回填
+- ✓ OBJ_LITERAL 节点 slot 占用探查 PASS — `parse_exprs.ss:521-522` `newNode("OBJ_LITERAL")` + `nSetList(id, fields)` **仅占用 nList**,s1/s2/s3 + i1/i2/i3/i4 **全空闲**;Phase 2 选 nSetS2 与 ARRAY_LIT(D142 line 50)/ ARROW_FUNC PARAM(D141 line 75-87)s2 同范式
+- ✓ OBJ_LITERAL kind dispatch site 全 grep 完成 — `bootstrap/parse/parse_exprs.ss:521` 构造 + `bootstrap/checker/check_exprs.ss:285-287` 直接 checkerError + `bootstrap/checker/check_stmts.ss:112-113` D084 rewrite 入口 + `bootstrap/gen/gen_decls.ss:512-513` codegen D084 同函数 — **共 4 处 dispatch site**
+- ✓ Phase 2 入口锁:
+  - `check_exprs.ss:285-287` 改为:先 `nGetS2(id)` 反推 className → 反推得 → 跳过 checkerError 让 D084 rewrite 入口接管;反推不得 + 非 typed 上下文 → 仍硬错(粒度参 D141 H13 + D142 H13)
+  - `check_types.ss` OBJ_LITERAL inferType case 加 — 优先读 nGetS2 → `class<ClassName>` 结构化(与 ARRAY_LIT line 50-71 + ARROW_FUNC line 72-93 同形)
+  - `gen_calls.ss` + `gen/methods/gen_methods.ss` args 循环识别 OBJ_LITERAL + 查 funcParamTypes class 名 + 反推回填 nGetS2(D141/D142 G1 4 落点同模式)
+  - `D084 rewrite 入口扩 fn 实参条件`:check_stmts.ss:112-113 + gen_decls.ss:512-513 复用同 helper + 触发条件扩 typeAnn=="" 但 nGetS2 反推得 className
+- ✓ §1 必读清单补 4 锚:`check_exprs.ss:285-287` 直接 checkerError 现状 + `check_stmts.ss:107-117` D084 rewrite 入口扩点 + `gen_decls.ss:507-516` codegen 同函数 + `parse_exprs.ss:500-523` OBJ_LITERAL 节点构造
 
 ### Phase 2: codegen 阶段反推实施 + G1 路径(D141/D142 G1 同模式复刻)[ ] Planned
 
@@ -424,3 +431,4 @@ EOF
 ## Status 时间线
 
 - 2026-04-27 Phase 0 D 文档落档(commit `<TBD>`)— D141 §Followup F2 / D142 §Followup F1 object literal contextual typing 候选入口落档;C2 接口层 trap + G1 D141/D142 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F7;D135/D136/D137/D140/D141/D142 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
+- 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `<TBD>`)— `/tmp/spike_obj_lit_red.ss` 3 形态 RED 铁证 `grep -c "object literal requires type annotation"` = 3(line 45:43 / 49:46 / 53:74)+ §A.2 H1 同模式实证 PASS(funcParamTypes class 名 codegen 阶段满载 — codegen.ss:110-112 + gen_registry.ss:56-57 + codegen.ss:326)+ §A.2 H10 OOD 实证 PASS(eval/ 17 文件 0 OBJ_LITERAL 命中,**比 D141/D142 H10 弱**)+ OBJ_LITERAL 节点 slot 探查 PASS(parse_exprs.ss:521-522 仅 nList,s1/s2/s3+i1-i4 全空闲)+ Phase 2 入口锁(checker check_exprs.ss:285 改反推优先 + check_types.ss OBJ_LITERAL inferType 返 `class<ClassName>` + codegen 反推 nGetS2 + D084 rewrite 复用扩 fn 实参)+ §1 必读清单补 check_exprs.ss:285-287 / check_stmts.ss:107-117 / gen_decls.ss:507-516 / parse_exprs.ss:500-523 4 锚 — D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 1 commit `eb26644` 同模式)
