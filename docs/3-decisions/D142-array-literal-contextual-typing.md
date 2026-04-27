@@ -1,6 +1,6 @@
 # D142: SS Array Literal Contextual Typing — 元素类型从调用上下文反推
 
-**Status:** Phase 2 — codegen 阶段反推实施 + G1 路径 [✓] Done at commit `<TBD>` — 6 文件 +91 LOC delta 实施(`check_types.ss:50` ARRAY_LIT inferType 返 Array<elemType> 结构化 + `gen_types.ss` 三 helper isArrayType/extractArrayElemType/inferArrayLitElems 对偶 D141 isFnType/extractFnParamType/inferArrowFuncParams + `gen_calls.ss:279` resolveCallArgs + `gen/methods/gen_methods.ss:202` emitClassMethodCall + `eval/method_call.ss:61` + `eval/call.ss:33` 4 落点反推 + `gen_calls.ss:631-731` genArrayLit 优先读节点 nGetS2)+ IR 因果实证(`lenShapes([])` ss_newArray→ss_newArrayPtr line 5490 stash 双向对照)+ VCM PASS(bootstrap 三阶段 + 264/4/268 不降 + d141 5/0/5 不破 + reflection GATE PASS via 扩容申报-Phase2 bump 3 处 F1)+ Phase 1 — RED 复现 + 信息源探查 [✓] Done at commit `eb26644` — `/tmp/spike_array_lit_red.ss` 形态 6/7(空数组 + interface upcast)IR 层 RED 铁证 `%5 = call ptr @ss_newArray(i32 0)` ⚠️ 应是 `ss_newArrayPtr`(silent fallback scalar)+ LLC error `'%1' defined with type 'ptr' but expected 'i32'`(method dispatch elemType 漏)+ H1 同模式实证 PASS(`codegen.ss:110-112` + `gen_registry.ss:56-57` Array<T> 字符串原样注册,`codegen.ss:326 registerAllDecls` 在 `emitGlobalsAndCode` 之前 — codegen 阶段满载)+ H10 同模式实证 PASS(`eval/array_lit.ss:13-19` `genVal(elemId)` 在 arrPreRegs 缓存 line 48 + genArrayLit line 60 之前 — 反推必须前移到 outer call site evalMethodCall/evalCall args 循环)+ ARRAY_LIT slot 占用探查 PASS(`parse_exprs.ss:496-498` 仅 nList 占,s1/s2/s3/i1-i4 全空)— Phase 2 入口锁 codegen 阶段反推 + checker `check_types.ss:50` + `check_class.ss:33` 改返 `Array<elemType>` 结构化(与 ARROW_FUNC 同形)
+**Status:** Phase 3 — 测试覆盖 + 隐藏假设挑战 [✓] Done at commit `<TBD>` — 6 测试用例落锚 `tests/d142_array_literal_inference/`(untyped_single + untyped_multi + nested_array + empty_array + interface_upcast + explicit_override)挑战 §A.2 H1/H2/H3/H4/H5/H6 全 PASS + H7 baseline 不降 + H8 reflection GATE PASS + H9 var binding callee OOD scope 标(D141 H9 同模式继承)+ H10/H11/H12/H13 Phase 1+2 已实证;VCM 六验全 PASS(bootstrap 三阶段固定点 + tests/d142_array_literal_inference 6/0/6 全绿 + tests/d141_lambda_inference 5/0/5 不破 + tests 264/4/268 baseline 不降 + reflection GATE PASS no regressions + d_doc_index F1 = 0)+ Phase 2 — codegen 阶段反推实施 + G1 路径 [✓] Done at commit `781d0d5` — 6 文件 +91 LOC delta 实施(`check_types.ss:50` ARRAY_LIT inferType 返 Array<elemType> 结构化 + `gen_types.ss` 三 helper isArrayType/extractArrayElemType/inferArrayLitElems 对偶 D141 isFnType/extractFnParamType/inferArrowFuncParams + `gen_calls.ss:279` resolveCallArgs + `gen/methods/gen_methods.ss:202` emitClassMethodCall + `eval/method_call.ss:61` + `eval/call.ss:33` 4 落点反推 + `gen_calls.ss:631-731` genArrayLit 优先读节点 nGetS2)+ IR 因果实证(`lenShapes([])` ss_newArray→ss_newArrayPtr line 5490 stash 双向对照)+ VCM PASS(bootstrap 三阶段 + 264/4/268 不降 + d141 5/0/5 不破 + reflection GATE PASS via 扩容申报-Phase2 bump 3 处 F1)+ Phase 1 — RED 复现 + 信息源探查 [✓] Done at commit `eb26644` — `/tmp/spike_array_lit_red.ss` 形态 6/7(空数组 + interface upcast)IR 层 RED 铁证 `%5 = call ptr @ss_newArray(i32 0)` ⚠️ 应是 `ss_newArrayPtr`(silent fallback scalar)+ LLC error `'%1' defined with type 'ptr' but expected 'i32'`(method dispatch elemType 漏)+ H1 同模式实证 PASS(`codegen.ss:110-112` + `gen_registry.ss:56-57` Array<T> 字符串原样注册,`codegen.ss:326 registerAllDecls` 在 `emitGlobalsAndCode` 之前 — codegen 阶段满载)+ H10 同模式实证 PASS(`eval/array_lit.ss:13-19` `genVal(elemId)` 在 arrPreRegs 缓存 line 48 + genArrayLit line 60 之前 — 反推必须前移到 outer call site evalMethodCall/evalCall args 循环)+ ARRAY_LIT slot 占用探查 PASS(`parse_exprs.ss:496-498` 仅 nList 占,s1/s2/s3/i1-i4 全空)— Phase 2 入口锁 codegen 阶段反推 + checker `check_types.ss:50` + `check_class.ss:33` 改返 `Array<elemType>` 结构化(与 ARROW_FUNC 同形)
 - Phase 0 — D 文档落档 [✓] Done at commit `3fb3ea2` — D141 §Followup F1 array literal contextual typing 候选入口落档(`[1, 2, 3]` 在 fn 实参 `Array<int>` 时反推元素类型);D141 反推机制同模式扩(callee PARAM 已结构化 `Array<T>` SSoT 复用 + codegen 阶段反推 + eval pre-eval 时序回填 + funcParamTypes 信息源单点)
 
 **Depends on:**
@@ -380,7 +380,7 @@ EOF
 - §1 必读清单补 `bootstrap/gen/codegen.ss:100-122` + `bootstrap/gen/gen_registry.ss:19-25 + 67-72` + `bootstrap/eval/array_lit.ss:4-19 + 48-60` + `bootstrap/parse/parse_exprs.ss:496-498` + `/tmp/spike_array_lit_untyped.ss` + `/tmp/spike_array_lit_typed.ss` + `/tmp/spike_array_lit_red.ss` 7 个锚
 - §A.2 H1 实证 + H10 实证 双行入档(实证标 `✓ 同模式 PASS`)
 
-### Phase 2: codegen 阶段反推实施 + G1 路径(D141 G1 同模式复刻)[✓] Done at commit `<TBD>` (2026-04-27)
+### Phase 2: codegen 阶段反推实施 + G1 路径(D141 G1 同模式复刻)[✓] Done at commit `781d0d5` (2026-04-27)
 
 - `check_types.ss:50` ARRAY_LIT inferType 改返 `Array<elemType>` 结构化(与 ARROW_FUNC line 51-71 同形 + 优先读节点 nGetS2 / 元素同质推断 / 全空 / 异质 / SPREAD 降级 "Array")
 - `check_class.ss:33` 评估**保持不改** — `inferCheckerClass` 是 method dispatch 入口走 base name 仍正确,改 `Array<X>` 反破 `lookupMethodRetType`(本 Phase 实证决策)
@@ -394,17 +394,35 @@ EOF
 - VCM 验证:bootstrap 三阶段固定点 PASS + tests 264/4/268(baseline 不降,4 失败均预存 — spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug,与 D142 反推无关)+ tests/d141_lambda_inference/ 5/0/5 不破 + reflection_health GATE PASS(扩容申报-Phase2 bump 3 处 F1 budget_max — gen_methods 722→726 / gen_calls 718→740 / gen_types 873→915)+ d142_green spike 形态 A-D 全 GREEN(a=6 / b=0 / c=0 / d=32.26)
 - LOC delta 实测 +91(预估 ≤ 250,远低 §Constraints 800 LOC 上限) — 6 文件改:check_types.ss +23 / gen_types.ss +39 / gen_calls.ss +29 / gen_methods.ss +2 / eval/call.ss +2 / eval/method_call.ss +2
 
-### Phase 3: 测试覆盖 + 隐藏假设挑战 [ ]
+### Phase 3: 测试覆盖 + 隐藏假设挑战 [✓] Done at commit `<TBD>` (2026-04-27)
 
-- 6+ 测试用例落锚 `tests/d142_array_literal_inference/`:
-  - `untyped_single.ss` — H1 单元素反推
-  - `untyped_multi.ss` — H2 多元素同质反推
-  - `nested_array.ss` — H3 嵌套 array 反推 capture 链
-  - `empty_array.ss` — H4 空数组反推
-  - `interface_upcast.ss` — H5 interface upcast vtable indirect dispatch
-  - `explicit_override.ss` — H6 显式注解 > 推断
-- VCM 六验全 PASS
-- Phase 2 兑现漏点根因修(若有 — 测试 end-to-end 暴露)合并入 Phase 3 commit(`feedback_root_cause_no_cost.md` 第一法则,不延期 / 不分独立 commit)
+- 6 测试用例落锚 `tests/d142_array_literal_inference/`(Phase 3 实施 6/0/6 全绿,无 Phase 2 兑现漏点 — Phase 2 G1 路径 codegen 反推 + ARRAY_LIT 节点 nSetS2 回填路径完整覆盖 H1-H6 全场景):
+  - `untyped_single.ss` — H1 单元素反推 `takesArr([1])` callee `Array<int>` → 节点 nSetS2="int" + ss_newArray(i32 1) + i64 box GREEN → r=1
+  - `untyped_multi.ss` — H2 多元素同质反推 `takesArr([1, 2, 3])` → 节点 nSetS2="int" + ss_newArray(i32 3) + 3x i64 box GREEN → r=6
+  - `nested_array.ss` — H3 嵌套 `Array<Array<int>>` 反推 capture 链 `takesNested([[1,2],[3,4]])` → 外层 nSetS2="Array<int>" + ss_newArrayPtr(i32 2) + 内层 ARRAY_LIT 递归反推 nSetS2="int" + ss_newArray(i32 2) GREEN → r=10(R2 嵌套递归回填路径实证生效,无需 fallback 单层)
+  - `empty_array.ss` — H4 空数组反推无元素来源 `takesArr([])` → 节点 nSetS2="int"(callee Array<int> 直接取 elemType,不依赖元素 inferType)+ ss_newArray(i32 0) GREEN → r=0(R3 反推不依赖元素来源路径实证 — 反推前 silent fallback scalar / 反推后 callee 端直供 elemType)
+  - `interface_upcast.ss` — H5 `Array<IShape>` interface upcast vtable indirect dispatch `takesShapes([new Square(2.0), new Circle(3.0)])` → 节点 nSetS2="IShape" + ss_newArrayPtr + arr.area() 走 D025 vtable indirect GREEN → r=32.26(4.0 + 28.26;Square Circle 各 implements IShape)
+  - `explicit_override.ss` — H6 显式注解 > 推断 `let arr: Array<int> = [1,2,3]; takesArr(arr)` → IDENT 走原 RHS 推断 gen_decls.ss:566-571 路径(arr varType="Array<int>")+ fn 实参传 arr 是 IDENT 反推 skip,既有显式路径不破 → r=6
+- VCM 六验全 PASS:
+  - `./build.sh bootstrap` 三阶段固定点 stage2==stage3 ✓
+  - `bin/ss test tests/d142_array_literal_inference/` 6/0/6 全绿 ✓
+  - `bin/ss test tests/d141_lambda_inference/` 5/0/5 不破 ✓
+  - `bin/ss test tests/` 270/4/274 baseline 不降(Phase 2 baseline 264/4/268 + 6 D142 = 270/4/274,4 失败均预存与 D142 反推无关:spring_web_params / harness_task / d096_p4_l2_reactive / harness_bug)✓
+  - `bin/ss run tools/reflection_health_linter.ss` GATE PASS no regressions(F1 全 PASS — Phase 2 已申报扩容覆盖)✓
+  - `bin/ss run tools/d_doc_index_linter.ss` PASS:10 referenced Ds all live ✓
+- §A.2 隐藏假设挑战实证:
+  - H1 ✓(Phase 1 实证 — funcParamTypes Array<T> 字符串 codegen 阶段满载)
+  - H2 ✓ untyped_multi(同质 [1,2,3] 反推 elemType="int" 与元素 inferType 一致,r=6)
+  - H3 ✓ nested_array(嵌套 [[1,2],[3,4]] 内层 ARRAY_LIT 递归反推 nSetS2="int",r=10 — R2 嵌套回路无需 fallback)
+  - H4 ✓ empty_array(空数组 [] 反推 elemType="int" 不依赖元素来源,r=0 — R3 callee 端直供路径)
+  - H5 ✓ interface_upcast(Square + Circle vtable indirect 32.26 — R4 D025 路径不破)
+  - H6 ✓ explicit_override(IDENT 反推 skip,既有显式路径不破)
+  - H7 ✓ baseline 不降 270/4/274
+  - H8 ✓ reflection GATE PASS no regressions
+  - H9 — var binding callee OOD scope 标(D141 H9 同模式继承,主线场景 method/fn callee 在 funcParamTypes,不影响 D142 主线 cleanup)
+  - H10 ✓(Phase 1 实证 — eval pre-eval 之前 outer call site 反推前移)
+  - H11/H12 ✓(Phase 1+2 实证 — callee `Array<T>` 已结构化 + parser 已就绪,无 callee 升级 + 无 parser 扩前置)
+  - H13 ✓(D141 H13 同模式 — 结构化 callee 走反推 + 非结构化 callee skip 不破)
 
 ### Phase 4: workaround cleanup [ ]
 
@@ -451,5 +469,6 @@ EOF
 ## Status 时间线
 
 - 2026-04-27 Phase 0 D 文档落档(commit `3fb3ea2`)— D141 §Followup F1 array literal contextual typing 候选入口落档;C2 接口层 trap + G1 D141 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F6;D135/D136/D137/D140/D141 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
-- 2026-04-27 Phase 2 codegen 阶段反推实施(commit `<TBD>`)— G1 D141 同模式复刻完结:`check_types.ss:50` ARRAY_LIT inferType 返 `Array<elemType>` 结构化(优先读节点 nGetS2 + 元素同质推断 + 全空 / 异质 / SPREAD 降级 "Array";`check_class.ss:33` 评估保持不改 — method dispatch 入口走 base name);`gen_types.ss:802-845` 三 helper(`isArrayType`/`extractArrayElemType`/`inferArrayLitElems`)对偶 D141 isFnType/extractFnParamType/inferArrowFuncParams;`gen_calls.ss:279` + `gen/methods/gen_methods.ss:202` + `eval/method_call.ss:61` + `eval/call.ss:33` 4 落点反推插桩(D141 G1 同模式复刻);`gen_calls.ss:631-731 genArrayLit` 优先读节点 nGetS2(空数组 + interface upcast + fn 元素 + 异质混合场景生效);IR 因果实证 `lenShapes([])` 反推前 `ss_newArray(i32 0)` ⚠️ → 反推后 `ss_newArrayPtr(i32 0)` ✓(stash + rebootstrap 双向对照);VCM PASS(bootstrap 三阶段 + 264/4/268 baseline 不降 + d141 5/0/5 不破 + reflection_health GATE PASS — 扩容申报-Phase2 bump 3 处 F1: gen_methods 722→726 / gen_calls 718→740 / gen_types 873→915);LOC delta 实测 +91(6 文件)— D135/D136/D137/D140/D141 范式延续
+- 2026-04-27 Phase 3 测试覆盖 + 隐藏假设挑战(commit `<TBD>`)— 6 测试用例落锚 `tests/d142_array_literal_inference/` 全绿(untyped_single H1 + untyped_multi H2 + nested_array H3 + empty_array H4 + interface_upcast H5 + explicit_override H6);§A.2 H1-H8 实证标 PASS(H1/H10 Phase 1 已实证 + H2-H6 Phase 3 测试实证 + H7 baseline 不降 + H8 reflection GATE PASS)+ H9 var binding callee OOD scope 标(D141 H9 同模式继承)+ H11/H12/H13 Phase 1+2 已实证;Phase 2 G1 路径 codegen 反推 + ARRAY_LIT 节点 nSetS2 回填路径完整覆盖 H1-H6 六场景,无 Phase 2 兑现漏点 — D141 Phase 3 同模式简化(D141 Phase 3 实施时 Phase 2 漏点 4 处合并入 commit;D142 Phase 2 G1 同模式更彻底覆盖完整,Phase 3 仅写测试无代码改);VCM 六验全 PASS(bootstrap 固定点 + 6/0/6 + d141 5/0/5 + 270/4/274 baseline 不降 + reflection GATE PASS + d_doc_index 10 referenced Ds all live)— D135/D136/D137/D140/D141 范式延续
+- 2026-04-27 Phase 2 codegen 阶段反推实施(commit `781d0d5`)— G1 D141 同模式复刻完结:`check_types.ss:50` ARRAY_LIT inferType 返 `Array<elemType>` 结构化(优先读节点 nGetS2 + 元素同质推断 + 全空 / 异质 / SPREAD 降级 "Array";`check_class.ss:33` 评估保持不改 — method dispatch 入口走 base name);`gen_types.ss:802-845` 三 helper(`isArrayType`/`extractArrayElemType`/`inferArrayLitElems`)对偶 D141 isFnType/extractFnParamType/inferArrowFuncParams;`gen_calls.ss:279` + `gen/methods/gen_methods.ss:202` + `eval/method_call.ss:61` + `eval/call.ss:33` 4 落点反推插桩(D141 G1 同模式复刻);`gen_calls.ss:631-731 genArrayLit` 优先读节点 nGetS2(空数组 + interface upcast + fn 元素 + 异质混合场景生效);IR 因果实证 `lenShapes([])` 反推前 `ss_newArray(i32 0)` ⚠️ → 反推后 `ss_newArrayPtr(i32 0)` ✓(stash + rebootstrap 双向对照);VCM PASS(bootstrap 三阶段 + 264/4/268 baseline 不降 + d141 5/0/5 不破 + reflection_health GATE PASS — 扩容申报-Phase2 bump 3 处 F1: gen_methods 722→726 / gen_calls 718→740 / gen_types 873→915);LOC delta 实测 +91(6 文件)— D135/D136/D137/D140/D141 范式延续
 - 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `eb26644`)— `/tmp/spike_array_lit_red.ss` 形态 6/7 RED 铁证(空数组 + callee Array<IShape> → IR `%5 = call ptr @ss_newArray(i32 0)` ⚠️ silent fallback scalar + LLC error type mismatch);H1 同模式实证 PASS(funcParamTypes Array<T> 字符串 codegen 阶段满载 — `codegen.ss:110-112` + `gen_registry.ss:56-57` + `codegen.ss:326 registerAllDecls`);H10 同模式实证 PASS(`eval/array_lit.ss:13-19` `genVal(elemId)` 在 arrPreRegs 缓存 + genArrayLit 之前 — 反推必须前移到 outer call site evalMethodCall/evalCall args 循环);ARRAY_LIT 节点 slot 探查 PASS(`parse_exprs.ss:496-498` 仅 nList 占,Phase 2 用 nSetS2 与 ARROW_FUNC PARAM s2 同范式);Phase 2 入口锁 codegen 阶段反推 + checker 双破裂入口同步改(`check_types.ss:50` + `check_class.ss:33` 返 `Array<elemType>` 结构化)— D141 G1 同模式复刻范式延续
