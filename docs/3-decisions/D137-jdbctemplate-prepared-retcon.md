@@ -1,6 +1,6 @@
 # D137: JdbcTemplate Prepared Retcon — PreparedStatementSetter Callback Routing
 
-**Status:** [✓] Phase 0 落盘 at commit `bafc25a`
+**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba`
 
 **Depends on:**
 - D136 全 Phase 收关锚(commit `b7cb6d5`)— `interface PreparedStatement` + `lib/com/mysql/prepared.ss` MysqlPreparedStatement 实施 + `MysqlConnection.prepareStatement()` driver 拼装 + `tests/d136_prepared_statement/` e2e 已就绪
@@ -426,9 +426,18 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 - d_doc_index_linter F1 = 0 验证 PASS(D137 加入未破 referenced Ds)
 - next_prompt_ultrathink_linter PASS 3/3
 
-### Phase 1: lib/spring/jdbc.ss 5 method callback 重载 [ ] Pending
+### Phase 1: lib/spring/jdbc.ss 5 method callback 重载 [✓] Done at commit `d2df1ba` (2026-04-27)
 
-- 待 Phase 1 commit hash 回填
+- jdbc.ss +52/-1: execute(sql, setter) line 32 / update(sql, setter) line 51 / queryForList(sql, setter) line 73 / queryForString(sql, setter, column) line 90 / queryForInt(sql, setter, column) line 110
+- import { PreparedStatement } from @/lib/java/sql 加(line 15)
+- 既有 5 method 签名零破坏(§核心原则 2 持守)
+- execute/update(sql, setter):prepareStatement + setter(stmt) + executeUpdate + stmt.close 先 + conn.close 后(R2 顺序)
+- queryForList(sql, setter):故意不关 Connection(streaming,与旧 queryForList(sql) 同模式,sub-D HikariCP D125+ 解决,§核心原则 5)
+- queryForString/queryForInt(sql, setter, column):复用 this.queryForList(sql, setter)(DRY,与旧无 setter 重载同模式)
+- spike GREEN(/tmp/spike_lambda_multi.ss → 三 setter capture id=42/name=Alice → §A.2 H1+H7 双 PASS)
+- VCM 六验:bootstrap 三阶段固定点 + tests/ 259/4/263 baseline 不降 + d134_mysql/5 + d135_caching_sha2/1 + d136_prepared_statement/1 全绿 + d_doc_index_linter GATE OK + reflection_health_linter GATE PASS no regressions
+- prepareStatement count = 3(execute/update/queryForList 重载内主路径直接调,queryForString/queryForInt 复用 queryForList(sql, setter))→ 满足 §5 §Evaluation 第 2 判据 `> 0` SSoT
+- simplify 采纳: 注释 #1 单行化(删 setInt/setString 例子,保 D 引用 + WHY); 拒绝: 无
 
 ### Phase 2: lib/spring/data.ss 11 处 JpaRepository CRUD retcon [ ] Pending
 
