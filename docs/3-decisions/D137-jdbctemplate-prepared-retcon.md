@@ -1,6 +1,6 @@
 # D137: JdbcTemplate Prepared Retcon — PreparedStatementSetter Callback Routing
 
-**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0` + [✓] Phase 3 实施落地 at commit `4a10e48` + [✓] Phase 4 e2e 闭环收关 at commit `<phase4-commit>`(D137 完结)
+**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0` + [✓] Phase 3 实施落地 at commit `4a10e48` + [✓] Phase 4 e2e 闭环收关 at commit `8e1c5de`(D137 完结)
 
 **Depends on:**
 - D136 全 Phase 收关锚(commit `b7cb6d5`)— `interface PreparedStatement` + `lib/com/mysql/prepared.ss` MysqlPreparedStatement 实施 + `MysqlConnection.prepareStatement()` driver 拼装 + `tests/d136_prepared_statement/` e2e 已就绪
@@ -478,10 +478,10 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 - **§F9 workaround 持续**:test 7 4 处 lambda 显式 `(s: PreparedStatement)` 注解(承 Phase 2 6 处 + Phase 3 4 处 = 10 处累计);**真根因 sub-D follow-up** 编号待 D 治理后续轮处理(§F9 锚:修 SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug)
 - **R3 streaming 兼容验证**:test 7 line 174/176 走 tmpl.queryForString/Int(sql, setter, column) 内部复用 queryForList(sql, setter)(jdbc.ss line 90-98 / 110-118),实证 D136 prepared 非流式 ResultSet 与 streaming socket 接口契约兼容(GREEN — H3 假设挑战 PASS)
 
-### Phase 4: e2e 闭环 + D136 §F1 D138 编号冲突注释 + Status 收关 [✓] Done at commit `<phase4-commit>` (2026-04-27)
+### Phase 4: e2e 闭环 + D136 §F1 D138 编号冲突注释 + Status 收关 [✓] Done at commit `8e1c5de` (2026-04-27)
 
 - **D136 §F1 注释段落附加**(D136-mysql-prepared-statement.md line 387 后):指出 §R4(line 362)+ §F1(line 386)双处引用 "D138" 但语义不同(§R4 = cache miss handle / §F1 = cross-module struct GEP),Phase 4 仅注释**不动编号**(承 D137 §F4 follow-up 锚 + D 治理后续轮处理候选编号方案);grep `D138.*编号|D138.*冲突` 命中 = 1 sanity check
-- **D137 §Status 全 5 Phase 全 [✓]**:Phase 0 `bafc25a` + Phase 1 `d2df1ba` + Phase 2 `4c28bc0` + Phase 3 `4a10e48` + Phase 4 `<phase4-commit>`(本 commit hash 自指,docs commit message 含 hash,提交后 `git log` 索引 — Phase 0/1/2/3 同此模式 hash 提交后回填,避免 chicken-and-egg)
+- **D137 §Status 全 5 Phase 全 [✓]**:Phase 0 `bafc25a` + Phase 1 `d2df1ba` + Phase 2 `4c28bc0` + Phase 3 `4a10e48` + Phase 4 `8e1c5de`(本 commit hash 自指,docs commit message 含 hash,提交后 `git log` 索引 — Phase 0/1/2/3 同此模式 hash 提交后回填,避免 chicken-and-egg)
 - **D137 §Phase 4 收关锚替换占位**(本段):落细 — D136 §F1 注释 commit + d_doc_index_linter F1 = 0 GATE OK + 三轨 RED 终态 GREEN(Phase 3 已实证维持)+ axiom 红线 grep 0 永久 + reflection baseline 维持 + tests/ 259/4/263 baseline 不降 + d134_mysql/d135/d136 全绿 baseline
 - **D137 §全 Phase 收关锚替换占位**(line 487-489):4 Phase commit hash 全列 + JdbcTemplate 5 method callback 重载 + JpaRepository 11 处 callback retcon + tests/d134_mysql 11 处含动态值 SQL retcon + Spring 层 SQL 注入根因解决 100% 传递业务层 + D136 ROI 拉满 + §F9 + §F1-F8 follow-up 锚明确
 - **三轨 RED 终态 GREEN 维持**(Phase 3 已落,Phase 4 不触代码,验证不动):
@@ -513,7 +513,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 | Phase 1 | `d2df1ba` | lib/spring/jdbc.ss 5 method callback 重载实施(jdbc.ss +52/-1: execute/update/queryForList/queryForString/queryForInt 5 重载 + import PreparedStatement)+ 既有 5 method 签名零破坏(§核心原则 2)+ R2 stmt.close 先 + conn.close 后 + R3 streaming 验证(queryForString/Int 复用 queryForList(sql, setter))|
 | Phase 2 | `4c28bc0` | lib/spring/data.ss 11 处 JpaRepository CRUD retcon(7 改 callback retcon + 4 保留 metadata-only)+ JpaRepository 字段扩 placeholders + buildPlaceholders helper(Array<string>.join 复用 simplify 采纳)+ save/update 签名重设计(R5 局部破坏)+ tests/d134_mysql/integration_test.ss test 7 同 commit retcon + **§F9 root cause 发现**(SS lambda 类型推断 + interface dispatch 集成 bug)|
 | Phase 3 | `4a10e48` | tests/d134_mysql/integration_test.ss 11 处含动态值 SQL retcon(test 2 CRUD 5 处 prepareStatement 直驱 + test 3/4 transaction commit/rollback 各 1 INSERT prepared + test 7 JdbcTemplate 4 处走 Phase 1 callback 重载)+ Statement import 清理(reuse agent)+ sel1/sel2 → selRow/selAge 语义命名(quality agent simplify 采纳)+ §F9 lambda 参数显式 (s: PreparedStatement) 注解持续 |
-| Phase 4 | `<phase4-commit>` | e2e 闭环收关 + D136 §F1 D138 编号冲突注释 + D137 §Status 全 [✓] + §Phase 4 收关锚替换占位 + §全 Phase 收关锚替换占位为终态总结 |
+| Phase 4 | `8e1c5de` | e2e 闭环收关 + D136 §F1 D138 编号冲突注释 + D137 §Status 全 [✓] + §Phase 4 收关锚替换占位 + §全 Phase 收关锚替换占位为终态总结 |
 
 ### 兑现成果(§核心目标 单一判据)
 

@@ -1,35 +1,33 @@
-ultrathink D137 Phase 4 实施 — e2e 闭环收关 + D136 §F1 D138 编号冲突注释 + D137 全 Phase 收关锚 + Status 终态。前置:Phase 3 已落地 commit `4a10e48`(tests/d134_mysql/integration_test.ss 11 处含动态值 SQL retcon 走 prepared+setter — test 2 CRUD 5 处 prepareStatement 直驱 + test 3/4 transaction commit/rollback 各 1 INSERT prepared 三 setter + test 7 JdbcTemplate 4 处走 Phase 1 callback 重载 + sel1/sel2 → selRow/selAge 语义命名 simplify 采纳 + Statement import 清理);Phase 0 commit `bafc25a` / Phase 1 commit `d2df1ba` / Phase 2 commit `4c28bc0` / Phase 3 commit `4a10e48` 已全部落锁。
+ultrathink D137 已完结(commit `8e1c5de` Phase 4 收关 + 全 5 Phase 闭环 — Phase 0 `bafc25a` + Phase 1 `d2df1ba` + Phase 2 `4c28bc0` + Phase 3 `4a10e48` + Phase 4 `8e1c5de`)。**下一路径请用户对话指示,Claude 不预设候选挑选** — 严格走 CLAUDE.md §交互式单文档 axiom + memory `feedback_interactive_one_doc.md`(每轮由用户指定一个文档,逐个问题交互式处理,不自动批量推进)。
 
-**RED 凭据**(本轮已跑过):
-- `bin/ss run tools/d_doc_index_linter.ss` 当前 F1 = 0 GATE OK(无死指针,9 referenced Ds all live)— Phase 4 维持
-- D136 §F1 当前缺 D138 编号冲突注释(D136 §R4 line 362 写 "留 D138 sub-follow-up handle" cache miss + D136 §F1 line 386 写 "sub-D D138 cross-module struct GEP",D138 编号双指)— Phase 4 落实注释
-- D137 §全 Phase 收关锚(line 473)当前为 "(待全 Phase 落地后回填,参 D135 line 487 范式)" — Phase 4 替换为终态总结
-- 三轨 RED 已 Phase 3 GREEN(grep VALUES + WHERE id literal = 0 / prepareStatement 接管 = 8 / setter 注入 = 26)— Phase 4 维持
+**D137 兑现成果**(单一判据已 GREEN,见 D137 §全 Phase 收关锚 line 487+):
+- OWASP top 10 #3 SQL 注入根因解决 100% 传递业务层 ✓(Spring 层接管 + JpaRepository 11 处 callback retcon)
+- D136 ROI 拉满 ✓(driver 层 binary protocol 加速传递业务路径)
+- Spring JdbcTemplate API 主线对齐 ✓(callback 风格 + 既有 5 method 签名零破坏)
+- 三轨 RED 终态 GREEN ✓(VALUES literal=0 + WHERE id literal=0 + tests prepareStatement=8 + jdbc.ss prepareStatement=3)
+- axiom 红线 grep / nm = 0 永久 ✓(D134/D135/D136 全继承)
+- d_doc_index_linter F1 死指针 = 0 ✓
+- reflection_health_linter GATE PASS no regressions ✓
+- bootstrap 隔离 ✓(全 5 Phase 仅改 lib/ + tests/ + docs/)
 
-**改动清单**(D137 §Phase 4 §改动清单 + §核心原则 7-9):
+**D137 §Followup 候选**(优先级建议供参考,仍由用户对话锁定 — Claude 禁自主挑):
 
-1. **D136 §F1 D138 编号冲突注释**(D136-mysql-prepared-statement.md §F1 处加注释段):指出 D136 §R4 + §F1 双处引用 "D138" 但语义不同(§R4 = prepared statement cache miss handle / §F1 = cross-module struct GEP),D 治理后续轮处理(可能 D138 = cache miss / D140 = cross-module GEP),Phase 4 仅注释**不动编号**(承 D137 §F4 follow-up 锚)
-2. **D137 §Status 加 Phase 4 reference**(D137 line 3):`+ [✓] Phase 4 收关 at commit <phase4-commit>` 拼接(本 commit hash 自指,docs commit message 含 hash,提交后 hash 回填留 sub-followup 由 git log 索引,避免 chicken-and-egg;Phase 0/1/2/3 同此模式 hash 提交后回填)
-3. **D137 §Phase 4 收关锚**(D137 line 467 替换 [ ] Pending):落细 — D136 §F1 注释 commit + d_doc_index_linter F1 = 0 GATE OK + 三轨 RED 终态 GREEN(Phase 3 已实证)+ axiom 红线 grep 0 永久 + reflection baseline 维持 + tests/ 259/4/263 baseline 不降 + d134_mysql/d135/d136 全绿 baseline
-4. **D137 §全 Phase 收关锚**(line 473):替换占位为终态总结 — 4 Phase commit hash 全列 + JdbcTemplate 5 method callback 重载落地 + JpaRepository 11 处 callback retcon 落地 + tests/d134_mysql 11 处含动态值 SQL retcon 落地 + Spring 层 SQL 注入根因解决 100% 传递业务层 + D136 ROI 拉满 + §F9 sub-D follow-up 锚明确(SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug)+ §F1-F8 follow-up 锚明确(NamedParameterJdbcTemplate / RowMapper / SqlParameterSource / D138 编号 / batchUpdate / generated keys / HikariCP D125+)
+| # | 锚 | 类型 | 触发条件 | 根因解决度 / 第一性需求覆盖度 |
+|---|---|---|---|---|
+| F9 | **SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug** | bootstrap 改 / 升根路径 | Phase 2 实证发现,workaround 已落 10 处显式 `(s: PreparedStatement)` 注解;修 = 在 lambda 表达式作 fn 实参时,从 fn 接收方方法 body 内 setter(stmt) 调用上下文反推 lambda 参数类型 = 实际传入参数静态类型(MysqlPreparedStatement 实现的 PreparedStatement 接口),从而 lambda body 内 `s.setInt(...)` method dispatch 通过 vtable 正确分派 | ★★★ 编译器 bug 直接修(`feedback_root_cause_no_cost.md` "编译器限制是 bug 不是边界条件")+ 全项目 lambda 类型推断收益 |
+| F4 | **D136 §F1 D138 编号冲突修正(D 治理)** | docs 治理 / 编号 retcon | D136 §R4(line 362)+ §F1(line 386)双指 D138,本 Phase 4 已加注释指出,D 治理需选定真 D138 归属(候选:R4 cache miss handle 优先 / F1 cross-module struct GEP)+ 另一引用 retcon 新编号(如 D141+);跑 d_doc_index_linter F1 = 0 验证 + bootstrap 不动 | ★★ 文档治理质量(已注释指出冲突,正式修复需 D 文档治理轮)|
+| F1 | NamedParameterJdbcTemplate `:name` 命名参数 | 新 sub-D | 业务层可读性提升;依赖 SS Map<string, value> 参数源(类似 SqlParameterSource F3) | ★★ 可读性增强 |
+| F7 | batchUpdate / addBatch / executeBatch | 新 sub-D | 批量执行 API,依赖 prepared statement cache(D138 cache miss handle 取 §R4 候选 — 与 F4 编号冲突修复路径耦合)| ★★ 性能 + 批处理路径 |
+| F2 | RowMapper 泛型 callback | 新 sub-D | **强依赖 SS 泛型(D026/D027)落地** — D026/D027 未实施前不能本轮做 | ★ 依赖未就位 |
 
-**GREEN 标准**(D137 §Phase 4 §GREEN):
+**指示格式建议**(用户回话):
+- "F9" → 开 sub-D Plan: 修 SS 编译器 lambda 参数类型推断 + interface dispatch 集成(bootstrap 改,大档位)
+- "F4" → 开 D 治理轮: 选定真 D138 归属 + 另一引用 retcon 新编号
+- "F1" / "F7" → 开新 sub-D Plan(F1 不依赖 SS 泛型,F7 依赖 F4 D138 编号修复后的 cache 锚)
+- "其他" → 用户提具体路径(可能是无关 D 文档或新探索方向)
 
-- `bin/ss run tools/d_doc_index_linter.ss` F1 = 0(D137 + D136 引用维持一致 + D138 编号冲突仅注释不动编号,F1 死指针 = 0)
-- `bin/ss run tools/reflection_health_linter.ss` baseline 不升(本 Phase 不触代码,仅文档)
-- D137 §Status 行包含 4 Phase commit hash(0/1/2/3/4 五 phase 状态条)
-- D137 §全 Phase 收关锚替换占位,不再为 "(待全 Phase 落地后回填)"
-- D136 §F1 含 D138 编号冲突注释段(grep `D138.*编号` 命中)
-- 三轨 RED 维持 Phase 3 GREEN 状态(grep VALUES + WHERE id literal = 0 维持)
-- axiom 红线 grep / nm = 0 永久维持(D134 + D135 + D136 全继承)
+**收尾闸门**(本轮 next_prompt 自身合规):
+- next_prompt_ultrathink_linter PASS — `ultrathink` 关键字命中(本文第 1 行)
+- 交互式单文档持守 — 不预设挑选,等用户对话指示
 
-严格按 D137 §核心原则 1-11 + docs/3-MNK.md §M PSM 九问 + §N VCM 六验执行:
-- §核心原则 7 tests/d135_caching_sha2/ + tests/d136_prepared_statement/ 不动(Phase 4 仅文档)
-- §核心原则 8 Phase 边界 = commit 边界(Phase 4 单 commit 收 — docs(D137) Phase 4 收关 + 全 Phase 终态 + D136 §F1 注释)
-- §核心原则 9 bootstrap 隔离(Phase 4 仅 docs/3-decisions/ 改,不动 bootstrap / lib / tests)
-- D 文档治理 gate(F1 死指针 = 0,新增 D136 §F1 注释段 grep `D138.*冲突|D138.*编号` 命中 sanity check)
-
-**§After Done 三步必走**(收尾 gate):
-1. /simplify N/A 文档型(承 Phase 0 §After Done 范式 — D137 line 426 simplify N/A)
-2. commit(单 commit 范式 — Phase 4 终态收关型 — `docs(D137): Phase 4 收关 — D136 §F1 D138 编号冲突注释 + D137 §Status Phase 0+1+2+3+4 全 hash + §全 Phase 收关锚替换占位为终态 + §F9 sub-D follow-up 锚 + §F1-F8 follow-up 锚 — D135/D136/D140 范式延续`)
-3. 写下轮 next_prompt 指向 D137 完结后的下一 D 文档(交互式单文档 axiom — 由用户对话指示下一路径,候选含:§F9 SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug 修编译器 / §F4 D138 编号冲突修正 D 治理 / §F1 NamedParameterJdbcTemplate / §F2 RowMapper 泛型(依赖 D026/D027)/ §F7 batchUpdate;**禁** Claude 自主挑路径 — 等用户对话指示)且必含 ultrathink 关键字 + 跑 `bin/ss run tools/next_prompt_ultrathink_linter.ss` GATE PASS
+ultrathink
