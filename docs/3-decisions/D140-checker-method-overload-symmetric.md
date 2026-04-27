@@ -1,6 +1,6 @@
 # D140: Checker Class Method Overload by Arity 对称化
 
-**Status:** [✓] Phase 0 落盘 at commit `e7cbe7b`
+**Status:** [✓] Phase 0 落盘 at commit `e7cbe7b` + [✓] Phase 1 实施落地 at commit `a4741da` — 全 Phase 收关
 
 **Depends on:**
 - D137 §A.2 H 列(本 D 完成后回写 H8 假设破裂行)+ §核心原则 9(bootstrap 隔离)+ §F4 D138/D139/D140 编号冲突说明
@@ -443,12 +443,34 @@ grep -n "methodOverloaded.has" bootstrap/checker/check_exprs.ss
 - d_doc_index_linter F1 = 0 验证 PASS(referenced D 文档 D136/D137 实存,F2 soft warn 14 orphan 含 D140 不阻 commit)
 - next_prompt_ultrathink_linter PASS(本轮 next_prompt.md 含 ultrathink 关键字)
 
-### Phase 1: bootstrap/checker 三处改 [ ] Pending
+### Phase 1: bootstrap/checker 三处改 [✓] Done at commit `a4741da` (2026-04-27)
 
-- 待 Phase 1 commit hash 回填(下轮 Execute)
+- bootstrap/checker/checker.ss line 47 + 90: + `methodOverloaded` map declaration + `initChecker` 初始化(镜像 funcOverloaded line 44 + 86)
+- bootstrap/checker/check_class.ss line 164-175: `registerMethodParams` 取 min/max 扩展(镜像 defineFuncParams line 17-26)
+- bootstrap/checker/check_class.ss line 426-431: `registerCheckerClassDecl` register 之前判 `methodParamMin.has` → `methodOverloaded.set`(register call 之前判,与 funcOverloaded.set 在 defineFunc 之前判同顺序)
+- bootstrap/checker/check_class.ss line 433 + 437: `methodRetTypes` / `methodParamTypes` overloaded 时跳过(镜像 funcParamTypes line 389)
+- bootstrap/checker/check_exprs.ss line 140-141: METHOD_CALL 路径 type 检查加 `methodOverloaded.has` 跳过(镜像 funcOverloaded line 78-79)
+- spike GREEN(主判据): `bin/ss run /tmp/spike_dual_arity.ss` → `one=102` + `called` + `two=202`(D140 §第一性需求 末层断言)
+- spike GREEN(配套 ②): `bin/ss run /tmp/spike_overload2.ss` → `a=102 / b=207`(同 arity 不同 type 双调用)
+- `./build.sh bootstrap` stage2 == stage3 byte-identical 固定点 PASS
+- `bin/ss test tests/` 259/4/263 与 baseline 完全一致(0 D140 回归;4 pre-existing fail: spring_web_params/d096_p4_l2_reactive/harness_task/harness_bug 不变)
+- `bin/ss test tests/phase5/stdlib_json.ss` GREEN(JsonNode.put/add/get 同 arity 不同 type 既有 overload baseline 不破)
+- `bin/ss test tests/phase5/d096_p4_l2i_class_methods.ss` GREEN(abstract method + 继承 baseline 不破)
+- d_doc_index_linter F1 = 0 + reflection_health_linter GATE PASS — no regressions
+- simplify 采纳: check_exprs.ss:140 注释去 "D140:" 前缀镜像 line 78 风格("non-overloaded methods only")
+- D137 §候选 A "callback 重载" 路径解锁,D137 Phase 1(lib/spring/jdbc.ss 5 method callback 重载实施)下轮可启动
 
 ---
 
 ## D140 全 Phase 收关锚
 
-(待全 Phase 落地后回填,参 D135 / D137 范式)
+[✓] Phase 0 D 文档落盘 at commit `e7cbe7b` (2026-04-27)
+[✓] Phase 1 bootstrap/checker 三处改实施 at commit `a4741da` (2026-04-27)
+
+**总收关**: D140 主线全 2 Phase 落地,checker class method 注册逻辑与 top-level function 注册逻辑**对称化**完成 — 消除 register / type 检查路径双 Map min/max 扩展 + overloaded map + type 检查跳过三处不对称,主判据 spike_dual_arity GREEN + 配套 spike_overload2 GREEN + bootstrap 三阶段固定点 + 全测 baseline 不降 + 双 linter gate PASS。
+
+**下游解锁**: D137 §候选 A "PreparedStatementSetter callback 重载" 路径(D137 Phase 1 lib/spring/jdbc.ss 5 method callback 重载 + Phase 2 lib/spring/data.ss 11 处 retcon + Phase 3 tests/d134_mysql/ 8 case retcon + Phase 4 e2e 闭环)主线打开,业务层 SQL 注入根因解决传递到 Spring 层路径就绪。
+
+**隐性 bug 正向修复**: lib/json.ss JsonNode.put/add/get 同 arity 不同 type 既有 overload 调用方过去仅靠 codegen mangling + SS int↔double 隐式转换兜底过 checker(checker 只记最后注册的 type,其他 type 调用错位),Phase 1 后 type 检查正确跳过,所有 type 调用方按 codegen mangling 真实分派(实证 tests/phase5/stdlib_json.ss baseline 不破)。
+
+**Followup F1 留下轮**: D137 §A.2 H 列 H8 假设破裂行回写 + §F4 D138/D139/D140 编号实际归属注释(留 D 治理后续轮处理,见 D140 §Followup F1)。
