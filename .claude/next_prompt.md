@@ -1,33 +1,18 @@
-ultrathink D137 已完结(commit `8e1c5de` Phase 4 收关 + 全 5 Phase 闭环 — Phase 0 `bafc25a` + Phase 1 `d2df1ba` + Phase 2 `4c28bc0` + Phase 3 `4a10e48` + Phase 4 `8e1c5de`)。**下一路径请用户对话指示,Claude 不预设候选挑选** — 严格走 CLAUDE.md §交互式单文档 axiom + memory `feedback_interactive_one_doc.md`(每轮由用户指定一个文档,逐个问题交互式处理,不自动批量推进)。
+ultrathink D141 Phase 2 完结 commit `636a1b4`(G1 路径完整实施 5 子步骤 — parser fn(T1,T2,...):R 结构化 annotation 解析 + checker ARROW_FUNC inferType 结构化 + 三 helper isFnType/extractFnParamType/inferArrowFuncParams 落 gen_types.ss + eval pre-eval 阶段反推前移 `eval/method_call.ss + eval/call.ss` 在 genVal 之前回填 PARAM s2 + lib/spring/(jdbc+data) 7 处 `setter: fn` → `setter: fn(PreparedStatement):void` 类型签名升级)+ Status 收关 + 13 file 改 +267/-45 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 259/4/263 baseline 不降 + method call 形式 spike `/tmp/spike_lambda_method_call_untyped.ss` IR `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(ptr %1, i32 1, i32 42)` GREEN + reflection_health_linter 扩容申报 4 处 F1 trail=D141#扩容申报-Phase2-G1(parser.ss 850→870 / gen_methods.ss 716→722 / gen_calls.ss 695→699 / gen_types.ss 792→847)GATE PASS + d_doc_index_linter F1=0;关键发现 eval pre-eval vs emit 阶段反推时序差异 — `genVal(ARROW_FUNC) → genArrowFunc` emit IR 到 arrowDefs 缓冲区在 emit 阶段之前已发,反推必须前移到 eval pre-eval 阶段;H9 var binding callee 仍 OOD scope(spike `const f = (s)=>...;f(psB)` 仍 RED 2 处 TODO,符合 D141 §A.2 H9 文档化 — D137 §F9 主线场景是 method call 不受影响)。
 
-**D137 兑现成果**(单一判据已 GREEN,见 D137 §全 Phase 收关锚 line 487+):
-- OWASP top 10 #3 SQL 注入根因解决 100% 传递业务层 ✓(Spring 层接管 + JpaRepository 11 处 callback retcon)
-- D136 ROI 拉满 ✓(driver 层 binary protocol 加速传递业务路径)
-- Spring JdbcTemplate API 主线对齐 ✓(callback 风格 + 既有 5 method 签名零破坏)
-- 三轨 RED 终态 GREEN ✓(VALUES literal=0 + WHERE id literal=0 + tests prepareStatement=8 + jdbc.ss prepareStatement=3)
-- axiom 红线 grep / nm = 0 永久 ✓(D134/D135/D136 全继承)
-- d_doc_index_linter F1 死指针 = 0 ✓
-- reflection_health_linter GATE PASS no regressions ✓
-- bootstrap 隔离 ✓(全 5 Phase 仅改 lib/ + tests/ + docs/)
+Phase 3 起首 — 测试覆盖 + 隐藏假设挑战 H1/H2/H5/H6/H13:
 
-**D137 §Followup 候选**(优先级建议供参考,仍由用户对话锁定 — Claude 禁自主挑):
+(a) RED 凭据 — `ls /root/code/simplescript-dev/simple-script/tests/d141_lambda_inference/ 2>&1` = "No such file or directory"(目录不存在)。
 
-| # | 锚 | 类型 | 触发条件 | 根因解决度 / 第一性需求覆盖度 |
-|---|---|---|---|---|
-| F9 | **SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug** | bootstrap 改 / 升根路径 | Phase 2 实证发现,workaround 已落 10 处显式 `(s: PreparedStatement)` 注解;修 = 在 lambda 表达式作 fn 实参时,从 fn 接收方方法 body 内 setter(stmt) 调用上下文反推 lambda 参数类型 = 实际传入参数静态类型(MysqlPreparedStatement 实现的 PreparedStatement 接口),从而 lambda body 内 `s.setInt(...)` method dispatch 通过 vtable 正确分派 | ★★★ 编译器 bug 直接修(`feedback_root_cause_no_cost.md` "编译器限制是 bug 不是边界条件")+ 全项目 lambda 类型推断收益 |
-| F4 | **D136 §F1 D138 编号冲突修正(D 治理)** | docs 治理 / 编号 retcon | D136 §R4(line 362)+ §F1(line 386)双指 D138,本 Phase 4 已加注释指出,D 治理需选定真 D138 归属(候选:R4 cache miss handle 优先 / F1 cross-module struct GEP)+ 另一引用 retcon 新编号(如 D141+);跑 d_doc_index_linter F1 = 0 验证 + bootstrap 不动 | ★★ 文档治理质量(已注释指出冲突,正式修复需 D 文档治理轮)|
-| F1 | NamedParameterJdbcTemplate `:name` 命名参数 | 新 sub-D | 业务层可读性提升;依赖 SS Map<string, value> 参数源(类似 SqlParameterSource F3) | ★★ 可读性增强 |
-| F7 | batchUpdate / addBatch / executeBatch | 新 sub-D | 批量执行 API,依赖 prepared statement cache(D138 cache miss handle 取 §R4 候选 — 与 F4 编号冲突修复路径耦合)| ★★ 性能 + 批处理路径 |
-| F2 | RowMapper 泛型 callback | 新 sub-D | **强依赖 SS 泛型(D026/D027)落地** — D026/D027 未实施前不能本轮做 | ★ 依赖未就位 |
+(b) Phase 3 实施步骤:创建 `tests/d141_lambda_inference/` 目录 + 5 个 test case 文件 —
+  - `untyped_single.ss`(H1 单参 lambda 反推 — 顶层 `function takesSetter(setter: fn(int):int):int { return setter(42) } function main() { const r = takesSetter((x) => x + 1); assertEqual(r, 43) }` 验证反推回填 PARAM s2 = "int" + lambda body `x + 1` 走 i32 算术 GREEN)
+  - `untyped_multi.ss`(H2 多参 lambda 反推 — `function takesBi(cb: fn(int,string):string): string { return cb(7, "hi") } function main() { const r = takesBi((n, s) => s + n); assertEqual(r, "hi7") }` 验证反推 P0=int + P1=string + lambda body string 拼接 GREEN)
+  - `explicit_override.ss`(H6 显式优先级 > 推断 — `function takesSetter(cb: fn(double):double):double { return cb(1.0) } function main() { const r = takesSetter((x: double) => x * 2.0); assertEqual(r, 2.0) }` 验证显式 PARAM s2="double" 不被反推覆盖,既有 D137 §F9 typed lambda 显式注解路径不破)
+  - `interface_dispatch.ss`(H5 interface upcast vtable indirect dispatch — 用 d134_mysql 同模 `interface IShape { area(): double } class Square implements IShape { side: double; function area(): double { return this.side * this.side } } function consume(cb: fn(IShape):double): double { const sq = new Square(side: 3.0); return cb(sq) } function main() { const r = consume((s) => s.area()); assertEqual(r, 9.0) }` — 反推 PARAM s2 = "IShape" + s.area() 走 vtable indirect dispatch `__iface_IShape_area`)
+  - `non_structured_callee.ss`(H13 非结构化 callee skip — `function takesFn(cb: fn): int { return 0 } function main() { const r = takesFn((x: int) => x + 1); assertEqual(r, 0) }` 验证 callee `cb: fn` 单字符串签名不反推,untyped lambda 必须显式注解(显式 `(x: int) =>`)走原路径不破)
 
-**指示格式建议**(用户回话):
-- "F9" → 开 sub-D Plan: 修 SS 编译器 lambda 参数类型推断 + interface dispatch 集成(bootstrap 改,大档位)
-- "F4" → 开 D 治理轮: 选定真 D138 归属 + 另一引用 retcon 新编号
-- "F1" / "F7" → 开新 sub-D Plan(F1 不依赖 SS 泛型,F7 依赖 F4 D138 编号修复后的 cache 锚)
-- "其他" → 用户提具体路径(可能是无关 D 文档或新探索方向)
+(c) GREEN 凭据 — `bin/ss test tests/d141_lambda_inference/` 5/0/5 全绿 + bootstrap 三阶段固定点 PASS + tests/ 全跑 baseline 不降(259+5/4/263+5 = 264/4/268 期望)+ d134_mysql + d136_prepared_statement 不破(D137 §F9 路径仍 GREEN)+ reflection_health_linter GATE PASS no regressions(新增 5 测试文件 LOC 增量在 tests/ 不在 bootstrap/lib,F1 不变;tests/d141_lambda_inference/ 不计入 reflection scope)+ d_doc_index_linter PASS。
 
-**收尾闸门**(本轮 next_prompt 自身合规):
-- next_prompt_ultrathink_linter PASS — `ultrathink` 关键字命中(本文第 1 行)
-- 交互式单文档持守 — 不预设挑选,等用户对话指示
+(d) D141 文档收尾 — §Phase 3 [✓ 完结] commit `<hash>` + 兑现成果(5 test case 落锚 + H1/H2/H5/H6/H13 全 PASS + baseline 不降)+ §Status 时间线增 Phase 3 行 + next_prompt 指向 Phase 4 workaround cleanup(grep `(stmt: PreparedStatement) =>` lib/spring/data.ss 5 处 + `(s: PreparedStatement) =>` tests/d134_mysql 6 处 共 11 处 显式注解 cleanup 删除目标);D 文档治理:Phase 3 改 D141 §Phase 3 + Status 段 不删/合并/重命名 D 文档,d_doc_index_linter F1=0 不破;simplify 检查 5 测试文件可读性(陌生人秒懂判据 — assertEqual 名义清楚 / lambda body 单 expr / 无复杂嵌套,符合 `feedback_human_readable_code.md` a-e 5 rubric)。
 
-ultrathink
+— D135/D136/D137/D140 范式延续(Phase 计划独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 指向下一 Phase 入口)。

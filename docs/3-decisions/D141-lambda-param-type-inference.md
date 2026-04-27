@@ -1,6 +1,6 @@
 # D141: SS Lambda 参数类型推断 + Interface Dispatch 集成
 
-**Status:** Phase 2 — codegen 阶段反推实施 + G1 路径(callee PARAM 结构化签名)(In Progress)
+**Status:** Phase 2 — codegen 阶段反推实施 + G1 路径(callee PARAM 结构化签名)Done at commit `636a1b4`
 **Depends on:** D025(interface dispatch)/ D137(JdbcTemplate prepared retcon — §F9 follow-up 锚)
 **Date:** 2026-04-27
 **Last Updated:** 2026-04-27
@@ -275,7 +275,22 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - (c) H9/H10 新假设入档 → Phase 2 实施需区分 var binding vs method call 反推路径 + Phase 3 补 method call 形式 spike
 - (d) H10 验证修复链单点 → setVarType 链路自然走通,PARAM s2 回填即修复
 
-### Phase 2: codegen 阶段反推实施 + G1 路径(H1 破裂修正 + H11 callee 结构化前置)[ ] In Progress
+### Phase 2: codegen 阶段反推实施 + G1 路径(H1 破裂修正 + H11 callee 结构化前置)[✓ 完结] commit `636a1b4`
+
+**已完成兑现成果:**
+
+- (a) Phase 2.0 parser 扩 `fn(T1,T2,...):R` 结构化函数类型 annotation 解析(`parser.ss:803` parseTypeAnn IDENT "fn" + LPAREN 分支)— H12 兼容现有 `setter: fn`
+- (b) Phase 2.1 `check_types.ss:51` ARROW_FUNC `checkerInferType` 返结构化签名(全 PARAM s2="" 降级单 "fn",isTypeCompatible 不破)
+- (c) Phase 2.2 三 helper 落锚 `gen_types.ss`:`isFnType`/`extractFnParamType`/`inferArrowFuncParams` + 6 处 `== "fn"` 检查统一走 `isFnType`(`gen_types.ss:354+469+686` + `gen_calls.ss:512` + `gen_decls.ss:274+326+650` + `gen_methods.ss:535`)+ `typeSig` "fn(...)" 压缩 "f"
+- (d) Phase 2.2 反推回填双层防御:`gen_calls.ss:resolveCallArgs` + `gen_methods.ss:emitClassMethodCall` 内 args 循环反推(emit 阶段 defense-in-depth);**关键修正** `eval/method_call.ss` + `eval/call.ss` 在 `genVal(argId)` pre-eval 之前反推(genArrowFunc 在 emit 阶段之前已 emit 到 arrowDefs,emit 阶段反推无效;反推必须前移到 eval pre-eval)
+- (e) Phase 2.3 `lib/spring/jdbc.ss` 5 处 + `lib/spring/data.ss` 2 处 `setter: fn` → `setter: fn(PreparedStatement):void`(setter 调用方式 `setter(stmt)` 不取返回值)
+- (f) Phase 2.4 VCM 验证全 PASS:bootstrap 三阶段固定点 + tests/ 259/4/263 baseline 不降 + method call 形式 spike `/tmp/spike_lambda_method_call_untyped.ss` IR `define i32 @__arrow_1(ptr %s.arg)` + `call void @__iface_PreparedStatement_setInt(...)` GREEN + reflection_health_linter GATE PASS(扩容申报 4 处 F1 trail=D141#扩容申报-Phase2-G1)+ d_doc_index_linter F1=0
+- (g) D141 文档同步 §A.1.1 G1/G2/G3 路径对比 + §A.2 H11/H12/H13 三新假设 + §Phase 2 拆 2.0/2.1/2.2/2.3/2.4 子步骤 + §扩容申报-Phase2-G1
+
+**关键发现(实施过程)**:
+
+- **eval pre-eval vs emit 阶段反推时序差异(评估发现)**:`eval/method_call.ss + eval/call.ss` 在 `genMethodCall/genCall` 之前 pre-evaluate 每个 arg 调 `genVal(argId)` 写 `callPreRegs[argId]`;`genVal(ARROW_FUNC) → genArrowFunc` emit `define i32 @__arrow_1(...)` 到 `arrowDefs` 缓冲区。emitClassMethodCall/resolveCallArgs 内的反推**只能改 PARAM s2 后续读**,但 ARROW_FUNC IR 已 emit。**反推必须前移到 eval pre-eval 阶段**(在 genVal 之前 resolve mangled + 反推)
+- **var binding callee 仍 OOD scope(H9 实证)**:`/tmp/spike_lambda_untyped.ss` 用 `const f = (s) => ...; f(psB)` var binding 形式 — `callee="f"`,funcParamTypes 不含 "f:0"(var binding 不注册 funcParamTypes),反推 skip。仍 RED 2 处 TODO,符合 H9 文档化 — D137 §F9 主线场景是 method call 不受影响
 
 > Phase 1 探查确认 H1 破裂 — checker 阶段 funcParamTypes 用户函数为空。Phase 2 入口从 checker 挪到 codegen,信息源仍 funcParamTypes;Phase 2 起首查源确认 `lib/spring/(jdbc+data).ss` 7 处 callee PARAM 类型 annotation 写 `setter: fn`(单一字符串无形参信息),反推空转 — 走 G1 路径(callee 类型签名结构化前置)。
 
@@ -391,3 +406,4 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - 2026-04-27 Phase 0 D 文档落盘(commit `b1becb0`)
 - 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `bb96e27`)— `/tmp/spike_lambda_untyped.ss` 落锚 + IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空)+ 新假设 H9/H10 入档 + Phase 2 入口挪到 codegen 阶段反推
 - 2026-04-27 Phase 2 起首 — G1 路径决策锁定(用户对话锁定)— Phase 2 起首查源 `lib/spring/(jdbc+data).ss` 7 处 `setter: fn` 非结构化签名 → 反推空转;§A.1.1 G1/G2/G3 候选对比,选 G1 callee PARAM 结构化签名前置;新假设 H11(结构化必要)/ H12(parser 扩不破)/ H13(反推失败硬错粒度)入档;§Phase 2 拆 2.0/2.1/2.2/2.3/2.4 子步骤;§1 必读清单补 parser.ss:803 + lib/spring/jdbc.ss + lib/spring/data.ss
+- 2026-04-27 Phase 2 完结(commit `636a1b4`)— G1 路径完整实施 5 子步骤(parser/checker/codegen/lib/eval pre-eval)+ 13 file 改 +267/-45 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 259/4/263 baseline 不降 + spike `__arrow_1(ptr %s.arg)` + `call @__iface_PreparedStatement_setInt(...)` GREEN + reflection_health_linter GATE PASS(扩容申报 4 处 F1 D141#扩容申报-Phase2-G1)+ d_doc_index_linter PASS;关键发现 eval pre-eval vs emit 阶段反推时序差异,反推前移到 `eval/method_call.ss + eval/call.ss` pre-eval 之前;H9 var binding callee 仍 OOD scope(spike `const f = (s) =>...;f(psB)` 仍 RED 2 处 TODO,符合文档化)
