@@ -1,6 +1,6 @@
 # D143: SS Object Literal Contextual Typing — 字段类型从调用上下文反推
 
-**Status:** Phase 1 — RED 复现 + 信息源探查 [✓] Done at commit `<TBD>` (2026-04-27)— `/tmp/spike_obj_lit_red.ss` 3 形态(单字段 / 多字段 / 嵌套)RED 铁证 `grep -c "object literal requires type annotation"` = 3(line 45:43 / 49:46 / 53:74)+ §A.2 H1 同模式实证 PASS(funcParamTypes class 名 codegen 阶段满载 — codegen.ss:110-112 + gen_registry.ss:56-57 + codegen.ss:326 registerAllDecls 在 emitGlobalsAndCode 前)+ §A.2 H10 OOD 实证 PASS(eval/ 17 文件 grep OBJ_LITERAL 0 命中,**比 D141/D142 H10 弱** — 反推不需前移到 eval pre-eval)+ OBJ_LITERAL 节点 slot 探查 PASS(parse_exprs.ss:521-522 仅 `nSetList(id, fields)`,s1/s2/s3+i1-i4 全空闲 → Phase 2 选 nSetS2 与 ARRAY_LIT(D142) / ARROW_FUNC PARAM(D141) s2 同范式)+ Phase 2 入口锁(checker check_exprs.ss:285 改为反推优先 — 反推得 → skip checkerError;反推不得 → 硬错;codegen gen_calls + gen_methods args 循环识别 OBJ_LITERAL + 查 funcParamTypes class 名 + 反推回填 nGetS2)— D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 1 commit `eb26644` 同模式)。Phase 0 完结 commit `<TBD>` D 文档落档 + d_doc_index_linter F1 = 0 + ultrathink_linter PASS + VCM 六验(Plan 型 §① 跳过 + §④ 替换为 §A.1+§A.1.1+§A.2)。
+**Status:** Phase 1 — RED 复现 + 信息源探查 [✓] Done at commit `f089738` (2026-04-27)— `/tmp/spike_obj_lit_red.ss` 3 形态(单字段 / 多字段 / 嵌套)RED 铁证 `grep -c "object literal requires type annotation"` = 3(line 45:43 / 49:46 / 53:74)+ §A.2 H1 同模式实证 PASS(funcParamTypes class 名 codegen 阶段满载 — codegen.ss:110-112 + gen_registry.ss:56-57 + codegen.ss:326 registerAllDecls 在 emitGlobalsAndCode 前)+ §A.2 H10 OOD 实证 PASS(eval/ 17 文件 grep OBJ_LITERAL 0 命中,**比 D141/D142 H10 弱** — 反推不需前移到 eval pre-eval)+ OBJ_LITERAL 节点 slot 探查 PASS(parse_exprs.ss:521-522 仅 `nSetList(id, fields)`,s1/s2/s3+i1-i4 全空闲 → Phase 2 选 nSetS2 与 ARRAY_LIT(D142) / ARROW_FUNC PARAM(D141) s2 同范式)+ Phase 2 入口锁(checker check_exprs.ss:285 改为反推优先 — 反推得 → skip checkerError;反推不得 → 硬错;codegen gen_calls + gen_methods args 循环识别 OBJ_LITERAL + 查 funcParamTypes class 名 + 反推回填 nGetS2)— D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 1 commit `eb26644` 同模式)。Phase 0 完结 commit `50912b4` D 文档落档 + d_doc_index_linter F1 = 0 + ultrathink_linter PASS + VCM 六验(Plan 型 §① 跳过 + §④ 替换为 §A.1+§A.1.1+§A.2)。**Phase 1 完结**(Phase 2 入口锁清单已就绪 — codegen 阶段反推 + check_types.ss OBJ_LITERAL inferType 返 `class<ClassName>` + gen_calls + gen/methods/gen_methods.ss args 循环反推回填 nGetS2 + D084 rewrite 复用扩 fn 实参条件)。
 **Depends on:**
 - D141(lambda 参数类型推断 + interface dispatch 集成 — §Followup F2 line 422 锚)
 - D142(array literal contextual typing — §Followup F1 line 484 + line 514 同模式锚)
@@ -85,7 +85,7 @@
    | `lib/spring/data.ss` | (Phase 4 grep 实测后定计数)| Phase 4 cleanup 候选 |
    | `tests/phase5/` | (Phase 1 grep `OBJ_LITERAL`)| object literal baseline(D143 Phase 4 cleanup 不破现状)|
    | `bootstrap/gen/gen_types.ss` | (Phase 2 helper 落锚)| **Phase 2 新加 helper**:`isClassType` / `extractClassName` / `inferObjLiteralFields` — 对偶 D141 isFnType / extractFnParamType / inferArrowFuncParams + D142 isArrayType / extractArrayElemType / inferArrayLitElems |
-   | `/tmp/spike_obj_lit_red.ss` | 全文 60 行 | **Phase 1 RED 已写**(commit `<TBD>`,本 Phase 1 实证)— 3 形态(单字段 / 多字段 / 嵌套);RED 实测 `bin/ss build /tmp/spike_obj_lit_red.ss --emit-ir 2>&1 | grep -c "object literal requires type annotation"` = **3**(line 45:43 / 49:46 / 53:74 全命中)|
+   | `/tmp/spike_obj_lit_red.ss` | 全文 60 行 | **Phase 1 RED 已写**(commit `f089738`,本 Phase 1 实证)— 3 形态(单字段 / 多字段 / 嵌套);RED 实测 `bin/ss build /tmp/spike_obj_lit_red.ss --emit-ir 2>&1 | grep -c "object literal requires type annotation"` = **3**(line 45:43 / 49:46 / 53:74 全命中)|
 
 ### Stable Facts
 
@@ -361,14 +361,14 @@ EOF
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落档 [✓] Done at commit `<TBD>` (2026-04-27)
+### Phase 0: D 文档落档 [✓] Done at commit `50912b4` (2026-04-27)
 
 - 本文档落档 + Status / 核心目标 / 核心原则 / Context / Tools / Orchestration / State / Evaluation / Constraints / §A.1 主候选 + §A.1.1 实施路径 + §A.2 隐藏假设 / §A.3 废案 / Phase 0-5 计划草案
 - d_doc_index_linter F1 = 0 验证 PASS(D143 加入未破 referenced Ds — D025/D084/D131/D141/D142 实存,F2 soft warn 含 D143 不阻 commit)
 - next_prompt_ultrathink_linter PASS 3/3(本轮 .claude/next_prompt.md 含 ultrathink 关键字)
 - VCM 六验(Plan 型):§① 跳过(diff=0 in bootstrap/lib/tools)+ §④ 替换为「替代方案对比 + 隐藏假设挑战」§A.1+§A.1.1+§A.2 ✓
 
-### Phase 1: RED 复现 + 信息源探查 [✓] Done at commit `<TBD>` (2026-04-27)
+### Phase 1: RED 复现 + 信息源探查 [✓] Done at commit `f089738` (2026-04-27)
 
 - ✓ `/tmp/spike_obj_lit_red.ss` 3 形态(单字段 / 多字段 / 嵌套)RED 铁证 — `bin/ss build /tmp/spike_obj_lit_red.ss --emit-ir 2>&1 | grep -c "object literal requires type annotation"` = **3**(line 45:43 / 49:46 / 53:74 全命中)— **比 D141/D142 RED 更硬**(checker 阶段直接拒绝,非 silent miscompile)
 - ✓ 形态 4-7 文档化(部分字段同形态 1 / class 字段类型混合同形态 2 / fn 实参 IDENT type 同形态 2 / interface upcast 不可走 OOD H5b)— 不必单独 spike
@@ -430,5 +430,5 @@ EOF
 
 ## Status 时间线
 
-- 2026-04-27 Phase 0 D 文档落档(commit `<TBD>`)— D141 §Followup F2 / D142 §Followup F1 object literal contextual typing 候选入口落档;C2 接口层 trap + G1 D141/D142 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F7;D135/D136/D137/D140/D141/D142 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
-- 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `<TBD>`)— `/tmp/spike_obj_lit_red.ss` 3 形态 RED 铁证 `grep -c "object literal requires type annotation"` = 3(line 45:43 / 49:46 / 53:74)+ §A.2 H1 同模式实证 PASS(funcParamTypes class 名 codegen 阶段满载 — codegen.ss:110-112 + gen_registry.ss:56-57 + codegen.ss:326)+ §A.2 H10 OOD 实证 PASS(eval/ 17 文件 0 OBJ_LITERAL 命中,**比 D141/D142 H10 弱**)+ OBJ_LITERAL 节点 slot 探查 PASS(parse_exprs.ss:521-522 仅 nList,s1/s2/s3+i1-i4 全空闲)+ Phase 2 入口锁(checker check_exprs.ss:285 改反推优先 + check_types.ss OBJ_LITERAL inferType 返 `class<ClassName>` + codegen 反推 nGetS2 + D084 rewrite 复用扩 fn 实参)+ §1 必读清单补 check_exprs.ss:285-287 / check_stmts.ss:107-117 / gen_decls.ss:507-516 / parse_exprs.ss:500-523 4 锚 — D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 1 commit `eb26644` 同模式)
+- 2026-04-27 Phase 0 D 文档落档(commit `50912b4`)— D141 §Followup F2 / D142 §Followup F1 object literal contextual typing 候选入口落档;C2 接口层 trap + G1 D141/D142 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F7;D135/D136/D137/D140/D141/D142 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
+- 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `f089738`)— `/tmp/spike_obj_lit_red.ss` 3 形态 RED 铁证 `grep -c "object literal requires type annotation"` = 3(line 45:43 / 49:46 / 53:74)+ §A.2 H1 同模式实证 PASS(funcParamTypes class 名 codegen 阶段满载 — codegen.ss:110-112 + gen_registry.ss:56-57 + codegen.ss:326)+ §A.2 H10 OOD 实证 PASS(eval/ 17 文件 0 OBJ_LITERAL 命中,**比 D141/D142 H10 弱**)+ OBJ_LITERAL 节点 slot 探查 PASS(parse_exprs.ss:521-522 仅 nList,s1/s2/s3+i1-i4 全空闲)+ Phase 2 入口锁(checker check_exprs.ss:285 改反推优先 + check_types.ss OBJ_LITERAL inferType 返 `class<ClassName>` + codegen 反推 nGetS2 + D084 rewrite 复用扩 fn 实参)+ §1 必读清单补 check_exprs.ss:285-287 / check_stmts.ss:107-117 / gen_decls.ss:507-516 / parse_exprs.ss:500-523 4 锚 — D135/D136/D137/D140/D141/D142 范式延续(D142 Phase 1 commit `eb26644` 同模式)
