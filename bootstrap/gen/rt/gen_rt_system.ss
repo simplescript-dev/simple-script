@@ -327,6 +327,42 @@ function emitRuntimeNet() {
     irRet("i32", "%result")
     emitIR("}")
     emitIR("")
+
+    // D136 §A.6 retcon Phase 2: IEEE 754 cast pair for MYSQL_TYPE_DOUBLE binary
+    // protocol encoding/decoding. SS user layer has no double<->bytes builtin and
+    // ss_string_concat truncates at 0x00 (lib/binary.ss header note), so a cast
+    // through SS string would lose any zero byte in the IEEE 754 representation.
+    // x86_64 is little-endian, so a single i64 store/load to a byte-aligned ptr
+    // is naturally LE byte order — the wire format MySQL expects.
+    //
+    // ss_writeDoubleLE(fd, val) → bytes written (8 on success). Bitcasts double
+    // to its i64 IEEE 754 bit pattern, stores it to a stack byte buffer, and
+    // writes the 8 raw bytes to fd via write(2). Used by lib/com/mysql/prepared
+    // sendComStmtExecute when paramTypes[i] = MYSQL_TYPE_DOUBLE.
+    emitIR("define i32 @ss_writeDoubleLE(i32 %fd, double %val) {")
+    irLabel("entry")
+    emitIR("  %i64bits = bitcast double %val to i64")
+    irAlloca("buf", "[8 x i8]", 1)
+    emitIR("  store i64 %i64bits, ptr %buf, align 1")
+    irCall("nwritten", "i64", "write", "i32 %fd, ptr %buf, i64 8")
+    irTrunc("result", "i64", "%nwritten", "i32")
+    irRet("i32", "%result")
+    emitIR("}")
+    emitIR("")
+
+    // ss_readDoubleLE(buf, offset) → double. Reads 8 raw bytes at buf[offset..]
+    // as a LE-encoded i64 and bitcasts to double. Used by lib/com/mysql/prepared
+    // parseBinaryRow when columnDefs[i].colType = MYSQL_TYPE_DOUBLE. align 1 lets
+    // callers pass any byte offset into a packet payload without realignment.
+    emitIR("define double @ss_readDoubleLE(ptr %buf, i32 %offset) {")
+    irLabel("entry")
+    irSext("off64", "i32", "%offset", "i64")
+    irGEP("p", "i8", "%buf", "%off64")
+    emitIR("  %i64bits = load i64, ptr %p, align 1")
+    emitIR("  %d = bitcast i64 %i64bits to double")
+    irRet("double", "%d")
+    emitIR("}")
+    emitIR("")
 }
 
 // ── Exception handling ────────────────────────────────────────

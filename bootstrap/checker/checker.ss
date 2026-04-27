@@ -275,20 +275,21 @@ function initChecker() {
     const strFns = "readLine,readFile,shell,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,_ss_inotify_poll"
     const sf = strFns.split(",")
     for (s in sf) { funcNames.set(s, "string") }
-    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,tcpWriteBytes,tcpConnect,tcpReadBytes,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
+    const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,tcpWriteBytes,tcpConnect,tcpReadBytes,writeDoubleLE,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
     const intf = intFns.split(",")
     for (i in intf) { funcNames.set(i, "int") }
     const voidFns = "println,print,writeFile,appendFile,exit,tcpClose,test,_ss_inotify_close"
     const vf = voidFns.split(",")
     for (v in vf) { funcNames.set(v, "void") }
     funcNames.set("parseDouble", "double")
+    funcNames.set("readDoubleLE", "double")
     funcNames.set("Map", "Map")
     funcNames.set("Set", "Set")
     funcNames.set("exec", "ExecResult")
     // D082: ref/watch
     funcNames.set("ref", "Ref")
     funcNames.set("watch", "void")
-    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,Map,Set,ref,watch`
+    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,readDoubleLE,Map,Set,ref,watch`
     // Built-in namespaces (accessed as Math.sqrt(), Thread.start() etc.)
     defineVar("Math", "namespace", 0)
     defineVar("Thread", "namespace", 0)
@@ -310,7 +311,7 @@ function initChecker() {
         funcParamMin.set(o, "1")
         funcParamMax.set(o, "1")
     }
-    const twoArgFns = "writeFile,appendFile,tcpWrite,tcpRead,tcpConnect,renameFile,charCodeAt,test,_ss_inotify_poll,watch"
+    const twoArgFns = "writeFile,appendFile,tcpWrite,tcpRead,tcpConnect,renameFile,charCodeAt,test,_ss_inotify_poll,watch,writeDoubleLE,readDoubleLE"
     const ta = twoArgFns.split(",")
     for (t in ta) {
         funcParamMin.set(t, "2")

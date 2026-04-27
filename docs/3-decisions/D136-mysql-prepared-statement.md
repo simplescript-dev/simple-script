@@ -1,6 +1,6 @@
 # D136: MySQL Prepared Statement 协议集成(COM_STMT_PREPARE / EXECUTE / CLOSE)
 
-**Status:** [✓] Phase 0 落盘(commit `9326b9f`)+ [ ] Phase 1 接口扩 + COM_STMT_PREPARE / [ ] Phase 2 EXECUTE + binary result set + CLOSE / [ ] Phase 3 e2e + JdbcTemplate retcon scope 评估
+**Status:** [✓] Phase 0 落盘(commit `9326b9f`)+ [✓] Phase 1 接口扩 + COM_STMT_PREPARE 实施 at commit `c854778` + [✓] Phase 2 EXECUTE + binary result set + CLOSE 实施 at commit `<Phase 2 hash 待二阶段回填>` + [ ] Phase 3 e2e + JdbcTemplate retcon scope 评估
 
 **Depends on:**
 - D134 全 Phase 收关锚(commit `e509be1`)— `lib/com/mysql/{wire,handshake,query,jdbc}.ss` driver 实施层 + `tests/d134_mysql/` integration test 框架
@@ -58,7 +58,7 @@ grep -rnE "PreparedStatement|COM_STMT_PREPARE|prepareStatement" lib/com/mysql/ l
 9. **JdbcTemplate retcon scope 评估留 Phase 3** — lib/spring/jdbc.ss `execute / update / queryForString / queryForInt / queryForList` 现全字符串拼接,改走 prepareStatement + setXxx 需评估 LOC + 签名破坏面;**LOC > 200 或破坏既有签名 → 留 D137 sub-follow-up**(scope 控不藏表面,本 D 仅落 driver-agnostic 接口 + MysqlPreparedStatement 实施 + e2e 验证 + JdbcTemplate 加 1 个 `update(sql, params)` 重载示范)
 10. **复用 lib/com/mysql/wire.ss + lib/binary** — packet 层 + binary helper D134 Phase 2/4 全就绪,**禁重写**(承 D135 §Principles 6 复用范式)
 11. **Phase 边界 = commit 边界** — 4 Phase 各自独立 commit,禁打包(承 D134 §Principles 7 + D135 §Principles 9)
-12. **bootstrap 隔离** — 全 Phase 仅改 lib/ + tests/ + docs/,不动 bootstrap(packet 层 + binary 层 + socket 原语 D134 全就绪,无新内置原语需求)
+12. **bootstrap 隔离** — 全 Phase 仅改 lib/ + tests/ + docs/,不动 bootstrap(packet 层 + binary 层 + socket 原语 D134 全就绪,无新内置原语需求)。**Phase 2 retcon 例外**(2026-04-27 锚): MYSQL_TYPE_DOUBLE 5 子集要求 IEEE 754 8 byte LE encode/decode;SS 用户层无 IEEE 754 cast(`bootstrap/gen/exprs/exprs_str_conv.ss` 仅 `ss_int_to_string` / `ss_double_to_string`,无 `intBitsToFloat`/`longBitsToDouble`),且 SS string concat 0x00 truncate(`gen_rt_string.ss:14-26` strlen-based)阻断"double → 8 byte string"路径;承 §A.6 调研补口子 + §核心原则 4 5 子集明示 + ROOT CAUSE 第一法则,Phase 2 加 2 个 builtin `writeDoubleLE(fd, d)` / `readDoubleLE(buf, off)`(纯 IR `bitcast double <-> i64` + write/load 8 byte,~30 行 IR `gen_rt_system.ss` + funcRetTypes 2 entry + names 字符串 2 entry = ~34 LOC bootstrap delta)。**同一 commit 内附 codegen 修补**:`stmts/stmts_simple.ss` `INDEX_ASSIGN` 缺 double bitcast 分支 → `arr[i] = doubleVal` 漏 `bitcast double to i64` 致 llc 拒收(`ss_arraySet(ptr, i32, i64)` 收到 double 字面量)— 1 行 if 分支补齐(承 CLAUDE.md "编译器限制是 bug,先修编译器")。其他 Phase 仍守 §核心原则 12 不动 bootstrap;Phase 2 retcon 范围限于 IEEE 754 cast pair + INDEX_ASSIGN double 分支
 13. **不变量保留**(承 D134 + D135):D018 / D022 / D025 / D068 / D088 / D123 / D130-135 全不动;mimalloc C link axiom 例外保留;D134 driver 拼装架构(`lib/com/mysql/{wire,query,jdbc,handshake,prepared}` + `lib/spring` + `lib/java/sql`)接口契约扩(加 PreparedStatement)不破现有 Statement / ResultSet / Connection
 
 ---
@@ -381,6 +381,12 @@ grep -rnE "PreparedStatement|COM_STMT_PREPARE|prepareStatement" lib/com/mysql/ l
 - Phase 0 落盘后允许下轮 Execute Phase 1 起立时 git stash + 重 plan(D 文档措辞调整)
 - 跨 Phase 回滚需先和用户确认(Phase 边界 = 稳定锚点,承 D134 §6 §回滚策略 + D135 §回滚策略)
 
+### Follow-up(D136 范围外的根因清单)
+
+- **F1 IR 类型声明顺序**:`bootstrap/gen/codegen.ss` 当前先 emit 全部 lib `.ss` IR 函数体 → 再 emit `%ClassName = type {...}` 声明 → llc 对 lib 间 GEP `%CrossModuleClass` 报 `base element must be sized` forward-ref。Phase 2 用 `query.ss columnDefColType` / `columnDefName` 函数包装 GEP 绕道(参 `lib/com/mysql/query.ss:141-157`)。**根因方案** = 改 codegen IR emit 顺序(类型声明先于函数体)— 影响面:整个 codegen pass 顺序,大改;**跟进开 sub-D `D138 cross-module struct GEP` 评估**;Phase 2 局部绕道是临时方案,不是永久 API
+- **F2 SS 缺 byte-buffer primitive**:Phase 2 sendComStmtExecute / sendComStmtClose / handshake.ss sendHandshakeResponse41 / wire.ss writePacket 全部 byte-by-byte tcpWriteBytes(N+4 syscall 每包)— 因为 SS string concat ss_string_concat 0x00 truncate(`gen_rt_string.ss:14-26` strlen-based)+ 无 user-layer setByteAt / Array<int>→byte buffer cast。Efficiency review 全 5 finding 都同根因。**根因方案** = 加 builtin `byteBuffer(size)` + `setByteAt(buf, idx, b)` 或 Array<int>→raw bytes 一次性 syscall。**跟进开 sub-D `D139 byte-buffer primitive` 评估**(Phase 3 e2e 真测延迟后再决断必要性);Phase 2 沿用项目 baseline 不单独 carve out
+- **F3 paramValues / paramDoubles 双数组 stringly-typed**:setInt(42) 走 `paramValues[i] = "42"` 然后 sendComStmtExecute 时 `parseInt(val)` 反向。**根因方案** = setInt 时直接编 4 byte LE 存 byte buffer(依赖 F2 byte-buffer primitive)。**待 F2 sub-D 落地后** 在 D139 配套实施
+
 ---
 
 # 附录 A: 决策细节
@@ -575,21 +581,23 @@ D134 §A.7:
 - ✓ 不动 D134 / D135 文件(retcon 留 Phase 3 commit hash known 时回填,若 JdbcTemplate retcon)
 - 用户审阅 OK 后下轮起 Phase 1
 
-### Phase 1: 接口扩 + COM_STMT_PREPARE 实施 [ ] Planned
+### Phase 1: 接口扩 + COM_STMT_PREPARE 实施 [✓] Done at commit `c854778` (2026-04-27)
 
-- [ ] `lib/java/sql.ss` 加 `interface PreparedStatement extends Statement` + `Connection.prepareStatement` 接口方法
-- [ ] `lib/com/mysql/prepared.ss`(新)~250 LOC — 协议常量 + `class PrepareOk` + sendComStmtPrepare + parsePrepareOk + readPrepareOk + readParamDef + readColumnDefList + `class MysqlPreparedStatement` 框架
-- [ ] `lib/com/mysql/jdbc.ss` 加 `MysqlConnection.prepareStatement` 方法
-- [ ] `tests/d134_mysql/prepared_test.ss`(新)~150 LOC — 4 vec test(prepare packet bytes + parsePrepareOk reference vec)
-- [ ] RED: `grep -rnE "COM_STMT_PREPARE\|prepareStatement\|PreparedStatement\|sendComStmtPrepare" lib/com/mysql/ lib/java/sql.ss \| wc -l = 0` 改前
-- [ ] GREEN: ≥ 5 + `bin/ss test tests/d134_mysql/prepared_test.ss` 全绿 + `./build.sh bootstrap` 三阶段固定点 + `bin/ss test tests/` 256+/260 不降
+- [✓] `lib/java/sql.ss` 加 `interface PreparedStatement`(独立 interface 非继承,§A.5 retcon 锚)+ `Connection.prepareStatement(sql)` 接口方法
+- [✓] `lib/com/mysql/prepared.ss`(新)~218 LOC — 协议常量 + `class PrepareOk` + buildComStmtPreparePayload + sendComStmtPrepare + parsePrepareOk + readPrepareOk + doPrepare + readParamDef + readColumnDefList + `class MysqlPreparedStatement` 框架(setXxx / executeQuery / executeUpdate / close 为 Phase 2 stub)
+- [✓] `lib/com/mysql/jdbc.ss` 加 `MysqlConnection.prepareStatement` 方法 — 调用 doPrepare 封装,绕过 cross-module struct field access forward-reference
+- [✓] `tests/d134_mysql/prepared_test.ss`(新)~145 LOC — 8 test() 含 buildComStmtPreparePayload + parsePrepareOk 多 vec(单/多 param + warning_count + 短 payload + 错 header + positional ctor + Phase 1 stub 行为校验)
+- [✓] RED: `grep -rnE "COM_STMT_PREPARE\|prepareStatement\|PreparedStatement\|sendComStmtPrepare" lib/com/mysql/ lib/java/sql.ss \| wc -l = 0` 改前实测 ✓
+- [✓] GREEN: 改后 30 + `bin/ss test tests/d134_mysql/` 5 文件全绿 + `./build.sh bootstrap` 三阶段固定点 stage2==stage3 byte-identical + `bin/ss test tests/` baseline 不降
 
-### Phase 2: COM_STMT_EXECUTE + binary result set + COM_STMT_CLOSE 实施 [ ] Planned
+### Phase 2: COM_STMT_EXECUTE + binary result set + COM_STMT_CLOSE 实施 [✓] Done at commit `<Phase 2 hash 待二阶段回填>` (2026-04-27)
 
-- [ ] `lib/com/mysql/prepared.ss` 加 ~350 LOC — sendComStmtExecute + parseBinaryRow + `class MysqlBinaryResultSet : ResultSet` + readQueryResultSetBinary + sendComStmtClose + `MysqlPreparedStatement.executeQuery / executeUpdate / close / setXxx` 实施
-- [ ] `tests/d134_mysql/prepared_test.ss` 加 ~200 LOC — 4 vec test(execute packet bytes + parseBinaryRow + NULL bitmap +2 offset 边界 + VARCHAR length-encoded boundary)
-- [ ] RED: `grep -rnE "COM_STMT_EXECUTE\|sendComStmtExecute\|parseBinaryRow\|MysqlBinaryResultSet\|sendComStmtClose" lib/com/mysql/ \| wc -l = 0` 改前
-- [ ] GREEN: ≥ 5 + 8 vec 全绿 + bootstrap + tests baseline 不降
+- [✓] `bootstrap/gen/rt/gen_rt_system.ss` 加 `@ss_writeDoubleLE` / `@ss_readDoubleLE` IR define(~30 行)+ `bootstrap/gen/gen_registry.ss` 加 funcRetTypes 2 entry + names 字符串 2 entry(承 §核心原则 12 Phase 2 retcon 例外 + §A.6 调研补口子)
+- [✓] `bootstrap/gen/stmts/stmts_simple.ss` `genIndexAssign` 加 double 分支 bitcast 1 行(SS user `arr[i] = doubleVal` 漏 bitcast 致 llc 拒收 `ss_arraySet(ptr, i32, i64) bound to double 字面量` — 编译器 bug,承 CLAUDE.md "编译器限制是 bug,先修编译器")
+- [✓] `lib/com/mysql/prepared.ss` 加 Phase 2 ~370 LOC — `writeByteToFd` / `writeIntLEToFd` / `writeLengthEncodedStringToFd` / `binaryValueSize` / `writeBinaryValue` 5 helper + `sendComStmtExecute` + `sendComStmtClose` + `parseBinaryRow` + `isEofBinaryPacket` + `class MysqlBinaryResultSet : ResultSet` + `readQueryResultSetBinary` + `MysqlPreparedStatement.bindParam` private helper + 6 setXxx 真值 + `executeQuery` / `executeUpdate` / `close` 真值实施 + paramDoubles: Array<double> 字段
+- [✓] `tests/d134_mysql/prepared_test.ss` 加 4 vec test(setXxx state writes 全 6 setXxx + parseBinaryRow 4-column INT/VARCHAR/DOUBLE/NULL mix + parseBinaryRow NULL bitmap +2 offset 2-byte boundary numColumns=14 + binaryValueSize 5 子集 + VARCHAR length-encoded boundary 三档),旧 Phase 1 stub ctor test 替换为 setXxx 行为 test(Phase 2 起立 stub 不再适用)
+- [✓] RED: `grep -rnE "^function sendComStmtExecute\|^function parseBinaryRow\|^class MysqlBinaryResultSet\|^function sendComStmtClose" lib/com/mysql/ \| wc -l = 0` 改前实测 ✓
+- [✓] GREEN: 改后 ≥ 4 + `bin/ss test tests/d134_mysql/` 全绿(prepared_test 12 test() 含 4 vec 新增) + `./build.sh bootstrap` 三阶段固定点 stage2==stage3 byte-identical + `bin/ss test tests/` baseline 不降
 
 ### Phase 3: e2e + JdbcTemplate retcon scope 评估 [ ] Planned
 

@@ -138,6 +138,22 @@ function readColumnDef(fd: int): ColumnDef {
     return parseColumnDef(pkt.payload)
 }
 
+// Cross-module accessors. lib/com/mysql/prepared.ss needs columnDefs[i].colType
+// + colMetadata[i].name for binary protocol decode; emitting GEP %ColumnDef from
+// prepared.ss directly causes llc 'base element must be sized' since prepared.ss
+// IR is concatenated before query.ss declares %ColumnDef. Routing the field
+// access through a function defined here keeps the GEP inside the same module
+// where the type is declared. D136 prepared.ss Phase 1 header note pinned this
+// constraint; Phase 2 honors it. Compiler-side fix (IR type-decl emission
+// ordering) is a follow-up beyond D136 scope.
+function columnDefColType(col: ColumnDef): int {
+    return col.colType
+}
+
+function columnDefName(col: ColumnDef): string {
+    return col.name
+}
+
 // Legacy EOF marker: 0xFE header + payload length < 9 bytes.
 // Distinguishes from a row whose first column happens to start with 0xFE
 // length-encoded prefix (which would imply an 8-byte length following — a

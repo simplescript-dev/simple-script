@@ -140,6 +140,8 @@ function initFuncRetTypes() {
     funcRetTypes.set("tcpWriteBytes", "int")
     funcRetTypes.set("tcpConnect", "int")
     funcRetTypes.set("tcpReadBytes", "int")
+    funcRetTypes.set("writeDoubleLE", "int")
+    funcRetTypes.set("readDoubleLE", "double")
     funcRetTypes.set("mkdir", "int")
     funcRetTypes.set("mkdirp", "int")
     funcRetTypes.set("fileExists", "int")
@@ -251,7 +253,7 @@ function initBuiltinMap() {
     builtinMap.set("Math_fmod", "ss_fmod")
     builtinMap.set("Math_randomInt", "ss_randomInt")
     // All standard builtins: ss_ + callee
-    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,shell,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,tcpConnect,tcpReadBytes,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp"
+    const names = "println,print,readLine,readFile,writeFile,appendFile,exit,system,shell,parseInt,parseDouble,timeMs,timeUnix,tcpListen,tcpAccept,tcpRead,tcpWrite,tcpWriteBytes,tcpClose,tcpConnect,tcpReadBytes,getenv,mkdir,mkdirp,fileExists,fileSize,removeFile,renameFile,listDir,sha256,charCodeAt,fromCharCode,base64Encode,base64Decode,strcmp,writeDoubleLE,readDoubleLE"
     const parts = names.split(",")
     for (n in parts) {
         builtinMap.set(n, `ss_${n}`)

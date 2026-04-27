@@ -1,15 +1,16 @@
-// D136 Phase 1 — prepared statement wire-level unit tests.
+// D136 Phase 1 + Phase 2 — prepared statement wire-level unit tests.
 //
-// No socket — buildComStmtPreparePayload / parsePrepareOk take payload buffers
-// directly. Live sendComStmtPrepare → readPrepareOk → readParamDef →
-// readColumnDefList → MysqlConnection.prepareStatement flow against real
-// mysql:8 is exercised in Phase 3 d136_prepared_statement/integration_test.ss.
+// No socket — buildComStmtPreparePayload / parsePrepareOk / parseBinaryRow /
+// binaryValueSize take payload buffers + arrays directly. Live sendComStmtPrepare
+// / sendComStmtExecute / sendComStmtClose paths against real mysql:8 are
+// exercised in Phase 3 d136_prepared_statement/integration_test.ss.
 //
-// PrepareOk fixtures use bash-printf + readFile — the 12-byte payload contains
-// multiple 0x00 bytes (filler + zero-valued u16/u32 fields), so buildling the
-// fixture via SS string concat (fromCharCode(0) + ...) would truncate via
-// ss_string_concat strlen. readFile is binary-safe via charCodeAt direct
-// GEP+load (see lib/binary.ss header note).
+// PrepareOk + binary row fixtures use bash-printf + readFile — payloads contain
+// multiple 0x00 bytes (PrepareOk filler/u32/u16 zero-valued fields; binary row
+// NULL bitmap zero bits + integer zero high-bytes + IEEE 754 mantissa tails),
+// so building a fixture via SS string concat (fromCharCode(0) + ...) would
+// truncate via ss_string_concat strlen. readFile is binary-safe via charCodeAt
+// direct GEP+load (see lib/binary.ss header note).
 //
 // Lives in tests/d134_mysql/ (alongside wire_test / query_test / handshake_test)
 // per D136 §1 ContextManagement: prepared_test is a wire-level vec test that
@@ -17,8 +18,9 @@
 // e2e integration test directory (Phase 3, requires docker).
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { buildComStmtPreparePayload, parsePrepareOk, PrepareOk, MysqlPreparedStatement } from "@/lib/com/mysql/prepared"
+import { buildComStmtPreparePayload, parsePrepareOk, PrepareOk, MysqlPreparedStatement, parseBinaryRow, binaryValueSize } from "@/lib/com/mysql/prepared"
 import { ColumnDef } from "@/lib/com/mysql/query"
+import { hexByte } from "@/lib/sha256"
 
 function main() {
     // ── buildComStmtPreparePayload: cmd byte + sql ASCII concat ──
@@ -117,29 +119,133 @@ function main() {
         assertEqual(ok.warningCount, 2)
     })
 
-    // ── MysqlPreparedStatement Phase 1 framework shape ───────────
-    test("MysqlPreparedStatement positional ctor + Phase 1 stub behavior", () => {
+    // ── Phase 2 / setXxx ─ MysqlPreparedStatement bind state writes ────
+    test("MysqlPreparedStatement positional ctor + setXxx state writes", () => {
         let pDefs: Array<ColumnDef> = []
-        let pTypes: Array<int> = []
-        let pVals: Array<string> = []
-        let pNulls: Array<int> = []
+        let pTypes: Array<int> = [0, 0, 0]
+        let pVals: Array<string> = ["", "", ""]
+        let pDoubles: Array<double> = [0.0, 0.0, 0.0]
+        let pNulls: Array<int> = [0, 0, 0]
         let cols: Array<ColumnDef> = []
         cols = cols.push(new ColumnDef("id", 3, 11, 33))
-        const stmt = new MysqlPreparedStatement(-1, 7, 0, pDefs, pTypes, pVals, pNulls, cols, 0)
+        const stmt = new MysqlPreparedStatement(-1, 7, 3, pDefs, pTypes, pVals, pDoubles, pNulls, cols, 0)
         assertEqual(stmt.fd, -1)
         assertEqual(stmt.statementId, 7)
-        assertEqual(stmt.numParams, 0)
+        assertEqual(stmt.numParams, 3)
         assertEqual(stmt.columnDefs.length(), 1)
         assertEqual(stmt.closed, 0)
-        // Phase 1 executeUpdate stub returns -1 sentinel.
-        assertEqual(stmt.executeUpdate(), -1)
-        // Phase 1 close flips closed=1 without server roundtrip.
-        stmt.close()
-        assertEqual(stmt.closed, 1)
-        // Phase 1 executeQuery returns a closed MysqlResultSet — next() == 0.
-        const rs = stmt.executeQuery()
-        assertEqual(rs.next(), 0)
+        // setInt(1, 42) writes MYSQL_TYPE_LONG + decimal repr at idx-1=0.
+        stmt.setInt(1, 42)
+        assertEqual(stmt.paramTypes[0], 3)
+        assertEqual(stmt.paramValues[0], "42")
+        assertEqual(stmt.paramNullBits[0], 0)
+        // setString(2, "Alice") at idx-1=1.
+        stmt.setString(2, "Alice")
+        assertEqual(stmt.paramTypes[1], 253)
+        assertEqual(stmt.paramValues[1], "Alice")
+        // setDouble(3, 3.14) writes MYSQL_TYPE_DOUBLE + parks bits in paramDoubles.
+        stmt.setDouble(3, 3.14)
+        assertEqual(stmt.paramTypes[2], 5)
+        assertEqual(stmt.paramDoubles[2], 3.14)
+        // setNull(2) overrides idx 2 — type=NULL, null bit=1.
+        stmt.setNull(2)
+        assertEqual(stmt.paramTypes[1], 6)
+        assertEqual(stmt.paramNullBits[1], 1)
+        // setLong(1, 999) re-binds idx 1 — null bit clears, type flips to LONGLONG.
+        stmt.setLong(1, 999)
+        assertEqual(stmt.paramTypes[0], 8)
+        assertEqual(stmt.paramValues[0], "999")
+        assertEqual(stmt.paramNullBits[0], 0)
+        // setBoolean(3, 1) flips idx 3 from DOUBLE → LONG (TINYINT(1) widening).
+        stmt.setBoolean(3, 1)
+        assertEqual(stmt.paramTypes[2], 3)
+        assertEqual(stmt.paramValues[2], "1")
+        // setBoolean(3, 0) → "0".
+        stmt.setBoolean(3, 0)
+        assertEqual(stmt.paramValues[2], "0")
     })
 
-    println("All D136 Phase 1 prepared statement tests passed!")
+    // ── Phase 2 / parseBinaryRow ─ 4 column INT/VARCHAR/DOUBLE/NULL ────
+    // Row layout (D136 §A.4):
+    //   1B 0x00 header
+    //   1B NULL bitmap — (4+7+2)/8 = 1 byte; bit 5 set marks col 3 NULL (idx+2 = 3+2)
+    //   4B u32 LE 42 — col 0 LONG
+    //   1B 0x05 + 5B "Alice" — col 1 VAR_STRING
+    //   8B IEEE 754 LE of 3.14 = 1f 85 eb 51 b8 1e 09 40 — col 2 DOUBLE
+    //   (col 3 NULL — no value bytes)
+    test("parseBinaryRow 4-column INT/VARCHAR/DOUBLE/NULL mix", () => {
+        const cmd = "bash -c \"printf '\\x00\\x20\\x2a\\x00\\x00\\x00\\x05Alice\\x1f\\x85\\xeb\\x51\\xb8\\x1e\\x09\\x40' > /tmp/d136_binrow1.bin\""
+        system(cmd)
+        const buf = readFile("/tmp/d136_binrow1.bin")
+        let cols: Array<ColumnDef> = []
+        cols = cols.push(new ColumnDef("id", 3, 11, 33))
+        cols = cols.push(new ColumnDef("name", 253, 64, 33))
+        cols = cols.push(new ColumnDef("price", 5, 8, 63))
+        cols = cols.push(new ColumnDef("notes", 253, 64, 33))
+        const row = parseBinaryRow(buf, 20, cols)
+        assertEqual(row.length(), 4)
+        assertEqual(row[0], "42")
+        assertEqual(row[1], "Alice")
+        // Decimal repr of 3.14 from ss_double_to_string is platform-specific
+        // (snprintf %g style). Round-trip parseDouble for a stable cross-check.
+        assertTrue(parseDouble(row[2]) > 3.13)
+        assertTrue(parseDouble(row[2]) < 3.15)
+        assertEqual(row[3], "")
+    })
+
+    // ── Phase 2 / parseBinaryRow ─ NULL bitmap +2 offset 2-byte boundary ────
+    // numColumns=14 → bitmap length = (14+7+2)/8 = 23/8 = 2 byte.
+    // Mark col 0 as NULL → bit (0+2)=2 in byte 0 → byte 0 = 0x04, byte 1 = 0x00.
+    // Cols 1..13 each LONG with value matching their idx (1..13).
+    // Payload = 1 (header) + 2 (bitmap) + 13*4 (values) = 55 byte.
+    test("parseBinaryRow NULL bitmap +2 offset 2-byte boundary numColumns=14", () => {
+        // Build 13 little-endian u32 values for cols 1..13 — bash-printf concat.
+        let cmd = "bash -c \"printf '\\x00\\x04\\x00"
+        let i = 1
+        while (i <= 13) {
+            cmd = cmd + "\\x" + hexByte(i & 0xFF) + "\\x00\\x00\\x00"
+            i = i + 1
+        }
+        cmd = cmd + "' > /tmp/d136_binrow2.bin\""
+        system(cmd)
+        const buf = readFile("/tmp/d136_binrow2.bin")
+        let cols: Array<ColumnDef> = []
+        let j = 0
+        while (j < 14) {
+            cols = cols.push(new ColumnDef("c", 3, 11, 33))
+            j = j + 1
+        }
+        const row = parseBinaryRow(buf, 55, cols)
+        assertEqual(row.length(), 14)
+        assertEqual(row[0], "")
+        assertEqual(row[1], "1")
+        assertEqual(row[7], "7")
+        assertEqual(row[13], "13")
+    })
+
+    // ── Phase 2 / binaryValueSize ─ 5 subset + VARCHAR length-encoded triplet ────
+    // Length-encoded VARCHAR prefix sizing:
+    //   len < 0xFB     →  1 + len  (single byte)
+    //   len < 65536    →  3 + len  (0xFC + 2B LE)
+    //   len < 16777216 →  4 + len  (0xFD + 3B LE)
+    //   ≥ 16777216     →  9 + len  (0xFE + 8B LE)
+    // We exercise the first three boundary transitions; the 16M threshold needs
+    // a 16M-byte fixture and is left to e2e (Phase 3 will not exceed it either).
+    test("binaryValueSize 5-subset + VARCHAR length-encoded boundaries", () => {
+        // Fixed-width subset.
+        assertEqual(binaryValueSize(3, ""), 4)        // MYSQL_TYPE_LONG
+        assertEqual(binaryValueSize(8, ""), 8)        // MYSQL_TYPE_LONGLONG
+        assertEqual(binaryValueSize(5, ""), 8)        // MYSQL_TYPE_DOUBLE
+        assertEqual(binaryValueSize(6, ""), 0)        // MYSQL_TYPE_NULL
+        // VARCHAR — first boundary (< 0xFB).
+        assertEqual(binaryValueSize(253, "abc"), 4)
+        assertEqual(binaryValueSize(253, "x".repeat(250)), 251)
+        // VARCHAR — second boundary (251 .. 65535).
+        assertEqual(binaryValueSize(253, "x".repeat(251)), 254)
+        assertEqual(binaryValueSize(253, "x".repeat(1024)), 1027)
+        // VARCHAR — third boundary (65536 .. 16M-1).
+        assertEqual(binaryValueSize(253, "x".repeat(65536)), 65540)
+    })
+
+    println("All D136 prepared statement tests passed!")
 }

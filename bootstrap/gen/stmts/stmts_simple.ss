@@ -117,6 +117,7 @@ function genIndexAssign(id: int) {
     const vt = inferType(nGetI2(id))
     let v64 = valVal
     if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR(`  ${s} = sext i32 ${valVal} to i64`); v64 = s }
+    if (vt == "double") { const s = nextReg(); emitIR(`  ${s} = bitcast double ${valVal} to i64`); v64 = s }
     if (vt == "string" || vt == "ptr") {
         // RC: retain new, load+release old (null-safe)
         const oldVal = nextReg()
