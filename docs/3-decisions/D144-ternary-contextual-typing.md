@@ -73,33 +73,38 @@
 
    | 文件 | 行号 | 角色 |
    |------|------|------|
-   | `bootstrap/parse/parse_exprs.ss` | (查 grep — `parseTernary` / TERNARY kind 入口)| TERNARY parser:`?` LBRACE 入口 + then 分支 + `:` + else 分支 + `newNode("TERNARY")` + nSetI1/nSetI2/nSetI3 子节点 ID 槽位探查(待 Phase 1 实测槽位占用情况,选 nSetS? 存 branchType 期望 — 与 D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 + D143 OBJ_LITERAL s2 同范式) |
-   | `bootstrap/checker/check_exprs.ss` | (查 grep — TERNARY case)| TERNARY checker 入口(已存在,then/else 各 checkExpr + 类型一致性)— **当前破裂入口,信息丢失**(单一 inferType 返 then 分支类型,不接受 callee 期望反推);Phase 2 改返 `branchType` 结构化(与 ARROW_FUNC line 51-71 + ARRAY_LIT D142 line 50 + OBJ_LITERAL D143 line 285 同形) |
-   | `bootstrap/checker/check_types.ss` | (查 grep — inferType TERNARY case)| TERNARY inferType 路径(优先读 nGetS? 拿反推 branchType + fallback then 分支 inferType) |
-   | `bootstrap/gen/gen_exprs.ss` 或 `gen/exprs/` | (查 grep — `genTernary`)| codegen 层 TERNARY emit:phi node 统一 + then/else 分支 emit;Phase 2 改头部读 nGetS? 拿反推 branchType + 两分支按 branchType widen / null literal 类型化 |
-   | `bootstrap/gen/gen_calls.ss` | 284 (D143 同点) | Phase 2 反推主入口候选(D141 + D142 + D143 同点反推主入口) |
-   | `bootstrap/gen/methods/gen_methods.ss` | 206 (D143 同点) | Phase 2 反推次入口(class method args 循环) |
-   | `bootstrap/gen/gen_registry.ss` | 9-10 + 56 + 71-72 | `funcParamTypes` Map "funcName:paramIndex" → SS type(`int?` / `User?` / `class X` / `Array<T>` 等结构化签名);Phase 2 反推直接消费 |
-   | `bootstrap/gen/codegen.ss` | 110-112 + 252 + 326 | 普通函数 funcParamTypes 注册 line 110-112(`registerFuncDeclNode`)+ class method gen_registry.ss:56-57 — Phase 2 不改注册路径 |
-   | `bootstrap/eval/call.ss` | 36 (D143 同点)| **eval pre-eval 时序入口**(D141/D142/D143 H10 同形,反推必须前移到 outer call site 通用 pre-eval `genVal(argId)` 之前)— Phase 1 探查精确路径 |
-   | `bootstrap/eval/method_call.ss` | 64 (D143 同点)| `evalMethodCall()` — 包含 args pre-eval `genVal(argId)` 路径(D141/D142/D143 反推前移落点);Phase 2 反推插桩在 args 循环 TERNARY 检测处 |
-   | `bootstrap/eval/new_expr.ss` | 24 (D143 同点)| ctor args pre-eval 路径(D143 同点反推前移)— Phase 2 反推插桩第三落点 |
-   | `lib/spring/data.ss` 或 `lib/json/` 等 | (待 Phase 1 grep 实测)| Phase 4 cleanup 候选 |
-   | `tests/d067_null_safety/` | (待 Phase 1 grep 实测)| null safety baseline(D144 不破现状) |
-   | `bootstrap/gen/gen_types.ss` | (Phase 2 helper 落锚)| **Phase 2 新加 helper**:`isNullableType` / `extractInnerType` / `unifyBranchTypes` — 对偶 D141 isFnType / D142 isArrayType / D143 isClassType |
-   | `/tmp/spike_ternary_red.ss` | 全文 | **Phase 1 RED 复现**(本 Phase 0 后下一轮写)— 形态 1-7(null+T 反推 T? / T+T 显式 / 嵌套 ternary / class 实例 ternary / interface upcast / 多层 nullable / fn 返回 ternary) |
+   | `bootstrap/parse/parse_exprs.ss` | **13-16** | TERNARY parser:`parseExpr` 顶级表达式入口 line 6-20 ternary 构造 — `newNode("TERNARY")` + `nSetI1(id, left)`(cond)+ `nSetI2(id, thenId)` + `nSetI3(id, elseId)`;**占用 i1/i2/i3,空闲 s1/s2/s3/i4 + nList** — Phase 2 选 **nSetS2** 存 branchType(D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 + D143 OBJ_LITERAL s2 同范式) |
+   | `bootstrap/checker/check_exprs.ss` | **304-309** | TERNARY case `if (kind == "TERNARY") { checkExpr(nGetI1) + checkExpr(nGetI2) + checkExpr(nGetI3) }` — **当前破裂入口 1**:无两分支类型一致性检查 → silent miscompile(X mismatch RED 入口);Phase 2 改 — 加两分支类型一致性 / 反推 branchType 结构化 |
+   | `bootstrap/checker/check_types.ss` | **201** | TERNARY inferType `return checkerInferType(nGetI2(nodeId))` — **当前破裂入口 2**:仅返 then 分支 inferType,信息丢失(字段访问 / phi llType 链路错位);Phase 2 改:优先读 `nGetS2(id)` branchType,fallback `inferType(nGetI2)`(对偶 D143 OBJ_LITERAL line 544-551 模式) |
+   | `bootstrap/gen/gen_types.ss` | **541** | codegen inferType `if (kind == "TERNARY") { return inferType(nGetI2(id)) }` — 与 checker 同形单一 then 分支(X4-1 字段访问 RED 入口);**Phase 2 改入口**:对偶 D143 OBJ_LITERAL line 544-551 模式,优先读 `nGetS2(id)` fallback then 分支 inferType |
+   | `bootstrap/gen/exprs/exprs.ss` | **68** | TERNARY genVal dispatch — 走 evalExpr → evalTernary 路径 |
+   | `bootstrap/gen/codegen.ss` | **110-112 + 326** | 普通函数 funcParamTypes 注册 line 110-112 `funcParamTypes.set(\`${fname}:${pCount}\`, nGetS2(fpId))`(含 `User?` / `Array<int>?` / `class X` 结构化签名)+ line 326 `registerAllDecls(rootId)` 在 line 327 `emitGlobalsAndCode(rootId)` 之前 — H1 实证 PASS,Phase 2 不改注册路径 |
+   | `bootstrap/gen/gen_registry.ss` | **56-57** | class method funcParamTypes 注册 — H1 实证 PASS,Phase 2 不改 |
+   | `bootstrap/eval/method_call.ss` | **36-70** | outer call site pre-eval — D141/D142/D143 反推前移落锚 line 61(inferArrowFuncParams)+ line 63(inferArrayLitElems)+ line 65(inferObjLiteralFields);**Phase 2 D144 同点追加 line 67** `inferTernaryBranchType(mcArgIdR, mcResolvedR, mcArgIdxR)` 第 4 行 — 必须在 line 71+ pre-eval `genVal(mcArgId)` 之前 |
+   | `bootstrap/eval/call.ss` | **18-43** | outer call site pre-eval — D141/D142/D143 落锚 line 33+35+39;**Phase 2 D144 同点追加 line 40** `inferTernaryBranchType(callArgIdR, callResolvedR, callArgIdxR)` |
+   | `bootstrap/eval/new_expr.ss` | **24-41** | ctor args outer call site pre-eval — D143 NAMED_ARG OBJ_LITERAL 嵌套反推 line 27-41;**Phase 2 D144 落点考量**(扩 NEW_EXPR 还是留 §Followup F3 sub-D 后续轮)|
+   | `bootstrap/eval/ternary.ss` | **4-33** | evalTernary handler — line 5 cond pre-eval / line 12 `ssTypeToLLVM(inferType(nGetI2(astId)))` 决定 phi llType / line 22+26 两分支 emit;**Phase 2 改 line 12**:phi llType 优先读反推 branchType,fallback 单分支 inferType |
+   | `bootstrap/eval/eval_expr.ss` | **64** | evalExpr dispatch `if (k == "TERNARY") { return evalTernary(astId) }` — Phase 2 不改 |
+   | `bootstrap/pir/pir_lower.ss` | **252-257** | PIR `pirCollectUsesRec` TERNARY use 分析(三子节点递归)— **Phase 2 不需改**(仅 use 收集不破反推链路)|
+   | `bootstrap/checker/check_narrow.ss` | **6** | `primitive type 'int' cannot be nullable` — D067 关键不变量,**`int?` 不合法**(D144 motivating example 修正动因) |
+   | `bootstrap/gen/gen_types.ss` | (Phase 2 新加 helper)| **Phase 2 helper 落锚**:`isNullableType` / `extractInnerType` / `unifyBranchTypes` — 对偶 D141 isFnType + D142 isArrayType + D143 isClassType |
+   | `/tmp/spike_ternary_red.ss` + `/tmp/spike_ternary_x4_1.ss` + `/tmp/spike_ternary_x_mismatch.ss` | 全文 | **Phase 1 RED 复现**(主线 7 形态 GREEN + X4-1 LLC ptr/i32 mismatch RED + X mismatch silent 双 RED 铁证)|
 
 ### Stable Facts
 
 | 项 | 值 |
 |---|---|
-| 现存 callee `int?` / `User?` 用例 | 待 Phase 1 grep 实测(预估 lib/spring/jdbc.ss + lib/json/ + tests/d067/ 多处) |
+| 现存 callee `int?` 用例 | **0 处 — D067 不允许 primitive nullable**(`bootstrap/checker/check_narrow.ss:6` 硬错)— D144 motivating example 修正:仅 `User?` / `Array<int>?` 等 reference 类型 nullable 合法 |
+| 现存 callee `User?` / `Array<int>?` 用例 | tests/phase5/null_narrowing.ss 多处 + tests/phase5/i021_requestbody_nested_optional_container.ss `scores: Array<int>?` — Phase 4 cleanup 候选 grep 探查留 Phase 4 |
 | nullable 类型 annotation 解析 | parser 已就绪(D067 落地后 `T?` annotation 已解析为结构化签名,无嵌套 generic 解析需求) |
-| funcParamTypes nullable 注册 | 已就绪(普通函数 codegen.ss:110-112 / class method gen_registry.ss:56-57 直接注册原始 SS 类型字符串含 `T?` 后缀) |
+| funcParamTypes nullable 注册 | 已就绪 H1 实证 PASS(普通函数 codegen.ss:110-112 / class method gen_registry.ss:56-57 直接注册原始 SS 类型字符串含 `T?` 后缀,registerAllDecls codegen.ss:326 在 emitGlobalsAndCode 之前)|
 | null literal 默认行为 | D067 已落 — null literal 默认 ptr / 期望非空时硬错 / 期望 `T?` 时类型化为 nullable |
-| TERNARY inferType 当前 | 待 Phase 1 实测(checker.check_exprs.ss:TERNARY case 单一 then 分支 inferType + 两分支类型一致性 — D144 §A.1 主候选 C2 修复入口) |
+| TERNARY inferType 当前 | **check_types.ss:201 + gen_types.ss:541 单一 `inferType(nGetI2(id))` 仅返 then 分支** — D144 §A.1 主候选 C2 修复入口锁定;Phase 2 改入口对偶 D143 OBJ_LITERAL line 544-551 模式优先读 nGetS2 fallback then 分支 |
+| TERNARY checker case 当前 | **check_exprs.ss:304-309 仅依次 checkExpr 三子节点,无两分支类型一致性检查** — X mismatch RED 入口 |
+| TERNARY 节点 slot 占用 | i1/i2/i3(cond/then/else),s1/s2/s3+i4+nList 全空闲 — Phase 2 选 nSetS2 |
+| TERNARY kind dispatch site | 8 处:parse_exprs.ss:13 + check_exprs.ss:304 + check_types.ss:201 + gen/exprs/exprs.ss:68 + gen_types.ss:541 + eval/eval_expr.ss:64 + eval/ternary.ss:4 + pir/pir_lower.ss:252 |
 | 反射 baseline | tools/reflection_health_linter.ss(本 D 不触反射) |
-| d_doc_index_linter F1 | Phase 0 落盘后 D144 加入,referenced D 文档 D025/D067/D131/D141/D142/D143 实存 → F1 = 0 |
+| d_doc_index_linter F1 | Phase 1 实测 PASS(`bin/ss run tools/d_doc_index_linter.ss` `GATE OK — 10 referenced Ds all live`,D025/D067/D131/D141/D142/D143 实存,F2 soft warn 含 D144 不阻)|
 
 ### 禁止的 Context 操作
 
@@ -357,21 +362,62 @@ EOF
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落档 [✓] Done at commit `<TBD>` (2026-04-27)
+### Phase 0: D 文档落档 [✓] Done at commit `02415c9` (2026-04-27)
 
 - 本文档落档 + Status / 核心目标 / 核心原则 / Context / Tools / Orchestration / State / Evaluation / Constraints / §A.1 主候选 + §A.1.1 实施路径 + §A.2 隐藏假设 / §A.3 废案 / Phase 0-5 计划草案
 - d_doc_index_linter F1 = 0 验证 PASS(D144 加入未破 referenced Ds — D025/D067/D131/D141/D142/D143 实存,F2 soft warn 含 D144 不阻 commit)
 - next_prompt_ultrathink_linter PASS 3/3(本轮 .claude/next_prompt.md 含 ultrathink 关键字)
 - VCM 六验(Plan 型):§① 跳过(diff=0 in bootstrap/lib/tools)+ §④ 替换为「替代方案对比 + 隐藏假设挑战」§A.1+§A.1.1+§A.2 ✓
 
-### Phase 1: RED 复现 + 信息源探查 [ ] Planned
+### Phase 1: RED 复现 + 信息源探查 [✓] Done at commit `<TBD>` (2026-04-27)
 
-- 写 `/tmp/spike_ternary_red.ss` 7 形态(null+T 反推 T? / T+T 显式 / 嵌套 ternary / class 实例 ternary / interface upcast / 多层 nullable / fn 返回 ternary)
-- IR 层对比 typed/untyped 双路径(D084 rewrite + D067 nullable typed 路径 vs fn 实参 untyped 路径)
-- §A.2 H1 同模式实证(funcParamTypes nullable / 结构化字符串 codegen 阶段满载 — D141/D142/D143 H1 同模式继承)
-- §A.2 H10 同模式实证(eval pre-eval 时序 — Phase 1 探查 evalTernary 路径 + outer call site 通用 pre-eval `genVal(argId)` 反推前移 — D143 H10 cross-D 教训继承,不仅 grep 字面 handler)
-- TERNARY 节点 slot 占用探查(parse_exprs.ss `parseTernary` 后 s1/s2/s3/i1-i4 槽位)— 选 nSetS? 存 branchType(D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 + D143 OBJ_LITERAL s2 同范式)
-- TERNARY kind dispatch site 全 grep 完成(check_exprs.ss + check_types.ss + gen_exprs.ss / gen/exprs/ + parse_exprs.ss)+ Phase 2 改入口 / 反推插桩点 / D067 nullable 调用前移点全锁
+**主线 7 形态实测全 GREEN — D144 §第一性需求 motivating example 修正**(关键发现):
+- `/tmp/spike_ternary_red.ss` 7 形态(null+`User?` / T+T 显式 / 嵌套 / class 实例 / interface upcast / 多层 nullable / fn 返回 ternary)`bin/ss run` 全 GREEN
+- 根因:D067 不允许 primitive nullable(`bootstrap/checker/check_narrow.ss:6` `primitive type 'int' cannot be nullable`)— D144 文档原 motivating example `function takesNullableInt(n: int?): int` 不合法;改用 reference 类型 `User?` 后,**两分支 ptr 一致**(null=ptr / `new User(...)`=ptr / `Array<int>?`=ptr / IShape upcast=ptr),phi node 自然 ptr 统一,fn 实参反推机制**主线场景已 GREEN**
+- D141/D142/D143 fn 实参反推主线场景**不是 D144 真战场** — D141 ARROW_FUNC 反推 PARAM s2 / D142 ARRAY_LIT 反推 elemType / D143 OBJ_LITERAL 反推 className 都是结构化签名信息丢失(callee 期望 `fn` / `Array<T>` / `class<X>`,实参节点 IR emit 前需结构化标签),而 ternary 两分支 ptr 路径已通
+
+**真 RED 形态另立(D144 主战场修正)**:
+- **X4-1 字段访问**:`((cond)?u1:u2).name` → LLC error `'%14' defined with type 'ptr' but expected 'i32'`(实测 `bin/ss run /tmp/spike_ternary_x4_1.ss` line 5278:13 store i32 ptr type mismatch)— TERNARY inferType 在字段访问链路 resolveObjClass 失败,fallback 走 i32 默认路径
+- **X mismatch 两分支类型不一致**:`takesInt((cond)?1:"X")` → LLC error `global variable reference must have pointer type`(实测 `bin/ss run /tmp/spike_ternary_x_mismatch.ss` line 5112:13 string literal `@.str.78` 当 int 走 IR)— **checker `check_exprs.ss:304-309` 仅依次 checkExpr 三子节点,无两分支类型一致性检查,silent miscompile**
+- **真主战场锚**:TERNARY inferType 信息源破裂 — `bootstrap/checker/check_types.ss:201` + `bootstrap/gen/gen_types.ss:541` 单一 `inferType(nGetI2(id))` 仅返 then 分支,字段访问 / phi llType 链路全错位
+
+**§A.2 H1 同模式实证 PASS**(funcParamTypes 时序 — D141/D142/D143 H1 同模式继承):
+- `bootstrap/gen/codegen.ss:110-112`(普通函数 funcParamTypes 注册):`funcParamTypes.set(\`${fname}:${pCount}\`, nGetS2(fpId))`
+- `bootstrap/gen/gen_registry.ss:56-57`(class method 注册):`funcParamTypes.set(\`${baseName}:${pCount}\`, nGetS2(pId))`
+- `bootstrap/gen/codegen.ss:326`:`registerAllDecls(rootId)` 在 line 327 `emitGlobalsAndCode(rootId)` 之前
+- **结论**:funcParamTypes codegen 阶段已满载,含 `User?` / `Array<int>?` / `class X` 等结构化签名(`nGetS2(fpId)` 取 PARAM 节点 s2 槽位 SS 类型字符串),Phase 2 反推可直接消费,无需调整注册路径
+
+**§A.2 H10 cross-D 反思继承 PASS**(eval pre-eval 时序 — D143 教训 `feedback_h10_cross_d_verify.md` 继承):
+- `bootstrap/eval/method_call.ss:36-70` outer call site pre-eval — D141/D142/D143 反推前移落锚 line 61-65 三行(inferArrowFuncParams / inferArrayLitElems / inferObjLiteralFields),**D144 同点追加** `inferTernaryBranchType(mcArgIdR, mcResolvedR, mcArgIdxR)` **第 4 行**
+- `bootstrap/eval/call.ss:18-43` outer call site pre-eval — D141/D142/D143 落锚 line 33-39 三行,**D144 同点追加第 4 行**
+- `bootstrap/eval/new_expr.ss:24-41` outer call site pre-eval — D143 NAMED_ARG OBJ_LITERAL 嵌套反推前移落锚 line 27-41,**D144 落点考量**:Phase 2 决定是否扩到 NEW_EXPR(D144 §Followup F3 同位锚)
+- **关键反思**:**不仅 grep 字面 handler `bootstrap/eval/ternary.ss:4` `evalTernary`**(handler 触发时 callee context 已丢),outer call site 通用 pre-eval `genVal(argId)` **才是反推时序关键** — D143 H10 cross-D 教训直接继承
+
+**TERNARY 节点 slot 占用探查 PASS**:
+- `bootstrap/parse/parse_exprs.ss:6-20` `parseExpr` 顶级表达式入口构造 ternary:`newNode("TERNARY")` + `nSetI1(id, left)` + `nSetI2(id, thenId)` + `nSetI3(id, elseId)`(line 13-16)
+- **占用槽位**:i1(cond) + i2(then) + i3(else)
+- **空闲槽位**:s1 / s2 / s3 / i4 + nList — Phase 2 选 **nSetS2** 存 branchType(与 D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 + D143 OBJ_LITERAL s2 同范式)
+
+**TERNARY kind dispatch site 全 grep PASS 8 处**:
+| # | 文件:line | 角色 |
+|---|---|---|
+| 1 | `bootstrap/parse/parse_exprs.ss:13` | parser `newNode("TERNARY")` |
+| 2 | `bootstrap/checker/check_exprs.ss:304-309` | checker case(checkExpr 三子节点 — **无类型一致性检查 = X mismatch RED 入口**)|
+| 3 | `bootstrap/checker/check_types.ss:201` | checker inferType `inferType(nGetI2(nodeId))` — **单一 then 分支 = 信息源破裂入口** |
+| 4 | `bootstrap/gen/exprs/exprs.ss:68` | genVal dispatch(走 evalExpr → evalTernary) |
+| 5 | `bootstrap/gen/gen_types.ss:541` | codegen inferType `inferType(nGetI2(id))` — **同 checker 单一 then 分支** |
+| 6 | `bootstrap/eval/eval_expr.ss:64` | evalExpr dispatch `return evalTernary(astId)` |
+| 7 | `bootstrap/eval/ternary.ss:4-33` | evalTernary handler — line 12 `ssTypeToLLVM(inferType(nGetI2(astId)))` 决定 phi llType |
+| 8 | `bootstrap/pir/pir_lower.ss:252-257` | PIR use 分析 `pirCollectUsesRec` 三子节点 — **仅 use 收集不破反推链路**(无类型推断,Phase 2 不需改) |
+
+**Phase 2 入口全锁**:
+- `bootstrap/checker/check_types.ss:201` 改:优先读 `nGetS2(nodeId)` branchType,fallback `inferType(nGetI2(nodeId))`(对偶 D143 OBJ_LITERAL line 544-551)
+- `bootstrap/gen/gen_types.ss:541` 改:同上模式优先读 nGetS2 fallback
+- `bootstrap/checker/check_exprs.ss:304-309` 改:加两分支类型一致性检查(X mismatch RED 修复入口)
+- `bootstrap/eval/method_call.ss:65 之后` + `bootstrap/eval/call.ss:39 之后` 追加 `inferTernaryBranchType(argId, callee, idx)` 第 4 行(D141/D142/D143 G1 4 落点同模式复刻)
+- `bootstrap/eval/ternary.ss:12` 改:phi llType 优先读反推 branchType,fallback 单分支 inferType
+- `bootstrap/gen/gen_types.ss` 加 helper:`isNullableType` / `extractInnerType` / `unifyBranchTypes`(对偶 D141 isFnType + D142 isArrayType + D143 isClassType)
+- `bootstrap/eval/new_expr.ss` ctor 实参反推扩展考量(D144 §Followup F3 同位锚)
 
 ### Phase 2: codegen 阶段反推实施 + G1 路径(D141/D142/D143 G1 同模式复刻)[ ] Planned
 
@@ -420,4 +466,5 @@ EOF
 
 ## Status 时间线
 
-- 2026-04-27 Phase 0 D 文档落档(commit `<TBD>`)— D141 §Followup F3 / D142 §Followup F2 / D143 §Followup F1 ternary contextual typing 候选入口落档(同模式合并锚);C2 接口层 trap + G1 D141/D142/D143 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战(H10 cross-D 反思继承 D143 教训)+ §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F7(D141/D142/D143 §Followup 合并队列重排);D135/D136/D137/D140/D141/D142/D143 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
+- 2026-04-27 Phase 0 D 文档落档(commit `02415c9`)— D141 §Followup F3 / D142 §Followup F2 / D143 §Followup F1 ternary contextual typing 候选入口落档(同模式合并锚);C2 接口层 trap + G1 D141/D142/D143 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战(H10 cross-D 反思继承 D143 教训)+ §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F7(D141/D142/D143 §Followup 合并队列重排);D135/D136/D137/D140/D141/D142/D143 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
+- 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `<TBD>`)— **重大发现**:D144 §第一性需求 motivating example `int?` callee 在 D067 下不合法(`bootstrap/checker/check_narrow.ss:6` `primitive type 'int' cannot be nullable`)+ 改用 `User?` 后主线 7 形态(null+class / T+T 显式 / 嵌套 / class 实例 / interface upcast / 多层 nullable / fn 返回)实测**全 GREEN**(两分支 ptr 一致路径 phi 自然统一);真 RED 形态另立 — (a) **X4-1**:`((cond)?u1:u2).name` 字段访问触发 LLC `'%14' defined with type 'ptr' but expected 'i32'`(TERNARY inferType 在字段访问链路 resolveObjClass 失败,fallback 走 i32 路径);(b) **X mismatch**:`takesInt((cond)?1:"X")` 两分支类型不一致触发 LLC `global variable reference must have pointer type`(checker `check_exprs.ss:304-309` 仅依次 checkExpr 三子节点不查类型一致性 silent miscompile);**真主战场**:TERNARY inferType 信息源破裂(`check_types.ss:201` + `gen_types.ss:541` 单一返 then 分支 `inferType(nGetI2(id))` — Phase 2 改入口锚已锁);§A.2 H1 实证 PASS(funcParamTypes 时序 — `gen/codegen.ss:110-112` 普通函数 + `gen/gen_registry.ss:56-57` class method + `gen/codegen.ss:326` registerAllDecls 在 emitGlobalsAndCode 之前 — D141/D142/D143 同模式继承 PASS);§A.2 H10 cross-D 反思继承 PASS(eval/method_call.ss:36-70 + eval/call.ss:18-43 + eval/new_expr.ss:24-41 三处 outer call site pre-eval `genVal(argId)` 之前 D141/D142/D143 反推前移落锚 line 61-65/33-39/27-41 — D144 同点追加 `inferTernaryBranchType(argId, callee, idx)` 第 4 行,**不仅 grep 字面 handler `evalTernary`** — D143 H10 教训继承);TERNARY 节点 slot 占用探查 PASS(`parse_exprs.ss:13-16` parseExpr ternary 占 i1/i2/i3,**s1/s2/s3+i4+nList 全空闲** — Phase 2 选 nSetS2 与 D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 + D143 OBJ_LITERAL s2 同范式);TERNARY kind dispatch 全 grep PASS 8 处(parse_exprs.ss:13 parser + check_exprs.ss:304 checker case + check_types.ss:201 checker inferType + gen/exprs/exprs.ss:68 genVal dispatch + gen_types.ss:541 codegen inferType + eval/eval_expr.ss:64 evalExpr dispatch + eval/ternary.ss:4-33 evalTernary handler + pir/pir_lower.ss:252 PIR use 分析 — PIR 仅递归收集 use 不破反推链路);D135/D136/D137/D140/D141/D142/D143 范式延续(D143 Phase 1 commit f089738 同模式)
