@@ -231,7 +231,7 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - next_prompt_ultrathink_linter PASS 3/3
 - VCM 六验(Plan 型):§① 跳过(diff=0 in bootstrap/lib/tools)+ §④ 替换为「替代方案对比 + 隐藏假设挑战」§A.1+§A.2 ✓
 
-### Phase 1: RED 复现 + 信息源探查 [✓ 进行中,本轮收尾]
+### Phase 1: RED 复现 + 信息源探查 [✓ 完结] commit `bb96e27`
 
 **已完成:**
 
@@ -329,5 +329,5 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 ## Status 时间线
 
 - 2026-04-27 Phase 0 D 文档落盘(commit `b1becb0`)
-- 2026-04-27 Phase 1 RED 复现 + 信息源探查(本轮)— `/tmp/spike_lambda_untyped.ss` 落锚 + IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空)+ 新假设 H9/H10 入档 + Phase 2 入口挪到 codegen 阶段反推
+- 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `bb96e27`)— `/tmp/spike_lambda_untyped.ss` 落锚 + IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空)+ 新假设 H9/H10 入档 + Phase 2 入口挪到 codegen 阶段反推
 - (Phase 2 进度在用户对话指示后下一轮起)
