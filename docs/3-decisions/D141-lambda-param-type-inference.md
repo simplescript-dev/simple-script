@@ -1,6 +1,6 @@
 # D141: SS Lambda 参数类型推断 + Interface Dispatch 集成
 
-**Status:** Phase 0 — D 文档落盘(Plan)
+**Status:** Phase 1 — RED 复现 + 信息源探查(In Progress)
 **Depends on:** D025(interface dispatch)/ D137(JdbcTemplate prepared retcon — §F9 follow-up 锚)
 **Date:** 2026-04-27
 **Last Updated:** 2026-04-27
@@ -52,20 +52,24 @@
    | `bootstrap/checker/check_types.ss` | 51 | `if (kind == "ARROW_FUNC") { return "fn" }` — **当前**单一类型,信息丢失 |
    | `bootstrap/checker/check_thread.ss` | 36 | `if (kind == "ARROW_FUNC") { return }` — thread closure check 跳过 ARROW_FUNC,**Phase 2 是否同模式扩到 PARAM 反推待评估** |
    | `bootstrap/checker/check_exprs.ss` | 169 | `if (tsFirstArgId > 0 && nGetKind(tsFirstArgId) == "ARROW_FUNC")` — 已有"fn 实参 + ARROW_FUNC 实参"识别先例,Phase 2 沿此模式扩到通用 fn/method 实参反推 |
-   | `bootstrap/gen/gen_arrows.ss` | 105-140 | `genArrowFunc()` — line 135 `nGetS2(pId)` 直读 PARAM s2,无注解时 `ssTypeToLLVM("")` 走默认(**破裂入口**)|
-   | `bootstrap/gen/gen_arrows.ss` | 188 | `setVarType(capName, capType)` — capture 类型已设,PARAM 类型未设(同模式扩 PARAM 反推后调 `setVarType(paramName, paramType)`)|
-   | `bootstrap/gen/gen_calls.ss` | 231 | `resolveCallArgs(callee, argList, typeCallee)` — fn 调用 args 解析入口,Phase 2 在此识别 ARROW_FUNC 实参 + 查 funcParamTypes 反推 |
-   | `bootstrap/gen/gen_registry.ss` | 9-10 + 56 | `funcParamTypes` Map "funcName:paramIndex" → SS type — **信息源 SSoT**,checker 反推时直接消费 |
+   | `bootstrap/gen/gen_arrows.ss` | 105-140 | `genArrowFunc()` — line 135 `nGetS2(pId)` 直读 PARAM s2,无注解时 `ssTypeToLLVM("")` 走默认 i32(**破裂入口**)|
+   | `bootstrap/gen/gen_arrows.ss` | 188 | `setVarType(capName, capType)` — capture 类型已设(对照 H10 PARAM 链路:`gen_decls.ss:26 emitParamAllocas` 已调 setVarType,无需另加)|
+   | `bootstrap/gen/gen_decls.ss` | 11-26 | `emitParamAllocas(paramList, useVarAlias)` line 26 调 `setVarType(pName, pType)` — PARAM s2 一旦回填,setVarType 自然写入,lambda body method dispatch 链路自然走通(H10)|
+   | `bootstrap/gen/gen_calls.ss` | 231 | `resolveCallArgs(callee, argList, typeCallee)` — fn 调用 args 解析入口,**Phase 2 反推主入口**(改 codegen 阶段反推,H1 实证 checker 阶段 funcParamTypes 用户函数为空)|
+   | `bootstrap/gen/gen_registry.ss` | 9-10 + 56 + 71-72 | `funcParamTypes` Map "funcName:paramIndex" → SS type — **信息源 SSoT**;`initFuncRetTypes` line 72 清空 + builtin 满载(`main.ss:264 initFuncRegistry()` 启动调);class method 注册在 line 56-57(codegen 阶段 register class methods 时填)|
+   | `bootstrap/gen/codegen.ss` | 110-112 + 252 + 326 | 普通函数 funcParamTypes 注册 line 110-112(`registerFuncDeclNode` 内,被 line 326 `registerAllDecls` 调);**`registerAllDecls` 在 codegen 阶段触发,在 `check(root)` 之后 — H1 时序破裂证据** |
+   | `bootstrap/main.ss` | 264 + 593-597 | 启动 `initFuncRegistry()` 仅满载 builtin;`compile()` pipeline `parse → check(root) → generateToFile(root)` — **checker 阶段用户函数 funcParamTypes 为空**(H1 破裂铁证)|
    | `bootstrap/gen/methods/gen_methods.ss` | 209-230 | vtable indirect dispatch — PARAM s2 回填后,lambda body `s.setInt(...)` 走 vtable indirect 自然 GREEN |
    | `bootstrap/eval/method_call.ss` | 4-120 | `evalMethodCall()` 入口 — comptime + runtime method dispatch,Phase 2 是否需扩待评估 |
    | `lib/spring/data.ss` | (workaround 6 处)| D137 Phase 2 落锚 6 处 `(s: PreparedStatement) =>` 显式注解 — Phase 4 cleanup 删除目标 |
    | `tests/d134_mysql/integration_test.ss` | (workaround 4 处)| D137 Phase 3 落锚 4 处显式注解 — Phase 4 cleanup 删除目标 |
-   | `/tmp/spike_lambda_typed.ss` | 全文 | spike 实证 typed PASS 路径(test 1 + test 2);**Phase 1 需补 untyped 版本 spike 实证 result=-1 RED**|
+   | `/tmp/spike_lambda_typed.ss` | 全文 | spike 实证 typed PASS 路径 — IR `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` ✅ vtable indirect |
+   | `/tmp/spike_lambda_untyped.ss` | 全文 | **Phase 1 RED 铁证**(本轮新写)— IR `define i32 @__arrow_1(i32 %s.arg)` ⚠️ + body `; TODO: method call .setInt` 静默丢失;两 spike 仅在 lambda PARAM s2 注解差(H10 单点修复链验证)|
 
 ### 加载策略
 
-- 总体 ~2500 行(parse_exprs 80 + check_types 50 + check_exprs 30 + gen_arrows 180 + gen_calls 50 + gen_registry 80 + gen_methods 60 + method_call 120 + lib/spring/data 110 + tests 200 + spike 50)
-- Phase 1 spike 复现先,Phase 2 checker 反推实施后,Phase 3 测试覆盖,Phase 4 workaround cleanup
+- 总体 ~2800 行(parse_exprs 80 + check_types 50 + check_exprs 30 + gen_arrows 180 + gen_calls 50 + gen_registry 80 + gen_decls 30 + gen_methods 60 + codegen 50 + main 30 + method_call 120 + lib/spring/data 110 + tests 200 + spike 100)
+- Phase 1 spike 复现先 + 时序探查(本 Phase 已确认 H1 破裂,Phase 2 入口挪 codegen 阶段),Phase 2 codegen 阶段反推实施后,Phase 3 测试覆盖,Phase 4 workaround cleanup
 - 不动 D137(Phase 4 cleanup 是回收 D137 workaround,与 D137 §核心原则 9 不冲突 — D137 scope 是 spring/data,D141 scope 是 bootstrap;cleanup 写 D141 commit 不写 D137 commit)
 
 ---
@@ -81,7 +85,8 @@
 | `bin/ss run tools/reflection_health_linter.ss` | 反射路径 GATE | Phase 1+ bootstrap 改后(checker / codegen 触碰反射可能性低,但仍跑)|
 | `bin/ss run tools/d_doc_index_linter.ss` | D 文档死指针 / 孤立 | Phase 0 落盘后必跑 + Phase 4 cleanup 后 |
 | `bin/ss run tools/next_prompt_ultrathink_linter.ss` | next_prompt 三检查 | After Done 收尾 |
-| `bin/ss run /tmp/spike_lambda_untyped.ss` | Phase 1 RED 复现(待写)| Phase 1 起首 |
+| `bin/ss build /tmp/spike_lambda_untyped.ss --emit-ir` | Phase 1 RED IR 复现(本轮已写)| Phase 1 + Phase 2 GREEN 验证 |
+| `bin/ss run /tmp/spike_lambda_untyped.ss` | Phase 2 GREEN 实测(根因修后)| Phase 2 / Phase 4 实测 |
 | `git log --oneline D137*` | D137 5 Phase commit hash 锚 | 沟通时引用 commit hash |
 
 ---
@@ -93,8 +98,8 @@
 | Phase | 目标 | 关键产出 | 验证 |
 |-------|------|----------|------|
 | **Phase 0** | D 文档落盘(本 Phase)| `docs/3-decisions/D141-*.md` | d_doc_index_linter F1 = 0 + ultrathink_linter PASS |
-| **Phase 1** | RED 复现 + 信息源探查 | `/tmp/spike_lambda_untyped.ss` 实证 result=-1 + 探查 funcParamTypes 在 checker 阶段是否已 ready(parser 后 → checker 前 → codegen 前) | Phase 1 spike 实测 result=-1(RED 成立)+ funcParamTypes 注册时机文档化 |
-| **Phase 2** | checker 反推实施 | `bootstrap/checker/check_types.ss` ARROW_FUNC 改 `fn(P1,P2,...):R` 结构化签名 + `bootstrap/checker/check_exprs.ss` lambda 作 fn/method 实参时反推 PARAM s2 回填 | bootstrap 固定点 PASS + spike untyped → result=1(GREEN)|
+| **Phase 1** | RED 复现 + 信息源探查 | `/tmp/spike_lambda_untyped.ss`(本轮已写)+ IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ funcParamTypes 时序文档化(H1 破裂确认) | IR 对比 typed/untyped 双路径完成 + 时序探查 fact 入 §1 必读清单 + §A.2 H1 破裂确认 + 新假设 H9/H10 入 §A.2 |
+| **Phase 2** | codegen 阶段反推实施(H1 破裂修正路径)| `bootstrap/checker/check_types.ss:51` ARROW_FUNC 改 `fn(P1,P2,...):R` 结构化签名(类型表达力前置)+ `bootstrap/gen/gen_calls.ss:231 resolveCallArgs` + `gen/methods/method_call.ss` 内 lambda 作 fn/method 实参时反推 PARAM s2 回填(funcParamTypes 在 codegen 阶段已满载)| bootstrap 固定点 PASS + spike untyped → IR `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` GREEN |
 | **Phase 3** | 测试覆盖 + 隐藏假设挑战 | `tests/d141_lambda_inference/` 新增(typed lambda / untyped lambda + setter / 嵌套 lambda / 多参 lambda / 推断失败 fallback 报错诊断)| 5+ test case 全绿 + 隐藏假设 H1-H5 全 PASS |
 | **Phase 4** | workaround cleanup | grep + 删 `lib/spring/data.ss` 6 处 + `tests/d134_mysql/integration_test.ss` 4 处 显式 `(s: PreparedStatement) =>` 注解 | bootstrap 固定点 PASS + d134_mysql 5/5 + d136_prepared_statement 1/1 不降 |
 
@@ -195,6 +200,7 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 | # | 假设 | 风险 | 验证手段 | 失败回路 |
 |---|---|---|---|---|
 | H1 | funcParamTypes 在 checker 阶段已 ready(parser → checker 前已 register) | 实施层失败 — checker 反推时 funcParamTypes 留空,反推查不到 callee 签名 | Phase 1 探查 `gen_registry.ss:71-72` + `codegen.ss initFuncRetTypes` 时序;Phase 2 startup 阶段 dump funcParamTypes 验证 | funcParamTypes 时机不就位 → 调整 Phase 2 入口(改 codegen 阶段 lazy 反推 vs checker 阶段反推)|
+| H1 实证(Phase 1)| **❌ 已破裂** — `bootstrap/main.ss:580-597 compile()` pipeline:`parse → check(root) → generateToFile(root)`;`main.ss:264 initFuncRegistry()` 启动只满载 builtin(`println`/`parseInt` 等);用户函数 funcParamTypes 由 `codegen.ss:326 registerAllDecls(rootId)` 填,在 `check(root)` 之后;`gen_registry.ss:56-57` class method funcParamTypes 在 codegen 内 register class methods 阶段填 | Phase 2 入口必须挪到 codegen 阶段(`gen_calls.ss:231 resolveCallArgs` + `gen/methods/method_call.ss` 入口),checker 阶段反推路径废 | grep 实证:`bootstrap/main.ss:264` 调 initFuncRegistry / `codegen.ss:326` 调 registerAllDecls;`compile()` 顺序 line 593 parse + line 594 check + line 597 generateToFile | Phase 2 选 codegen 阶段反推(C2b 子路径)替代 checker 阶段反推(原 C2 主路径)— 信息源仍 funcParamTypes,scope 不变 |
 | H2 | ARROW_FUNC 多参反推不破嵌套作用域 | `(s, ctx) => { s.setInt(1, ctx.id) }` 多参反推时 ctx 类型也需正确 — 若 ctx 在 outer scope 是 class instance,反推查 callee:1 → ctx.id 调用走 vtable 路径正常 | Phase 3 测试 `tests/d141_lambda_inference/multi_param.ss`(多参 lambda + 多 setter call)| 多参反推失败 → fallback 退到单参反推 + 用户多参时仍需显式注解(Java 8 风格)|
 | H3 | 嵌套 lambda 反推不破 capture 链 | `(s) => () => s.setInt(...)` 内层 lambda capture 外层 s — capture 类型已通过 `setVarType(capName, capType)` 设置(gen_arrows.ss:188),嵌套反推链路不破 | Phase 3 测试 `tests/d141_lambda_inference/nested.ss` | 嵌套反推失败 → 嵌套场景不反推 + 用户嵌套时仍显式注解 |
 | H4 | 推断失败 fallback 编译期报错(非 silent fallback)| callee 不在 funcParamTypes / arity 不匹配 → 必须编译期 hard error,不许 fallback 默认类型(否则再次产生 result=-1 类 silent miscompile)| Phase 2 实施 `inferLambdaParamFromCallee` 失败时 emit checker error;Phase 3 测试 `tests/d141_lambda_inference/inference_fail.ss` 编译期报错 | 推断失败 silent fallback → 回 Phase 2 修硬错路径 |
@@ -202,6 +208,8 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 | H6 | 显式注解优先级 > 推断 | 用户写 `(s: PreparedStatement) =>` 时,PARAM s2 已有值,反推 skip(显式优先)| Phase 2 实施 `if (nGetS2(paramId) == "") { 反推回填 }`;Phase 3 测试 `tests/d141_lambda_inference/explicit_override.ss` 显式注解仍走原路径 | 显式优先级失败 → 回 Phase 2 修条件判断 |
 | H7 | tests/ 259/4/263 baseline 不降 | 全项目现有 lambda 测试 100+ 都走显式注解 / 单语句 lambda — Phase 2 反推不影响显式路径(H6 显式优先);Phase 4 cleanup 仅 D137 10 处 | Phase 2 后跑 `bin/ss test tests/` 全跑 + baseline 比 | tests/ 红 → 回 Phase 2 修条件判断或 fallback 路径 |
 | H8 | reflection_health_linter GATE 不破 | checker 改 `check_types.ss:51` ARROW_FUNC 返结构化 fn 签名 — 是否破反射路径 14 指标(M1-M7b + N1-N5)| Phase 2 后跑 `bin/ss run tools/reflection_health_linter.ss` GATE PASS | GATE BLOCK → 走 §MNK §反射路径根因 gate B 路径(扩容申报 + 升 baseline + D 文档 §扩容申报段)|
+| H9(Phase 1 新增)| var binding 调用 vs method/fn 直接 callee 反推路径差异 | `/tmp/spike_lambda_typed.ss` Test 2 用 `const f = (s) => ...; f(psB)` — callee `f` 是 var binding 不是 function decl,IDENT lookup 不到 funcParamTypes;主线 D137 §F9 场景是 method call `tmpl.update(sql, callback)` — callee 是 mangled method 名(`Template_update`)在 funcParamTypes | Phase 1 实测 untyped spike — IR `define i32 @__arrow_1(i32 %s.arg)` ⚠️ + body 内 `; TODO: method call .setInt` 静默丢失;**var binding 反推走 RHS 推断**(`const f = (s) => ...` 时 RHS ARROW_FUNC s2="" 无法反推),**方法/函数调用反推走 callee:argIdx**;Phase 2 必须区分两条路径 | var binding 不支持反推 → 用户 var binding 时仍需显式注解(Java 8 风格 fallback 保留),不影响 D137 §F9 主线 cleanup;Phase 3 补 method call 形式 spike 验证主线场景 |
+| H10(Phase 1 新增)| lambda body 内 method dispatch 链路自然走通 | `gen_decls.ss:26 emitParamAllocas` 已调 `setVarType(pName, pType)`,但 PARAM s2="" 时 setVarType(s, "") → getVarType(s) 拿不到类型 → resolveObjClass("") 失败 → method call emit `; TODO: method call .setInt` 静默丢失 | **核心修复链**:PARAM s2 一旦回填,setVarType(s, "PreparedStatement") 自然写入 → lambda body 内 `s.setInt(...)` 走 method dispatch 时 getVarType(s) = "PreparedStatement" → resolveObjClass 解析成功 → vtable indirect 路径 GREEN;**不需另外加 setVarType 调用**,emitParamAllocas:26 已存在 | Phase 1 实测对比:typed `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` ✅;untyped `define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt` ⚠️ — 两路径差仅在 PARAM s2 回填,验证修复链单点 | 修复链断 → 回 Phase 2 检查 setVarType pType 传值是否被 ssTypeToLLVM 提前消费 |
 
 ---
 
@@ -223,35 +231,56 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - next_prompt_ultrathink_linter PASS 3/3
 - VCM 六验(Plan 型):§① 跳过(diff=0 in bootstrap/lib/tools)+ §④ 替换为「替代方案对比 + 隐藏假设挑战」§A.1+§A.2 ✓
 
-### Phase 1: RED 复现 + 信息源探查 [ ] Planned
+### Phase 1: RED 复现 + 信息源探查 [✓ 进行中,本轮收尾]
 
-- 写 `/tmp/spike_lambda_untyped.ss`(parsed from `/tmp/spike_lambda_typed.ss`,删除 `(s: PreparedStatement)` 注解仅留 `(s) =>`)
-- 跑 `bin/ss run /tmp/spike_lambda_untyped.ss 2>&1 | grep "result = -1"` 期望命中(RED 成立)
-- 探查 `gen_registry.ss:71-72` + `codegen.ss initFuncRetTypes` funcParamTypes register 时序
-- 探查 `parse_exprs.ss:270` parseArrowFunc + `check_exprs.ss:169` ARROW_FUNC 实参识别先例
-- 文档化 funcParamTypes ready 时机 + checker 反推入口选址
+**已完成:**
 
-### Phase 2: checker 反推实施 [ ] Planned
+- 写 `/tmp/spike_lambda_untyped.ss`(基于 typed spike 删 lambda Test 2 `(s: PreparedStatement)` 注解仅留 `(s) =>`)
+- 跑 `bin/ss build /tmp/spike_lambda_untyped.ss --emit-ir` IR 层验证(无 mysql 依赖)— **RED 铁证**:
+  - typed:`define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(ptr %1, i32 1, i32 2)` ✅ vtable indirect dispatch
+  - untyped:`define i32 @__arrow_1(i32 %s.arg)` ⚠️ + body `; TODO: method call .setInt` ⚠️ 静默丢失,完全无 dispatch emit
+- 探查 funcParamTypes 时序 — **H1 假设破裂确认**:
+  - `bootstrap/main.ss:264 initFuncRegistry()` 启动调,只满载 builtin(`println`/`parseInt` 等)
+  - `bootstrap/main.ss:593-597 compile()` pipeline:`parse(tokens)` → `check(root)` → `generateToFile(root, llFile)`
+  - `bootstrap/gen/codegen.ss:326 registerAllDecls(rootId)` 用户函数填 funcParamTypes(`codegen.ss:110-112`)— 在 `check(root)` 之后
+  - `bootstrap/gen/gen_registry.ss:56-57` class method funcParamTypes 在 codegen 内 register class methods 阶段填
+  - **结论**:checker 阶段查 funcParamTypes 用户函数为空 → 原 C2 主路径"checker 阶段反推"破裂 → Phase 2 入口必须挪到 codegen 阶段(`gen_calls.ss:231 resolveCallArgs` + `gen/methods/method_call.ss`)
+- 探查 `gen_decls.ss:11-26 emitParamAllocas` line 26 已调 `setVarType(pName, pType)` — **H10 验证**:PARAM s2 一旦回填,setVarType 自然写入 → lambda body 内 `s.setInt(...)` 走 method dispatch 时 getVarType(s) lookup 成功 → vtable indirect 路径自然 GREEN(不需另外加 setVarType 调用)
+- 探查 `parse_exprs.ss:270` parseArrowFunc 节点结构 + `check_exprs.ss:169` ARROW_FUNC 实参识别先例(Thread.start closure)— Phase 2 沿此模式扩到通用 fn/method 实参反推(但路径挪到 codegen 阶段)
+- §A.2 H1 实证记录 + 新假设 H9(var binding vs method/fn 直接 callee 反推路径差异)+ H10(lambda body method dispatch 链路自然走通)入档
+- §1 必读清单关键代码位置补全:`gen_decls.ss:11-26` + `codegen.ss:110-112+252+326` + `main.ss:264+593-597` + `/tmp/spike_lambda_untyped.ss`
 
-- `bootstrap/checker/check_types.ss:51` ARROW_FUNC 改返 `fn(P1,P2,...):R` 结构化签名(向后兼容:`startsWith("fn")` 判断仍走原路径)
-- `bootstrap/checker/check_exprs.ss` lambda 作 fn/method 实参时反推 PARAM s2 回填:
+**Phase 1 兑现成果:**
+
+- (a) RED 铁证 IR 对比 typed/untyped 两路径完成,**根因路径单点定位**:PARAM s2 留空 → ssTypeToLLVM("") → i32 + setVarType("") → method dispatch 失败 emit `; TODO`
+- (b) H1 假设破裂确认 → Phase 2 入口选址调整为 codegen 阶段反推(C2b 子路径,scope 不变)
+- (c) H9/H10 新假设入档 → Phase 2 实施需区分 var binding vs method call 反推路径 + Phase 3 补 method call 形式 spike
+- (d) H10 验证修复链单点 → setVarType 链路自然走通,PARAM s2 回填即修复
+
+### Phase 2: codegen 阶段反推实施(H1 破裂修正路径)[ ] Planned
+
+> Phase 1 探查确认 H1 破裂 — checker 阶段 funcParamTypes 用户函数为空。Phase 2 入口从 checker 挪到 codegen,信息源仍 funcParamTypes,scope 不变。
+
+- `bootstrap/checker/check_types.ss:51` ARROW_FUNC 改返 `fn(P1,P2,...):R` 结构化签名(向后兼容:`startsWith("fn")` 判断仍走原路径;**类型表达力前置,checker 阶段不消费,留给 codegen 间接消费 / 未来 D026/D027 generic 时再消费**)
+- **codegen 阶段反推回填**(主路径) — `bootstrap/gen/gen_calls.ss:231 resolveCallArgs` + `bootstrap/gen/methods/method_call.ss` 内 lambda 作 fn/method 实参时反推 PARAM s2 回填:
   ```
+  // 在 resolveCallArgs / dispatchMethod 内 args 解析时,识别 ARROW_FUNC 实参 + 查 funcParamTypes 反推
   for (argId in args) {
       if (nGetKind(argId) == "ARROW_FUNC") {
           for (paramId in nGetList(argId)) {
               if (nGetS2(paramId) == "") {  // H6 显式优先
                   const inferredType = funcParamTypes.get(`${calleeName}:${argIndex}`)
                   if (inferredType != "") {
-                      nSetS2(paramId, inferredType)
+                      nSetS2(paramId, inferredType)  // PARAM s2 回填,gen_arrows.ss:135 直读 ptr,emitParamAllocas:26 setVarType 自然走通(H10)
                   } else {
-                      checkerError(`cannot infer lambda param type for ${calleeName} arg ${argIndex}`)  // H4 hard error
+                      codegenError(`cannot infer lambda param type for ${calleeName} arg ${argIndex}`)  // H4 hard error
                   }
               }
           }
       }
   }
   ```
-- bootstrap 三阶段固定点 PASS + spike untyped → result=1(GREEN)
+- bootstrap 三阶段固定点 PASS + spike untyped → IR `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` GREEN + 实测 result=1
 - d134_mysql 5/5 + d136_prepared_statement 1/1 baseline 不降
 
 ### Phase 3: 测试覆盖 + 隐藏假设挑战 [ ] Planned
@@ -299,5 +328,6 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 
 ## Status 时间线
 
-- 2026-04-27 Phase 0 D 文档落盘(本轮)
-- (Phase 1+ 进度在用户对话指示后下一轮起)
+- 2026-04-27 Phase 0 D 文档落盘(commit `b1becb0`)
+- 2026-04-27 Phase 1 RED 复现 + 信息源探查(本轮)— `/tmp/spike_lambda_untyped.ss` 落锚 + IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空)+ 新假设 H9/H10 入档 + Phase 2 入口挪到 codegen 阶段反推
+- (Phase 2 进度在用户对话指示后下一轮起)
