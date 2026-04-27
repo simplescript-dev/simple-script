@@ -800,6 +800,36 @@ function inferArrowFuncParams(argId: int, typeCallee: string, argIdx: int) {
     }
 }
 
+// ── D142 Phase 2: array literal contextual typing helper ──────
+// 从 "Array<T>" / "List<T>" / "Tuple<T>" 提取 T;非 array 容器(Map<K,V> / fn(...) / 类名等)返 ""。
+// Array/List/Tuple 白名单是 H13 失败硬错粒度的关键 — 不能与 checker/check_types.ss extractElemType
+// 合并(后者无白名单,会误从 Map<int> 提 int / 从 fn(int):int 提 int):int 等语义错配)。
+function extractArrayElemType(arrType: string): string {
+    if (arrType == "") { return "" }
+    const ltIdx = arrType.indexOf("<")
+    if (ltIdx <= 0) { return "" }
+    if (arrType.length() < ltIdx + 3) { return "" }
+    const aBase = arrType.substring(0, ltIdx)
+    if (aBase != "Array" && aBase != "List" && aBase != "Tuple") { return "" }
+    return arrType.substring(ltIdx + 1, arrType.length() - ltIdx - 2)
+}
+
+// D142 Phase 2: ARRAY_LIT 反推回填 nSetS2 — 查 funcParamTypes[typeCallee:argIdx] 拿
+// callee PARAM 结构化签名 Array<T>,extractArrayElemType 提取 T 反填 ARRAY_LIT 节点
+// nSetS2(参 D141 inferArrowFuncParams 同模式;H6 显式优先 — 已有 nSetS2 不覆盖;
+// H13 非结构化 callee skip 不破现有 "Array" 单一字符串调用方)。
+function inferArrayLitElems(argId: int, typeCallee: string, argIdx: int) {
+    if (argId <= 0) { return }
+    if (nGetKind(argId) != "ARRAY_LIT") { return }
+    if (nGetS2(argId) != "") { return }
+    const ptKey = `${typeCallee}:${argIdx}`
+    if (funcParamTypes.has(ptKey) == 0) { return }
+    const calleeParamType = funcParamTypes.getString(ptKey)
+    const elemType = extractArrayElemType(calleeParamType)
+    if (elemType == "") { return }
+    nSetS2(argId, elemType)
+}
+
 // ── Method overloading: type signature ───────────────────────
 
 function typeSig(ssType: string): string {

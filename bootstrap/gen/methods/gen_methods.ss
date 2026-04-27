@@ -200,6 +200,8 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
                 // D141 Phase 2.2: untyped lambda 反推 — 查 funcParamTypes[resolved:cmcArgIdx]
                 // 反填 ARROW_FUNC PARAM s2(D137 §F9 主线场景 — JdbcTemplate.update(sql, lambda))
                 inferArrowFuncParams(argId, resolved, cmcArgIdx)
+                // D142 Phase 2: untyped array literal 反推 — Array<T> elemType 回填 ARRAY_LIT nSetS2
+                inferArrayLitElems(argId, resolved, cmcArgIdx)
                 let aVal = genExpr(argId)
                 let aType = inferType(argId)
                 if (callArgs != "") { callArgs = `${callArgs}, ` }

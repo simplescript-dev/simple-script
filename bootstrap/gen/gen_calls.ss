@@ -277,6 +277,8 @@ function resolveCallArgs(callee: string, argList: string, typeCallee: string): s
                 // 拿 callee PARAM 结构化签名 fn(...):R,提取 Pi 反填 ARROW_FUNC PARAM s2
                 // (gen_arrows.ss:135 直读 PARAM s2 / emitParamAllocas:26 setVarType 自然走通 H10)
                 inferArrowFuncParams(argId, typeCallee, argIdx)
+                // D142 Phase 2: untyped array literal 反推 — Array<T> elemType 回填 ARRAY_LIT nSetS2
+                inferArrayLitElems(argId, typeCallee, argIdx)
                 let val = genExpr(argId)
                 let vType = inferType(argId)
                 const ptKey = `${typeCallee}:${argIdx}`
@@ -629,20 +631,28 @@ function genTemplateLit(id: int): string {
 
 function genArrayLit(id: int): string {
     const elemList = nGetList(id)
+    // D142: callee Array<T> 反推回填的 elemType(H6 显式优先 — 用户 `let arr: Array<int>=[...]`
+    // RHS 推断走 gen_decls.ss:566-571 不走反推路径,nGetS2 仍空 fallback 元素 inferType)
+    const arrLitS2 = nGetS2(id)
 
     // Check if any spread elements exist + detect ptr/scalar element mix
     let hasSpread = 0
     let hasPtrElem = 0
     let hasScalarElem = 0
+    if (arrLitS2 != "") {
+        if (ssTypeToLLVM(arrLitS2) == "ptr") { hasPtrElem = 1 } else { hasScalarElem = 1 }
+    }
     if (elemList != "") {
         const chkParts = elemList.split(",")
         for (cp in chkParts) {
             const cid = parseInt(cp)
             if (cid > 0) {
                 if (nGetKind(cid) == "SPREAD_ELEM") { hasSpread = 1 }
-                const eType = inferType(cid)
-                const eLLType = ssTypeToLLVM(eType)
-                if (eLLType == "ptr") { hasPtrElem = 1 } else { hasScalarElem = 1 }
+                if (arrLitS2 == "") {
+                    const eType = inferType(cid)
+                    const eLLType = ssTypeToLLVM(eType)
+                    if (eLLType == "ptr") { hasPtrElem = 1 } else { hasScalarElem = 1 }
+                }
             }
         }
     }
@@ -674,7 +684,9 @@ function genArrayLit(id: int): string {
                     } else {
                         const elemKey = `${elemId}`
                         const val = arrPreRegs.has(elemKey) == 1 ? arrPreRegs.getString(elemKey) : genExpr(elemId)
-                        const val64 = emitValueToI64(val, inferType(elemId))
+                        let spreadElemT = inferType(elemId)
+                        if (arrLitS2 != "") { spreadElemT = arrLitS2 }
+                        const val64 = emitValueToI64(val, spreadElemT)
                         const curArr = nextReg()
                         emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
                         const pushed = nextReg()
@@ -708,7 +720,9 @@ function genArrayLit(id: int): string {
             if (elemId > 0) {
                 const elemKey = `${elemId}`
                 const val = arrPreRegs.has(elemKey) == 1 ? arrPreRegs.getString(elemKey) : genExpr(elemId)
-                const val64 = emitValueToI64(val, inferType(elemId))
+                let elT = inferType(elemId)
+                if (arrLitS2 != "") { elT = arrLitS2 }
+                const val64 = emitValueToI64(val, elT)
                 emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${val64})`)
                 idx = idx + 1
             }

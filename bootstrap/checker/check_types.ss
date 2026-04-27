@@ -47,7 +47,28 @@ function checkerInferType(nodeId: int): string {
     if (kind == "STRING_LIT" || kind == "TEMPLATE_LIT") { return "string" }
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
     if (kind == "NULL_LIT") { return "null" }
-    if (kind == "ARRAY_LIT") { return "Array" }
+    if (kind == "ARRAY_LIT") {
+        // D142 Phase 2: ARRAY_LIT inferType 返结构化 Array<elemType>;全空 / 异质 / SPREAD 降级 "Array"
+        // (向后兼容 isTypeCompatible base 比对 line 240-244)
+        const arrLitS2 = nGetS2(nodeId)
+        if (arrLitS2 != "") { return `Array<${arrLitS2}>` }
+        const arrElems = nGetList(nodeId)
+        if (arrElems == "") { return "Array" }
+        const arrParts = arrElems.split(",")
+        let arrInfer = ""
+        let arrHomo = 1
+        for (apId in arrParts) {
+            if (arrHomo == 0) { break }
+            const eId = parseInt(apId)
+            if (eId <= 0) { continue }
+            if (nGetKind(eId) == "SPREAD_ELEM") { arrHomo = 0; break }
+            const eType = checkerInferType(eId)
+            if (eType == "") { arrHomo = 0; break }
+            if (arrInfer == "") { arrInfer = eType } else if (arrInfer != eType) { arrHomo = 0 }
+        }
+        if (arrHomo == 1 && arrInfer != "") { return `Array<${arrInfer}>` }
+        return "Array"
+    }
     if (kind == "ARROW_FUNC") {
         // D141 Phase 2.1: ARROW_FUNC inferType 返结构化签名 fn(P1,...):R(H11)
         // 全 PARAM s2="" 时降级为单一 "fn"(向后兼容 isTypeCompatible startsWith("fn") + typeSig "f" 路径)

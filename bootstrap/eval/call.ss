@@ -31,6 +31,8 @@ function evalCall(astId: int): int {
             const callArgIdR = parseInt(capR)
             if (callArgIdR > 0) {
                 inferArrowFuncParams(callArgIdR, callResolvedR, callArgIdxR)
+                // D142 Phase 2: ARRAY_LIT 反推前移 — D141 H10 同模式
+                inferArrayLitElems(callArgIdR, callResolvedR, callArgIdxR)
                 callArgIdxR = callArgIdxR + 1
             }
         }

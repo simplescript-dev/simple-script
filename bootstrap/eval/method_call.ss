@@ -59,6 +59,8 @@ function evalMethodCall(astId: int): int {
                 const mcArgIdR = parseInt(mcapR)
                 if (mcArgIdR > 0) {
                     inferArrowFuncParams(mcArgIdR, mcResolvedR, mcArgIdxR)
+                    // D142 Phase 2: ARRAY_LIT 反推前移 — D141 H10 同模式(genVal pre-eval 之前回填 nSetS2)
+                    inferArrayLitElems(mcArgIdR, mcResolvedR, mcArgIdxR)
                     mcArgIdxR = mcArgIdxR + 1
                 }
             }
