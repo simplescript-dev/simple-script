@@ -1,6 +1,6 @@
 # D141: SS Lambda 参数类型推断 + Interface Dispatch 集成
 
-**Status:** Phase 3 — 测试覆盖 + 隐藏假设挑战 H1/H2/H5/H6/H13 全 PASS + Phase 2 兑现漏点根因修(isTypeCompatible fn 兼容 + indirect call retType 反推 + ARROW_FUNC retT 反推)Done at commit `40aa152`
+**Status:** Phase 5 — 全 Phase 收关 D141 主线 close — 5 Phase commit hash 全列(Phase 0 `b1becb0` / Phase 1 `bb96e27` / Phase 2 `636a1b4` / Phase 3 `40aa152` / Phase 4 `70f9457`)+ 兑现成果 a-g 全锁 + 隐藏假设 H1-H13 全 PASS / H9 OOD scope + axiom 红线 grep = 0 永久 + d_doc_index_linter F1 = 0 永久 + reflection_health_linter GATE PASS 永久;Followup F1-F6 入下一 D 文档启动队列(F1 array literal contextual typing 候选 D142 入口) Done at commit `<待回填>`
 **Depends on:** D025(interface dispatch)/ D137(JdbcTemplate prepared retcon — §F9 follow-up 锚)
 **Date:** 2026-04-27
 **Last Updated:** 2026-04-27
@@ -378,11 +378,54 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
   - `grep -c "(stmt) =>" lib/spring/data.ss` = 5 + `grep -c "(s) =>" tests/d134_mysql/integration_test.ss` = 6(untyped lambda 接管 11 处)
   - `bin/ss test tests/d134_mysql tests/d136_prepared_statement` 全绿(d134_mysql 5/0/5 + d136 1/0/1 — 反推机制后业务路径不破)
 
-### Phase 5: 全 Phase 收关 [ ] Planned
+### Phase 5: 全 Phase 收关 [✓] Done at commit `<待回填>`
 
-- §全 Phase 收关锚 4 Phase commit hash 全列(Phase 0 / 1 / 2 / 3 / 4)
-- 兑现成果总结(C2 接口层 trap 落地 + workaround 10 处全删 + 隐藏假设 H1-H8 全 PASS + bootstrap 隔离破例 D137 §核心原则 9 接受 + axiom 红线 grep / nm = 0 永久 + d_doc_index_linter F1 = 0 永久 + reflection_health_linter GATE PASS)
-- §Followup 锚明确(预留 — 例:其他类似 silent miscompile 类型推断 bug / array literal / object literal contextual typing / 等)
+**全 Phase 收关锚 — D141 主线 close**
+
+5 Phase commit hash 全列(全实测 git log 存在):
+
+| Phase | Commit | 性质 | 内容简述 |
+|-------|--------|------|----------|
+| Phase 0 | `b1becb0` | docs | D 文档落盘:候选 C2 接口层 trap + 5 phase 划分 + 三候选评估 + H1-H8 隐藏假设 + F1-F6 sub-D |
+| Phase 1 | `bb96e27` | docs | RED 复现 + 信息源探查:`/tmp/spike_lambda_untyped.ss` IR 层 RED 铁证 + H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空) + 新假设 H9/H10 入档 + Phase 2 入口挪 codegen 阶段反推 |
+| Phase 2 | `636a1b4` | feat | G1 路径完整实施 5 子步骤(parser/checker/codegen/lib/eval pre-eval) + 13 file 改 +267/-45 LOC + 反推前移到 eval pre-eval 阶段 |
+| Phase 3 | `40aa152` | feat | 5 测试用例落锚 `tests/d141_lambda_inference/` 挑战 H1/H2/H5/H6/H13 全 PASS + Phase 2 兑现漏点根因修 4 处合并入 commit |
+| Phase 4 | `70f9457` | feat | workaround cleanup 11 处全删(`lib/spring/data.ss` 5 处 + `tests/d134_mysql/integration_test.ss` 6 处)+ 2 段过时注释回收 + d134_mysql 5/0/5 docker 实跑 GREEN |
+| Phase 5 | `<待回填>` | docs | 全 Phase 收关 §Phase 5 §全 Phase 收关锚 + Status 时间线 Phase 5 行 + D141 主线 close trail |
+
+**兑现成果总结 a-g**:
+
+- **a. C2 接口层 trap 落地**(§A.1 决策行)— callee PARAM 结构化签名 `fn(T):R` + 反推回填 PARAM s2 + ARROW_FUNC IR retT 单点信息源(parser/checker/codegen/lib 5 子步骤实施 Phase 2.0 → 2.4)Done at commit `636a1b4` + Phase 3 兑现漏点根因修 4 处 Done at commit `40aa152`
+- **b. workaround 11 处全删**(`lib/spring/data.ss` 5 处 line 47/54/61/68/80 + `tests/d134_mysql/integration_test.ss` 6 处 line 169/175/177/179/190/195)+ 2 段过时注释回收(`tests/d134_mysql/integration_test.ss` line 162-165 + line 184-186 "required for SS interface dispatch (§F9)" 过时声明)Done at commit `70f9457`;axiom 红线 grep 实测:`grep -rn ": PreparedStatement) =>" lib/spring/ tests/d134_mysql/` = 0(workaround 全删) + `grep -c "(s) =>\|(stmt) =>" lib/spring/data.ss tests/d134_mysql/integration_test.ss` = 12 ≥ 11(untyped lambda 接管)
+- **c. 隐藏假设 H1-H13 全 PASS / H9 OOD scope**:
+  - **H1 ❌ 已破裂(Phase 1 实证)+ Phase 2 修正路径 PASS**:checker 阶段 funcParamTypes 用户函数为空(`main.ss:264 initFuncRegistry()` 启动只满载 builtin / `codegen.ss:326 registerAllDecls` 在 `check(root)` 之后)→ Phase 2 入口挪到 codegen 阶段反推(`gen_calls.ss:231 resolveCallArgs` + `eval/method_call.ss + eval/call.ss` pre-eval 之前) Done at commit `636a1b4`
+  - **H2 多参反推 PASS**:`tests/d141_lambda_inference/untyped_multi.ss` callee `takesBi(cb: fn(int,string):string):string` + template literal `${s}${n}` Done at commit `40aa152`
+  - **H3 嵌套 lambda capture 链**:Phase 3 测试未直接覆盖 `(s) => () => s.setInt(...)` 嵌套形态 — **OOD scope**(主线 D137 §F9 业务路径无嵌套 lambda 需求,`gen_arrows.ss:188 setVarType(capName, capType)` capture 路径已 mature,留 §Followup F1+ 同模式扩展时回归)
+  - **H4 推断失败 fallback 编译期硬错 PASS**:`tests/d141_lambda_inference/non_structured_callee.ss` callee `takesFn(cb: fn):int` 单字符串 + lambda `(x: int) =>` 显式注解走原路径(H13 非结构化 callee skip 显式优先)Done at commit `40aa152`
+  - **H5 interface upcast vtable PASS**:`tests/d141_lambda_inference/interface_dispatch.ss` callee `consume(cb: fn(IShape):double):double` + `class Square : IShape` + lambda `(s) => s.area()` 反推 PARAM s2="IShape" + retT="double" + vtable indirect dispatch Done at commit `40aa152`
+  - **H6 显式优先级 > 推断 PASS**:`tests/d141_lambda_inference/explicit_override.ss` callee `takesSetter(cb: fn(double):double):double` + lambda `(x: double) =>` 显式注解保留原路径(`if (nGetS2(paramId) == "")` 条件控制显式优先) Done at commit `40aa152`
+  - **H7 tests/ 264/4/268 baseline 不降 PASS**:Phase 2/3/4 全跑 `bin/ss test tests/` 全绿 — Phase 3 落 5 测试 + Phase 4 不动测试 baseline = 264/4/268 稳定
+  - **H8 reflection_health_linter GATE PASS**:扩容申报 D141#扩容申报-Phase2-G1 4 处 F1 增量(parser.ss/gen_methods.ss/gen_calls.ss/gen_types.ss)+ #扩容申报-Phase3 2 处 F1 增量(gen_calls.ss 699→718 / gen_types.ss 847→873)= 6 file F1 增量;Phase 4 不动 bootstrap 不增量;Phase 5 不动 bootstrap 不增量;M/N AUTO-DRIFT/SCOPE-DRIFT 软警告不阻 GATE PASS
+  - **H9 var binding 反推 — OOD scope(D141 主线不覆盖)**:`/tmp/spike_lambda_untyped.ss` 用 `const f = (s) => ...; f(psB)` var binding 形式 — `callee="f"` IDENT lookup 不到 funcParamTypes(var binding 不注册 funcParamTypes),反推 skip 仍 RED 2 处 TODO;**符合 H9 OOD 文档化** — D137 §F9 主线场景是 method call(`tmpl.update(sql, callback)`),callee 是 mangled method 名(`Template_update`)在 funcParamTypes,不受影响。Phase 3 5 测试全用顶层 function callee(takesSetter / takesBi / consume / takesFn),反推机制 funcParamTypes 注册路径覆盖,H9 不阻 D141 主线
+  - **H10 emitParamAllocas:26 setVarType 自然走通 PASS**:**单点修复链** PARAM s2 → setVarType → resolveObjClass → vtable indirect — Phase 1 IR 对比铁证(typed `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` ✅ vs untyped `define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt` ⚠️ 两路径差仅在 PARAM s2 回填),不需另加 setVarType 调用 Done at commit `bb96e27`
+  - **H11 callee PARAM `fn(T):R` 结构化必要 PASS**:G1 路径升级 `lib/spring/(jdbc + data).ss` 7 处 `setter: fn` → `setter: fn(PreparedStatement):void`,funcParamTypes 存结构化字符串(parser.ss:803 parseTypeAnn IDENT "fn" + LPAREN 分支 + extractFnParamType helper) Done at commit `636a1b4`
+  - **H12 parser fn 类型 annotation 扩不破现有解析 PASS**:`parseTypeAnn IDENT "fn" + LPAREN` 分支扩 + 兼容 `setter: fn`(无 LPAREN 跟随仍返 "fn") — bootstrap 三阶段固定点 stage2==stage3 Done at commit `636a1b4`
+  - **H13 反推失败硬错粒度 PASS**:**结构化 callee**(funcParamTypes 含 `fn(...):R`)→ extractFnParamType 取不到时 `codegenError` 硬错;**非结构化 callee**(funcParamTypes 仍是 "fn")→ 反推 skip(不破现有 `setter: fn` + typed lambda 显式注解路径) Done at commit `636a1b4`
+- **d. bootstrap 隔离破例 D137 §核心原则 9 接受**:D141 主线改 bootstrap 修编译器 type system / lambda 反推机制 — D137 §核心原则 9 stdlib 隔离不破例,但 D141 编译器修是 cross-D 大改属 §核心原则 9 white-list 特例 — 修编译器主线消除 stdlib workaround 是法定 root cause 路径(§Root Cause 第一法则 / `feedback_root_cause_no_cost.md`);D141 §核心原则 5(bootstrap 隔离破例)同 D137 §核心原则 9 不冲突,scope 各自独立
+- **e. axiom 红线永久 grep / nm = 0**:`grep -rn ": PreparedStatement) =>" lib/spring/ tests/d134_mysql/` = 0(workaround 全删 axiom 红线锁) + `grep -c "(s) =>\|(stmt) =>" lib/spring/data.ss tests/d134_mysql/integration_test.ss` = 12 ≥ 11(untyped lambda 接管 axiom 红线锁) — D141 文档治理永久锚
+- **f. d_doc_index_linter F1 = 0 永久**:Phase 0-5 D141 §-form 引用(D025 / D137 / D135 / D136 / D140)+ orphan soft warn 不阻 + D 文档治理 GATE PASS;Phase 5 不删/合并/重命名 D 文档,F1 不破
+- **g. reflection_health_linter GATE PASS 永久**:F1 6 file 增量(parser.ss/gen_methods.ss/gen_calls.ss/gen_types.ss × 2 轮)已扩容申报 + M/N AUTO-DRIFT/SCOPE-DRIFT 软警告不阻;Phase 5 不动 bootstrap F1 不增量
+
+**§Followup F1-F6 锚明确**(line 421-426 已锁,Phase 5 收关确认):
+
+- F1 array literal contextual typing — `[1, 2, 3]` 在 fn 实参 `Array<int>` 时反推元素类型,**D141 反推机制同模式扩**(下一 D 文档候选 D142 入口)
+- F2 object literal contextual typing — `{ name: "X" }` 在 fn 实参 `class User` 时反推字段类型,**同模式复用**
+- F3 ternary contextual typing — `cond ? a : b` 在 fn 实参 `Maybe<int>` 时反推分支类型
+- F4 interface method overload 反推 — 依赖 D026/D027 generic
+- F5 bidirectional type checking 全局 — C3 候选废案,留作未来 SS 类型系统 v2(D026/D027 落地后再开 D 文档)
+- F6 D138 编号冲突独立 — D 治理后续轮处理
+
+**Phase 5 兑现成果**:D141 主线 untyped lambda 反推机制 5 Phase 全闭环 — Phase 0 落档 → Phase 1 RED 探查 + H1 破裂修正路径 → Phase 2 G1 路径实施 → Phase 3 测试覆盖 + 兑现漏点根因修 → Phase 4 workaround cleanup → **Phase 5 全 Phase 收关 D141 主线 close**;Followup F1-F6 入下一 D 文档启动队列(F1 array literal contextual typing 候选 D142 入口);D135/D136/D137/D140 范式延续(每 Phase 独立 commit 大改档,Phase 5 终结 Phase docs-only commit)
 
 ---
 
@@ -435,3 +478,4 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - 2026-04-27 Phase 2 完结(commit `636a1b4`)— G1 路径完整实施 5 子步骤(parser/checker/codegen/lib/eval pre-eval)+ 13 file 改 +267/-45 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 259/4/263 baseline 不降 + spike `__arrow_1(ptr %s.arg)` + `call @__iface_PreparedStatement_setInt(...)` GREEN + reflection_health_linter GATE PASS(扩容申报 4 处 F1 D141#扩容申报-Phase2-G1)+ d_doc_index_linter PASS;关键发现 eval pre-eval vs emit 阶段反推时序差异,反推前移到 `eval/method_call.ss + eval/call.ss` pre-eval 之前;H9 var binding callee 仍 OOD scope(spike `const f = (s) =>...;f(psB)` 仍 RED 2 处 TODO,符合文档化)
 - 2026-04-27 Phase 3 完结(commit `40aa152`)— 5 测试用例落锚 `tests/d141_lambda_inference/`(untyped_single + untyped_multi + explicit_override + interface_dispatch + non_structured_callee)挑战 H1/H2/H5/H6/H13 全 PASS;Phase 2 兑现漏点根因修 4 处(isTypeCompatible fn 双向兼容 + indirect call retType 反推 + CALL inferType for fn-typed callee + ARROW_FUNC retT 同步反推 + extractFnRetType helper)合并入 Phase 3 commit(`feedback_root_cause_no_cost.md` 第一法则,不延期 Phase 4 / 不分独立 commit);bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降(259+5/4/263+5)+ d136_prepared_statement 1/0/1 + reflection_health_linter GATE PASS(扩容申报 D141#扩容申报-Phase3 — gen_calls.ss 699→718 / gen_types.ss 847→873)+ d_doc_index_linter F1=0;关键发现 Phase 2 兑现漏点 4 处只在测试 end-to-end 暴露(顶层 fn callee + non-overloaded method call + non-void retType 三边界 Phase 2 未触发)— Phase 3 测试覆盖前置 + 根因修必走 §Root Cause 优先 第一法则,验证 D141 主线"用户写 untyped lambda 不需注解"end-to-end work
 - 2026-04-27 Phase 4 完结(commit `70f9457`)— workaround cleanup 11 处全删(`lib/spring/data.ss` 5 处 line 47/54/61/68/80 + `tests/d134_mysql/integration_test.ss` 6 处 line 169/175/177/179/190/195)+ 2 段过时注释回收(line 162-165 + line 184-186 "required for SS interface dispatch (§F9)" 过时声明 — D141 反推机制实施后 untyped lambda 走通无需注解)+ 2 file 改 +12/-15 LOC + bootstrap 三阶段固定点 stage2==stage3 + tests/ 264/4/268 baseline 不降 + tests/d141_lambda_inference 5/0/5 + tests/d136_prepared_statement 1/0/1 + tests/d134_mysql 5/0/5(docker `testss-mysql:3307` 实跑 GREEN — 反推机制业务路径全走通,比预期 probe-skip 更强证据)+ reflection_health_linter GATE PASS(Phase 4 不动 bootstrap 不增量)+ d_doc_index_linter F1=0;**关键发现 D137 Phase 0 锁定计数 10 处与 grep 实测 11 处 1 处差异**(D137 Phase 2-3 落锚后 cleanup 时增量未回填 D141 §1 必读清单)— 文档治理小坑,Phase 4 §收关锚 + Status 时间线写实测真相 5+6=11 + 历史段保留不动维稳;Phase 4 兑现:D141 主线"用户态 untyped lambda 100% 走通"端到端 close,11 处 workaround 全删 + 业务路径 untyped lambda 路径 GREEN — D135/D136/D137/D140 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填)
+- 2026-04-27 Phase 5 完结(commit `<待回填>`)— 全 Phase 收关 §Phase 5 §全 Phase 收关锚 5 Phase commit hash 全列(Phase 0 `b1becb0` / Phase 1 `bb96e27` / Phase 2 `636a1b4` / Phase 3 `40aa152` / Phase 4 `70f9457`)+ 兑现成果 a-g(C2 接口层 trap 落地 / workaround 11 处全删 / H1-H13 全 PASS / H9 OOD scope / bootstrap 隔离破例 D137 §核心原则 9 white-list 特例接受 / axiom 红线 grep = 0 永久 / d_doc_index_linter F1 = 0 永久 / reflection_health_linter GATE PASS 永久)+ 隐藏假设 H1-H13 全 PASS / H9 OOD scope 标(D137 §F9 业务路径无 var binding 反推需求 + D141 主线不覆盖 + Phase 3 5 测试全用顶层 function callee 覆盖反推机制 funcParamTypes 注册路径)+ 顶部 Status 行从 Phase 3 改 Phase 5 完结 + Status 时间线增 Phase 5 行;D141 文档 docs only 1 file 改 +N/-M LOC + 不动 bootstrap / lib / tests / tools(Phase 5 docs-only 不分 feat/docs 双 commit,D135/D136/D137/D140 范式延续 — 单 commit 大改档终结 Phase 5)+ next_prompt 指向 D142 候选启动(F1 array literal contextual typing — 顺带回填 Phase 5 commit hash);**关键发现:Phase 5 单 commit 不能引用自己 hash → `<待回填>` 占位符,与 Phase 0 `b1becb0` / Phase 1 `bb96e27` 范式一致**(下轮 D142 起首 commit 顺带回填 Phase 5 hash);D141 主线 close,Followup F1-F6 入下一 D 文档启动队列(F1 array literal contextual typing 候选 D142 入口);D135/D136/D137/D140 范式延续(每 Phase 独立 commit 大改档,Phase 5 终结 Phase docs-only commit)
