@@ -17,10 +17,11 @@
 // socket fd (D134 Phase 5 NAMESPACE COLLISION decision: handshake.ss owns auth
 // protocol only, driver-layer Connection state lives here in jdbc.ss).
 
-import { Connection, Statement, ResultSet } from "@/lib/java/sql"
+import { Connection, Statement, PreparedStatement, ResultSet } from "@/lib/java/sql"
 import { writePacket } from "@/lib/com/mysql/wire"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
 import { sendQuery, readUpdateResult, readQueryResultSet, MysqlResultSet } from "@/lib/com/mysql/query"
+import { doPrepare } from "@/lib/com/mysql/prepared"
 import { URL, URL_parse } from "@/lib/url"
 
 const COM_QUIT = 0x01
@@ -34,6 +35,16 @@ class MysqlConnection : Connection {
 
     function createStatement(): Statement {
         return new MysqlStatement(this.fd)
+    }
+
+    // Drives the full prepare flow via prepared.doPrepare — keeps PrepareOk
+    // field access encapsulated inside prepared.ss (cross-module struct field
+    // access from a function whose body emits before the struct's IR `type`
+    // declaration would forward-reference the type and llc would reject the
+    // GEP). Phase 1 occupies the prepare half of the protocol; setXxx and
+    // executeQuery / executeUpdate / close are Phase 2 stubs.
+    function prepareStatement(sql: string): PreparedStatement {
+        return doPrepare(this.fd, sql)
     }
 
     function setAutoCommit(auto: int) {

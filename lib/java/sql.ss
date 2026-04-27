@@ -35,10 +35,36 @@ interface Statement {
     function close()
 }
 
+// ── PreparedStatement ────────────────────────────────────────
+// JDBC 4.3 PreparedStatement (driver-agnostic). Bound to a parameterized SQL
+// at Connection.prepareStatement(sql) time; setXxx(idx, val) binds positional
+// params (idx from 1, JDBC convention). executeQuery() / executeUpdate() use
+// the bound sql + bound params via the binary protocol.
+//
+// D136 §A.5 retcon: standalone interface (not `extends Statement`). SS parser
+// has no interface-extends syntax (parseInterfaceDecl) and no method overload
+// support, so the JDBC spec historical `PreparedStatement extends Statement`
+// shape is unimplementable here — and per JDBC 4.3 §A.4.2, calling
+// Statement.execute(String) on a PreparedStatement throws SQLException anyway.
+// Standalone interface matches the spec's effective semantics.
+
+interface PreparedStatement {
+    function setInt(idx: int, val: int)
+    function setLong(idx: int, val: int)
+    function setString(idx: int, val: string)
+    function setDouble(idx: int, val: double)
+    function setBoolean(idx: int, val: int)
+    function setNull(idx: int)
+    function executeQuery(): ResultSet
+    function executeUpdate(): int
+    function close()
+}
+
 // ── Connection ───────────────────────────────────────────────
 
 interface Connection {
     function createStatement(): Statement
+    function prepareStatement(sql: string): PreparedStatement
     function setAutoCommit(auto: int)
     function commit()
     function rollback()

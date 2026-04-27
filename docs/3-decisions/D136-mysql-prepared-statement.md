@@ -1,6 +1,6 @@
 # D136: MySQL Prepared Statement 协议集成(COM_STMT_PREPARE / EXECUTE / CLOSE)
 
-**Status:** [✓] Phase 0 落盘(commit `<回填>`)+ [ ] Phase 1 接口扩 + COM_STMT_PREPARE / [ ] Phase 2 EXECUTE + binary result set + CLOSE / [ ] Phase 3 e2e + JdbcTemplate retcon scope 评估
+**Status:** [✓] Phase 0 落盘(commit `9326b9f`)+ [ ] Phase 1 接口扩 + COM_STMT_PREPARE / [ ] Phase 2 EXECUTE + binary result set + CLOSE / [ ] Phase 3 e2e + JdbcTemplate retcon scope 评估
 
 **Depends on:**
 - D134 全 Phase 收关锚(commit `e509be1`)— `lib/com/mysql/{wire,handshake,query,jdbc}.ss` driver 实施层 + `tests/d134_mysql/` integration test 框架
@@ -47,7 +47,7 @@ grep -rnE "PreparedStatement|COM_STMT_PREPARE|prepareStatement" lib/com/mysql/ l
 
 ## 核心原则 (Principles)
 
-1. **driver-agnostic 接口扩 lib/java/sql.ss** — 加 `interface PreparedStatement extends Statement`(setInt/setString/setLong/setDouble/setBoolean + 重载 executeQuery() / executeUpdate())+ `Connection.prepareStatement(sql)` 接口方法;不破坏既有 `interface Statement` / `interface ResultSet` / `interface Connection` 签名
+1. **driver-agnostic 接口扩 lib/java/sql.ss** — 加独立 `interface PreparedStatement`(setInt/setString/setLong/setDouble/setBoolean/setNull + executeQuery():ResultSet + executeUpdate():int + close(),不 extends Statement — Phase 1 retcon §A.5 SS 现状 + JDBC spec 实质语义)+ `Connection.prepareStatement(sql)` 接口方法;不破坏既有 `interface Statement` / `interface ResultSet` / `interface Connection` 签名
 2. **driver-specific 实施 lib/com/mysql/prepared.ss(新)** — 纯 SS COM_STMT_PREPARE / COM_STMT_EXECUTE / COM_STMT_CLOSE,复用 lib/com/mysql/wire.ss readPacket / writePacket(D134 Phase 2 packet 层)+ lib/binary byteToInt / readLengthEncodedInt / lengthEncodedIntSize / readLengthEncodedString(D134 Phase 4 binary helper)
 3. **不留 text protocol fallback dead code** — 自用语境 MySQL 4.1+ 全支持 COM_STMT_*(2002 release),无兼容性顾虑;承 §Root Cause + memory `feedback_no_derive_workaround` + D135 §Principles 2 范式;text protocol(query.ss COM_QUERY)保留作"不带参数的 DDL / SELECT * FROM x" simple path,prepared 用于带 `?` 参数化路径,**两路径并存非 fallback** — query.ss 不删
 4. **binary protocol 子集覆盖** — `MYSQL_TYPE_LONG = 3`(u32 LE)/ `MYSQL_TYPE_VAR_STRING = 253`(length-encoded string)/ `MYSQL_TYPE_DOUBLE = 5`(8-byte IEEE 754)/ `MYSQL_TYPE_LONGLONG = 8`(i64 LE,SS int 默认)/ `MYSQL_TYPE_NULL = 6`(无 value 字节,标 NULL bitmap)+ NULL bitmap 处理;**TIMESTAMP / DATE / TIME / JSON / DECIMAL / BLOB 等留 sub-D 评估**(scope 控,业务覆盖度优先 INT/VARCHAR/DOUBLE/LONGLONG/NULL 5 子集)
@@ -178,8 +178,8 @@ grep -rnE "PreparedStatement|COM_STMT_PREPARE|prepareStatement" lib/com/mysql/ l
 
 #### Phase 1: 接口扩 + COM_STMT_PREPARE 实施(纯 lib 改)
 
-- **`lib/java/sql.ss`** 改 ~15 LOC:
-  - 加 `interface PreparedStatement` extends `Statement` — 新方法 `setInt(idx, val)` / `setString(idx, val)` / `setLong(idx, val)` / `setDouble(idx, val)` / `setBoolean(idx, val)` / `setNull(idx)` + 重载 `executeQuery(): ResultSet` / `executeUpdate(): int`(无 sql 参数,sql 在 prepare 时 bound)
+- **`lib/java/sql.ss`** 改 ~20 LOC:
+  - 加 `interface PreparedStatement`(独立非继承,§A.5 retcon)— 9 方法 `setInt(idx, val)` / `setString(idx, val)` / `setLong(idx, val)` / `setDouble(idx, val)` / `setBoolean(idx, val)` / `setNull(idx)` / `executeQuery(): ResultSet` / `executeUpdate(): int` / `close()`(sql 在 prepare 时 bound,无 sql 重载方法 — JDBC 4.3 spec 实质语义)
   - 加 `Connection.prepareStatement(sql: string): PreparedStatement` 接口方法
   - **签名约束**:idx 从 1 起(JDBC 4.3 范式),与 array 0-based 差 1
 - **`lib/com/mysql/prepared.ss`**(新)~250 LOC:
@@ -486,20 +486,23 @@ grep -rnE "PreparedStatement|COM_STMT_PREPARE|prepareStatement" lib/com/mysql/ l
 
 ## A.5 PreparedStatement 接口设计(JDBC 4.3 对标)
 
-### `interface PreparedStatement extends Statement`
+### `interface PreparedStatement`(独立 interface,不 extends Statement)
 
 ```ss
-interface PreparedStatement extends Statement {
+interface PreparedStatement {
     function setInt(idx: int, val: int)
     function setLong(idx: int, val: int)
     function setString(idx: int, val: string)
     function setDouble(idx: int, val: double)
     function setBoolean(idx: int, val: int)
     function setNull(idx: int)
-    function executeQuery(): ResultSet      // 重载,无 sql 参数
-    function executeUpdate(): int           // 重载,无 sql 参数
+    function executeQuery(): ResultSet
+    function executeUpdate(): int
+    function close()
 }
 ```
+
+**Phase 1 retcon 锚**(2026-04-27):原骨架措辞 `interface PreparedStatement extends Statement`(JDBC 4.3 类型层包含 `executeQuery(sql) / executeUpdate(sql) / execute(sql)` 三签名 + 新增 `executeQuery() / executeUpdate()` 无参重载)在 SS 现状下**不可实施** — `bootstrap/parse/parser.ss:545-576 parseInterfaceDecl` 不解析 EXTENDS 分支(SS 现状 interface 无继承语法);且 SS 不支持同 interface 内方法重载(同名不同签名)。**根因校准**(承 §Root Cause 第一法则 + §Principles 12 bootstrap 隔离双约束):JDBC spec 上 `PreparedStatement extends Statement` 是历史遗留 — JDBC 4.3 spec §A.4.2 明示 "PreparedStatement 上调用 Statement.execute(String) 抛 SQLException";实质语义上 PreparedStatement 是**独立**接口,Java 类型层 extends 是 1.0 早期为 ResultSet 共享方法做的折衷,**SS 设独立 interface 反而符合 JDBC spec 实质语义**(无 sql 重载方法不可调用,无 spec 漏洞;无 extends 编译器不支持也不需要)。**取舍**:不在 SS 加 interface extends + 方法重载语法(违反 §Principles 12 bootstrap 隔离 + 加 Java 历史包袱),独立 interface 是根因校准非降级。
 
 **idx 从 1 起**(JDBC 4.3 范式),与 array 0-based 差 1。setXxx 内部 `paramTypes[idx-1] = MYSQL_TYPE_xxx; params[idx-1] = val.toString(); paramNullBits[idx-1] = 0`。
 
@@ -519,7 +522,7 @@ interface Connection {
 
 ### 与既有 Statement 接口关系
 
-`PreparedStatement extends Statement`(SS interface 继承范式),故 PreparedStatement 同时拥有 `executeQuery(sql)` / `executeUpdate(sql)` / `execute(sql)` 三签名 + 新增 `executeQuery() / executeUpdate()` 无参重载。**调用方**:
+`PreparedStatement` 与 `Statement` 在 SS 类型层是**并列接口**(非继承)。MysqlPreparedStatement 实现 PreparedStatement(`MysqlPreparedStatement : PreparedStatement`),MysqlStatement 实现 Statement(`MysqlStatement : Statement`),两者**独立**。Connection 提供两条入口:`createStatement(): Statement`(无 sql 绑定,文本协议)/ `prepareStatement(sql): PreparedStatement`(sql 绑定,binary 协议参数化)。**调用方**:
 
 ```ss
 const stmt = conn.prepareStatement("SELECT id, name FROM users WHERE id = ?")
@@ -563,7 +566,7 @@ D134 §A.7:
 
 # 附录 B: 实施日志
 
-### Phase 0: D 文档落盘 [✓] Done at commit `<回填>` (2026-04-27)
+### Phase 0: D 文档落盘 [✓] Done at commit `9326b9f` (2026-04-27)
 
 - ✓ PSM 九问填表(响应正文 + §A.7)
 - ✓ D136 文档骨架完成(此文件)
