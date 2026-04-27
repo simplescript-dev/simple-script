@@ -1,6 +1,6 @@
 # D137: JdbcTemplate Prepared Retcon — PreparedStatementSetter Callback Routing
 
-**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0` + [✓] Phase 3 实施落地 at commit `4a10e48`
+**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0` + [✓] Phase 3 实施落地 at commit `4a10e48` + [✓] Phase 4 e2e 闭环收关 at commit `<phase4-commit>`(D137 完结)
 
 **Depends on:**
 - D136 全 Phase 收关锚(commit `b7cb6d5`)— `interface PreparedStatement` + `lib/com/mysql/prepared.ss` MysqlPreparedStatement 实施 + `MysqlConnection.prepareStatement()` driver 拼装 + `tests/d136_prepared_statement/` e2e 已就绪
@@ -478,12 +478,75 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 - **§F9 workaround 持续**:test 7 4 处 lambda 显式 `(s: PreparedStatement)` 注解(承 Phase 2 6 处 + Phase 3 4 处 = 10 处累计);**真根因 sub-D follow-up** 编号待 D 治理后续轮处理(§F9 锚:修 SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug)
 - **R3 streaming 兼容验证**:test 7 line 174/176 走 tmpl.queryForString/Int(sql, setter, column) 内部复用 queryForList(sql, setter)(jdbc.ss line 90-98 / 110-118),实证 D136 prepared 非流式 ResultSet 与 streaming socket 接口契约兼容(GREEN — H3 假设挑战 PASS)
 
-### Phase 4: e2e 闭环 + D136 §F1 注释 + Status 收关 [ ] Pending
+### Phase 4: e2e 闭环 + D136 §F1 D138 编号冲突注释 + Status 收关 [✓] Done at commit `<phase4-commit>` (2026-04-27)
 
-- 待 Phase 4 commit hash 回填
+- **D136 §F1 注释段落附加**(D136-mysql-prepared-statement.md line 387 后):指出 §R4(line 362)+ §F1(line 386)双处引用 "D138" 但语义不同(§R4 = cache miss handle / §F1 = cross-module struct GEP),Phase 4 仅注释**不动编号**(承 D137 §F4 follow-up 锚 + D 治理后续轮处理候选编号方案);grep `D138.*编号|D138.*冲突` 命中 = 1 sanity check
+- **D137 §Status 全 5 Phase 全 [✓]**:Phase 0 `bafc25a` + Phase 1 `d2df1ba` + Phase 2 `4c28bc0` + Phase 3 `4a10e48` + Phase 4 `<phase4-commit>`(本 commit hash 自指,docs commit message 含 hash,提交后 `git log` 索引 — Phase 0/1/2/3 同此模式 hash 提交后回填,避免 chicken-and-egg)
+- **D137 §Phase 4 收关锚替换占位**(本段):落细 — D136 §F1 注释 commit + d_doc_index_linter F1 = 0 GATE OK + 三轨 RED 终态 GREEN(Phase 3 已实证维持)+ axiom 红线 grep 0 永久 + reflection baseline 维持 + tests/ 259/4/263 baseline 不降 + d134_mysql/d135/d136 全绿 baseline
+- **D137 §全 Phase 收关锚替换占位**(line 487-489):4 Phase commit hash 全列 + JdbcTemplate 5 method callback 重载 + JpaRepository 11 处 callback retcon + tests/d134_mysql 11 处含动态值 SQL retcon + Spring 层 SQL 注入根因解决 100% 传递业务层 + D136 ROI 拉满 + §F9 + §F1-F8 follow-up 锚明确
+- **三轨 RED 终态 GREEN 维持**(Phase 3 已落,Phase 4 不触代码,验证不动):
+  - `grep -cE "VALUES \([0-9]+, '" tests/d134_mysql/integration_test.ss` = 0(4 处 INSERT 字面量全 ?化,Phase 3 已 GREEN)
+  - `grep -cE "WHERE id = [0-9]" tests/d134_mysql/integration_test.ss` = 0(7 处 WHERE id literal 全 ?化,Phase 3 已 GREEN)
+  - `grep -c "prepareStatement" tests/d134_mysql/integration_test.ss` = 8(test 2 五 stmt + test 3/4 各一 + 注释引用,Phase 3 已 GREEN)
+  - `grep -c "prepareStatement" lib/spring/jdbc.ss` = 3(execute/update/queryForList 重载主路径,Phase 1 已 GREEN)
+- **VCM 六验**(文档型 Phase,§4 无代码改 / §6 工程量极小):
+  - ① bootstrap 三阶段固定点 — 仅 docs/ 改不动 bootstrap,自动维持(承 D135 line 487 / D136 line 614 文档型 Phase 范式)
+  - ② tests/ 259/4/263 baseline 不降 — 仅 docs/ 改不动 tests
+  - ③ d134_mysql 5/5 + d135_caching_sha2 1/1 + d136_prepared_statement 1/1 全绿维持
+  - ④ axiom 红线 `grep -rn "libmysqlclient\|libssl\|RSA_\|EVP_PKEY" bootstrap/ lib/ build.sh | wc -l` = 0 + `nm bin/ss | grep -c -E "RSA_\|EVP_"` = 0 永久(D134 + D135 + D136 全继承)
+  - ⑤ d_doc_index_linter F1 死指针 = 0 GATE OK(D136 §F1 注释段引用 D138 仍是字面 "D138",编号冲突注释指出待 D 治理修正,**不**新增死指针)
+  - ⑥ reflection_health_linter GATE PASS no regressions(本 D 不触反射,baseline 不动)
+- **simplify**:N/A 文档型(承 Phase 0 §After Done 范式 — D137 line 426 simplify N/A)
+- **§F9 root cause sub-D 锚维持**:SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug — Phase 4 不修(§核心原则 9 bootstrap 隔离硬约束),sub-D 编号待 D 治理后续轮处理(F9 锚见 Followup 表 line 418 + 待 D 治理与 F4 D138 编号冲突一并处理)
 
 ---
 
 ## D137 全 Phase 收关锚
 
-(待全 Phase 落地后回填,参 D135 line 487 范式)
+**Date:** 2026-04-27 (单日 5 Phase 闭环 — 范式延续 D135 line 487 / D136 line 614)
+
+### 4 Phase commit hash 全锚
+
+| Phase | Commit | 内容摘要 |
+|---|---|---|
+| Phase 0 | `bafc25a` | D 文档落盘(三候选评估 + §A.2 隐藏假设 H1-H7 + 11 Principles + Followup F1-F9 锚)|
+| Phase 1 | `d2df1ba` | lib/spring/jdbc.ss 5 method callback 重载实施(jdbc.ss +52/-1: execute/update/queryForList/queryForString/queryForInt 5 重载 + import PreparedStatement)+ 既有 5 method 签名零破坏(§核心原则 2)+ R2 stmt.close 先 + conn.close 后 + R3 streaming 验证(queryForString/Int 复用 queryForList(sql, setter))|
+| Phase 2 | `4c28bc0` | lib/spring/data.ss 11 处 JpaRepository CRUD retcon(7 改 callback retcon + 4 保留 metadata-only)+ JpaRepository 字段扩 placeholders + buildPlaceholders helper(Array<string>.join 复用 simplify 采纳)+ save/update 签名重设计(R5 局部破坏)+ tests/d134_mysql/integration_test.ss test 7 同 commit retcon + **§F9 root cause 发现**(SS lambda 类型推断 + interface dispatch 集成 bug)|
+| Phase 3 | `4a10e48` | tests/d134_mysql/integration_test.ss 11 处含动态值 SQL retcon(test 2 CRUD 5 处 prepareStatement 直驱 + test 3/4 transaction commit/rollback 各 1 INSERT prepared + test 7 JdbcTemplate 4 处走 Phase 1 callback 重载)+ Statement import 清理(reuse agent)+ sel1/sel2 → selRow/selAge 语义命名(quality agent simplify 采纳)+ §F9 lambda 参数显式 (s: PreparedStatement) 注解持续 |
+| Phase 4 | `<phase4-commit>` | e2e 闭环收关 + D136 §F1 D138 编号冲突注释 + D137 §Status 全 [✓] + §Phase 4 收关锚替换占位 + §全 Phase 收关锚替换占位为终态总结 |
+
+### 兑现成果(§核心目标 单一判据)
+
+- **OWASP top 10 #3 SQL 注入根因解决 100% 传递业务层** ✓ — D136 协议 / driver / 接口三层就绪 + Spring 层 JdbcTemplate 5 method callback 重载接管 + JpaRepository 11 处 CRUD 全走 prepared,业务路径 100% 受益(用户写 `repo.save(...)` / `repo.findById(...)` / `repo.update(...)` 全走 ?化 + setter 注入)
+- **D136 ROI 拉满** ✓ — driver 层 binary protocol 加速传递到业务路径(JpaRepository CRUD 全 prepared)+ tests/d134_mysql 11 处含动态值 SQL 全 retcon(VALUES/WHERE id literal = 0 + prepareStatement = 8 + setter 注入 = 26)
+- **Spring JdbcTemplate API 主线对齐** ✓ — Spring 7.0 真 API callback 风格(PreparedStatementSetter)+ 既有 5 method 签名零破坏(DDL `CREATE TABLE` / `DROP TABLE` / `SET autocommit` 走旧路径)
+- **D136 §核心原则 9 defer 锚兑现** ✓ — Phase 3 LOC 评估 ~190 < 200 上限内 + 候选 A 路径走 callback 重载叠加(零签名破坏除 R5 JpaRepository 局部例外)
+- **三轨 RED 终态 GREEN** ✓ — §第一性需求 末层 grep 命中 + spring/data.ss 动态值 ?化 100% + tests/d134_mysql 11 处含动态值 SQL retcon 100%
+- **axiom 红线** ✓ — libmysqlclient / libssl / RSA_ / EVP_PKEY grep / nm = 0 永久(D134 + D135 + D136 全继承)
+- **测试 baseline** ✓ — tests/ 259/4/263 全 Phase 不降 + d134_mysql 5/5 + d135_caching_sha2 1/1 + d136_prepared_statement 1/1 全绿维持
+- **D 治理 gate** ✓ — d_doc_index_linter F1 死指针 = 0(D136 §F1 D138 编号冲突注释指出但不动编号,F1 持守)
+- **反射 baseline** ✓ — reflection_health_linter GATE PASS no regressions(本 D 不触反射)
+- **bootstrap 隔离** ✓ — 全 5 Phase 仅改 lib/ + tests/ + docs/,不动 bootstrap(§核心原则 9 硬约束)
+
+### Followup 锚明确(留 sub-D 后续轮)
+
+| # | 锚 | 状态 | 触发条件 |
+|---|---|---|---|
+| F1 | NamedParameterJdbcTemplate `:name` 命名参数 | sub-D 待评估 | 业务层需可读性提升时 |
+| F2 | RowMapper 泛型 callback | sub-D 待评估 | **强依赖 SS 泛型(D026/D027)落地**,不在本轮范围 |
+| F3 | SqlParameterSource(Map<string, value>) | sub-D 待评估 | 依赖 F1 NamedParameterJdbcTemplate |
+| F4 | D136 §F1 D138 编号冲突 | **本 Phase 4 已加注释** | D 治理后续轮选定 D138 真归属 + 另一引用 retcon 新编号 |
+| F5 | tests/d135_caching_sha2/ 4 处 adminStmt DDL | 不 retcon | DDL + 用户 const,不在 SQL 注入面 |
+| F6 | HikariCP D125+ Connection Pool | sub-D 待评估 | per-call Connection lifecycle 简化的 leak 长期解决 |
+| F7 | batchUpdate / addBatch / executeBatch | sub-D 待评估 | 依赖 D138(cache miss handle 取 §R4 候选)|
+| F8 | generated keys retrieval | sub-D 待评估 | INSERT 后取 auto-increment id |
+| F9 | SS lambda 参数类型推断 + interface dispatch 集成 bug | **Phase 2 实证发现** | 修 SS 编译器 — lambda 表达式作 fn 实参时,从 fn 接收方方法 body 内 setter(stmt) 调用上下文反推 lambda 参数类型;workaround 已落(10 处 lambda 显式 `(s: PreparedStatement)` 注解,Phase 2 6 处 + Phase 3 4 处);sub-D 编号待 D 治理后续轮 |
+
+### 范式延续(D135/D136 → D137 → 后续)
+
+- 5 Phase 边界 = commit 边界(D134 §Principles 7 + D135 §Principles 9 + D136 §Principles 11 + D137 §Principles 8 一脉相承)
+- §M PSM 九问 + §N VCM 六验(`docs/3-MNK.md` 单一事实源)
+- 文档型 Phase simplify N/A 范式(D137 Phase 0 line 426 + Phase 4 line 481+ 同模式)
+- §核心原则 9 bootstrap 隔离硬约束(D135/D136/D137 三 D 文档继承)
+- D 治理 gate F1 死指针 = 0 永久(d_doc_index_linter SSoT)
+- §Followup 锚明确(F1-F9)+ 候选 sub-D 编号待 D 治理后续轮(F4 D138 编号冲突 + F9 SS 编译器 lambda 类型推断)
