@@ -137,8 +137,8 @@ function checkExpr(id: int) {
                 checkArgCount("method", methodName, argCount, mMin, mMax, nGetLine(id), nGetCol(id))
             }
         }
-        // Check argument types (when receiver class is known)
-        if (recvClass != "") {
+        // Check argument types (non-overloaded methods only)
+        if (recvClass != "" && methodOverloaded.has(`${recvClass}.${methodName}`) == 0) {
             const mcArgList = nGetList(id)
             if (hasSpreadArg(mcArgList) == 0 && mcArgList != "") {
                 const mcArgs = mcArgList.split(",")

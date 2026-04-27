@@ -163,8 +163,15 @@ function checkAbstractImpl(className: string, parentName: string, ownMethods: st
 
 function registerMethodParams(className: string, methodName: string, minArgs: int, maxArgs: int) {
     const key = `${className}.${methodName}`
-    methodParamMin.set(key, `${minArgs}`)
-    methodParamMax.set(key, `${maxArgs}`)
+    if (methodParamMin.has(key) == 1) {
+        const existMin = parseInt(methodParamMin.getString(key))
+        const existMax = parseInt(methodParamMax.getString(key))
+        if (minArgs < existMin) { methodParamMin.set(key, `${minArgs}`) }
+        if (maxArgs > existMax) { methodParamMax.set(key, `${maxArgs}`) }
+    } else {
+        methodParamMin.set(key, `${minArgs}`)
+        methodParamMax.set(key, `${maxArgs}`)
+    }
 }
 
 // Walk parent chain to find method param counts. Returns "min,max" or "".
@@ -416,14 +423,18 @@ function registerCheckerClassDecl(s: int, overrideName: string) {
                     }
                     const mRange = countParamRange(nGetList(cmId))
                     const mComma = mRange.indexOf(",")
+                    const mKey = `${className}.${mName}`
+                    if (methodParamMin.has(mKey) == 1) {
+                        methodOverloaded.set(mKey, "1")
+                    }
                     registerMethodParams(className, mName, parseInt(mRange.substring(0, mComma)), parseInt(mRange.substring(mComma + 1, mRange.length() - mComma - 1)))
                     if (classTypeParams(s) == "") {
                         const mRetType = nGetS2(cmId)
-                        if (mRetType != "") {
-                            methodRetTypes.set(`${className}.${mName}`, mRetType)
+                        if (mRetType != "" && methodOverloaded.has(mKey) == 0) {
+                            methodRetTypes.set(mKey, mRetType)
                         }
                         const mPList = nGetList(cmId)
-                        if (mPList != "") {
+                        if (mPList != "" && methodOverloaded.has(mKey) == 0) {
                             const mParts = mPList.split(",")
                             let mPIdx = 0
                             for (mp in mParts) {
@@ -431,7 +442,7 @@ function registerCheckerClassDecl(s: int, overrideName: string) {
                                 if (mpId > 0 && nGetKind(mpId) == "PARAM") {
                                     const mpType = nGetS2(mpId)
                                     if (mpType != "") {
-                                        methodParamTypes.set(`${className}.${mName}:${mPIdx}`, mpType)
+                                        methodParamTypes.set(`${mKey}:${mPIdx}`, mpType)
                                     }
                                     mPIdx = mPIdx + 1
                                 }

@@ -44,6 +44,7 @@ let funcParamTypes = ""     // "funcName:paramIndex" -> type string
 let funcOverloaded = ""     // "funcName" -> "1" if overloaded (skip type check)
 let methodParamTypes = ""   // "ClassName.methodName:paramIndex" -> type string
 let methodRetTypes = ""     // "ClassName.methodName" -> return type string
+let methodOverloaded = ""   // "ClassName.methodName" -> "1" if overloaded (skip type check) — D140 mirror funcOverloaded
 let currentFuncRetType = "" // current function's declared return type (for RETURN type checking)
 let currentTypeParams = ""  // current function's type parameters (comma-separated, for generic compat)
 let checkerGenericClasses = "" // "ClassName" -> "1" if class has type parameters
@@ -86,6 +87,7 @@ function initChecker() {
     funcOverloaded = Map()
     methodParamTypes = Map()
     methodRetTypes = Map()
+    methodOverloaded = Map()
     currentFuncRetType = ""
     currentTypeParams = ""
     checkerGenericClasses = Map()
