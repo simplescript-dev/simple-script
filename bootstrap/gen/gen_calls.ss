@@ -273,6 +273,10 @@ function resolveCallArgs(callee: string, argList: string, typeCallee: string): s
         for (ap in argParts) {
             const argId = parseInt(ap)
             if (argId > 0) {
+                // D141 Phase 2.2: untyped lambda 反推 — 查 funcParamTypes[typeCallee:argIdx]
+                // 拿 callee PARAM 结构化签名 fn(...):R,提取 Pi 反填 ARROW_FUNC PARAM s2
+                // (gen_arrows.ss:135 直读 PARAM s2 / emitParamAllocas:26 setVarType 自然走通 H10)
+                inferArrowFuncParams(argId, typeCallee, argIdx)
                 let val = genExpr(argId)
                 let vType = inferType(argId)
                 const ptKey = `${typeCallee}:${argIdx}`
@@ -505,7 +509,7 @@ function genCall(id: int): string {
     const llRetType = ssTypeToLLVM(retType)
 
     // Indirect call: function pointer variable (supports closures via tag bit)
-    if (getVarType(callee) == "fn" || getVarType(callee) == "i64") {
+    if (isFnType(getVarType(callee)) == 1 || getVarType(callee) == "i64") {
         const fpVal = nextReg()
         emitIR(`  ${fpVal} = load i64, ptr ${varRef(callee)}, align 8`)
         // Check tag bit 0: if set, this is a closure

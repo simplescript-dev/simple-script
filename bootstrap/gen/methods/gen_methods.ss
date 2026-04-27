@@ -179,27 +179,33 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
             break
         }
     }
-    // Build args: static calls skip this, instance calls include this as first arg
-    let callArgs = ""
-    if (isStatic == 0) { callArgs = `ptr ${objVal}` }
-    if (argList != "") {
-        const argParts = argList.split(",")
-        for (ap in argParts) {
-            const argId = parseInt(ap)
-            if (argId > 0) {
-                let aVal = genExpr(argId)
-                let aType = inferType(argId)
-                if (callArgs != "") { callArgs = `${callArgs}, ` }
-                callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
-            }
-        }
-    }
-    // Resolve overloaded method name
+    // D141 Phase 2.2: 提前 resolve mangled name 以便 args 循环里反推 ARROW_FUNC PARAM
+    // (typeSig 把任何 fn 形式压缩为 "f",反推前后 sig 一致,resolve 不受 ARROW_FUNC inferType 结构化影响)
     let resolved = `${methodClass}_${method}`
     if (isOverloaded(resolved) == 1) {
         const sig = argsSig(argList)
         if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
             resolved = `${resolved}_${sig}`
+        }
+    }
+    // Build args: static calls skip this, instance calls include this as first arg
+    let callArgs = ""
+    if (isStatic == 0) { callArgs = `ptr ${objVal}` }
+    if (argList != "") {
+        const argParts = argList.split(",")
+        let cmcArgIdx = 0
+        for (ap in argParts) {
+            const argId = parseInt(ap)
+            if (argId > 0) {
+                // D141 Phase 2.2: untyped lambda 反推 — 查 funcParamTypes[resolved:cmcArgIdx]
+                // 反填 ARROW_FUNC PARAM s2(D137 §F9 主线场景 — JdbcTemplate.update(sql, lambda))
+                inferArrowFuncParams(argId, resolved, cmcArgIdx)
+                let aVal = genExpr(argId)
+                let aType = inferType(argId)
+                if (callArgs != "") { callArgs = `${callArgs}, ` }
+                callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
+                cmcArgIdx = cmcArgIdx + 1
+            }
         }
     }
     let retType = "ptr"
@@ -526,7 +532,7 @@ function genMethodCall(id: int, preObj: string = ""): string {
     // fn field call: obj.field() where field is fn type → load field, indirect call
     if (objClass != "") {
         const fnFieldType = classFieldTypes.getString(`${objClass}.${method}`)
-        if (fnFieldType == "fn") {
+        if (isFnType(fnFieldType) == 1) {
             return genFnFieldCall(objClass, method, objVal, argList)
         }
     }

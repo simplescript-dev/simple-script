@@ -15,6 +15,26 @@ function evalCall(astId: int): int {
             return 0 - constVal(genGenericCall(astId, callName, callArgList)) - 1
         }
     }
+    // D141 Phase 2.2: 在 pre-eval 之前 resolve mangled name + 反推 ARROW_FUNC PARAM s2
+    // (eval/call.ss pre-eval `genVal(callArgId)` 触发 genArrowFunc 必须先看到回填的 PARAM s2)
+    if (comptimeDepth == 0 && callArgList != "") {
+        let callResolvedR = callName
+        if (overloadCount.has(callName) == 1 && parseInt(overloadCount.getString(callName)) > 1) {
+            const callSigR = argsSig(callArgList)
+            if (callSigR != "" && funcRetTypes.has(`${callName}_${callSigR}`) == 1) {
+                callResolvedR = `${callName}_${callSigR}`
+            }
+        }
+        const callArgPartsR = callArgList.split(",")
+        let callArgIdxR = 0
+        for (capR in callArgPartsR) {
+            const callArgIdR = parseInt(capR)
+            if (callArgIdR > 0) {
+                inferArrowFuncParams(callArgIdR, callResolvedR, callArgIdxR)
+                callArgIdxR = callArgIdxR + 1
+            }
+        }
+    }
     const savedCallPreRegs = callPreRegs
     callPreRegs = new Map()
     let callCtArgVals: Array<string> = []

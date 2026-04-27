@@ -48,7 +48,28 @@ function checkerInferType(nodeId: int): string {
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
     if (kind == "NULL_LIT") { return "null" }
     if (kind == "ARRAY_LIT") { return "Array" }
-    if (kind == "ARROW_FUNC") { return "fn" }
+    if (kind == "ARROW_FUNC") {
+        // D141 Phase 2.1: ARROW_FUNC inferType 返结构化签名 fn(P1,...):R(H11)
+        // 全 PARAM s2="" 时降级为单一 "fn"(向后兼容 isTypeCompatible startsWith("fn") + typeSig "f" 路径)
+        const arrowParamList = nGetList(nodeId)
+        let arrowParamTypes = ""
+        let hasAnyAnnotated = 0
+        if (arrowParamList != "") {
+            const arrParamParts = arrowParamList.split(",")
+            for (apId in arrParamParts) {
+                const aPid = parseInt(apId)
+                if (aPid <= 0) { continue }
+                if (nGetKind(aPid) != "PARAM") { continue }
+                const aPtype = nGetS2(aPid)
+                if (aPtype != "") { hasAnyAnnotated = 1 }
+                if (arrowParamTypes == "") { arrowParamTypes = aPtype } else { arrowParamTypes = `${arrowParamTypes},${aPtype}` }
+            }
+        }
+        if (hasAnyAnnotated == 0) { return "fn" }
+        let arrowRetT = nGetS2(nodeId)
+        if (arrowRetT == "") { arrowRetT = "void" }
+        return `fn(${arrowParamTypes}):${arrowRetT}`
+    }
     if (kind == "THIS") { return currentCheckerClass }
     if (kind == "SUPER") {
         if (currentCheckerClass != "" && checkerClassParents.has(currentCheckerClass) == 1) {

@@ -1,6 +1,6 @@
 # D141: SS Lambda 参数类型推断 + Interface Dispatch 集成
 
-**Status:** Phase 1 — RED 复现 + 信息源探查(In Progress)
+**Status:** Phase 2 — codegen 阶段反推实施 + G1 路径(callee PARAM 结构化签名)(In Progress)
 **Depends on:** D025(interface dispatch)/ D137(JdbcTemplate prepared retcon — §F9 follow-up 锚)
 **Date:** 2026-04-27
 **Last Updated:** 2026-04-27
@@ -49,6 +49,9 @@
    | 文件 | 行号 | 角色 |
    |------|------|------|
    | `bootstrap/parse/parse_exprs.ss` | 270-308 | `parseArrowFunc()` — ARROW_FUNC 节点构造,PARAM s1=name / s2=type(无注解时空)|
+   | `bootstrap/parse/parser.ss` | 803-850 | `parseTypeAnn()` — 类型 annotation 解析入口,**Phase 2.0 扩**:IDENT "fn" + LPAREN → 解析 `fn(T1,T2):R` 结构化签名(H12)|
+   | `lib/spring/jdbc.ss` | 32 + 51 + 73 + 90 + 110 | 5 处 `setter: fn` callee PARAM — Phase 2.3 升级目标 |
+   | `lib/spring/data.ss` | 33 + 91 | 2 处 `setter: fn` callee PARAM — Phase 2.3 升级目标 |
    | `bootstrap/checker/check_types.ss` | 51 | `if (kind == "ARROW_FUNC") { return "fn" }` — **当前**单一类型,信息丢失 |
    | `bootstrap/checker/check_thread.ss` | 36 | `if (kind == "ARROW_FUNC") { return }` — thread closure check 跳过 ARROW_FUNC,**Phase 2 是否同模式扩到 PARAM 反推待评估** |
    | `bootstrap/checker/check_exprs.ss` | 169 | `if (tsFirstArgId > 0 && nGetKind(tsFirstArgId) == "ARROW_FUNC")` — 已有"fn 实参 + ARROW_FUNC 实参"识别先例,Phase 2 沿此模式扩到通用 fn/method 实参反推 |
@@ -193,6 +196,18 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 
 **决策行**:**选 C2 接口层 trap** 因 (a) 单点信息源回填,消除 PARAM s2 缺失的假设破裂入口;(b) codegen 路径 100% 不变,gen_arrows.ss:135 直读 s2 仍 GREEN;(c) workaround 10 处可全删(Phase 4 cleanup 落锚);(d) scope 可控 ~200 LOC delta。**为何不选 C1**:数据层 zero-spread,不消除根因(`feedback_root_cause_no_cost.md` 红线 — 数据层 patch 多处零散补 fallback)。**为何不选 C3**:scope 爆炸 — bidirectional type checking 全局 refactor 远超 D141 单 sub-D scope,留作未来 D026/D027 generic 实施时再评估。
 
+### A.1.1 C2 实施路径对比(Phase 2 起首,2026-04-27 G 系列追加)
+
+> Phase 2 起首查源:`lib/spring/(jdbc + data).ss` 7 处 callee PARAM 类型 annotation 写为 `setter: fn`(单一 "fn" 字符串,无具体形参签名)— C2 反推路径在此 callsite 取到 `inferredType="fn"`,无法提取 P1 类型,反推空转。下分三路径定 callee PARAM 类型表达力。
+
+| 路径 | 描述 | 解决度 | LOC | 影响 | 决策 |
+|------|------|--------|-----|------|------|
+| **G1** | **callee PARAM 类型签名结构化** — `setter: fn` → `setter: fn(PreparedStatement):void`;parser.ss:803 parseTypeAnn 扩 fn 类型 annotation 解析(`fn(T1,T2,...):R` 结构化字符串);funcParamTypes 存结构化签名;反推时 `extractFnParamType("fn(PreparedStatement):void", 0)` 提取 P1 = "PreparedStatement";**TS / Java 8+ contextual typing 主线** | 100% | parser+checker+codegen+lib(jdbc+data 7 处)≈400-500 | Phase 4 lambda 注解 cleanup 仍可推进(callee 签名结构化与 lambda 注解删除独立) | **选** |
+| G2 | callsite 双向反推 — 从 lambda 实参类型反推 ARROW_FUNC PARAM(eg `f(psB)` 用 psB 类型反推 s 类型);不依赖 callee PARAM 类型签名结构化 | 70% | gen_calls.ss + gen_methods.ss ≈150 | 漏 fn binding 间接链(eg `const f = save; f(stmt)` 双重间接);不破 lib/spring/data.ss `setter: fn` 现状 | 不选 — 漏 fn binding 链 + 偏离 TS/Java 8+ 主线 |
+| G3 | 接受 gap,Phase 2 仅做 (a) 预备 — check_types.ss:51 改 ARROW_FUNC 返结构化签名,(b)(c) 反推机制因 callee PARAM 仍为 "fn" 实际不生效;主线 D137 §F9 lambda cleanup 延期 | 0% | check_types.ss:51 单点 ≈10 | 主线 cleanup 延期;反推机制空转 | 不选 — 空转无意义,违反 `feedback_root_cause_no_cost.md` |
+
+**G1 决策(2026-04-27 用户对话锁定)**:走 G1 — 根因 100% + TS / Java 8+ 主线匹配 + scope 可控。**为何不选 G2**:漏 fn binding 间接链;且偏离 TS / Java 8+ contextual typing 主线(TS `(s) => s.setInt(...)` 反推靠 callee 形参签名,不靠实参类型)。**为何不选 G3**:反推机制空转,违反 `feedback_root_cause_no_cost.md` 红线(根因解决度 0%)。
+
 ---
 
 ## A.2 隐藏假设挑战(Plan 型 §④ 替换配套)
@@ -210,6 +225,9 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 | H8 | reflection_health_linter GATE 不破 | checker 改 `check_types.ss:51` ARROW_FUNC 返结构化 fn 签名 — 是否破反射路径 14 指标(M1-M7b + N1-N5)| Phase 2 后跑 `bin/ss run tools/reflection_health_linter.ss` GATE PASS | GATE BLOCK → 走 §MNK §反射路径根因 gate B 路径(扩容申报 + 升 baseline + D 文档 §扩容申报段)|
 | H9(Phase 1 新增)| var binding 调用 vs method/fn 直接 callee 反推路径差异 | `/tmp/spike_lambda_typed.ss` Test 2 用 `const f = (s) => ...; f(psB)` — callee `f` 是 var binding 不是 function decl,IDENT lookup 不到 funcParamTypes;主线 D137 §F9 场景是 method call `tmpl.update(sql, callback)` — callee 是 mangled method 名(`Template_update`)在 funcParamTypes | Phase 1 实测 untyped spike — IR `define i32 @__arrow_1(i32 %s.arg)` ⚠️ + body 内 `; TODO: method call .setInt` 静默丢失;**var binding 反推走 RHS 推断**(`const f = (s) => ...` 时 RHS ARROW_FUNC s2="" 无法反推),**方法/函数调用反推走 callee:argIdx**;Phase 2 必须区分两条路径 | var binding 不支持反推 → 用户 var binding 时仍需显式注解(Java 8 风格 fallback 保留),不影响 D137 §F9 主线 cleanup;Phase 3 补 method call 形式 spike 验证主线场景 |
 | H10(Phase 1 新增)| lambda body 内 method dispatch 链路自然走通 | `gen_decls.ss:26 emitParamAllocas` 已调 `setVarType(pName, pType)`,但 PARAM s2="" 时 setVarType(s, "") → getVarType(s) 拿不到类型 → resolveObjClass("") 失败 → method call emit `; TODO: method call .setInt` 静默丢失 | **核心修复链**:PARAM s2 一旦回填,setVarType(s, "PreparedStatement") 自然写入 → lambda body 内 `s.setInt(...)` 走 method dispatch 时 getVarType(s) = "PreparedStatement" → resolveObjClass 解析成功 → vtable indirect 路径 GREEN;**不需另外加 setVarType 调用**,emitParamAllocas:26 已存在 | Phase 1 实测对比:typed `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` ✅;untyped `define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt` ⚠️ — 两路径差仅在 PARAM s2 回填,验证修复链单点 | 修复链断 → 回 Phase 2 检查 setVarType pType 传值是否被 ssTypeToLLVM 提前消费 |
+| H11(Phase 2 新增)| callee PARAM 类型签名必须结构化才能反推 | `lib/spring/(jdbc + data).ss` 现状 7 处 `setter: fn`,funcParamTypes 存 "fn" 单一字符串无形参签名信息;反推空转 | **G1 路径**:升级 7 处 `setter: fn` → `setter: fn(PreparedStatement):void` 结构化签名;parser.ss:803 parseTypeAnn 扩 fn 类型 annotation 解析(IDENT "fn" + LPAREN);funcParamTypes 存结构化字符串(无 schema 改,gen_registry.ss:56-57 仍 nGetS2 字面值);反推 helper `extractFnParamType("fn(PreparedStatement):void", 0)` 解析返 "PreparedStatement" | Phase 2.0 实测 parser 解析 `fn(T):R` 字符串 + Phase 2.3 lib/spring/(jdbc+data) 升级后 funcParamTypes 实测含结构化 + Phase 2.2 反推实测 nSetS2 回填 PreparedStatement | callee PARAM 升级后反推不通 → 检查 funcParamTypes 注册路径(普通函数 codegen.ss:110 / class method gen_registry.ss:56)是否完整存结构化 + extractFnParamType 解析逻辑 |
+| H12(Phase 2 新增)| parser fn 类型 annotation 扩不破现有类型解析 | parser.ss:803 parseTypeAnn IDENT 分支扩 `name=="fn"` + LPAREN → 解析 fn(T1,T2):R;不影响 IDENT 名 != "fn" 路径;不影响 generic `Name<T>` 路径;不影响 nullable `T?` 路径 | parseTypeAnn 单点扩 + bootstrap 三阶段固定点 PASS + tests/ baseline 不降 | parser 扩破现有解析 → 撤回扩 → 改用 `Function<T,R>` / `Consumer<T>` Java 8 风格 generic 类型 + ifaceMethodsCG 注册 |
+| H13(Phase 2 新增)| 反推失败硬错粒度 — 结构化 callee 硬错 / 非结构化 callee skip | **结构化 callee**(funcParamTypes 含 `fn(...):R`):extractFnParamType 取不到 → `codegenError` 硬错(用户应改 callee 签名 / 加 lambda 显式注解);**非结构化 callee**(funcParamTypes 仍是 "fn"):反推 skip(不破现有 `setter: fn` + typed lambda 显式注解路径)| Phase 2.2 实测 lib/spring/jdbc.ss 升级前(setter: fn)反推 skip / 升级后(setter: fn(PreparedStatement):void)反推回填;Phase 4 cleanup 删 typed 注解后,untyped lambda 走结构化反推 | 硬错粒度过严 → tests/ break → 调整粒度为 silent skip + warn |
 
 ---
 
@@ -257,31 +275,58 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - (c) H9/H10 新假设入档 → Phase 2 实施需区分 var binding vs method call 反推路径 + Phase 3 补 method call 形式 spike
 - (d) H10 验证修复链单点 → setVarType 链路自然走通,PARAM s2 回填即修复
 
-### Phase 2: codegen 阶段反推实施(H1 破裂修正路径)[ ] Planned
+### Phase 2: codegen 阶段反推实施 + G1 路径(H1 破裂修正 + H11 callee 结构化前置)[ ] In Progress
 
-> Phase 1 探查确认 H1 破裂 — checker 阶段 funcParamTypes 用户函数为空。Phase 2 入口从 checker 挪到 codegen,信息源仍 funcParamTypes,scope 不变。
+> Phase 1 探查确认 H1 破裂 — checker 阶段 funcParamTypes 用户函数为空。Phase 2 入口从 checker 挪到 codegen,信息源仍 funcParamTypes;Phase 2 起首查源确认 `lib/spring/(jdbc+data).ss` 7 处 callee PARAM 类型 annotation 写 `setter: fn`(单一字符串无形参信息),反推空转 — 走 G1 路径(callee 类型签名结构化前置)。
 
-- `bootstrap/checker/check_types.ss:51` ARROW_FUNC 改返 `fn(P1,P2,...):R` 结构化签名(向后兼容:`startsWith("fn")` 判断仍走原路径;**类型表达力前置,checker 阶段不消费,留给 codegen 间接消费 / 未来 D026/D027 generic 时再消费**)
-- **codegen 阶段反推回填**(主路径) — `bootstrap/gen/gen_calls.ss:231 resolveCallArgs` + `bootstrap/gen/methods/method_call.ss` 内 lambda 作 fn/method 实参时反推 PARAM s2 回填:
+**Phase 2.0** — parser 扩 fn 类型 annotation 解析:
+- `bootstrap/parse/parser.ss:803 parseTypeAnn` IDENT 分支扩 `name=="fn"` + LPAREN → 解析 `fn(T1,T2,...):R` 结构化签名,返回字符串 `fn(${params}):${retT}`
+- 兼容现有 `setter: fn`(无 LPAREN 跟随仍返 "fn",H12 不破)
+
+**Phase 2.1** — `bootstrap/checker/check_types.ss:51` ARROW_FUNC inferType 返结构化签名:
+- 计算 PARAM s2 + retType,返 `fn(${P1Type},${P2Type},...):${RetType}`(向后兼容:全 PARAM s2="" 降级 "fn",isTypeCompatible startsWith("fn") 判断仍走原路径)
+
+**Phase 2.2** — codegen 阶段反推回填(主路径):
+- `bootstrap/gen/gen_calls.ss:231 resolveCallArgs` + `bootstrap/gen/methods/gen_methods.ss:170 emitClassMethodCall` + `gen_methods.ss:691 genInterfaceMethodCall` 内识别 ARROW_FUNC 实参 + 查 funcParamTypes 反推 PARAM s2 回填:
   ```
-  // 在 resolveCallArgs / dispatchMethod 内 args 解析时,识别 ARROW_FUNC 实参 + 查 funcParamTypes 反推
+  // 反推 helper:从 fn(T1,T2):R 提取 Ti
+  function extractFnParamType(fnSig: string, idx: int): string { ... }
+
+  // 在 args 循环内
   for (argId in args) {
       if (nGetKind(argId) == "ARROW_FUNC") {
-          for (paramId in nGetList(argId)) {
-              if (nGetS2(paramId) == "") {  // H6 显式优先
-                  const inferredType = funcParamTypes.get(`${calleeName}:${argIndex}`)
-                  if (inferredType != "") {
-                      nSetS2(paramId, inferredType)  // PARAM s2 回填,gen_arrows.ss:135 直读 ptr,emitParamAllocas:26 setVarType 自然走通(H10)
-                  } else {
-                      codegenError(`cannot infer lambda param type for ${calleeName} arg ${argIndex}`)  // H4 hard error
+          const ptKey = `${typeCallee}:${argIndex}`
+          if (funcParamTypes.has(ptKey) == 1) {
+              const calleeParamType = funcParamTypes.getString(ptKey)  // eg "fn(PreparedStatement):void"
+              if (calleeParamType.startsWith("fn(") == 1) {  // 结构化签名才反推
+                  const arrowParams = nGetList(argId).split(",")
+                  let pi = 0
+                  for (paramId in arrowParams) {
+                      if (nGetS2(paramId) == "") {  // H6 显式优先
+                          const inferredType = extractFnParamType(calleeParamType, pi)
+                          if (inferredType != "") {
+                              nSetS2(paramId, inferredType)  // PARAM s2 回填,gen_arrows.ss:135 直读 ptr,emitParamAllocas:26 setVarType 自然走通(H10)
+                          } else {
+                              codegenError(...)  // H13 结构化 callee 硬错
+                          }
+                      }
+                      pi = pi + 1
                   }
               }
+              // 非结构化(calleeParamType=="fn"):反推 skip(H13 不破现有 setter: fn 路径)
           }
       }
   }
   ```
-- bootstrap 三阶段固定点 PASS + spike untyped → IR `define i32 @__arrow_1(ptr %s.arg)` + body `call void @__iface_PreparedStatement_setInt(...)` GREEN + 实测 result=1
-- d134_mysql 5/5 + d136_prepared_statement 1/1 baseline 不降
+
+**Phase 2.3** — `lib/spring/(jdbc + data).ss` 升级 callee PARAM 类型签名:
+- jdbc.ss 5 处 + data.ss 2 处 `setter: fn` → `setter: fn(PreparedStatement):void`(setter 调用方式 `setter(stmt)` 不取返回值,确认返回类型 void)
+
+**Phase 2.4** — 验证:
+- bootstrap 三阶段固定点 PASS
+- d134_mysql 5/5 + d136_prepared_statement 1/1 baseline 不降(D137 §F9 既有 10+ 处显式 lambda 注解走 H6 显式优先路径,反推 skip)
+- tests/ 259/4/263 baseline 不降
+- reflection_health_linter GATE PASS no regressions
 
 ### Phase 3: 测试覆盖 + 隐藏假设挑战 [ ] Planned
 
@@ -313,6 +358,21 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 
 ---
 
+## 扩容申报-Phase2-G1
+
+> Phase 2 G1 路径实施触发 4 处 F1 budget_max 越界,均为非反射路径(M/N 均 OK + DRIFT,无 BLOCK)。新加 helper / 反推机制 / parser 扩 fn 类型 annotation 自然增量,跑 `bin/ss run tools/reflection_health_linter.ss` GATE BLOCKED 4 file。按 `docs/3-MNK.md §特定领域 §反射路径根因 gate B 路径` 走扩容申报。
+
+| 文件 | budget_max(旧)| cur(新)| delta | 增量内容 |
+|------|----------------|---------|-------|----------|
+| `bootstrap/parse/parser.ss` | 850 | 870 | +20 | Phase 2.0 parseTypeAnn 扩 `fn(T1,T2,...):R` 结构化函数类型 annotation 解析(IDENT "fn" + LPAREN 分支 ~17 行)|
+| `bootstrap/gen/methods/gen_methods.ss` | 716 | 722 | +6 | Phase 2.2 emitClassMethodCall 提前 resolve mangled name + args 循环 inferArrowFuncParams 反推 ~6 行 |
+| `bootstrap/gen/gen_calls.ss` | 695 | 699 | +4 | Phase 2.2 resolveCallArgs 内 inferArrowFuncParams 反推 ~4 行 |
+| `bootstrap/gen/gen_types.ss` | 792 | 847 | +55 | Phase 2.2 新加 helper:`isFnType`(8 行)+ `extractFnParamType`(15 行)+ `inferArrowFuncParams`(22 行)+ ARROW_FUNC inferType 结构化 codegen 层未改(留后续按需扩)|
+
+申报理由:G1 路径根因 100%(callee PARAM 结构化签名前置),反推机制单点回填,信息源一致;非反射路径触碰(M/N 全 OK / DRIFT 软警告);F1 增量纯结构化新功能码,无样板压注释/合并空行/字符级绕过。`feedback_600_split_not_inline.md` + `feedback_structure_not_linecount.md` 拆分判据是结构清晰(职责单一 / 依赖单向),gen_types.ss 已是类型工具集中处,fn 类型 helper 入此族符合结构归类;后续若 gen_types.ss 拆分按职能(类型推断 / 类型签名 / fn helper / 类型工具)再切。
+
+---
+
 ## Followup
 
 | # | 锚 | 描述 |
@@ -330,4 +390,4 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 
 - 2026-04-27 Phase 0 D 文档落盘(commit `b1becb0`)
 - 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `bb96e27`)— `/tmp/spike_lambda_untyped.ss` 落锚 + IR 层 RED 铁证(`define i32 @__arrow_1(i32 %s.arg)` + `; TODO: method call .setInt`)+ H1 假设破裂确认(checker 阶段 funcParamTypes 用户函数为空)+ 新假设 H9/H10 入档 + Phase 2 入口挪到 codegen 阶段反推
-- (Phase 2 进度在用户对话指示后下一轮起)
+- 2026-04-27 Phase 2 起首 — G1 路径决策锁定(用户对话锁定)— Phase 2 起首查源 `lib/spring/(jdbc+data).ss` 7 处 `setter: fn` 非结构化签名 → 反推空转;§A.1.1 G1/G2/G3 候选对比,选 G1 callee PARAM 结构化签名前置;新假设 H11(结构化必要)/ H12(parser 扩不破)/ H13(反推失败硬错粒度)入档;§Phase 2 拆 2.0/2.1/2.2/2.3/2.4 子步骤;§1 必读清单补 parser.ss:803 + lib/spring/jdbc.ss + lib/spring/data.ss

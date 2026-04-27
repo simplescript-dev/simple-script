@@ -831,6 +831,26 @@ function parseTypeAnn(): string {
         pAdvance()
         // Normalize List → Array (user-facing alias, D021)
         if (name == "List") { name = "Array" }
+        // D141 Phase 2.0: fn(T1,T2,...):R 结构化函数类型签名(H12)
+        // 兼容 `setter: fn` 单一字符串(IDENT "fn" 后无 LPAREN 跟随时仍走 maybeNullable 返 "fn")
+        if (name == "fn" && curKind() == "LPAREN") {
+            pAdvance()
+            let fnParams = ""
+            if (curKind() != "RPAREN") {
+                fnParams = parseTypeAnn()
+                while (curKind() == "COMMA") {
+                    pAdvance()
+                    fnParams = listAppendStr(fnParams, parseTypeAnn())
+                }
+            }
+            pExpect("RPAREN")
+            let fnRetT = "void"
+            if (curKind() == "COLON") {
+                pAdvance()
+                fnRetT = parseTypeAnn()
+            }
+            return maybeNullable(`fn(${fnParams}):${fnRetT}`)
+        }
         // Generic type: Name<T, U, ...>
         if (curKind() == "LT") {
             pAdvance()

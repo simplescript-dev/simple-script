@@ -351,7 +351,7 @@ function inferType(id: int): string {
             }
             return "Ref<int>"
         }
-        if (getVarType(callee) == "fn" || getVarType(callee) == "i64") { return "i64" }
+        if (isFnType(getVarType(callee)) == 1 || getVarType(callee) == "i64") { return "i64" }
         // Generic function: infer return type from arguments
         if (genericFuncNodes.has(callee) == 1) {
             const grt = inferGenericRetType(callee, nGetList(id), nGetS2(id))
@@ -466,7 +466,7 @@ function inferType(id: int): string {
             }
         }
         // fn field call: obj.field() where field is fn type → returns i64
-        if (objType != "" && classFieldTypes.getString(`${objType}.${method}`) == "fn") {
+        if (objType != "" && isFnType(classFieldTypes.getString(`${objType}.${method}`)) == 1) {
             return "i64"
         }
         // Interface method return type lookup
@@ -683,7 +683,7 @@ function ssTypeToLLVM(t: string): string {
     if (t == "string") { return "ptr" }
     if (t == "void") { return "void" }
     if (t == "ptr") { return "ptr" }
-    if (t == "fn") { return "i64" }
+    if (isFnType(t) == 1) { return "i64" }
     if (t == "i64") { return "i64" }
     // Generic types (Array<string>, Map<string,int>, etc.) → ptr
     if (t.contains("<") == 1) { return "ptr" }
@@ -720,6 +720,60 @@ function getVarType(name: string): string {
     return ""
 }
 
+// ── D141 Phase 2.2: fn 类型判断 helper ─────────────────────────
+// "fn" 单字符串 / "fn(T1,T2):R" 结构化签名 — 统一判定接口
+// (lib/spring fn-typed PARAM / fn-typed local var / fn-typed class field 等检查全部走此 helper)
+function isFnType(t: string): int {
+    if (t == "fn") { return 1 }
+    if (t.startsWith("fn(") == 1) { return 1 }
+    return 0
+}
+
+// ── D141 Phase 2.2: lambda 反推 helper ─────────────────────────
+// 从 fn(T1,T2,...):R 结构化签名提取第 idx 个形参类型;非结构化 / 索引越界返 ""。
+// 简化版:不支持嵌套 fn(fn(T):R):R(D141 主线场景 setter: fn(PreparedStatement):void 不嵌套)。
+function extractFnParamType(fnSig: string, idx: int): string {
+    if (fnSig.startsWith("fn(") == 0) { return "" }
+    const rparenIdx = fnSig.indexOf(")")
+    if (rparenIdx < 0) { return "" }
+    const paramStr = fnSig.substring(3, rparenIdx - 3)
+    if (paramStr == "") { return "" }
+    const types = paramStr.split(",")
+    let i = 0
+    for (t in types) {
+        if (i == idx) { return t }
+        i = i + 1
+    }
+    return ""
+}
+
+// 反推回填 ARROW_FUNC PARAM s2:查 funcParamTypes[`${typeCallee}:${argIdx}`] 拿到 callee
+// PARAM 类型,若结构化签名(fn(...))则 extractFnParamType 提取 Pi 反填 ARROW_FUNC PARAM
+// s2;H6 显式优先(已有 s2 不覆盖);H13 非结构化 callee skip(不破现有 setter: fn 路径)。
+function inferArrowFuncParams(argId: int, typeCallee: string, argIdx: int) {
+    if (nGetKind(argId) != "ARROW_FUNC") { return }
+    const ptKey = `${typeCallee}:${argIdx}`
+    if (funcParamTypes.has(ptKey) == 0) { return }
+    const calleeParamType = funcParamTypes.getString(ptKey)
+    if (calleeParamType.startsWith("fn(") == 0) { return }  // H13: 非结构化 skip
+    const arrowParamList = nGetList(argId)
+    if (arrowParamList == "") { return }
+    const arrParts = arrowParamList.split(",")
+    let pi = 0
+    for (apId in arrParts) {
+        const aPid = parseInt(apId)
+        if (aPid > 0 && nGetKind(aPid) == "PARAM") {
+            if (nGetS2(aPid) == "") {  // H6 显式优先
+                const inferredType = extractFnParamType(calleeParamType, pi)
+                if (inferredType != "") {
+                    nSetS2(aPid, inferredType)
+                }
+            }
+            pi = pi + 1
+        }
+    }
+}
+
 // ── Method overloading: type signature ───────────────────────
 
 function typeSig(ssType: string): string {
@@ -728,7 +782,9 @@ function typeSig(ssType: string): string {
     if (st == "int" || st == "bool" || st == "auto" || st == "") { return "i" }
     if (st == "double") { return "d" }
     if (st == "string") { return "s" }
-    if (st == "fn") { return "f" }
+    // D141 Phase 2.1: fn 结构化签名 fn(T1,T2):R 压缩为 "f"(与 fn 单字符串同 mangled,
+    // 避免 mangled name 含特殊字符破 LLVM IR 命名;后续如需 fn(T) vs fn(string) 区分重载再细化)
+    if (st == "fn" || st.startsWith("fn(") == 1) { return "f" }
     if (st == "void") { return "v" }
     if (st.contains("<") == 1) { return "p" }
     // Class name → use full name

@@ -271,7 +271,7 @@ function genGlobalVar(id: int) {
         // Non-literal init: declare null/zero, queue runtime init
         const annotation = nGetS3(id)
         const realType = inferType(initId)
-        if (annotation == "fn" || realType == "fn") {
+        if (isFnType(annotation) == 1 || isFnType(realType) == 1) {
             emitIR(`@${name} = global i64 0, align 8`)
             gType = "fn"
         } else {
@@ -323,7 +323,7 @@ function emitGlobalInits() {
                 const initId = nGetI1(gid)
                 const val = genExpr(initId)
                 const gVarType = getVarType(gname)
-                if (gVarType == "fn") {
+                if (isFnType(gVarType) == 1) {
                     emitIR(`  store i64 ${val}, ptr @${gname}, align 8`)
                 } else {
                     emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
@@ -647,7 +647,7 @@ function genVarDecl(id: int) {
     }
     // Track fn-typed locals for closure release at function exit
     // Only function-scope (rcBlockDepth==0); block-scope closures freed by scope rules
-    if (initType == "fn" && currentFunc != "" && rcBlockDepth == 0) {
+    if (isFnType(initType) == 1 && currentFunc != "" && rcBlockDepth == 0) {
         trackFnVar(llName)
     }
     // Mark Map as ptr-value if type annotation indicates it (val_type=1 at offset 516)

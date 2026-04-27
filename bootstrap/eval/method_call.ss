@@ -30,6 +30,40 @@ function evalMethodCall(astId: int): int {
     let mcObjReg = ""
     if (isCt(mcObj) == 0) { mcObjReg = reg(mcObj) }
     const mcArgList = nGetList(astId)
+    // D141 Phase 2.2: 在 pre-eval 之前 resolve mangled name + 反推 ARROW_FUNC PARAM s2
+    // (eval/method_call.ss pre-eval `genVal(mcArgId)` 触发 genArrowFunc 必须先看到回填的 PARAM s2,
+    // 否则 ARROW_FUNC define 已 emit 到 arrowDefs,emit 阶段反推无效;典型 D137 §F9 主线场景路径)
+    if (comptimeDepth == 0 && mcArgList != "") {
+        const mcObjClassR = resolveObjClass(mcObjNode)
+        if (mcObjClassR != "") {
+            let methodClassR = mcObjClassR
+            while (methodClassR != "") {
+                if (funcRetTypes.has(`${methodClassR}_${mcMethod}`) == 1) { break }
+                if (classParents.has(methodClassR) == 1) {
+                    methodClassR = classParents.getString(methodClassR)
+                } else {
+                    methodClassR = mcObjClassR
+                    break
+                }
+            }
+            let mcResolvedR = `${methodClassR}_${mcMethod}`
+            if (isOverloaded(mcResolvedR) == 1) {
+                const mcSigR = argsSig(mcArgList)
+                if (mcSigR != "" && funcRetTypes.has(`${mcResolvedR}_${mcSigR}`) == 1) {
+                    mcResolvedR = `${mcResolvedR}_${mcSigR}`
+                }
+            }
+            const mcArgPartsR = mcArgList.split(",")
+            let mcArgIdxR = 0
+            for (mcapR in mcArgPartsR) {
+                const mcArgIdR = parseInt(mcapR)
+                if (mcArgIdR > 0) {
+                    inferArrowFuncParams(mcArgIdR, mcResolvedR, mcArgIdxR)
+                    mcArgIdxR = mcArgIdxR + 1
+                }
+            }
+        }
+    }
     const mcSavedCPR = callPreRegs
     callPreRegs = new Map()
     let mcCtArgs: Array<string> = []

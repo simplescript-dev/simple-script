@@ -29,7 +29,7 @@ class JdbcTemplate {
     }
 
     // D137 Phase 1: PreparedStatementSetter callback — setter binds positional params before executeUpdate fires.
-    function execute(sql: string, setter: fn): int {
+    function execute(sql: string, setter: fn(PreparedStatement):void): int {
         const conn = DriverManager_getConnection(this.url)
         const stmt = conn.prepareStatement(sql)
         setter(stmt)
@@ -48,7 +48,7 @@ class JdbcTemplate {
         return r
     }
 
-    function update(sql: string, setter: fn): int {
+    function update(sql: string, setter: fn(PreparedStatement):void): int {
         const conn = DriverManager_getConnection(this.url)
         const stmt = conn.prepareStatement(sql)
         setter(stmt)
@@ -70,7 +70,7 @@ class JdbcTemplate {
     // Same streaming semantics as queryForList(sql) — the Connection leaks
     // until rs.close(); PreparedStatement.close() releases the server-side
     // statement handle but the fd is owned by the caller via the leaked conn.
-    function queryForList(sql: string, setter: fn): ResultSet {
+    function queryForList(sql: string, setter: fn(PreparedStatement):void): ResultSet {
         const conn = DriverManager_getConnection(this.url)
         const stmt = conn.prepareStatement(sql)
         setter(stmt)
@@ -87,7 +87,7 @@ class JdbcTemplate {
         return v
     }
 
-    function queryForString(sql: string, setter: fn, column: string): string {
+    function queryForString(sql: string, setter: fn(PreparedStatement):void, column: string): string {
         const rs = this.queryForList(sql, setter)
         let v = ""
         if (rs.next() == 1) {
@@ -107,7 +107,7 @@ class JdbcTemplate {
         return v
     }
 
-    function queryForInt(sql: string, setter: fn, column: string): int {
+    function queryForInt(sql: string, setter: fn(PreparedStatement):void, column: string): int {
         const rs = this.queryForList(sql, setter)
         let v = 0
         if (rs.next() == 1) {

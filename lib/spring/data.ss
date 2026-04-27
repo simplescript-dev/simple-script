@@ -30,7 +30,7 @@ class JpaRepository {
         return this.jdbc.execute(sql)
     }
 
-    function save(setter: fn): int {
+    function save(setter: fn(PreparedStatement):void): int {
         return this.jdbc.update(
             `INSERT INTO ${this.tableName} (${this.columns}) VALUES (${this.placeholders})`,
             setter
@@ -88,7 +88,7 @@ class JpaRepository {
     // setColumns is the full SET ... WHERE ... clause with ? placeholders;
     // setter binds every ? including the WHERE-side id. Mirrors Spring 7.0
     // JdbcTemplate.update(sql, setter) — no internal id fixup.
-    function update(setColumns: string, setter: fn): int {
+    function update(setColumns: string, setter: fn(PreparedStatement):void): int {
         return this.jdbc.update(`UPDATE ${this.tableName} SET ${setColumns}`, setter)
     }
 }
