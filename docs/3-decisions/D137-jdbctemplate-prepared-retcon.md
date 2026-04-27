@@ -1,6 +1,6 @@
 # D137: JdbcTemplate Prepared Retcon — PreparedStatementSetter Callback Routing
 
-**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0`
+**Status:** [✓] Phase 0 落盘 at commit `bafc25a` + [✓] Phase 1 实施落地 at commit `d2df1ba` + [✓] Phase 2 实施落地 at commit `4c28bc0` + [✓] Phase 3 实施落地 at commit `4a10e48`
 
 **Depends on:**
 - D136 全 Phase 收关锚(commit `b7cb6d5`)— `interface PreparedStatement` + `lib/com/mysql/prepared.ss` MysqlPreparedStatement 实施 + `MysqlConnection.prepareStatement()` driver 拼装 + `tests/d136_prepared_statement/` e2e 已就绪
@@ -460,9 +460,23 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
   - **表面 patch**:lambda 参数显式类型注解(JpaRepository 6 处 + tests 2 处)= 数据层 patch 规避 SS 编译器 lambda 类型推断 bug;**升根路径** = §F9 锚 sub-D 修编译器 lambda 参数类型推断 + interface dispatch 集成
 - simplify 采纳: buildPlaceholders 用 Array<string>.join(", ") 替代 first==1 标志位手卷拼接(reuse agent: 14→5 行,符合 lib/regex.ss:393/439 join 范式);拒绝: lambda 参数显式注解 6 处 helper 抽取(quality agent: §F9 workaround 抽 helper 隐藏类型注解致 F9 修后难 grep 回收 + 单语句 callback 抽间接致可读性净亏)+ placeholders 字段缓存(efficiency agent: constructor 单算每次 save 复用,Spring SimpleJdbcInsert 同范式)+ update 2 参 vs 3 参(quality agent: §6.R5 Spring API 一一映射,setColumns 含 WHERE 是文档化决策)
 
-### Phase 3: tests/d134_mysql/integration_test.ss 8 case retcon [ ] Pending
+### Phase 3: tests/d134_mysql/integration_test.ss 11 处含动态值 SQL retcon [✓] Done at commit `4a10e48` (2026-04-27)
 
-- 待 Phase 3 commit hash 回填
+- integration_test.ss +57/-19:11 处 callback retcon(§核心原则 1 + 6 全迁完整性)
+  - **test 2 CRUD 5 处 prepareStatement 直驱**(line 74/81/92/98/106):INSERT(insStmt 三 setter)+ SELECT id,name,age(selRowStmt setInt)+ UPDATE(updStmt 双 setInt)+ SELECT age(selAgeStmt setInt)+ DELETE(delStmt setInt);每 stmt close 先 + conn.close 后(R2 顺序);ResultSet rs/rs2 close 在对应 stmt close 前
+  - **test 3 transaction commit 1 处 INSERT prepared**(line 120):pstmt 三 setter(int + string + int)在 setAutoCommit(0) 后,executeUpdate + close,然后 conn.commit + conn.close
+  - **test 4 transaction rollback 1 处 INSERT prepared**(line 137):同 test 3 但 conn.rollback,确认 binary protocol 在 rollback 路径正确(数据未持久化)
+  - **test 7 JdbcTemplate 4 处走 Phase 1 callback 重载**(line 169/174/176/178):tmpl.update(sql, setter) + tmpl.queryForString(sql, setter, column) + tmpl.queryForInt(sql, setter, column) + tmpl.execute(sql, setter);全部 lambda 显式 `(s: PreparedStatement) =>`(§F9 持续应用)
+- **Statement import 清理**:test 2 全 prepared 后 Statement type 不再使用,line 17 import 删除(reuse agent 隐含建议;Phase 2 留 Statement import 是 test 2 当时仍走 createStatement,Phase 3 retcon 后变成 dead import)
+- **simplify 1 处采纳**:sel1Stmt/sel2Stmt 流水号命名 → selRowStmt/selAgeStmt 语义命名(quality agent:`memory/feedback_human_readable_code.md` 可读性 rubric b — "禁数字尾缀流水号气味";rename 反映 SQL 实际语义 — "SELECT id,name,age 全行" vs "SELECT age 单列");**拒绝**:全统一为 `pstmt`(原 quality 主建议:JS 同 scope `const` 重声明语义 SS 复刻不确定 + test 2 五 stmt 同 lambda scope 共存,语义命名比 `pstmt` 反复更清晰);其余 reuse / efficiency agent 均 0 finding(test 2 raw driver 路径是测试本意,JdbcTemplate 复用违反职责分离 + 5 round-trip 是 prepared 协议测试本意 + 资源关闭顺序 / round-trip 数 / 内存泄漏均无可优化)
+- **三轨 RED 全 GREEN**:
+  - `grep -cE "VALUES \([0-9]+, '" tests/d134_mysql/integration_test.ss` = 0(4 处 INSERT 字面量全 ?化)
+  - `grep -cE "WHERE id = [0-9]" tests/d134_mysql/integration_test.ss` = 0(7 处 WHERE id literal 全 ?化)
+  - `grep -c "prepareStatement" tests/d134_mysql/integration_test.ss` = 8(7 处直接 conn.prepareStatement + 1 处注释引用,test 2 五 stmt + test 3/4 各一)
+  - `grep -cE "\.setInt|\.setString" tests/d134_mysql/integration_test.ss` = 26(setter 注入就位)
+- **VCM 六验**:bootstrap 三阶段固定点 + tests/ 259/4/263 baseline 不降(与 Phase 1+2 完全一致 0 回归)+ d134_mysql 5/5 全绿 + d135_caching_sha2 1/1 baseline 不降 + d136_prepared_statement 1/1 baseline 不降 + axiom 红线 grep 0 + nm 0(永久维持)+ d_doc_index_linter F1 = 0 GATE OK + reflection_health_linter GATE PASS no regressions
+- **§F9 workaround 持续**:test 7 4 处 lambda 显式 `(s: PreparedStatement)` 注解(承 Phase 2 6 处 + Phase 3 4 处 = 10 处累计);**真根因 sub-D follow-up** 编号待 D 治理后续轮处理(§F9 锚:修 SS 编译器 lambda 参数类型推断 + interface dispatch 集成 bug)
+- **R3 streaming 兼容验证**:test 7 line 174/176 走 tmpl.queryForString/Int(sql, setter, column) 内部复用 queryForList(sql, setter)(jdbc.ss line 90-98 / 110-118),实证 D136 prepared 非流式 ResultSet 与 streaming socket 接口契约兼容(GREEN — H3 假设挑战 PASS)
 
 ### Phase 4: e2e 闭环 + D136 §F1 注释 + Status 收关 [ ] Pending
 
