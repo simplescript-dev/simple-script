@@ -305,6 +305,25 @@ function checkExpr(id: int) {
         checkExpr(nGetI1(id))
         checkExpr(nGetI2(id))
         checkExpr(nGetI3(id))
+        // D144 Phase 2: 两分支类型一致性 + nSetS2 回填(D141/D142/D143 同模式扩)—
+        // X mismatch 修复入口:`takesInt((cond)?1:"X")` 当前 silent miscompile,
+        // 两分支基础类型不一致硬错(参 D143 §A.2 H4 决策行严格模式继承);两分支同类型时回填
+        // nSetS2 让下游 inferType 直接消费(显式优先于 codegen 反推);含 NULL_LIT 分支 / class 分支
+        // mismatch 跳过严格 check,等 codegen 阶段 inferTernaryBranchType 反推 callee T?/IShape upcast
+        if (nGetS2(id) == "") {
+            const ternThenT = checkerInferType(nGetI2(id))
+            const ternElseT = checkerInferType(nGetI3(id))
+            if (ternThenT != "" && ternElseT != "" && ternThenT != ternElseT) {
+                const tIsP = (ternThenT == "int" || ternThenT == "double" || ternThenT == "string" || ternThenT == "bool") ? 1 : 0
+                const eIsP = (ternElseT == "int" || ternElseT == "double" || ternElseT == "string" || ternElseT == "bool") ? 1 : 0
+                if (tIsP == 1 && eIsP == 1) {
+                    checkerError(`ternary branches type mismatch: '${ternThenT}' vs '${ternElseT}'`, nGetLine(id), nGetCol(id))
+                }
+            }
+            if (ternThenT != "" && ternThenT == ternElseT && ternThenT != "null") {
+                nSetS2(id, ternThenT)
+            }
+        }
         return
     }
     if (kind == "GROUPING") {

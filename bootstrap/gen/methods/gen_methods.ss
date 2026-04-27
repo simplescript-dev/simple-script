@@ -204,6 +204,8 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
                 inferArrayLitElems(argId, resolved, cmcArgIdx)
                 // D143 Phase 2: untyped object literal 反推 — class 名回填 + D084 rewrite NEW_EXPR
                 inferObjLiteralFields(argId, resolved, cmcArgIdx)
+                // D144 Phase 2: untyped ternary 反推 — branchType 回填 TERNARY nSetS2(D141/D142/D143 同模式)
+                inferTernaryBranchType(argId, resolved, cmcArgIdx)
                 let aVal = genExpr(argId)
                 let aType = inferType(argId)
                 if (callArgs != "") { callArgs = `${callArgs}, ` }

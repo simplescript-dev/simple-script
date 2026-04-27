@@ -63,6 +63,10 @@ function evalMethodCall(astId: int): int {
                     inferArrayLitElems(mcArgIdR, mcResolvedR, mcArgIdxR)
                     // D143 Phase 2: OBJ_LITERAL 反推前移 + D084 rewrite NEW_EXPR — D141/D142 H10 同模式
                     inferObjLiteralFields(mcArgIdR, mcResolvedR, mcArgIdxR)
+                    // D144 Phase 2: TERNARY 反推前移 — D141/D142/D143 H10 同模式 cross-D 反思继承
+                    // (outer call site 通用 pre-eval `genVal(mcArgId)` 路过 TERNARY 走 phi llType,
+                    // 反推必须前移到 outer call site 之前;feedback_h10_cross_d_verify.md 教训)
+                    inferTernaryBranchType(mcArgIdR, mcResolvedR, mcArgIdxR)
                     mcArgIdxR = mcArgIdxR + 1
                 }
             }

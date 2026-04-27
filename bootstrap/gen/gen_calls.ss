@@ -282,6 +282,8 @@ function resolveCallArgs(callee: string, argList: string, typeCallee: string): s
                 // D143 Phase 2: untyped object literal 反推 — class 名回填 OBJ_LITERAL nSetS2 +
                 // D084 rewrite OBJ_LITERAL → NEW_EXPR(走 NEW_EXPR genNamedConstructorArgs 路径)
                 inferObjLiteralFields(argId, typeCallee, argIdx)
+                // D144 Phase 2: untyped ternary 反推 — branchType 回填 TERNARY nSetS2(D141/D142/D143 同模式)
+                inferTernaryBranchType(argId, typeCallee, argIdx)
                 let val = genExpr(argId)
                 let vType = inferType(argId)
                 const ptKey = `${typeCallee}:${argIdx}`

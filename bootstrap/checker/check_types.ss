@@ -198,7 +198,14 @@ function checkerInferType(nodeId: int): string {
     }
     if (kind == "UNARY") { return checkerInferType(nGetI1(nodeId)) }
     if (kind == "GROUPING") { return checkerInferType(nGetI1(nodeId)) }
-    if (kind == "TERNARY") { return checkerInferType(nGetI2(nodeId)) }
+    if (kind == "TERNARY") {
+        // D144 Phase 2: TERNARY inferType — 反推回填 nSetS2 后(checker 阶段两分支同类型回填 /
+        // codegen 阶段 inferTernaryBranchType 反推 callee branchType),优先消费;
+        // 否则 fallback then 分支 inferType(对偶 D143 OBJ_LITERAL line 544-551 + D142 ARRAY_LIT 模式)
+        const ternStored = nGetS2(nodeId)
+        if (ternStored != "") { return ternStored }
+        return checkerInferType(nGetI2(nodeId))
+    }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { return "int" }
     if (kind == "NAMED_ARG") { return checkerInferType(nGetI1(nodeId)) }
     if (kind == "SPREAD_ELEM") { return checkerInferType(nGetI1(nodeId)) }

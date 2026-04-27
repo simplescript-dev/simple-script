@@ -212,6 +212,20 @@ function resolveObjClass(nodeId: int): string {
         if (iaElem != "" && ifaceMethodsCG.has(iaElem) == 1) { return iaElem }
         return ""
     }
+    // GROUPING → 递归 inner expr(`(expr).field` 字段访问入口)
+    if (kind == "GROUPING") { return resolveObjClass(nGetI1(nodeId)) }
+    // D144 Phase 2: TERNARY → 优先读 nSetS2 反推 branchType(checker 阶段两分支同类型回填 /
+    // codegen 阶段 inferTernaryBranchType 反推 callee branchType),fallback then 分支递归;
+    // X4-1 字段访问 RED 修复入口 — `((cond)?u1:u2).name` 走通 resolveObjClass → "User"
+    if (kind == "TERNARY") {
+        const ternStoredOC = nGetS2(nodeId)
+        if (ternStoredOC != "") {
+            const ternStripOC = ternStoredOC.charAt(ternStoredOC.length() - 1) == "?" ? ternStoredOC.substring(0, ternStoredOC.length() - 1) : ternStoredOC
+            if (classFields.has(ternStripOC) == 1) { return ternStripOC }
+            if (ifaceMethodsCG.has(ternStripOC) == 1) { return ternStripOC }
+        }
+        return resolveObjClass(nGetI2(nodeId))
+    }
     // Member access → resolve object class, look up field type
     if (kind == "MEMBER_ACCESS") {
         // D078: Static field → resolve type as class name
@@ -538,7 +552,14 @@ function inferType(id: int): string {
     }
     if (kind == "GROUPING") { return inferType(nGetI1(id)) }
     if (kind == "UNARY") { return inferType(nGetI1(id)) }
-    if (kind == "TERNARY") { return inferType(nGetI2(id)) }
+    if (kind == "TERNARY") {
+        // D144 Phase 2: codegen 阶段 TERNARY inferType — 反推回填 branchType 后(checker 阶段
+        // 两分支同类型回填 / inferTernaryBranchType 反推 callee branchType),优先消费;
+        // 否则 fallback then 分支 inferType(对偶 D143 OBJ_LITERAL line 544-551 模式)
+        const ternStoredCG = nGetS2(id)
+        if (ternStoredCG != "") { return ternStoredCG }
+        return inferType(nGetI2(id))
+    }
     if (kind == "ARRAY_LIT") { return "ptr" }
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "OBJ_LITERAL") {
@@ -893,6 +914,64 @@ function inferObjLiteralFields(argId: int, typeCallee: string, argIdx: int) {
     if (funcParamTypes.has(ptKey) == 0) { return }
     const calleeParamType = funcParamTypes.getString(ptKey)
     inferObjLiteralFromType(argId, calleeParamType)
+}
+
+// ── D144 Phase 2: ternary contextual typing helper ─────
+// 判定 t 是否是 nullable 类型(以 `?` 结尾)。D067 落地后 callee PARAM `T?` 已结构化注册到
+// funcParamTypes,反推时直接读 `?` 后缀即可。
+function isNullableType(t: string): int {
+    if (t == "") { return 0 }
+    if (t.length() == 0) { return 0 }
+    if (t.charAt(t.length() - 1) == "?") { return 1 }
+    return 0
+}
+
+// 从 nullable 类型 `T?` 提取 inner type `T`(无 `?` 时原样返回)。
+function extractInnerType(t: string): string {
+    if (t == "") { return "" }
+    if (isNullableType(t) == 1) {
+        return t.substring(0, t.length() - 1)
+    }
+    return t
+}
+
+// D144 Phase 2: 两分支类型统一 — 反推得 callee branchType 后,两分支按 branchType widen /
+// null literal 类型化(D067 nullable 路径复用)。当前只用同类型严格匹配 + nullable inner widen;
+// 不一致返 ""(由调用方决定 skip 或硬错)。
+function unifyBranchTypes(thenT: string, elseT: string): string {
+    if (thenT == "" || elseT == "") { return "" }
+    if (thenT == elseT) { return thenT }
+    if (thenT == "null" && isNullableType(elseT) == 1) { return elseT }
+    if (elseT == "null" && isNullableType(thenT) == 1) { return thenT }
+    if (thenT == "null") { return `${elseT}?` }
+    if (elseT == "null") { return `${thenT}?` }
+    return ""
+}
+
+// D144 Phase 2: 嵌套 TERNARY 递归回填 — 反推得外层 branchType 后,所有嵌套内层 TERNARY
+// 共享同 branchType(H3 嵌套反推链路)。例:`(c1)?null:((c2)?null:new User("X"))` 外层 + 内层
+// 两层 TERNARY 都需 nSetS2="User?",否则内层 ternary phi llType 反推不得 silent miscompile。
+function propagateTernaryBranchType(argId: int, branchType: string) {
+    if (argId <= 0) { return }
+    if (nGetKind(argId) != "TERNARY") { return }
+    if (nGetS2(argId) != "") { return }
+    nSetS2(argId, branchType)
+    propagateTernaryBranchType(nGetI2(argId), branchType)
+    propagateTernaryBranchType(nGetI3(argId), branchType)
+}
+
+// D144 Phase 2: TERNARY 反推回填 nSetS2 — 查 funcParamTypes[typeCallee:argIdx]
+// 拿 callee PARAM expectedType,反推回填 TERNARY branchType slot;嵌套 ternary 递归回填(H3)。
+// H6 显式优先 — 已有 nSetS2 不覆盖;H13 callee 不在 funcParamTypes / 类型空 → skip。
+function inferTernaryBranchType(argId: int, typeCallee: string, argIdx: int) {
+    if (argId <= 0) { return }
+    if (nGetKind(argId) != "TERNARY") { return }
+    if (nGetS2(argId) != "") { return }
+    const ptKey = `${typeCallee}:${argIdx}`
+    if (funcParamTypes.has(ptKey) == 0) { return }
+    const calleeParamType = funcParamTypes.getString(ptKey)
+    if (calleeParamType == "" || calleeParamType == "auto") { return }
+    propagateTernaryBranchType(argId, calleeParamType)
 }
 
 // ── Method overloading: type signature ───────────────────────

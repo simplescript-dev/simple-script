@@ -37,6 +37,8 @@ function evalCall(astId: int): int {
                 // (eval/call.ss line 86 pre-eval `genVal(callArgId)` 之前 OBJ_LITERAL 必须 rewrite,
                 // 否则 genVal unknown kind fallback "ptr 0" silent miscompile;D143 Phase 2 H10 实证修正)
                 inferObjLiteralFields(callArgIdR, callResolvedR, callArgIdxR)
+                // D144 Phase 2: TERNARY 反推前移 — D141/D142/D143 H10 同模式 cross-D 反思继承
+                inferTernaryBranchType(callArgIdR, callResolvedR, callArgIdxR)
                 callArgIdxR = callArgIdxR + 1
             }
         }
