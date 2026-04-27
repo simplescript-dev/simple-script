@@ -1,6 +1,6 @@
 # D142: SS Array Literal Contextual Typing — 元素类型从调用上下文反推
 
-**Status:** Phase 0 — D 文档落档 [✓ 进行中,本轮收尾] — D141 §Followup F1 array literal contextual typing 候选入口落档(`[1, 2, 3]` 在 fn 实参 `Array<int>` 时反推元素类型);D141 反推机制同模式扩(callee PARAM 已结构化 `Array<T>` SSoT 复用 + codegen 阶段反推 + eval pre-eval 时序回填 + funcParamTypes 信息源单点)
+**Status:** Phase 0 — D 文档落档 [✓] Done at commit `3fb3ea2` — D141 §Followup F1 array literal contextual typing 候选入口落档(`[1, 2, 3]` 在 fn 实参 `Array<int>` 时反推元素类型);D141 反推机制同模式扩(callee PARAM 已结构化 `Array<T>` SSoT 复用 + codegen 阶段反推 + eval pre-eval 时序回填 + funcParamTypes 信息源单点)
 
 **Depends on:**
 - D141(lambda 参数类型推断 + interface dispatch 集成 — §Followup F1 array literal 锚 line 421 + 464)
@@ -352,11 +352,11 @@ EOF
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落档 [✓ 进行中,本轮收尾]
+### Phase 0: D 文档落档 [✓] Done at commit `3fb3ea2` (2026-04-27)
 
 - 本文档落档 + Status / 核心目标 / 核心原则 / Context / Tools / Orchestration / State / Evaluation / Constraints / §A.1 主候选 + §A.1.1 实施路径 + §A.2 隐藏假设 / §A.3 废案 / Phase 0-5 计划草案
-- d_doc_index_linter F1 = 0 验证(D142 加入未破 referenced D 文档 — D141/D025/D131 实存)
-- next_prompt_ultrathink_linter PASS 3/3
+- d_doc_index_linter F1 = 0 验证 PASS(D142 加入未破 referenced Ds — D141/D025/D131 实存,F2 soft warn 15 orphan 含 D142 不阻 commit)
+- next_prompt_ultrathink_linter PASS 3/3(本轮 .claude/next_prompt.md 含 ultrathink 关键字)
 - VCM 六验(Plan 型):§① 跳过(diff=0 in bootstrap/lib/tools)+ §④ 替换为「替代方案对比 + 隐藏假设挑战」§A.1+§A.1.1+§A.2 ✓
 
 ### Phase 1: RED 复现 + 信息源探查 [ ]
@@ -420,4 +420,4 @@ EOF
 
 ## Status 时间线
 
-- 2026-04-27 Phase 0 D 文档落档(本轮)— D141 §Followup F1 array literal contextual typing 候选入口落档;C2 接口层 trap + G1 D141 同模式复刻路径决策(待用户对话锁定方向后 commit 落档);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F6;D135/D136/D137/D140/D141 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
+- 2026-04-27 Phase 0 D 文档落档(commit `3fb3ea2`)— D141 §Followup F1 array literal contextual typing 候选入口落档;C2 接口层 trap + G1 D141 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F6;D135/D136/D137/D140/D141 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
