@@ -1,6 +1,6 @@
 # D140: Checker Class Method Overload by Arity 对称化
 
-**Status:** [ ] Phase 0 落盘(待 commit hash 回填)
+**Status:** [✓] Phase 0 落盘 at commit `e7cbe7b`
 
 **Depends on:**
 - D137 §A.2 H 列(本 D 完成后回写 H8 假设破裂行)+ §核心原则 9(bootstrap 隔离)+ §F4 D138/D139/D140 编号冲突说明
@@ -437,11 +437,11 @@ grep -n "methodOverloaded.has" bootstrap/checker/check_exprs.ss
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落盘 [ ] 待 commit hash 回填
+### Phase 0: D 文档落盘 [✓] Done at commit `e7cbe7b` (2026-04-27)
 
-- 本文档 Status [ ] → [✓ Phase 0 落盘 at commit `<hash>`]
-- d_doc_index_linter F1 = 0 验证 PASS
-- next_prompt_ultrathink_linter PASS
+- 本文档 Status [✓] Phase 0 落盘 at commit `e7cbe7b`
+- d_doc_index_linter F1 = 0 验证 PASS(referenced D 文档 D136/D137 实存,F2 soft warn 14 orphan 含 D140 不阻 commit)
+- next_prompt_ultrathink_linter PASS(本轮 next_prompt.md 含 ultrathink 关键字)
 
 ### Phase 1: bootstrap/checker 三处改 [ ] Pending
 
