@@ -122,13 +122,9 @@ function main() {
     // ── Phase 2 / setXxx ─ MysqlPreparedStatement bind state writes ────
     test("MysqlPreparedStatement positional ctor + setXxx state writes", () => {
         let pDefs: Array<ColumnDef> = []
-        let pTypes: Array<int> = [0, 0, 0]
-        let pVals: Array<string> = ["", "", ""]
-        let pDoubles: Array<double> = [0.0, 0.0, 0.0]
-        let pNulls: Array<int> = [0, 0, 0]
         let cols: Array<ColumnDef> = []
         cols = cols.push(new ColumnDef("id", 3, 11, 33))
-        const stmt = new MysqlPreparedStatement(-1, 7, 3, pDefs, pTypes, pVals, pDoubles, pNulls, cols, 0)
+        const stmt = new MysqlPreparedStatement(-1, 7, 3, pDefs, [0, 0, 0], ["", "", ""], [0.0, 0.0, 0.0], [0, 0, 0], cols, 0)
         assertEqual(stmt.fd, -1)
         assertEqual(stmt.statementId, 7)
         assertEqual(stmt.numParams, 3)
