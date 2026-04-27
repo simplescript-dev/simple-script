@@ -12,7 +12,7 @@
 // See docs/3-decisions/D133-sqlite-c-link-elimination.md
 // See docs/3-decisions/D134-jdbc-mysql-wire-protocol.md §3 §Phase 5
 
-import { Connection, ResultSet, DriverManager_getConnection } from "@/lib/java/sql"
+import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection } from "@/lib/java/sql"
 
 // ── JdbcTemplate ─────────────────────────────────────────────
 
@@ -28,10 +28,31 @@ class JdbcTemplate {
         return r
     }
 
+    // D137 Phase 1: PreparedStatementSetter callback — setter binds positional params before executeUpdate fires.
+    function execute(sql: string, setter: fn): int {
+        const conn = DriverManager_getConnection(this.url)
+        const stmt = conn.prepareStatement(sql)
+        setter(stmt)
+        const r = stmt.executeUpdate()
+        stmt.close()
+        conn.close()
+        return r
+    }
+
     function update(sql: string): int {
         const conn = DriverManager_getConnection(this.url)
         const stmt = conn.createStatement()
         const r = stmt.executeUpdate(sql)
+        stmt.close()
+        conn.close()
+        return r
+    }
+
+    function update(sql: string, setter: fn): int {
+        const conn = DriverManager_getConnection(this.url)
+        const stmt = conn.prepareStatement(sql)
+        setter(stmt)
+        const r = stmt.executeUpdate()
         stmt.close()
         conn.close()
         return r
@@ -46,6 +67,16 @@ class JdbcTemplate {
         return stmt.executeQuery(sql)
     }
 
+    // Same streaming semantics as queryForList(sql) — the Connection leaks
+    // until rs.close(); PreparedStatement.close() releases the server-side
+    // statement handle but the fd is owned by the caller via the leaked conn.
+    function queryForList(sql: string, setter: fn): ResultSet {
+        const conn = DriverManager_getConnection(this.url)
+        const stmt = conn.prepareStatement(sql)
+        setter(stmt)
+        return stmt.executeQuery()
+    }
+
     function queryForString(sql: string, column: string): string {
         const rs = this.queryForList(sql)
         let v = ""
@@ -56,8 +87,28 @@ class JdbcTemplate {
         return v
     }
 
+    function queryForString(sql: string, setter: fn, column: string): string {
+        const rs = this.queryForList(sql, setter)
+        let v = ""
+        if (rs.next() == 1) {
+            v = rs.getString(column)
+        }
+        rs.close()
+        return v
+    }
+
     function queryForInt(sql: string, column: string): int {
         const rs = this.queryForList(sql)
+        let v = 0
+        if (rs.next() == 1) {
+            v = rs.getInt(column)
+        }
+        rs.close()
+        return v
+    }
+
+    function queryForInt(sql: string, setter: fn, column: string): int {
+        const rs = this.queryForList(sql, setter)
         let v = 0
         if (rs.next() == 1) {
             v = rs.getInt(column)
