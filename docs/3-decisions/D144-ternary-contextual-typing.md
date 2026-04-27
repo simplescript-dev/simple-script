@@ -433,11 +433,38 @@ EOF
 - spike RED→GREEN 双铁证:`/tmp/spike_d144_phase2_x4_1.ss` X4-1 字段访问 GREEN(输出 `Alice` + `18`)+ `/tmp/spike_d144_phase2_x_mismatch.ss` X mismatch checker 硬错 GREEN(`error: ternary branches type mismatch: 'int' vs 'string'`)
 - VCM 验证:bootstrap 三阶段固定点 PASS + tests/ 276/4/280 baseline 不降(D144 反推让 6 个 test case 转 GREEN,4 failed 等于 baseline 同 4 个非反推路径回归)+ Phase 1 主线 7 形态 + 嵌套 ternary 全 GREEN + reflection_health GATE PASS 扩容申报 D144#扩容申报-Phase2(11 metric bump:M1=5550→5600 / M2=81600→82100 / M3a=12850→12880 / M3b=2000→2010 / M4=3250→3280 / M5=1830→1840 / M7b=700→710 / N2=408000→410100 / N3=562000→565400 / F1:gen_methods.ss=726→730 / F1:gen_types.ss=970→1050)
 
-### Phase 3: 测试覆盖 + 隐藏假设挑战 [ ] Planned
+### Phase 3: 测试覆盖 + 隐藏假设挑战 [✓] Done at commit `<placeholder>` (2026-04-27)
 
-- `tests/d144_ternary_inference/` 新增 6+ 测试(null_plus_T / T_plus_T_explicit / nested / class_instance / interface_upcast / multi_level_nullable / explicit_override / mismatch_hard_error)
-- §A.2 隐藏假设挑战实证 H1-H8 全 PASS + H9/H11/H12/H13 OOD scope / 弱化标
-- VCM 六验全 PASS
+**测试用例 8 个(tests/d144_ternary_inference/)全绿**:
+- `null_plus_T.ss` — H1 反推 nullable + H2 两分支类型 widen — `takesNullableUser((cond)?null:new User("X"))` callee `User?` 反推 nSetS2="User?" + null/new 两分支 phi=ptr 统一 GREEN(双 case `(null)` / `Y`)
+- `T_plus_T_explicit.ss` — H6 显式两分支同类型(无反推依赖)— `takesInt((cond)?1:2)` 两分支显式 int 一致性 PASS / 走原 then 分支 inferType 路径不破 GREEN
+- `nested.ss` — H3 嵌套 ternary 反推 capture 链 — `(c1)?((c2)?null:new User("Z")):new User("A")` 外层 nSetS2="User?" + propagateTernaryBranchType 递归回填内层 nSetS2 三 case 全 GREEN(`(null)` / `Z` / `A`)
+- `class_instance.ss` — H4 class 实例 ternary + D067 nullable 分配路径复用 — 多字段 class + 显式 ctor `(cond)?null:new User("X",18)` 反推 + phi=ptr 统一 GREEN(`(null)` / `Y:20`)
+- `interface_upcast.ss` — H5 interface upcast via vtable indirect dispatch — `takesShape((cond)?new Circle(1.0):new Square(2.0))` 反推 callee `IShape` 后两分支 D025 vtable indirect dispatch GREEN(`3.0` / `4.0`)
+- `multi_level_nullable.ss` — H3 嵌套 + null 多层 — `(c1)?null:((c2)?null:new User("X"))` 内外两层 null + 单值分支 三 case 全 GREEN(`(null)` / `(null)` / `Z`)
+- `explicit_override.ss` — H6 显式 var decl 注解 > 推断 — `let n: User? = (cond)?null:new User("X"); takesNullableUser(n)` RHS 走 D084 rewrite + D067 既有路径 + fn 实参 IDENT 反推 skip GREEN
+- `field_access.ss` — X4-1 字段访问 GREEN — Phase 2 resolveObjClass GROUPING/TERNARY case 修复入口实证 — `((cond)?u1:u2).name`/`.age` 走通 classFieldTypes["User.name"]="string" 路径 4 case 全 GREEN(`Alice`/18/`Bob`/20)
+
+**§A.2 隐藏假设挑战 H1-H8 实证全 PASS + OOD/弱化标**:
+- H1 funcParamTypes 时序 PASS(Phase 1 实证 + Phase 3 测试落地证据 — null_plus_T/class_instance/interface_upcast 三测试反推路径全通)
+- H2 两分支类型 widen PASS(null_plus_T null+new User 路径 widen GREEN + nested 嵌套层 widen GREEN)
+- H3 嵌套反推 capture 链 PASS(nested + multi_level_nullable propagateTernaryBranchType 递归回填实证)
+- H4 null literal 在 ternary 分支反推 T? — D067 路径复用 PASS(null_plus_T + class_instance + multi_level_nullable null 分支按 D067 nullable 类型化)
+- H5 interface upcast PASS(interface_upcast Circle/Square → IShape vtable dispatch GREEN)
+- H6 显式注解优先级 > 推断 PASS(T_plus_T_explicit 显式 int + explicit_override let User? 显式注解 D084 rewrite 路径不破)
+- H7 tests/ 全测 baseline 不降 PASS(284 passed / 4 failed / 288 total — 比 Phase 2 锁定 276/4/280 高 8 = 新增 d144 8 测试,4 failed 不变)
+- H8 reflection_health_linter GATE PASS no regressions(全 14 指标 + F1 8 文件 cur=bv=bm 0 delta)
+- H9 var binding callee OOD scope(D141/D142/D143 H9 同模式继承)
+- H10 eval pre-eval 时序 PASS(Phase 1 + Phase 2 实证 — outer call site `genVal(argId)` 之前反推前移 D143 cross-D 反思继承)
+- H11 callee `T?` / 结构化字符串已就绪,无 G1 callee 升级前置(比 D141 H11 弱)
+- H12 parser 不需扩(`T?` 已 D067 落地,比 D141/D142/D143 H12 同位都弱)
+- H13 反推失败硬错粒度 PASS — 结构化 callee 硬错(spike `/tmp/spike_d144_phase3_mismatch.ss` checker 输出 `error: ternary branches type mismatch: 'int' vs 'string'` line 9:39 GREEN — 不进 tests/ 因 SS 测试框架要求编译成功 + exit 0)/ 非结构化 callee skip
+
+**Phase 3 兑现成果**:
+- 8 测试 GREEN + spike checker 硬错铁证
+- §A.2 H1-H8 全 PASS + H9-H13 OOD/弱化标全标
+- VCM 六验全跑 PASS:bootstrap 三阶段固定点 + tests/d144 8/0/8 + tests/d141 5/0/5 + tests/d142 6/0/6 + tests/d143 6/0/6 + tests/ 284/4/288 baseline 不降 + reflection_health GATE PASS no regressions + d_doc_index F1=0(11 referenced Ds all live + F2 soft warn 16 含 D144 不阻)
+- D135/D136/D137/D140/D141/D142/D143 范式延续(D143 Phase 3 commit `15f8dfe` 同模式 — 仅写测试 + 文档同步,无 bootstrap diff)
 
 ### Phase 4: workaround cleanup [ ] Planned
 
@@ -472,4 +499,5 @@ EOF
 - 2026-04-27 Phase 0 D 文档落档(commit `02415c9`)— D141 §Followup F3 / D142 §Followup F2 / D143 §Followup F1 ternary contextual typing 候选入口落档(同模式合并锚);C2 接口层 trap + G1 D141/D142/D143 同模式复刻路径决策(待 Phase 1 用户对话锁定方向后启动实施);§A.1 三主候选 + §A.1.1 三实施路径 + §A.2 H1-H13 隐藏假设挑战(H10 cross-D 反思继承 D143 教训)+ §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F7(D141/D142/D143 §Followup 合并队列重排);D135/D136/D137/D140/D141/D142/D143 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环)
 - 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `17a1573`)— 主线 7 形态实测全 GREEN(`/tmp/spike_ternary_red.ss` null+User? / T+T 显式 / 嵌套 / class 实例 / interface upcast / 多层 nullable / fn 返回 ternary)+ D144 §第一性需求 motivating example 修正(D067 不允许 primitive nullable `int?`,改用 reference 类型 `User?`)+ 真 RED 形态另立(X4-1 字段访问 LLC `'%14' defined with type 'ptr' but expected 'i32'` + X mismatch 两分支类型不一致 LLC `global variable reference must have pointer type` 双铁证)+ §A.2 H1 同模式实证 PASS(funcParamTypes 时序)+ §A.2 H10 cross-D 反思继承 PASS(eval pre-eval 时序 — `feedback_h10_cross_d_verify.md` D143 教训继承)+ TERNARY 节点 slot 选 nSetS2 锁定 + TERNARY 8 dispatch site 全 grep PASS + Phase 2 入口全锁
 - 2026-04-27 Phase 2 codegen 阶段反推实施(commit `71af131`)— G1 D141/D142/D143 同模式复刻 — checker check_exprs.ss + check_types.ss + gen_types.ss inferType + resolveObjClass + helper 5 函数(isNullableType / extractInnerType / unifyBranchTypes / propagateTernaryBranchType / inferTernaryBranchType)+ gen_calls.ss / gen_methods.ss args 循环 + eval pre-eval 三处前移(method_call.ss / call.ss / new_expr.ss)+ ternary.ss phi llType 反推 + spike X4-1 + X mismatch RED→GREEN 双铁证 + bootstrap 三阶段固定点 PASS + tests/ 276/4/280 baseline 不降 + reflection_health GATE PASS 扩容申报 D144#扩容申报-Phase2 11 metric bump;关键 bug 修复:checker 排除 `"null"` 同类型回填 + helper 完整递归(非单层 H3 嵌套反推链路)
+- 2026-04-27 Phase 3 测试覆盖 + 隐藏假设挑战(commit `<placeholder>`)— `tests/d144_ternary_inference/` 8 测试全绿(null_plus_T / T_plus_T_explicit / nested / class_instance / interface_upcast / multi_level_nullable / explicit_override / field_access)+ spike `/tmp/spike_d144_phase3_mismatch.ss` checker 硬错铁证(`error: ternary branches type mismatch: 'int' vs 'string'`)+ §A.2 H1-H8 全 PASS + H9-H13 OOD/弱化标全标(H9 var binding OOD / H10 eval pre-eval 时序 cross-D 反思继承 PASS / H11 callee 结构化已就绪 / H12 parser 不需扩 / H13 反推失败粒度 spike 硬错铁证)+ VCM 六验全 PASS(bootstrap 三阶段固定点 + tests/d144 8/0/8 + tests/d141 5/0/5 + tests/d142 6/0/6 + tests/d143 6/0/6 + tests/ 284/4/288 baseline 不降 + reflection_health GATE PASS no regressions + d_doc_index F1=0)+ D135/D136/D137/D140/D141/D142/D143 范式延续(D143 Phase 3 commit `15f8dfe` 同模式 — 仅写测试 + 文档同步,无 bootstrap diff)
 - 2026-04-27 Phase 1 RED 复现 + 信息源探查(commit `17a1573`)— **重大发现**:D144 §第一性需求 motivating example `int?` callee 在 D067 下不合法(`bootstrap/checker/check_narrow.ss:6` `primitive type 'int' cannot be nullable`)+ 改用 `User?` 后主线 7 形态(null+class / T+T 显式 / 嵌套 / class 实例 / interface upcast / 多层 nullable / fn 返回)实测**全 GREEN**(两分支 ptr 一致路径 phi 自然统一);真 RED 形态另立 — (a) **X4-1**:`((cond)?u1:u2).name` 字段访问触发 LLC `'%14' defined with type 'ptr' but expected 'i32'`(TERNARY inferType 在字段访问链路 resolveObjClass 失败,fallback 走 i32 路径);(b) **X mismatch**:`takesInt((cond)?1:"X")` 两分支类型不一致触发 LLC `global variable reference must have pointer type`(checker `check_exprs.ss:304-309` 仅依次 checkExpr 三子节点不查类型一致性 silent miscompile);**真主战场**:TERNARY inferType 信息源破裂(`check_types.ss:201` + `gen_types.ss:541` 单一返 then 分支 `inferType(nGetI2(id))` — Phase 2 改入口锚已锁);§A.2 H1 实证 PASS(funcParamTypes 时序 — `gen/codegen.ss:110-112` 普通函数 + `gen/gen_registry.ss:56-57` class method + `gen/codegen.ss:326` registerAllDecls 在 emitGlobalsAndCode 之前 — D141/D142/D143 同模式继承 PASS);§A.2 H10 cross-D 反思继承 PASS(eval/method_call.ss:36-70 + eval/call.ss:18-43 + eval/new_expr.ss:24-41 三处 outer call site pre-eval `genVal(argId)` 之前 D141/D142/D143 反推前移落锚 line 61-65/33-39/27-41 — D144 同点追加 `inferTernaryBranchType(argId, callee, idx)` 第 4 行,**不仅 grep 字面 handler `evalTernary`** — D143 H10 教训继承);TERNARY 节点 slot 占用探查 PASS(`parse_exprs.ss:13-16` parseExpr ternary 占 i1/i2/i3,**s1/s2/s3+i4+nList 全空闲** — Phase 2 选 nSetS2 与 D141 ARROW_FUNC PARAM s2 + D142 ARRAY_LIT s2 + D143 OBJ_LITERAL s2 同范式);TERNARY kind dispatch 全 grep PASS 8 处(parse_exprs.ss:13 parser + check_exprs.ss:304 checker case + check_types.ss:201 checker inferType + gen/exprs/exprs.ss:68 genVal dispatch + gen_types.ss:541 codegen inferType + eval/eval_expr.ss:64 evalExpr dispatch + eval/ternary.ss:4-33 evalTernary handler + pir/pir_lower.ss:252 PIR use 分析 — PIR 仅递归收集 use 不破反推链路);D135/D136/D137/D140/D141/D142/D143 范式延续(D143 Phase 1 commit f089738 同模式)
