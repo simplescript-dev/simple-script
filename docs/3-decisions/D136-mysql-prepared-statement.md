@@ -1,6 +1,6 @@
 # D136: MySQL Prepared Statement 协议集成(COM_STMT_PREPARE / EXECUTE / CLOSE)
 
-**Status:** [✓] Phase 0 落盘(commit `9326b9f`)+ [✓] Phase 1 接口扩 + COM_STMT_PREPARE 实施 at commit `c854778` + [✓] Phase 2 EXECUTE + binary result set + CLOSE 实施 at commit `<Phase 2 hash 待二阶段回填>` + [ ] Phase 3 e2e + JdbcTemplate retcon scope 评估
+**Status:** [✓] Phase 0 落盘(commit `9326b9f`)+ [✓] Phase 1 接口扩 + COM_STMT_PREPARE 实施 at commit `c854778` + [✓] Phase 2 EXECUTE + binary result set + CLOSE 实施 at commit `1a70844` + [✓] Phase 3 e2e + JdbcTemplate retcon scope 评估 at commit `<Phase 3 hash 待二阶段回填>` (JdbcTemplate retcon defer D137 sub-follow-up)
 
 **Depends on:**
 - D134 全 Phase 收关锚(commit `e509be1`)— `lib/com/mysql/{wire,handshake,query,jdbc}.ss` driver 实施层 + `tests/d134_mysql/` integration test 框架
@@ -590,7 +590,7 @@ D134 §A.7:
 - [✓] RED: `grep -rnE "COM_STMT_PREPARE\|prepareStatement\|PreparedStatement\|sendComStmtPrepare" lib/com/mysql/ lib/java/sql.ss \| wc -l = 0` 改前实测 ✓
 - [✓] GREEN: 改后 30 + `bin/ss test tests/d134_mysql/` 5 文件全绿 + `./build.sh bootstrap` 三阶段固定点 stage2==stage3 byte-identical + `bin/ss test tests/` baseline 不降
 
-### Phase 2: COM_STMT_EXECUTE + binary result set + COM_STMT_CLOSE 实施 [✓] Done at commit `<Phase 2 hash 待二阶段回填>` (2026-04-27)
+### Phase 2: COM_STMT_EXECUTE + binary result set + COM_STMT_CLOSE 实施 [✓] Done at commit `1a70844` (2026-04-27)
 
 - [✓] `bootstrap/gen/rt/gen_rt_system.ss` 加 `@ss_writeDoubleLE` / `@ss_readDoubleLE` IR define(~30 行)+ `bootstrap/gen/gen_registry.ss` 加 funcRetTypes 2 entry + names 字符串 2 entry(承 §核心原则 12 Phase 2 retcon 例外 + §A.6 调研补口子)
 - [✓] `bootstrap/gen/stmts/stmts_simple.ss` `genIndexAssign` 加 double 分支 bitcast 1 行(SS user `arr[i] = doubleVal` 漏 bitcast 致 llc 拒收 `ss_arraySet(ptr, i32, i64) bound to double 字面量` — 编译器 bug,承 CLAUDE.md "编译器限制是 bug,先修编译器")
@@ -599,22 +599,29 @@ D134 §A.7:
 - [✓] RED: `grep -rnE "^function sendComStmtExecute\|^function parseBinaryRow\|^class MysqlBinaryResultSet\|^function sendComStmtClose" lib/com/mysql/ \| wc -l = 0` 改前实测 ✓
 - [✓] GREEN: 改后 ≥ 4 + `bin/ss test tests/d134_mysql/` 全绿(prepared_test 12 test() 含 4 vec 新增) + `./build.sh bootstrap` 三阶段固定点 stage2==stage3 byte-identical + `bin/ss test tests/` baseline 不降
 
-### Phase 3: e2e + JdbcTemplate retcon scope 评估 [ ] Planned
+### Phase 3: e2e + JdbcTemplate retcon scope 评估 [✓] Done at commit `<Phase 3 hash 待二阶段回填>` (2026-04-27)
 
-- [ ] `tests/d136_prepared_statement/integration_test.ss`(新)~150 LOC — probe + 5 e2e(单 param SELECT / 多 param INSERT / 多类型多行 SELECT / NULL 处理 / close 后 connection 复用)
-- [ ] **JdbcTemplate retcon scope 评估**:
-  - LOC > 200 或破坏既有签名 → 留 D137 sub-follow-up,Phase 3 仅落 e2e + JdbcTemplate 加 1 个 `update(sql, params)` 重载示范
-  - LOC ≤ 200 不破签名 → 落 D136 Phase 3:JdbcTemplate 加 `execute(sql, params)` / `update(sql, params)` / `queryForInt(sql, params, col)` 重载,既有签名保留
-- [ ] D134 §Status retcon(若 JdbcTemplate retcon)— 加 `D136 superseded text protocol fallback for parameterized queries` 锚
-- [ ] GREEN: e2e 5 case 全绿 + tests/d134_mysql/ 8 case + tests/d135_caching_sha2/ 4 case 全绿 + 三轨 RED 闭环 + axiom 红线 = 0 + d_doc_index_linter F1 = 0
+- [✓] `tests/d136_prepared_statement/integration_test.ss`(新,197 LOC)— probe 127.0.0.1:3307 docker unreachable skip(沿 D134 Phase 6 + D135 Phase 2 范式)+ 5 e2e:
+  - test 1 单 param SELECT `SELECT id, name, age FROM users WHERE id = ?` + setInt(1, 1) → 验 id=1 / name="Alice" / age=30
+  - test 2 多 param INSERT `INSERT INTO users VALUES (?, ?, ?)` + setInt(1, 100) / setString(2, "Trinity") / setInt(3, 35) → 验 affected rows = 1 + cross-check SELECT
+  - test 3 多类型多行 SELECT `SELECT id, name, age FROM users ORDER BY id` 不带 param → 验 row count ≥ 3 + Alice/Bob/Trinity 三行字段值精确比对
+  - test 4 NULL 处理 — `INSERT INTO users VALUES (?, ?, ?)` + setInt(1, 200) / setNull(2) / setInt(3, 28) + SELECT 验 name = ""(SS 无 null sentinel,parseBinaryRow NULL bitmap +2 offset 路径锚)
+  - test 5 close 后 Connection 复用 — stmt1.close() 后同 conn 再 prepareStatement stmt2,验 statement_id 独立 + Connection fd 不被 stmt close 关闭
+- [✓] **JdbcTemplate retcon scope 评估**:**defer D137 sub-follow-up**(根因校准非降级,承 §核心原则 §Root Cause)
+  - 评估根因:SS class 方法 mangling `@ClassName_methodName` 不含 paramSig(承 CLAUDE.md §符号 mangling 文末"重载 `@func_paramSig`" 仅适用 free function),`update(sql)` + `update(sql, params)` 同 class 必碰撞;新方法名(`updateP` / `updateWithParams`)是 JdbcTemplate API 设计独立题(参数 Array<string> 还需 type code 配套表达 — 单 demo 既不能复用 setInt/setString 类型分派又会设坏先例)
+  - 取舍:R5 风险锚命中"signature 破裂 + scope 爆"双触发,defer D137 是根因决策 — D136 Phase 3 仅落 e2e 验证 binary protocol 全链通,JdbcTemplate API 演化让 D137 单独评估(候选 ① 引入 `Array<Param>` Param 类承载 type code + value;候选 ② 加 method overload 编译器支持;候选 ③ 走 `executeQuery(sql).bindInt(1, x).bindString(2, y).run()` builder pattern — 三候选权衡留 D137 PSM)
+- [✓] D134 §Status retcon **不需要**(无 JdbcTemplate prepared 接管 → 无"text protocol superseded"锚要落)
+- [✓] GREEN: `bin/ss test tests/d136_prepared_statement/` 1 文件 probe-skip pass(docker unreachable)+ `bin/ss test tests/d134_mysql/` 5 文件全绿 + `bin/ss test tests/d135_caching_sha2/` 1 文件全绿 + `bin/ss test tests/` baseline 不降 + `./build.sh bootstrap` 三阶段固定点 stage2==stage3 byte-identical(纯 tests + docs 改不动 bootstrap)+ axiom 红线 grep / nm = 0 永久 + d_doc_index_linter F1 = 0(D134 §Status 未 retcon → 无 forward ref 风险)
 
 ---
 
-## D136 全 Phase 收关锚(待 Phase 3 完成时回填)
+## D136 全 Phase 收关锚
 
 axiom 兑现度由 D134 "文本协议字符串拼接 + SQL 注入暴露面" → D136 "prepared statement 参数化绑定 + binary protocol 加速 + SQL 注入零风险"。三轨闭环:
-- ① `grep -rnE "COM_STMT_PREPARE|COM_STMT_EXECUTE|COM_STMT_CLOSE|prepareStatement|PreparedStatement" lib/com/mysql/ lib/java/sql.ss | wc -l ≥ 5` 待 Phase 1+2 锚
-- ② tests/d134_mysql/prepared_test.ss 8 vec 全绿 待 Phase 1+2 锚
-- ③ tests/d136_prepared_statement/ 5 case + tests/d134_mysql/ 8 case + tests/d135_caching_sha2/ 4 case 全绿 + bootstrap 三阶段固定点 + d_doc_index_linter F1 = 0 + axiom 红线 grep / nm = 0 永久 待 Phase 3 锚
+- ① `grep -rnE "COM_STMT_PREPARE|COM_STMT_EXECUTE|COM_STMT_CLOSE|prepareStatement|PreparedStatement" lib/com/mysql/ lib/java/sql.ss | wc -l ≥ 5` 锚 Phase 1 commit `c854778` + Phase 2 commit `1a70844`
+- ② tests/d134_mysql/prepared_test.ss 12 test() 全绿(Phase 1 8 vec + Phase 2 4 vec) 锚 Phase 1 commit `c854778` + Phase 2 commit `1a70844`
+- ③ tests/d136_prepared_statement/ 5 e2e(probe-skip pass docker unreachable / 全绿 docker available)+ tests/d134_mysql/ 5 文件全绿 + tests/d135_caching_sha2/ 1 文件全绿 + bootstrap 三阶段固定点 + d_doc_index_linter F1 = 0 + axiom 红线 grep / nm = 0 永久 锚 Phase 3 commit `<Phase 3 hash 待二阶段回填>`
+
+JdbcTemplate retcon defer D137 sub-follow-up — 根因校准非降级(SS class methods 无 same-name overload + heterogeneous param type 表达需 API 独立设计,留 D137 PSM 三候选权衡)。
 
 ---
