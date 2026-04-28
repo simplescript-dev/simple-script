@@ -136,6 +136,20 @@ function readUpdateResult(fd: int): int {
     return readUpdateResultPacket(fd).affectedRows
 }
 
+// Cross-module accessors — D138 Phase 2. lib/com/mysql/jdbc.ss + prepared.ss
+// IR is concatenated before query.ss declares %OkPacket, so a direct GEP
+// %OkPacket from those modules forward-references the type and llc rejects
+// 'base element of getelementptr must be sized'. Routing field access through
+// a function defined here keeps the GEP inside the module that owns the type
+// — same constraint columnDefColType / columnDefName document for ColumnDef.
+function okPacketAffectedRows(ok: OkPacket): int {
+    return ok.affectedRows
+}
+
+function okPacketLastInsertId(ok: OkPacket): int {
+    return ok.lastInsertId
+}
+
 // Skips one length-encoded string at `offset`, returns the new offset.
 // NULL marker (0xFB) consumes 1 byte of header and zero data bytes.
 function skipLengthEncodedString(payload: string, offset: int): int {

@@ -491,9 +491,12 @@ function inferType(id: int): string {
         if (objType != "" && isFnType(classFieldTypes.getString(`${objType}.${method}`)) == 1) {
             return "i64"
         }
-        // Interface method return type lookup
-        if (ifaceMethodsCG.has(objType) == 1 && ifaceMethodRets.has(`${objType}.${method}`) == 1) {
-            return ifaceMethodRets.getString(`${objType}.${method}`)
+        // D138 Phase 1.5 arity-aware: plain fast-path / miss 走 pickIfaceDispatcherKey 算 mangled
+        if (ifaceMethodsCG.has(objType) == 1) {
+            const plainKey = `${objType}.${method}`
+            if (ifaceMethodRets.has(plainKey) == 1) { return ifaceMethodRets.getString(plainKey) }
+            const mKey = `${objType}.${pickIfaceDispatcherKey(objType, method, nGetList(id))}`
+            if (ifaceMethodRets.has(mKey) == 1) { return ifaceMethodRets.getString(mKey) }
         }
         // find() returns the array element type
         if (method == "find") {
