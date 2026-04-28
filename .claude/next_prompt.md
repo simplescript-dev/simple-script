@@ -1,82 +1,85 @@
-ultrathink D138 Phase 4 实施(测试覆盖 — 6 形态完整 — `tests/d138_generated_keys/integration_test.ss`)+ 本轮(Phase 3 Spring KeyHolder + 编译器扩接口擦除 + arrow flush fix)commit hash 回填 + Status 行收关 + next_prompt 指向 Phase 5(全 Phase 收关)— D135/D136/D137/D138 SQL 主线范式延续(不是 D141-D145 docs-heavy 衍生链)。
+ultrathink D138 Phase 5 实施(全 Phase 收关 — D138 主线 close)+ 本轮(Phase 4 测试覆盖 6 形态完整 — tests/d138_generated_keys/integration_test.ss 6 case 全 GREEN + Case 2 改 2-arg `prepareStatement(sql, RETURN_GENERATED_KEYS)` JDBC 4.3 §Connection spec 入口实证)commit hash 回填 + Status 行收关 + next_prompt 指向 D138 主线 close 后的下一选项(等用户指定下一 SQL 主线 sub-D 或其他方向)— D135/D136/D137/D138 SQL 主线范式延续(不是 D141-D145 docs-heavy 衍生链)。
 
 **用户对话锁(2026-04-28)**:
-- SQL 主线 — D138 是 D137 §F8 generated keys 直接续接
+- SQL 主线 — D138 是 D137 §F8 generated keys 直接续接(主线已完整打通)
 - **最优最佳,不考虑成本,不 workaround,不节省** — 完整 JDBC 4.3 + Spring KeyHolder 标准
-- Phase 3 Spring KeyHolder + 编译器扩接口擦除 + arrow flush fix 已落地(commit `<本轮回填>`)— Spring KeyHolder 全路径打通(getKey / getKeyAsLong / getKeys / getKeyList 4 method 全实现 + JdbcTemplate.update(sql, setter, keyHolder) 第 6 method 重载 + 编译器扩 pickClassMethodKey 接口擦除 + genFuncDecl arrow flush bug fix)
-- Phase 4 节奏:本轮(Phase 4 测试覆盖 6 形态 + Phase 3 hash 回填同 commit)+ 下轮(Phase 5 全 Phase 收关)
+- Phase 4 测试覆盖 6 形态 + simplify 已落地(commit `<本轮回填>`)— D138 §核心目标 6 判据全形态主判据 PASS + §A.2 H1-H8 全实证收口
+- Phase 5 节奏:本轮(Phase 5 全 Phase 收关 + Phase 4 hash 回填同 commit)— D138 主线 close,不再续 Phase
 
-§前置就绪(D138 Phase 3 commit `<本轮回填>` 已锁):
-— D138 Phase 2 hash `1ee1173` 已落档(3 处 placeholder 含 line 3 Status / line 327 §Phase 收关锚 / line 369 Status 时间线)+ Phase 3 实施完成(lib/spring/jdbc.ss interface KeyHolder + class GeneratedKeyHolder + JdbcTemplate.update 第 6 method 重载;bootstrap/gen/gen_iface.ss + gen_methods.ss + gen_decls.ss 编译器扩);D138 §Phase 收关锚 §Phase 3 mark `[✓] Done at commit \`<Phase 3 commit>\``(留 placeholder)+ Status 时间线本轮新行落档(留 placeholder)
-— spike `/tmp/test_d138_phase3.ss` GREEN(`rows=1` + `key=1` + `keyAsLong=1` + `listLen=1` + `keysSize=1` + `keysGen=1`)证明 Spring KeyHolder 完整 spec 路径(JdbcTemplate.update(sql, arrow setter, keyHolder) + keyHolder.getKey/getKeyAsLong/getKeys/getKeyList 全打通,arrow lambda + method call 路径同步打通)
-— d_doc_index F1=0 PASS + reflection_health GATE PASS no regressions(F1 gen_decls.ss cur=726 bm=730 PROGRESS / gen_methods.ss cur=711 bm=730 PROGRESS / gen_iface.ss 247 行 远低于 600 上限)+ 全 tests/ 284/4 pre-existing baseline 不破
+§前置就绪(D138 Phase 4 commit `<本轮回填>` 已锁):
+— D138 Phase 4 hash 待下轮 Phase 5 commit 时回填 3 处 placeholder(line 3 Status / line 353 §Phase 收关锚 §Phase 4 / line 395 Status 时间线 Phase 4 行)
+— `tests/d138_generated_keys/integration_test.ss` 6 case 全 GREEN(`bin/ss run` 输出 6 PASS — Case 1 `getLastInsertId` 直取 / Case 2 `prepareStatement(sql, RETURN_GENERATED_KEYS)` 2-arg + ResultSet `next/getInt("GENERATED_KEY")/past-end` JDBC 4.3 spec / Case 3 Spring KeyHolder 4 method / Case 4 multi-row 首 id / Case 5 transaction 持久 / Case 6 ERR sentinel 防御)+ docker 探活 fallback(probe.isClosed() == 1 时 println + return)
+— 全 tests/ 285/4(Phase 3 baseline 284/4 + Phase 4 新增 1 case = 285,4 fail 全 pre-existing 与 Phase 1-3 一致)+ reflection_health GATE PASS no regressions + d_doc_index GATE OK
+— simplify 采纳:Case 2 改用 `prepareStatement(sql, RETURN_GENERATED_KEYS)` 让 RETURN_GENERATED_KEYS 不再 dead import + 真覆盖 JDBC 4.3 §Connection 2-arg spec 入口;删除 dead imports(Statement / KeyHolder);6 个装饰注释改为短分组主题(与 d134/d136 风格一致);删除头部 "6 cases" 列表(d134 头无此清单);拒绝:跨文件 fixture pattern 抽 lib/test_helpers/(3 文件 borderline / scope creep / 留 future 4th 文件)、recreateTable 双 execute 合并(setup 路径 <5ms 非热点)
+— §A.2 H1-H8 全实证收口:H1 lenenc int offset(multi-row 间接)+ H2 i64 范围(Phase 1 i64 沿用)+ H3 multi-row 首 id(Case 4)+ H4 prepareStatement(sql, akg) MySQL no-op + 编译器扩(Case 2 + Case 3)+ H5 GeneratedKeyResultSet vtable dispatch(Case 2)+ H6 嵌套泛型(Case 3 4 method)+ H7 ERR 防御(Case 6)+ H8 baseline 不降(VCM §5)
 
 §关键 SSoT(信息源,本轮已实测确认):
-— `lib/spring/jdbc.ss:18-49` interface KeyHolder + class GeneratedKeyHolder(Phase 3 已加 — 4 method:getKey/getKeyAsLong/getKeys/getKeyList + keyList: Array<Map<string,int>> 字段)
-— `lib/spring/jdbc.ss:101-120` JdbcTemplate.update(sql, setter, keyHolder: KeyHolder) 第 6 method 重载(per-call Connection — Phase 3 已加)
-— `lib/com/mysql/query.ss:329-365` GeneratedKeyResultSet(Phase 1 已落 — 单行单列 GENERATED_KEY)
-— `lib/com/mysql/jdbc.ss:99-130` MysqlStatement.getGeneratedKeys / getLastInsertId(Phase 2 已落)
-— `lib/com/mysql/prepared.ss:559-569` MysqlPreparedStatement.getGeneratedKeys / getLastInsertId(Phase 2 已落)
-— `lib/java/sql.ss:31-44` const RETURN_GENERATED_KEYS=1 / NO_GENERATED_KEYS=2(Phase 2 已加)
-— `tests/d134_mysql/integration_test.ss` + `docker-compose.yml`(集成测试参考模板 — testss-mysql @ 127.0.0.1:3307,DB testdb,user root pwd test)
-— `tests/d136_prepared_statement/integration_test.ss`(prepared statement 集成测试模式 — `probe.isClosed() == 1` 时 println + return 0 fallback)
+— `tests/d138_generated_keys/integration_test.ss:46-154` 6 case 完整(159 行,经 simplify 削减 dead imports / 装饰注释 / 头部冗余清单)
+— `docs/3-decisions/D138-mysql-generated-keys.md:355` Phase 5 占位符 `[ ] 待 Phase 5 commit`
+— `lib/java/sql.ss:31-36` const RETURN_GENERATED_KEYS = 1 / NO_GENERATED_KEYS = 2(Phase 2 已加,本 Phase Case 2 实际消费)
+— `lib/java/sql.ss:49-50, 76-77` interface Statement / PreparedStatement getGeneratedKeys / getLastInsertId(Phase 2 已加)
+— `lib/java/sql.ss:91` interface Connection.prepareStatement(sql, autoGeneratedKeys) 重载(Phase 2 已加 — Phase 1.5 编译器扩支持)
+— `lib/spring/jdbc.ss:31-36` interface KeyHolder 4 method(Phase 3 已加)
+— `lib/spring/jdbc.ss:38-58` class GeneratedKeyHolder + keyList: Array<Map<string,int>>(Phase 3 已加)
+— `lib/spring/jdbc.ss:106-122` JdbcTemplate.update(sql, setter, keyHolder) 第 6 method 重载(Phase 3 已加)
+— `lib/com/mysql/query.ss:341-377` GeneratedKeyResultSet : ResultSet 单行单列 GENERATED_KEY(Phase 1 已加)
+— `lib/com/mysql/jdbc.ss:99,124-130` MysqlStatement lastInsertId 字段 + getGeneratedKeys / getLastInsertId(Phase 2 已加)
+— `lib/com/mysql/prepared.ss:499,563-569` MysqlPreparedStatement 同位扩展(Phase 2 已加)
 
-§任务清单(D138 Phase 3 commit hash 回填 + Phase 4 实施):
+§任务清单(D138 Phase 4 commit hash 回填 + Phase 5 实施 + D138 主线 close):
 
 (1) **本轮 commit hash 回填**:
-  - `git log --oneline | head -3` 找最新 D138 Phase 3 commit hash → Edit `docs/3-decisions/D138-mysql-generated-keys.md` 2 处 `<Phase 3 commit>` placeholder(line 3 Status / line 342 §Phase 收关锚 §Phase 3 / line 380 Status 时间线 Phase 3)→ 替换为实际 hash
+  - `git log --oneline | head -3` 找最新 D138 Phase 4 commit hash → Edit `docs/3-decisions/D138-mysql-generated-keys.md` 3 处 `<Phase 4 commit>` placeholder(line 3 Status / line 353 §Phase 收关锚 §Phase 4 / line 395 Status 时间线 Phase 4 行)→ 替换为实际 hash
 
-(2) **Phase 4 实施 — 测试覆盖 6 形态完整**:
+(2) **Phase 5 实施 — 全 Phase 收关**:
 
-  **4a. 新建 `tests/d138_generated_keys/integration_test.ss`** — 完整 6 形态 case(D138 §核心目标):
-  - **Case 1**:INSERT 单行 + `stmt.getLastInsertId()` 直取 — `MysqlStatement / executeUpdate(sql) + getLastInsertId() == 1`(MySQL docker 探活 fallback skip 同 d134/d136 模式 — `probe.isClosed() == 1` 时 println + return 0)
-  - **Case 2**:INSERT 单行 + `stmt.getGeneratedKeys()` ResultSet 走 spec — `executeUpdate + rs = stmt.getGeneratedKeys() + rs.next() == 1 + rs.getInt("GENERATED_KEY") == 1 + rs.next() == 0(past end)+ rs.close()`
-  - **Case 3**:INSERT 单行 + `JdbcTemplate.update(sql, setter, keyHolder)` Spring 标准(arrow setter 形式)+ `keyHolder.getKey() == 1` + `keyHolder.getKeyAsLong() == 1` + `keyHolder.getKeys().get("GENERATED_KEY") == 1` + `keyHolder.getKeyList().length() == 1`
-  - **Case 4**:INSERT 多行 `VALUES (?,?),(?,?)` 通过 PreparedStatement.setString 多次后 executeUpdate + `getLastInsertId() == first_id`(MySQL 协议规定首 id;后续 id 走 SELECT WHERE id >= first AND id < first + affectedRows 业务侧自计算)+ affectedRows == N
-  - **Case 5**:transaction 中 INSERT + commit 后 id 持久 — `setAutoCommit(0) + INSERT + getLastInsertId == X + commit() + 后续 SELECT WHERE id = X 验证 row 存在(用 queryForString)`
-  - **Case 6**:INSERT 失败(ERR packet 触发 — INSERT INTO nonexistent_table 或 PRIMARY KEY 冲突)+ `getLastInsertId() == 0 防御`(D138 §A.2 H7)
+  **5a. D138 §Phase 收关锚 §Phase 5 mark Done**:
+  - 占位符 `### Phase 5: 全 Phase 收关 [ ] 待 Phase 5 commit` → 改为 `### Phase 5: 全 Phase 收关 [✓] Done at commit \`<Phase 5 commit>\` (2026-04-28) — D138 主线 close`
+  - 加 §Phase 5 章节内容:
+    - **全 Phase commit hash 总览**:Phase 0 d47a05d / Phase 1 182b3fb / Phase 1.5 8793be0 / Phase 2 1ee1173 / Phase 3 8f8abb7 / Phase 4 `<本轮回填>` / Phase 5 `<下轮 commit>`
+    - **兑现成果汇总**(file:line 锚):
+      - JDBC 4.3 §Statement.getGeneratedKeys / getLastInsertId / RETURN_GENERATED_KEYS / NO_GENERATED_KEYS 常量 — `lib/java/sql.ss:35-36, 49-50, 76-77`
+      - JDBC 4.3 §Connection.prepareStatement(sql, autoGeneratedKeys) 重载 — `lib/java/sql.ss:91`
+      - Spring KeyHolder 4 method(getKey / getKeyAsLong / getKeys / getKeyList) — `lib/spring/jdbc.ss:31-36`
+      - Spring GeneratedKeyHolder impl + keyList Array<Map<string,int>>(扩展位) — `lib/spring/jdbc.ss:38-58`
+      - Spring JdbcTemplate.update(sql, setter, keyHolder) 第 6 method 重载 — `lib/spring/jdbc.ss:106-122`
+      - MySQL OkPacket 完整 4 字段 + parseOkPacket / readUpdateResultPacket 单一信息源 — `lib/com/mysql/query.ss`
+      - MySQL GeneratedKeyResultSet : ResultSet 单行单列 GENERATED_KEY — `lib/com/mysql/query.ss:341-377`
+      - MysqlStatement / MysqlPreparedStatement lastInsertId 字段 + getGeneratedKeys / getLastInsertId — `lib/com/mysql/jdbc.ss:99,124-130 / lib/com/mysql/prepared.ss:499,563-569`
+      - 编译器扩 — Phase 1.5 interface method overload by arity(`bootstrap/gen/gen_iface.ss` 双 pass mangle)+ Phase 2 inferType arity-aware mangle(`bootstrap/gen/gen_types.ss:494-500`)+ Phase 3 class method overload by interface erasure pickClassMethodKey(`bootstrap/gen/gen_iface.ss`)+ Phase 3 genFuncDecl early return arrow flush bug fix(`bootstrap/gen/gen_decls.ss`)
+      - 测试覆盖 6 形态 — `tests/d138_generated_keys/integration_test.ss:46-154`
+    - **Followup F1-F7 锚明确**:F1 OK packet info string SESSION_TRACK / F2 SQLException 完整生态 / F3 server-side cursor + scrollable ResultSet / F4 NamedParameterJdbcTemplate `:name` + KeyHolder 整合 / F5 RowMapper<T> 泛型 callback / F6 HikariCP Connection Pool / F7 batchUpdate / addBatch / executeBatch + KeyHolder 整合
+    - **§A.2 H1-H8 全实证锚**:H1 lenenc int / H2 i64 / H3 multi-row 首 id / H4 编译器扩 / H5 vtable dispatch / H6 嵌套泛型 / H7 ERR 防御 / H8 baseline 不降
 
-  **4b. 测试结构**:
-  - 沿 d134_mysql/integration_test.ss 6 case test() 调用模式
-  - clearAll() helper:每 case 前 DROP/CREATE 测试表
-  - URL: `jdbc:mysql://root:test@127.0.0.1:3307/testdb`
-  - probe.isClosed() == 1 时 println + return 0(docker 离线 fallback)
-  - 表名 `d138_generated_keys`(避免与 d134/d136 测试碰撞)
+  **5b. line 3 Status 收关**:在末尾加 `+ [✓] Phase 5 全 Phase 收关 at commit \`<Phase 5 commit>\` (2026-04-28) — D138 主线 close`(留下轮 placeholder — D138 终轮自留 hash 占位由后续 D 文档 Phase 0 commit 回填,或本 commit 后人工补)
 
-  **4c. 隐藏假设 H1-H8 实证**:
-  - H1 lenenc int offset 推进:Case 4 多行 INSERT affectedRows = 3,验证 lengthEncodedIntSize 推进 OK
-  - H2 last_insert_id i64 范围:Case 1 验证常规 i64 read OK(超 i32 边界值留 docker 配置定制 sub-D)
-  - H3 multi-row INSERT 首 id:Case 4 直接验证
-  - H4 prepareStatement(sql, akg) MySQL no-op:Case 3 RETURN_GENERATED_KEYS 与未传 akg 等价(已 Phase 2 spike 隐含验证 — 本 Phase 4 sanity)
-  - H5 GeneratedKeyResultSet vs MysqlResultSet vtable dispatch:Case 2 ResultSet.next/getInt 走 vtable 路径(Phase 1 spike 已 sanity,本 Phase 4 重新验证)
-  - H6 KeyHolder.getKeyList() Array<Map<string,int>> 嵌套泛型:Case 3 全 4 method 全 GREEN — H6 风险已 Phase 3 spike 实证消除
-  - H7 ERR packet getLastInsertId 防御:Case 6 直接验证返 0
-  - H8 全 tests/ baseline 不降:VCM 六验
+  **5c. Status 时间线本轮新行落档**:
+  - `2026-04-28 Phase 5 全 Phase 收关 + Phase 4 hash 回填 <本轮 commit>(commit \`<Phase 5 commit>\`)— D138 主线 close;...`(详见 §Phase 收关锚 §Phase 5 章节)
 
-  **4d. 不动**:Phase 1-3 lib/ + bootstrap/ 既有(Phase 4 仅 tests/ 新建 + D138 docs)
+  **5d. 不动**:Phase 1-4 lib/ + bootstrap/ + tests/ 既有(Phase 5 仅 docs/3-decisions/D138-*.md + .claude/next_prompt.md)
 
   **VCM 六验**:
-  - bootstrap 三阶段固定点 PASS(stage2 == stage3 — Phase 4 仅 tests/ 新建,bootstrap 编译器不变)
-  - tests/d138_generated_keys 6/0/6 全绿(主判据)
-  - tests/d134_mysql 5/0/5 + d135_caching_sha2 1/0/1 + d136_prepared_statement 1/0/1 baseline 不破(Phase 3 lib + bootstrap 改 docker 在线时同 baseline + 离线时 skip)
-  - tests/d141-d144 反推 baseline 全绿(5/6/6/8)
-  - 全 tests/ 290/4(原 284/4 + Phase 4 新加 6 case 全绿 — 4 fail 全 pre-existing 与 Phase 3 baseline 一致)
-  - reflection_health GATE PASS no regressions(本 Phase 不动 bootstrap)
+  - §1 工程豁免(`git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 — 本 Phase 5 仅 docs-only,核心代码路径 diff=0)
+  - §2 行为(D138 doc Phase 5 收关章节 grep PASS — `[✓] Done at commit` 全 6 Phase 列出 + Followup F1-F7 全锚 + §A.2 H1-H8 全实证锚)
+  - §3 反向(撤回 Phase 5 收关章节 → §Phase 收关锚 §Phase 5 仍 [ ] 占位符,主线未 close)
+  - §4 边界(Followup F1-F7 全锚 + 兑现成果 file:line 全核对)
+  - §5 路线(D135/D136/D137 范式延续)
+  - §6 根因(file:line 锚 = D138 §Phase 收关锚 §Phase 5 mark Done + 全 Phase commit hash 总览)
   - d_doc_index GATE OK
-  - 行为验证:tests/d138_generated_keys/integration_test.ss `bin/ss test` 6 case 全 GREEN
+  - ultrathink_linter PASS
 
-(3) **commit `feat(D138): Phase 4 — 测试覆盖 6 形态完整 + 本轮 docs commit hash 回填 <本轮 commit> — tests/d138_generated_keys/integration_test.ss 6 case(单行直取 stmt.getLastInsertId / ResultSet 走 spec stmt.getGeneratedKeys.next.getInt / Spring KeyHolder JdbcTemplate.update + keyHolder 4 method / multi-row VALUES 首 id / transaction COMMIT 持久 / ERR packet INSERT 失败防御 0)+ docker MySQL 探活 fallback skip + 隐藏假设 H1-H8 PASS — D138 §核心目标 6 判据全形态主判据 PASS — D135/D136/D137/D138 SQL 主线范式延续`**
-  - 仅 stage `tests/d138_generated_keys/` + `docs/3-decisions/D138-*.md` + `.claude/next_prompt.md`
+(3) **commit `docs(D138): Phase 5 — 全 Phase 收关 + 本轮 docs commit hash 回填 <本轮 commit>(Phase 4 hash) — D138 主线 close — JDBC 4.3 §Statement.getGeneratedKeys / getLastInsertId / RETURN_GENERATED_KEYS 常量 + JDBC 4.3 §Connection.prepareStatement(sql, akg) 重载 + Spring KeyHolder 4 method(getKey / getKeyAsLong / getKeys / getKeyList)+ Spring GeneratedKeyHolder impl + JdbcTemplate.update(sql, setter, keyHolder) 第 6 method 重载 + MySQL OkPacket 完整 4 字段 + GeneratedKeyResultSet 单行单列 GENERATED_KEY + MysqlStatement / MysqlPreparedStatement lastInsertId + 编译器扩四处(Phase 1.5 interface overload by arity / Phase 2 inferType arity-aware / Phase 3 class method interface erasure / Phase 3 arrow flush)+ 测试 6 形态完整(direct / ResultSet 2-arg spec / Spring KeyHolder / multi-row 首 id / transaction 持久 / ERR 防御)— D135/D136/D137/D138 SQL 主线范式延续`**
+  - 仅 stage `docs/3-decisions/D138-mysql-generated-keys.md` + `.claude/next_prompt.md`
 
-(4) **next_prompt 指向 Phase 5**:全 Phase 收关 — D138 主线 close — Phase 0-5 commit hash 全列 + 兑现成果 + Followup F1-F7 锚明确 + Status 行最终收关 + 不再续 Phase
+(4) **next_prompt 指向 D138 主线 close 后的下一选项**:
+  - D138 SQL 主线已 close;下轮等用户指定下一 SQL 主线 sub-D(候选:D139+ SQLException 完整生态 §F2 / D140+ server-side cursor §F3 / D141+ NamedParameterJdbcTemplate + KeyHolder §F4 / HikariCP D125+ Connection Pool §F6 / D142+ batchUpdate + KeyHolder §F7)或其他方向
+  - next_prompt 写"等用户指定下一 SQL 主线 sub-D 或其他方向 — D138 主线已 close,Phase 0-5 全 close 范式收尾"
 
 §根因优先(CLAUDE.md §项目技术规则):
-— Phase 4 测试覆盖 = §核心目标 6 判据全形态实证(消除 D138 §核心目标"业务 INSERT 后无法 ORM/Repository 层 save(entity).id 回填走 KeyHolder 标准"剩余路径未验证)
-— 复用 Phase 1-3 lib + 编译器扩 — 单一信息源出口(D138 §核心原则 4)
-— D135/D136/D137/D138 SQL 主线范式 — 每 Phase 独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环
+— Phase 5 全 Phase 收关 = §核心目标 6 判据已 100% 实证(Phase 4 主判据 PASS)+ 主线打通锚(JDBC 4.3 完整 spec + Spring KeyHolder 标准 + 编译器扩四处覆盖 H4 / H6 派生)
+— 主线打通后 Followup F1-F7 全有 file:line 锚定,后续 sub-D 起首落档时直接读 §Followup 即可
+— D135/D136/D137/D138 SQL 主线范式延续 — 每 Phase 独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环
 
-§D135/D136/D137/D138 Phase 4 同形参考:
-— D135 Phase 0 + Phase 1 同 commit 模式
-— D136 Phase 0 commit `9326b9f` + Phase 1 commit `c854778` 同模式
-— D137 Phase 0 commit `bafc25a` + Phase 1 commit `d2df1ba` 同模式
-— D138 Phase 0 commit `d47a05d` + Phase 1 commit `182b3fb` + Phase 1.5 计划落档 commit `c90df15` + Phase 1.5 实施 commit `8793be0` + Phase 2 commit `1ee1173` + Phase 3 commit `<本轮回填>` + Phase 4 commit(下轮 测试覆盖 6 形态)+ Phase 5 commit(下下轮 全 Phase 收关)同模式
+§D135/D136/D137/D138 Phase 5 同形参考:
+— D135-D137 已落 5 Phase 全 close 范式(Phase 0/1/2/3/4/5)
+— D138 Phase 0 commit `d47a05d` + Phase 1 `182b3fb` + Phase 1.5 `8793be0` + Phase 2 `1ee1173` + Phase 3 `8f8abb7` + Phase 4 `<本轮回填>` + Phase 5 commit(下轮 全 Phase 收关 — D138 主线 close)同模式
