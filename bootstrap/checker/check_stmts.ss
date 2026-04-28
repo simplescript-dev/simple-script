@@ -2,6 +2,7 @@
 // Used by checker.ss via textual import.
 
 import { editDistance, collectVisibleNames, findSuggestion } from "./check_suggest"
+import { mangleMethodList } from "./check_types"
 
 // Single source of truth for compile-time string-literal array detection.
 // Returns csv of element string values; "" means reject (not ARRAY_LIT, empty,
@@ -76,19 +77,11 @@ function checkStmt(id: int) {
         const className = nGetS1(id)
         const implList = nGetS3(id)
         const methodsBlockId = nGetI2(id)
-        // Collect class method names
+        // D138 Phase 1.5: arity-aware mangle 同 ifaceMethods 公约;check_class.ss:87 contains `,${req},` 比对依赖前后逗号包装
         let classMethods = ","
         if (methodsBlockId > 0) {
-            const ml = nGetList(methodsBlockId)
-            if (ml != "") {
-                const ms = ml.split(",")
-                for (m in ms) {
-                    const mId = parseInt(m)
-                    if (mId > 0 && nGetKind(mId) == "FUNC_DECL") {
-                        classMethods = `${classMethods}${nGetS1(mId)},`
-                    }
-                }
-            }
+            const csv = mangleMethodList(nGetList(methodsBlockId), 1)
+            if (csv != "") { classMethods = `,${csv},` }
         }
         // Verify interface implementations (uses contains to avoid i64/ptr bootstrap issue)
         if (implList != "") {

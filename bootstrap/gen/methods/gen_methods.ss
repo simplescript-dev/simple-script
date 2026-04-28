@@ -701,7 +701,7 @@ function genChannelMethod(method: string, objVal: string, objId: int, argList: s
 // ── Interface method dispatch ─────────────────────────────────
 
 function genInterfaceMethodCall(ifaceName: string, method: string, objVal: string, argList: string): string {
-    const dispName = `__iface_${ifaceName}_${method}`
+    // Build callArgs first (genExpr emits IR — keep emit order stable)
     let callArgs = `ptr ${objVal}`
     if (argList != "") {
         const argParts = argList.split(",")
@@ -714,6 +714,8 @@ function genInterfaceMethodCall(ifaceName: string, method: string, objVal: strin
             }
         }
     }
+    // D138 Phase 1.5: arity-aware dispatcher selection 见 gen_iface.ss pickIfaceDispatcherKey
+    const dispName = `__iface_${ifaceName}_${pickIfaceDispatcherKey(ifaceName, method, argList)}`
     let retType = "ptr"
     if (funcRetTypes.has(dispName) == 1) {
         retType = ssTypeToLLVM(funcRetTypes.getString(dispName))

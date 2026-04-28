@@ -1,86 +1,74 @@
-ultrathink D138 Phase 1.5 实施(编译器扩 — interface method overload by arity)+ 本轮(Phase 1.5 计划落档)commit hash 回填 + Status 行收关 + next_prompt 指向 Phase 2(JDBC API + MySQL 实现完整) — D135/D136/D137/D138 SQL 主线范式延续(不是 D141-D145 docs-heavy 衍生链)。
+ultrathink D138 Phase 2 实施(JDBC API + MySQL 实现完整 — lib/java/sql.ss interface 扩 + lib/com/mysql/jdbc.ss + prepared.ss MySQL 实现)+ 本轮(Phase 1.5 编译器扩)commit hash 回填 + Status 行收关 + next_prompt 指向 Phase 3(Spring KeyHolder)— D135/D136/D137/D138 SQL 主线范式延续(不是 D141-D145 docs-heavy 衍生链)。
 
 **用户对话锁(2026-04-28)**:
 - SQL 主线 — D138 是 D137 §F8 generated keys 直接续接
 - **最优最佳,不考虑成本,不 workaround,不节省** — 完整 JDBC 4.3 + Spring KeyHolder 标准
-- 用户回 "不修编译器 这个原则在哪里 我没有写过这个原则" → §核心原则 7 + §硬约束 "不修编译器" 已推翻,**编译器扩允许**(Phase 1.5)
-- 用户回 "先修复 50 222 然后按节奏推进" → 本轮(Phase 1.5 计划落档 docs commit)+ 下轮(Phase 1.5 编译器实施)+ 下下轮(Phase 2 lib 层)+ ...
+- Phase 1.5 编译器扩已落地(commit `<本轮回填>`)— SS interface method overload by arity 全栈支持(checker + codegen mangle 同公约 / `bootstrap/gen/gen_iface.ss` `pickIfaceDispatcherKey` + `bootstrap/checker/check_types.ss` `mangleMethodList`)
+- Phase 2 节奏:本轮(Phase 2 lib 层实施 + Phase 1.5 hash 回填同 commit)+ 下轮(Phase 3 Spring KeyHolder)+ 下下轮(Phase 4 测试覆盖 6 形态)+ Phase 5 全 Phase 收关
 
-§前置就绪(D138 Phase 1.5 计划落档 commit `<本轮回填>` 已锁):
-— D138 Phase 0 hash `d47a05d` 已落档 + Phase 1 hash `182b3fb` 已回填(line 3 Status / line 305 §Phase 收关锚 §Phase 1 / line 342 Status 时间线 Phase 1 — 3 处 `<placeholder>` → `182b3fb`)
-— D138 §核心原则 7 改 "依赖路径 + 编译器扩允许" + §硬约束 改 "Phase 1.5 编译器扩 interface method overload by arity"(用户对话锁锁定推翻)
-— D138 §A.2 H4 失败回路更新假设破裂记录(2026-04-28 Phase 2 实测 `/tmp/test_iface_overload.ss` llc 报 `@Impl_bar` 未定义 → SS interface dispatcher byName 调 class method 符号未协调 paramSig mangle,与 class method `${className}_${mName}_${paramSig}` overload mangle 错位;对照 `/tmp/test_class_overload.ss` PASS 证明 class method overload OK 差异在 interface 未升级)
-— D138 §Phase 计划表加 Phase 1.5 行(目标 / 关键产出 / 验证)+ §Phase 收关锚 加 Phase 1.5 章节占位符(8 条实施清单)
-— d_doc_index F1=0 PASS no regressions(本轮 docs-only 无 bootstrap 改 — bootstrap 三阶段固定点本轮无需跑因无 code 改动)
+§前置就绪(D138 Phase 1.5 commit `<本轮回填>` 已锁):
+— D138 Phase 1 hash `182b3fb` 已落档 + Phase 1.5 实施完成(编译器扩 interface method overload by arity / `bootstrap/gen/gen_iface.ss` 双 pass mangle + `pickIfaceDispatcherKey` helper + `emitIfaceDispatchFn` arity-aware / `bootstrap/checker/check_types.ss` `typeSigChecker` + `paramSigChecker` + `mangleMethodList` / `bootstrap/checker/checker.ss` + `bootstrap/checker/check_stmts.ss` 收敛 helper);D138 §Phase 收关锚 §Phase 1.5 mark `[✓] Done at commit \`<Phase 1.5 commit>\``(留 placeholder)+ Status 时间线本轮新行落档(留 placeholder)
+— D138 §核心原则 7 + §硬约束 line 50/222/223 已经修正为"依赖路径 + 编译器扩允许"(Phase 1.5 落地后 H4 假设破裂回路完成)
+— `/tmp/test_iface_overload.ss` GREEN(`bin/ss run` 输出 `11`+`30`)证明 SS interface method overload by arity 全栈打通,可承载 Phase 2 `Connection.prepareStatement(sql)` + `prepareStatement(sql, akg)` 重载需求
+— d_doc_index F1=0 PASS + reflection_health GATE PASS no regressions + 全 tests/ 284/4 pre-existing baseline 不破
 
 §关键 SSoT(信息源,本轮已实测确认):
-— `bootstrap/gen/gen_iface.ss:16` `ifaceMethodRets.set(\`${name}.${mName}\`, ...)` byName key
-— `bootstrap/gen/gen_iface.ss:31` `ifaceMethodPars.set(\`${name}.${mName}\`, ...)` byName key
-— `bootstrap/gen/gen_iface.ss:14` `methodNames = listAppendStr(methodNames, mName)` byName 重复加(同名 method 会 append 两次但后续读不区分 arity)
-— `bootstrap/gen/gen_iface.ss:58-60` `dispName = \`__iface_${iface}_${method}\`` + `emittedDispatchers` byName 去重(同名 method 仅 emit 一次 dispatcher)
-— `bootstrap/gen/gen_iface.ss:119/122` dispatcher 调 class method 时 `@${defClass}_${method}` 无 paramSig 后缀,与 class method overload mangle 错位
-— `bootstrap/gen/class/class_method.ss:51-65` class method symbol mangle:`isOverloaded(\`${className}_${mName}\`) == 1` → `${className}_${mName}_${mSig}`(paramSig);否则 plain `${className}_${mName}`
-— `bootstrap/checker/checker.ss:456` `ifaceMethods.set(ifName, methodNames)` byName 同 codegen
-— `bootstrap/checker/check_class.ss:74-76` 实现验证 byName 比对
-— `bootstrap/gen/methods/gen_methods.ss:519-520` `genInterfaceMethodCall(objClass, method, ...)` 按 method 名调 dispatcher symbol
+— `lib/java/sql.ss:31-36` interface Statement(executeQuery / executeUpdate / execute / close — 当前无 getGeneratedKeys / getLastInsertId)
+— `lib/java/sql.ss:51-61` interface PreparedStatement(setInt/setLong/setString/setDouble/setBoolean/setNull/executeQuery/executeUpdate/close — 当前无 getGeneratedKeys / getLastInsertId)
+— `lib/java/sql.ss:65-73` interface Connection(createStatement / prepareStatement(sql) / setAutoCommit / commit / rollback / close / isClosed — 当前 prepareStatement 单 arity)
+— `lib/com/mysql/jdbc.ss:83-105` MysqlStatement(executeQuery / executeUpdate 用 `readUpdateResult` thin wrapper — Phase 2 改 `readUpdateResultPacket` 取 OkPacket + 存 lastInsertId 字段)
+— `lib/com/mysql/jdbc.ss:46-48` MysqlConnection.prepareStatement(sql) 单 arity
+— `lib/com/mysql/prepared.ss:486-557` MysqlPreparedStatement(executeUpdate 同 thin wrapper 路径 — Phase 2 同位扩展 lastInsertId 字段 + getLastInsertId / getGeneratedKeys)
+— `lib/com/mysql/query.ss` Phase 1 已落 `parseOkPacket` + `readUpdateResultPacket` + `class OkPacket{affectedRows,lastInsertId,statusFlags,warnings}` + `class GeneratedKeyResultSet : ResultSet` 单一信息源出口
 
-§任务清单(D138 Phase 1.5 commit hash 回填 + Phase 1.5 实施):
+§任务清单(D138 Phase 1.5 commit hash 回填 + Phase 2 实施):
 
 (1) **本轮 commit hash 回填**:
-  - `git log --oneline | head -3` 找最新 D138 docs commit hash → Edit `docs/3-decisions/D138-mysql-generated-keys.md` line ~343 `<本轮 commit>` placeholder(Status 时间线本轮新行)
+  - `git log --oneline | head -3` 找最新 D138 Phase 1.5 commit hash → Edit `docs/3-decisions/D138-mysql-generated-keys.md` 3 处 `<Phase 1.5 commit>` placeholder(line 3 Status / line 315 §Phase 收关锚 §Phase 1.5 / line 356 Status 时间线本轮新行)→ 替换为实际 hash
 
-(2) **Phase 1.5 实施 — 编译器扩 interface method overload by arity**(D138 §A.2 H4 假设破裂回路):
+(2) **Phase 2 实施 — JDBC API + MySQL 实现完整**:
 
-  **2a. 修 `bootstrap/gen/gen_iface.ss`**:
-  - `registerInterface(id: int)` 双 pass:
-    - **第一 pass**:遍历 ml,统计每 mName 出现次数 → `mNameCount: Map<string,int>`
-    - **第二 pass**:对每 mId 生成 unique key:
-      - if `mNameCount[mName] >= 2` → mangled key `${name}.${mName}_${paramSig}`(overload 路径,paramSig 复用 class method 路径)
-      - else → plain key `${name}.${mName}`(backward compat,D025/D134/D136 实存 interface 单 arity 零破坏)
-    - `methodNames` listAppendStr 同样按 mangle 形式(plain mName 或 mName_paramSig)
-    - `ifaceMethodRets / ifaceMethodPars.set` 用 mangled key
-  - `emitIfaceDispatchFn(iface, methodKey, impls)` 接收 mangled methodKey:
-    - 解析 methodKey 取 plainMName + paramSig(若 methodKey 含 `_` 后缀)
-    - `dispName = \`__iface_${iface}_${methodKey}\`` (含 mangle 后缀,backward compat 单 arity 仍是 plain `__iface_${iface}_${method}`)
-    - 调 class method 时:if `isOverloaded(\`${defClass}_${plainMName}\`) == 1` → `@${defClass}_${plainMName}_${paramSig}`,else → `@${defClass}_${plainMName}`(plain backward compat)
-  - `emittedDispatchers` key 也按 mangle 形式
-  - `paramSig(paramList)` 复用 — bootstrap/gen/class/class_method.ss:62 已有,interface IFACE_METHOD PARAM list 同 parseParams 结构,可直接复用
+  **2a. 扩 `lib/java/sql.ss`**:
+  - `interface Statement` 加 `function getGeneratedKeys(): ResultSet` + `function getLastInsertId(): int`(2 method,Phase 1.5 编译器扩允许 interface 扩容,但单 arity 不触发 mangle)
+  - `interface PreparedStatement` 同位加 `function getGeneratedKeys(): ResultSet` + `function getLastInsertId(): int`(2 method)
+  - `interface Connection` 加 `function prepareStatement(sql: string, autoGeneratedKeys: int): PreparedStatement` 重载(2 arity overload — Phase 1.5 编译器扩支持)
+  - 加常量 `class Statement_Constants` 或 free const `const RETURN_GENERATED_KEYS = 1` / `const NO_GENERATED_KEYS = 2`(JDBC 4.3 标准 — 用户调 `prepareStatement(sql, RETURN_GENERATED_KEYS)`)
+  - 不动 D025 dispatch 契约本体 / 不动 D133/D134 driver dispatch 路径
 
-  **2b. 修 `bootstrap/gen/methods/gen_methods.ss`**:
-  - `genInterfaceMethodCall(objClass, method, objVal, argList)` 按 argList 类型构造 paramSig:
-    - 反查 ifaceMethodsCG[objClass] methodNames,找 mName 匹配的 entries
-    - 若仅有 plain entry(单 arity)→ 调 `__iface_${objClass}_${method}`(backward compat)
-    - 若有 mangled entries(overload 路径)→ 按 argList 各 arg LLVM 类型构造 paramSig,选 `__iface_${objClass}_${method}_${paramSig}` 匹配的 dispatcher
+  **2b. 扩 `lib/com/mysql/jdbc.ss`**:
+  - MysqlStatement 加 `lastInsertId: int` 字段(default 0)+ `firstAccessed: int` 字段(default 0,getGeneratedKeys ResultSet cursor 状态)
+  - MysqlStatement.executeUpdate 改用 `readUpdateResultPacket(fd): OkPacket`(D138 §A.2 H7 ERR 防御 — sentinel `OkPacket{-1,0,0,0}` 时 lastInsertId = 0 不写入)+ 写入 lastInsertId 字段
+  - MysqlStatement 加 `function getLastInsertId(): int { return this.lastInsertId }` + `function getGeneratedKeys(): ResultSet { return new GeneratedKeyResultSet(this.lastInsertId) }`(GeneratedKeyResultSet 已 Phase 1 落地)
+  - MysqlConnection 加 `function prepareStatement(sql: string, autoGeneratedKeys: int): PreparedStatement` 重载(MySQL 等价 no-op — 协议默认所有 INSERT 返 lastInsertId,autoGeneratedKeys 参数对 MySQL 行为零影响,但 JDBC spec 要求接收;参数 ignore + 注释说明 + delegate 到原 prepareStatement(sql) 实现)
 
-  **2c. 修 `bootstrap/checker/checker.ss`**:
-  - `ifaceMethods.set(ifName, methodNames)` 同样存 mangled methodNames(arity 感知,与 codegen 同步)
+  **2c. 扩 `lib/com/mysql/prepared.ss`**:
+  - MysqlPreparedStatement 加 `lastInsertId: int` + `firstAccessed: int` 字段同位
+  - MysqlPreparedStatement.executeUpdate 改用 `readUpdateResultPacket(fd): OkPacket` + 写入 lastInsertId 字段(同 jdbc.ss 模式)
+  - MysqlPreparedStatement 加 `function getLastInsertId(): int` + `function getGeneratedKeys(): ResultSet` 实现(同 jdbc.ss 模式)
 
-  **2d. 修 `bootstrap/checker/check_class.ss`**:
-  - 实现验证按 unique (mName, paramSig) tuple 比对 — 不再 byName 单一比对(多 arity overload 时,每个签名都要 class 实现)
+  **2d. 不动**:Phase 1 query.ss 路径(parseOkPacket / readUpdateResultPacket / GeneratedKeyResultSet 已落地不重写)/ Phase 3 Spring KeyHolder lib/spring/jdbc.ss(留下下轮)/ Phase 4 测试覆盖 6 形态(留下下下轮)
 
-  **2e. 不动**:Phase 1 query.ss 路径 / Phase 2 lib 层(留 Phase 2)/ D025 D134 D136 实存 interface(ResultSet / Statement / PreparedStatement / Connection 当前所有 method 单 arity)继续走 plain 路径
-
-  **VCM 验证**:
-  - `/tmp/test_iface_overload.ss` GREEN(11 + 30 输出 — interface method overload by arity 落地)
-  - bootstrap 三阶段固定点 PASS(stage2 == stage3)
-  - tests/d134_mysql 5/0/5 + tests/d135_caching_sha2 1/0/1 + tests/d136_prepared_statement 1/0/1 baseline 不破
-  - tests/d141_lambda_inference 5/0/5 + d142 6/0/6 + d143 6/0/6 + d144 8/0/8 反推 baseline 不破
-  - 全 tests/ baseline 不降(284/4 fail 全 pre-existing — git stash 反证)
+  **VCM 六验**:
+  - bootstrap 三阶段固定点 PASS(stage2 == stage3 — Phase 2 lib 层改触发 build cache 但 bootstrap 编译器本体不变)
+  - tests/d134_mysql 5/0/5 + d135_caching_sha2 1/0/1 + d136_prepared_statement 1/0/1 baseline 不破(commit/rollback/setAutoCommit 等内部消费方零破坏 — Phase 1 thin wrapper 已保 backward compat)
+  - tests/d141-d144 反推 baseline 不破(5/6/6/8 全绿 — Phase 2 lib 层不动反推路径)
+  - 全 tests/ baseline 不降(284/4 fail 全 pre-existing — git stash 反证 Phase 2 改前后同 baseline)
   - reflection_health GATE PASS no regressions
   - d_doc_index GATE OK
+  - 行为验证:`MysqlConnection.prepareStatement("INSERT INTO ...", RETURN_GENERATED_KEYS)` + executeUpdate + getLastInsertId 返新 id 路径 spike 通过(docker MySQL 探活若失败 → tests/d138 沿 d134/d136 模式 `probe.isClosed() == 1` 时 println + return 0)
 
-(3) **commit `feat(D138): Phase 1.5 — 编译器扩 interface method overload by arity + 本轮 docs commit hash 回填 <本轮 commit> — gen_iface.ss arity-mangle key(双 pass 统计 + paramSig suffix when overloaded)+ dispatcher 调 class method 按 isOverloaded 选符号(plain 或 mangled)+ gen_methods.ss genInterfaceMethodCall 按 argList paramSig 选 dispatcher + checker.ss / check_class.ss 注册 + 实现验证 arity 感知 + 复用 class method paramSig 路径 + backward compat 单 arity 接口零破坏(D025 / D134 / D136 实存)— D138 §A.2 H4 假设破裂回路 — D135/D136/D137/D138 SQL 主线范式延续`**
-  - 仅 stage `bootstrap/gen/gen_iface.ss` + `bootstrap/gen/methods/gen_methods.ss` + `bootstrap/checker/checker.ss` + `bootstrap/checker/check_class.ss` + `docs/3-decisions/D138-*.md` + `.claude/next_prompt.md`
+(3) **commit `feat(D138): Phase 2 — JDBC API + MySQL 实现完整 + 本轮 docs commit hash 回填 <本轮 commit> — lib/java/sql.ss interface Statement / PreparedStatement 各加 getGeneratedKeys + getLastInsertId 2 method + interface Connection 加 prepareStatement(sql, akg) 重载(Phase 1.5 编译器扩支持)+ const RETURN_GENERATED_KEYS=1 / NO_GENERATED_KEYS=2 + lib/com/mysql/jdbc.ss MysqlStatement 加 lastInsertId 字段 + executeUpdate 改用 readUpdateResultPacket(D138 §A.2 H7 ERR 防御)+ getLastInsertId / getGeneratedKeys 实现 + MysqlConnection.prepareStatement(sql, akg) 重载(MySQL 等价 no-op delegate)+ lib/com/mysql/prepared.ss MysqlPreparedStatement 同位扩展 — D138 §核心目标 JDBC 4.3 spec 完整 — D135/D136/D137/D138 SQL 主线范式延续`**
+  - 仅 stage `lib/java/sql.ss` + `lib/com/mysql/jdbc.ss` + `lib/com/mysql/prepared.ss` + `docs/3-decisions/D138-*.md` + `.claude/next_prompt.md`
 
-(4) **next_prompt 指向 Phase 2**:JDBC API + MySQL 实现完整 — `lib/java/sql.ss` interface Statement 加 `getGeneratedKeys(): ResultSet` + `getLastInsertId(): int` 2 method + interface PreparedStatement 同位 2 method + interface Connection 加 `prepareStatement(sql: string, autoGeneratedKeys: int): PreparedStatement` 重载(依赖 Phase 1.5 编译器扩)+ const RETURN_GENERATED_KEYS=1 / NO_GENERATED_KEYS=2;`lib/com/mysql/jdbc.ss` MysqlStatement 加 lastInsertId 字段 + executeUpdate 改用 readUpdateResultPacket(D138 §A.2 H7 ERR 防御)+ getLastInsertId / getGeneratedKeys 实现 + MysqlConnection.prepareStatement(sql, autoGeneratedKeys) 重载;`lib/com/mysql/prepared.ss` MysqlPreparedStatement 同位字段扩 + executeUpdate / getLastInsertId / getGeneratedKeys
+(4) **next_prompt 指向 Phase 3**:Spring KeyHolder 完整 — `lib/spring/jdbc.ss` 加 `interface KeyHolder { getKey(): int; getKeyAsLong(): int; getKeys(): Map<string,int>; getKeyList(): Array<Map<string,int>> }`(4 method 全实现) + `class GeneratedKeyHolder : KeyHolder` impl(`keyList: Array<Map<string,int>>` 字段为 multi-row + multi-column generated keys 留扩展位)+ JdbcTemplate.update 加重载 `function update(sql: string, setter: fn(PreparedStatement):void, keyHolder: KeyHolder): int`(per-call Connection 同 D137 — prepareStatement → setter → executeUpdate → getGeneratedKeys → fill keyHolder.keyList → close)
 
 §根因优先(CLAUDE.md §项目技术规则):
-— Phase 1.5 编译器扩 interface method overload by arity = 根因解(class method 已支持 paramSig mangle,interface dispatcher 升级即可对齐;不引入新 mangle 方案,保 SS 内部一致性)
-— 复用 class method `paramSig(paramList)` 函数 — backward compat 单 arity 接口零破坏(D025 / D134 / D136 实存全是单 arity method),overload 路径才走 mangle
+— Phase 2 lib 层完整 JDBC 4.3 spec 落地 = 根因解(消除 D138 §核心目标"业务 INSERT 后无法链 SELECT MAX(id) 之外的安全方式拿 id")
+— 复用 Phase 1 已落的 OkPacket / readUpdateResultPacket / GeneratedKeyResultSet — 单一信息源出口(D138 §核心原则 4)backward compat thin wrapper 保 D134/D135/D136 调用方零破坏
 — D135/D136/D137/D138 SQL 主线范式 — 每 Phase 独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环
 
-§D135/D136/D137/D138 Phase 1.5 同形参考:
+§D135/D136/D137/D138 Phase 2 同形参考:
 — D135 Phase 0 commit + Phase 1 实施同 commit 模式
 — D136 Phase 0 commit `9326b9f` + Phase 1 commit `c854778` 同模式
 — D137 Phase 0 commit `bafc25a` + Phase 1 commit `d2df1ba` 同模式
-— D138 Phase 0 commit `d47a05d` + Phase 1 commit `182b3fb` + 本轮规则修正 commit `<本轮回填>`(Phase 1.5 计划落档 docs)+ Phase 1.5 commit(下轮编译器扩)+ Phase 2 commit(下下轮 lib 层)同模式
+— D138 Phase 0 commit `d47a05d` + Phase 1 commit `182b3fb` + Phase 1.5 计划落档 commit `c90df15` + Phase 1.5 实施 commit `<本轮回填>` + Phase 2 commit(下轮 lib 层)+ Phase 3 commit(下下轮 Spring)同模式

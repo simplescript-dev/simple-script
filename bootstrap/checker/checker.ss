@@ -10,7 +10,7 @@ import { blockAlwaysReturns, stmtAlwaysReturns } from "./check_return"
 import { rejectPrimitiveNullable, extractNullCheckVar, restoreNarrowing } from "./check_narrow"
 import { checkNamedConstructorArgs } from "./check_named_args"
 import { checkThreadClosureCaptures } from "./check_thread"
-import { isNullableType, isPrimitiveNullable, stripNullable, makeNullable, getNarrowedType, checkerInferType, baseTypeName, extractElemType, isTypeCompatible } from "./check_types"
+import { isNullableType, isPrimitiveNullable, stripNullable, makeNullable, getNarrowedType, checkerInferType, baseTypeName, extractElemType, isTypeCompatible, mangleMethodList } from "./check_types"
 import { pushScope, popScope, defineVar, lookupVar, isVarConst } from "./check_scope"
 import { defineFunc, lookupFunc, defineFuncParams, countParamRange, checkArgCount, countArgs, hasSpreadArg } from "./check_func"
 import { resolveCheckerClass, inferCheckerClass, checkInterfaceImpl, checkAbstractImpl, registerMethodParams, lookupMethodParams, lookupMethodParamType, lookupMethodRetType, lookupPrivateOwner, lookupProtectedOwner, isSubclassOf, totalConstructorParams, lookupConsParamType, registerCheckerClassDecl, preScanComptimeClasses } from "./check_class"
@@ -442,18 +442,8 @@ function check(rootId: int): int {
             }
             if (sk == "INTERFACE_DECL") {
                 const ifName = nGetS1(s)
-                const ml = nGetList(s)
-                let methodNames = ""
-                if (ml != "") {
-                    const ms = ml.split(",")
-                    for (m in ms) {
-                        const mId = parseInt(m)
-                        if (mId > 0) {
-                            methodNames = listAppendStr(methodNames, nGetS1(mId))
-                        }
-                    }
-                }
-                ifaceMethods.set(ifName, methodNames)
+                // D138 Phase 1.5: arity-aware mangle 同 codegen ifaceMethodsCG 公约;check_class.ss:87 contains 比对自动跟着
+                ifaceMethods.set(ifName, mangleMethodList(nGetList(s), 0))
                 defineVar(ifName, "interface", 0)
             }
         }

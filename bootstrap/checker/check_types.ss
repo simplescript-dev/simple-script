@@ -281,3 +281,61 @@ function isTypeCompatible(declared: string, actual: string): int {
     if ((declBase == "Array" || declBase == "List" || declBase == "Tuple") && (actualBase == "Array" || actualBase == "List" || actualBase == "Tuple")) { return 1 }
     return 0
 }
+
+// ── Method overload signature (D138 Phase 1.5) ──────────────
+// Mirror gen_types.ss:979 typeSig + paramSig 公约 — interface method overload by arity 时
+// checker 注册 mangled methodNames(`${mName}_${paramSig}`)与 codegen ifaceMethodsCG entry 同公约,
+// check_class.ss checkInterfaceImpl contains 比对自动跟着;否则 plain mName backward compat。
+function typeSigChecker(ssType: string): string {
+    const st = stripNullable(ssType)
+    if (st == "int" || st == "bool" || st == "auto" || st == "") { return "i" }
+    if (st == "double") { return "d" }
+    if (st == "string") { return "s" }
+    if (st == "fn" || st.startsWith("fn(") == 1) { return "f" }
+    if (st == "void") { return "v" }
+    if (st.contains("<") == 1) { return "p" }
+    return st
+}
+
+function paramSigChecker(paramList: string): string {
+    if (paramList == "") { return "" }
+    let sig = ""
+    const parts = paramList.split(",")
+    for (p in parts) {
+        const pId = parseInt(p)
+        if (pId > 0 && nGetKind(pId) == "PARAM") {
+            if (sig != "") { sig = `${sig}_` }
+            sig = `${sig}${typeSigChecker(nGetS2(pId))}`
+        }
+    }
+    return sig
+}
+
+// D138 Phase 1.5: 收敛三处双 pass — INTERFACE_DECL methods(fdOnly=0)+ CLASS_DECL FUNC_DECL
+// methods(fdOnly=1)。Pass 1 计数 mName 出现次数,Pass 2 对 overload(>=2)加 paramSig suffix
+// 落 mangled csv;单 arity plain backward compat。返回 csv(无前后 `,`),调用方按需包装。
+function mangleMethodList(ml: string, fdOnly: int): string {
+    if (ml == "") { return "" }
+    const ms = ml.split(",")
+    let cnt = new Map()
+    for (m in ms) {
+        const mId = parseInt(m)
+        if (mId > 0 && (fdOnly == 0 || nGetKind(mId) == "FUNC_DECL")) {
+            const mName = nGetS1(mId)
+            const cur = cnt.has(mName) == 1 ? parseInt(cnt.getString(mName)) : 0
+            cnt.set(mName, `${cur + 1}`)
+        }
+    }
+    let out = ""
+    for (m in ms) {
+        const mId = parseInt(m)
+        if (mId > 0 && (fdOnly == 0 || nGetKind(mId) == "FUNC_DECL")) {
+            const mName = nGetS1(mId)
+            const isOverload = parseInt(cnt.getString(mName)) >= 2 ? 1 : 0
+            const pSig = isOverload == 1 ? paramSigChecker(nGetList(mId)) : ""
+            const mangledKey = pSig != "" ? `${mName}_${pSig}` : mName
+            out = listAppendStr(out, mangledKey)
+        }
+    }
+    return out
+}
