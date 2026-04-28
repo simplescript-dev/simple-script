@@ -62,33 +62,78 @@ function readResultSetHeader(fd: int): int {
     return parseResultSetHeader(pkt.payload, pkt.payloadLen)
 }
 
-// Parses the affected rows count from an OK packet payload. OK packet layout
-// (text protocol, CLIENT_PROTOCOL_41 set, no SESSION_TRACK):
+// OK packet — D138 §核心原则 3 完整 4 字段 parse (SESSION_TRACK info string
+// 留 §Followup F1). OK packet layout (text protocol, CLIENT_PROTOCOL_41 set,
+// no SESSION_TRACK):
 //   1 byte:        header (0x00 — OK; 0xFE counts as OK only when payloadLen < 9
 //                  AND CLIENT_DEPRECATE_EOF is set, not the case here)
-//   lenenc int:    affected rows           ← KEEP
-//   lenenc int:    last_insert_id          (skip)
-//   2 byte LE:     status flags            (skip)
-//   2 byte LE:     warnings count          (skip)
-//   ... rest:      info string             (skip)
-// Returns 0 if header is not OK (caller already filtered ERR — defensive).
-function parseOkPacketAffectedRows(payload: string, payloadLen: int): int {
-    if (payloadLen < 2) { return 0 }
-    if (charCodeAt(payload, 0) != OK_HEADER) { return 0 }
-    return readLengthEncodedInt(payload, 1)
+//   lenenc int:    affected rows
+//   lenenc int:    last_insert_id        ← D138 Phase 1 解 skip
+//   2 byte LE:     status flags          ← D138 Phase 1 解 skip
+//   2 byte LE:     warnings count        ← D138 Phase 1 解 skip
+//   ... rest:      info string           (SESSION_TRACK — D138 §Followup F1)
+class OkPacket {
+    affectedRows: int
+    lastInsertId: int
+    statusFlags: int
+    warnings: int
 }
 
-// Reads the response to an INSERT / UPDATE / DELETE / DDL command.
+// Parses the OK packet payload into a full OkPacket. lenenc int variable size
+// (1/3/4/9 bytes) requires lengthEncodedIntSize after each read to advance off
+// — affected_rows / last_insert_id are both lenenc, so two reads + two size
+// advances. statusFlags / warnings (2 byte LE each) read only when payload has
+// the trailing 4 bytes; pre-4.1 servers without CLIENT_PROTOCOL_41 omit them
+// (defensive). Returns zero-initialized OkPacket if header is not OK (caller
+// already filtered ERR — defensive).
+function parseOkPacket(payload: string, payloadLen: int): OkPacket {
+    const ok = new OkPacket(0, 0, 0, 0)
+    if (payloadLen < 2) { return ok }
+    if (charCodeAt(payload, 0) != OK_HEADER) { return ok }
+    let off = 1
+    ok.affectedRows = readLengthEncodedInt(payload, off)
+    off = off + lengthEncodedIntSize(payload, off)
+    ok.lastInsertId = readLengthEncodedInt(payload, off)
+    off = off + lengthEncodedIntSize(payload, off)
+    if (payloadLen >= off + 4) {
+        ok.statusFlags = byteToInt(payload, off, 2)
+        ok.warnings = byteToInt(payload, off + 2, 2)
+    }
+    return ok
+}
+
+// Backward-compat thin wrapper — D138 §核心原则 5. Returns affectedRows; ERR
+// path returns 0 (caller filters ERR upstream). New consumers needing
+// lastInsertId / statusFlags / warnings should call parseOkPacket directly.
+function parseOkPacketAffectedRows(payload: string, payloadLen: int): int {
+    return parseOkPacket(payload, payloadLen).affectedRows
+}
+
+// Reads the response packet into a full OkPacket — D138 §核心原则 4 single
+// source of truth for affectedRows + lastInsertId. Non-OK responses (ERR
+// header, short read, or unrecognised first byte) all collapse onto one
+// OkPacket{affectedRows: -1, lastInsertId: 0, ...} sentinel, matching the
+// legacy readUpdateResult sentinel; lastInsertId stays 0 on error so
+// getLastInsertId returns 0 (D138 §A.2 H7 防御).
+function readUpdateResultPacket(fd: int): OkPacket {
+    const pkt = readPacket(fd)
+    if (pkt.payloadLen > 0) {
+        if (charCodeAt(pkt.payload, 0) == OK_HEADER) {
+            return parseOkPacket(pkt.payload, pkt.payloadLen)
+        }
+    }
+    return new OkPacket(-1, 0, 0, 0)
+}
+
+// Backward-compat thin wrapper — D138 §核心原则 5. INSERT / UPDATE / DELETE /
+// DDL callers (commit / rollback / setAutoCommit / d134 query test) consume
+// only affectedRows; getLastInsertId-aware callers (D138 Phase 2 executeUpdate)
+// must call readUpdateResultPacket directly.
 // Returns:
 //   N >= 0  affected rows (OK packet)
 //   -1      error (ERR packet, short read, or unrecognised first byte)
 function readUpdateResult(fd: int): int {
-    const pkt = readPacket(fd)
-    if (pkt.payloadLen <= 0) { return -1 }
-    const first = charCodeAt(pkt.payload, 0)
-    if (first == ERR_HEADER) { return -1 }
-    if (first == OK_HEADER) { return parseOkPacketAffectedRows(pkt.payload, pkt.payloadLen) }
-    return -1
+    return readUpdateResultPacket(fd).affectedRows
 }
 
 // Skips one length-encoded string at `offset`, returns the new offset.
@@ -264,6 +309,56 @@ class MysqlResultSet : ResultSet {
             }
         }
         this.closed = 1
+    }
+}
+
+// Generated keys ResultSet — wraps a single OkPacket.lastInsertId as a
+// single-row, single-column ResultSet conforming to JDBC 4.3 spec
+// Statement.getGeneratedKeys() return contract. Column name "GENERATED_KEY"
+// matches MySQL Connector/J standard (JDBC drivers publish the column under
+// this exact name regardless of underlying schema). The owning Statement
+// already drained the OK packet during executeUpdate, so this ResultSet holds
+// no socket-side state — close() is a no-op.
+//
+// Cursor model: firstAccessed = 0 → next() advances to the synthetic row and
+// returns 1; firstAccessed = 1 → next() returns 0 (past end). Mirrors the
+// JDBC contract that getGeneratedKeys returns a pre-positioned ResultSet
+// whose first next() call advances onto the single row.
+class GeneratedKeyResultSet : ResultSet {
+    key: int
+    firstAccessed: int
+
+    function next(): int {
+        if (this.firstAccessed != 0) { return 0 }
+        this.firstAccessed = 1
+        return 1
+    }
+
+    function getString(col: string): string {
+        if (col == "GENERATED_KEY") { return "" + this.key }
+        return ""
+    }
+
+    function getInt(col: string): int {
+        return parseInt(this.getString(col))
+    }
+
+    function getLong(col: string): int {
+        return parseInt(this.getString(col))
+    }
+
+    function getDouble(col: string): double {
+        return parseDouble(this.getString(col))
+    }
+
+    function getBoolean(col: string): int {
+        const s = this.getString(col)
+        if (s == "1") { return 1 }
+        if (s == "true") { return 1 }
+        return 0
+    }
+
+    function close() {
     }
 }
 
