@@ -130,30 +130,26 @@ function genFuncDecl(id: int) {
     genBlock(bodyId)
 
     // Default return (only if not already terminated)
-    if (terminated == 1) {
-        emitIR("}")
-        emitIR("")
-        pirActive = 0
-        return
-    }
-    pirEmitReturnCleanup()
-    emitReleaseFnLocals()
-    emitReleaseLocals()
-    if (name == "main") {
-        emitIR("  ret i32 0")
-    } else {
-        const retType = resolveTypeParam(nGetS2(id))
-        if (retType == "string") {
-            const nullStr = addStringConst("")
-            emitIR(`  ret ptr ${nullStr}`)
-        } else if (retType == "double") {
-            emitIR("  ret double 0.0")
-        } else if (retType == "void" || retType == "") {
-            emitIR("  ret void")
-        } else if (ssTypeToLLVM(retType) == "ptr") {
-            emitIR("  ret ptr null")
-        } else {
+    if (terminated == 0) {
+        pirEmitReturnCleanup()
+        emitReleaseFnLocals()
+        emitReleaseLocals()
+        if (name == "main") {
             emitIR("  ret i32 0")
+        } else {
+            const retType = resolveTypeParam(nGetS2(id))
+            if (retType == "string") {
+                const nullStr = addStringConst("")
+                emitIR(`  ret ptr ${nullStr}`)
+            } else if (retType == "double") {
+                emitIR("  ret double 0.0")
+            } else if (retType == "void" || retType == "") {
+                emitIR("  ret void")
+            } else if (ssTypeToLLVM(retType) == "ptr") {
+                emitIR("  ret ptr null")
+            } else {
+                emitIR("  ret i32 0")
+            }
         }
     }
     emitIR("}")

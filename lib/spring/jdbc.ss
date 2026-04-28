@@ -11,8 +11,51 @@
 //
 // See docs/3-decisions/D133-sqlite-c-link-elimination.md
 // See docs/3-decisions/D134-jdbc-mysql-wire-protocol.md §3 §Phase 5
+// See docs/3-decisions/D138-mysql-generated-keys.md §Phase 3 (KeyHolder)
 
-import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection } from "@/lib/java/sql"
+import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS } from "@/lib/java/sql"
+
+// ── KeyHolder ────────────────────────────────────────────────
+// D138 Phase 3 — Spring KeyHolder standard. JdbcTemplate.update(sql, setter,
+// keyHolder) populates keyHolder.getKeyList() with one Map<string,int> per
+// generated row (column name "GENERATED_KEY" — MySQL Connector/J convention).
+// getKey / getKeyAsLong return the single int from the first row (most common
+// path for AUTO_INCREMENT INSERT). getKeys returns the first row Map for the
+// rare multi-column generated-keys case (kept as Spring spec parity even
+// though MySQL only generates one column today).
+//
+// Mirrors org.springframework.jdbc.support.KeyHolder. SS Map<string,int>
+// constrains values to int (the only generated-key shape MySQL emits) — Spring's
+// Map<String,Object> is not modelable until SS gains a top-type.
+
+interface KeyHolder {
+    function getKey(): int
+    function getKeyAsLong(): int
+    function getKeys(): Map<string, int>
+    function getKeyList(): Array<Map<string, int>>
+}
+
+class GeneratedKeyHolder : KeyHolder {
+    keyList: Array<Map<string, int>>
+
+    function getKey(): int {
+        if (this.keyList.length() == 0) { return 0 }
+        return this.keyList[0].get("GENERATED_KEY")
+    }
+
+    function getKeyAsLong(): int {
+        return this.getKey()
+    }
+
+    function getKeys(): Map<string, int> {
+        if (this.keyList.length() == 0) { return new Map() }
+        return this.keyList[0]
+    }
+
+    function getKeyList(): Array<Map<string, int>> {
+        return this.keyList
+    }
+}
 
 // ── JdbcTemplate ─────────────────────────────────────────────
 
@@ -53,6 +96,26 @@ class JdbcTemplate {
         const stmt = conn.prepareStatement(sql)
         setter(stmt)
         const r = stmt.executeUpdate()
+        stmt.close()
+        conn.close()
+        return r
+    }
+
+    // D138 Phase 3 — Spring KeyHolder INSERT path. Per-call Connection
+    // (HikariCP D125+ sub-D for pooling).
+    function update(sql: string, setter: fn(PreparedStatement):void, keyHolder: KeyHolder): int {
+        const conn = DriverManager_getConnection(this.url)
+        const stmt = conn.prepareStatement(sql, RETURN_GENERATED_KEYS)
+        setter(stmt)
+        const r = stmt.executeUpdate()
+        const list = keyHolder.getKeyList()
+        const rs = stmt.getGeneratedKeys()
+        while (rs.next() == 1) {
+            let row: Map<string, int> = new Map()
+            row.set("GENERATED_KEY", rs.getInt("GENERATED_KEY"))
+            list.push(row)
+        }
+        rs.close()
         stmt.close()
         conn.close()
         return r

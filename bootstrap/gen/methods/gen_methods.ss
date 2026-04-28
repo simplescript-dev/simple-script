@@ -181,13 +181,7 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
     }
     // D141 Phase 2.2: 提前 resolve mangled name 以便 args 循环里反推 ARROW_FUNC PARAM
     // (typeSig 把任何 fn 形式压缩为 "f",反推前后 sig 一致,resolve 不受 ARROW_FUNC inferType 结构化影响)
-    let resolved = `${methodClass}_${method}`
-    if (isOverloaded(resolved) == 1) {
-        const sig = argsSig(argList)
-        if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
-            resolved = `${resolved}_${sig}`
-        }
-    }
+    let resolved = pickClassMethodKey(methodClass, method, argList)
     // Build args: static calls skip this, instance calls include this as first arg
     let callArgs = ""
     if (isStatic == 0) { callArgs = `ptr ${objVal}` }
@@ -303,14 +297,7 @@ function genSuperMethodCall(method: string, argList: string): string {
             }
         }
     }
-    // Resolve overloaded method name
-    let resolved = `${methodClass}_${method}`
-    if (isOverloaded(resolved) == 1) {
-        const sig = argsSig(argList)
-        if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
-            resolved = `${resolved}_${sig}`
-        }
-    }
+    let resolved = pickClassMethodKey(methodClass, method, argList)
     let retType = "ptr"
     if (funcRetTypes.has(resolved) == 1) {
         retType = ssTypeToLLVM(funcRetTypes.getString(resolved))
@@ -386,13 +373,7 @@ function genStaticMethodCall(method: string, objId: int, argList: string): strin
             }
         }
     }
-    let resolved = `${methodClass}_${method}`
-    if (isOverloaded(resolved) == 1) {
-        const sig = argsSig(argList)
-        if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
-            resolved = `${resolved}_${sig}`
-        }
-    }
+    let resolved = pickClassMethodKey(methodClass, method, argList)
     const rtName = runtimeName(resolved)
     let retType = "ptr"
     if (funcRetTypes.has(resolved) == 1) {

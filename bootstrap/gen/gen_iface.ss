@@ -67,6 +67,68 @@ function pickIfaceDispatcherKey(ifaceName: string, method: string, argList: stri
     return wrapped.contains(`,${candidate},`) == 1 ? candidate : method
 }
 
+// D138 Phase 3: class method overload 接口擦除 — paramSig 注册时用形参声明 class/接口名
+// (`KeyHolder`),argsSig 用实参具体 class 名(`GeneratedKeyHolder`),`class A : Iface` 接口实现
+// 路径下两者错位。precise sig miss 时沿 ifaceImplementors 反查每个 IDENT/NEW class 类型 arg
+// 实现的接口替换试 mangled 候选。
+function pickClassMethodKey(className: string, mName: string, argList: string): string {
+    const resolved = `${className}_${mName}`
+    if (isOverloaded(resolved) != 1) { return resolved }
+    if (argList == "") { return resolved }
+    const sig = argsSig(argList)
+    if (sig != "" && funcRetTypes.has(`${resolved}_${sig}`) == 1) {
+        return `${resolved}_${sig}`
+    }
+    return tryClassMethodErasureKey(resolved, argList)
+}
+
+function tryClassMethodErasureKey(resolved: string, argList: string): string {
+    const parts = argList.split(",")
+    let argSegs: Array<string> = []
+    let argClasses: Array<string> = []
+    for (p in parts) {
+        const argId = parseInt(p)
+        if (argId > 0) {
+            let cls = ""
+            if (nGetKind(argId) == "IDENT") { cls = getObjClass(nGetS1(argId)) }
+            else if (nGetKind(argId) == "NEW_EXPR") { cls = nGetS1(argId) }
+            argClasses.push(cls)
+            if (cls != "") {
+                argSegs.push(cls)
+            } else {
+                argSegs.push(typeSig(inferType(argId)))
+            }
+        }
+    }
+    let i = 0
+    while (i < argSegs.length()) {
+        const cls = argClasses[i]
+        if (cls != "") {
+            const ifaceKeys = ifaceImplementors.keys()
+            for (iface in ifaceKeys) {
+                if (iface == "") { continue }
+                const impls = ifaceImplementors.getString(iface)
+                const wrapped = `,${impls},`
+                if (wrapped.contains(`,${cls},`) == 1) {
+                    let trySig = ""
+                    let j = 0
+                    while (j < argSegs.length()) {
+                        if (trySig != "") { trySig = `${trySig}_` }
+                        if (j == i) { trySig = `${trySig}${iface}` }
+                        else { trySig = `${trySig}${argSegs[j]}` }
+                        j = j + 1
+                    }
+                    if (funcRetTypes.has(`${resolved}_${trySig}`) == 1) {
+                        return `${resolved}_${trySig}`
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+    return resolved
+}
+
 // Generate switch-based dispatch functions for all interface methods
 function generateInterfaceDispatchers() {
     const ifaceList = ifaceMethodsCG.keys()
