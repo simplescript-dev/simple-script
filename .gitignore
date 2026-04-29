@@ -4,3 +4,6 @@
 *.ll.str
 /tmp/
 build/
+.idea/
+.claude/
+bin/ss_stage1
