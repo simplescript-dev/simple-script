@@ -110,3 +110,49 @@ function DriverManager_getConnection(url: string): Connection {
     println(`JDBC: no driver registered for url: ${url}`)
     exit(1)
 }
+
+// ── SQLException Hierarchy — JDBC 4.3 §13.1 ──────────────────
+// Mirrors java.sql.SQLException complete class tree:
+//
+//   SQLException (extends Error, adds sqlState + errorCode)
+//   ├── SQLNonTransientException                 ← retry will not succeed
+//   │   ├── SQLNonTransientConnectionException   SQLState class 08 / 28
+//   │   ├── SQLIntegrityConstraintViolationException SQLState class 23
+//   │   ├── SQLSyntaxErrorException              SQLState class 42
+//   │   ├── SQLDataException                     SQLState class 22
+//   │   └── SQLFeatureNotSupportedException      SQLState class 0A
+//   ├── SQLTransientException                    ← retry may succeed
+//   │   ├── SQLTransientConnectionException      SQLState class 08 (transient)
+//   │   ├── SQLTransactionRollbackException      SQLState class 40
+//   │   └── SQLTimeoutException                  query timeout
+//   └── SQLRecoverableException                  ← reconnect may succeed
+//
+// Constructor positional args follow Error base class convention (prelude.ss
+// `class Error { message: string }` + tests/phase5/error_class.ss):
+//   new SQLNonTransientConnectionException(message, sqlState, errorCode)
+// (3 args, all subclasses identical — extra fields declared on SQLException
+// transit to descendants via SS class extends chain — D025 vtable + bootstrap
+// classParents lookup, exercised by tests/phase5/typed_catch.ss Test 4).
+//
+// Empty-body subclasses are intentional — JDBC subclasses carry no extra
+// state; type identity alone routes catch-clause dispatch via
+// bootstrap/gen/stmts/stmts_exc.ss:99 genCatchClauses.
+
+class SQLException extends Error {
+    sqlState: string
+    errorCode: int
+}
+
+class SQLNonTransientException extends SQLException {}
+class SQLTransientException extends SQLException {}
+class SQLRecoverableException extends SQLException {}
+
+class SQLNonTransientConnectionException extends SQLNonTransientException {}
+class SQLIntegrityConstraintViolationException extends SQLNonTransientException {}
+class SQLSyntaxErrorException extends SQLNonTransientException {}
+class SQLDataException extends SQLNonTransientException {}
+class SQLFeatureNotSupportedException extends SQLNonTransientException {}
+
+class SQLTransientConnectionException extends SQLTransientException {}
+class SQLTransactionRollbackException extends SQLTransientException {}
+class SQLTimeoutException extends SQLTransientException {}

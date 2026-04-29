@@ -109,6 +109,57 @@ function parseOkPacketAffectedRows(payload: string, payloadLen: int): int {
     return parseOkPacket(payload, payloadLen).affectedRows
 }
 
+// ERR packet — D139 §核心原则 5 完整 ERR_Packet spec parse (MySQL Native
+// Protocol §ERR_Packet). Layout:
+//   1 byte:       header 0xFF
+//   2 byte LE:    error_code
+//   1 byte:       sql_state_marker '#' (0x23)  ← present when CLIENT_PROTOCOL_41
+//   5 byte ASCII: sql_state                    ← present when marker present
+//   ... rest:     error_message                (UTF-8 / ASCII text)
+//
+// Pre-4.1 servers (CLIENT_PROTOCOL_41 not set) omit marker + sql_state — this
+// driver always negotiates 4.1+ in Phase 3 sendHandshakeResponse41 capFlags so
+// marker is expected, but the parse is defensive: missing marker → sqlState
+// defaults to "HY000" (JDBC 4.3 §13.4 SQLState class "HY" general fallback)
+// and the entire rest after error_code becomes errorMessage.
+//
+// String concat strlen note: error_message in MySQL ERR packets is ASCII /
+// UTF-8 text (e.g. "Duplicate entry '1' for key 'PRIMARY'") with no embedded
+// 0x00 by spec. byteToInt over the 2-byte error_code is binary-safe (charCodeAt
+// based — gen_rt_string.ss:117-122). Per-byte fromCharCode + concat in the
+// rest loop tolerates any non-NULL byte.
+class ErrorPacket {
+    errorCode: int
+    sqlState: string
+    errorMessage: string
+}
+
+function parseErrorPacket(payload: string, payloadLen: int): ErrorPacket {
+    const ep = new ErrorPacket(0, "HY000", "")
+    if (payloadLen < 3) { return ep }
+    if (charCodeAt(payload, 0) != ERR_HEADER) { return ep }
+    ep.errorCode = byteToInt(payload, 1, 2)
+    let off = 3
+    if (payloadLen >= off + 6 && charCodeAt(payload, off) == 0x23) {
+        let s = ""
+        let i = 0
+        while (i < 5) {
+            s = s + fromCharCode(charCodeAt(payload, off + 1 + i))
+            i = i + 1
+        }
+        ep.sqlState = s
+        off = off + 6
+    }
+    let msg = ""
+    let j = off
+    while (j < payloadLen) {
+        msg = msg + fromCharCode(charCodeAt(payload, j))
+        j = j + 1
+    }
+    ep.errorMessage = msg
+    return ep
+}
+
 // Reads the response packet into a full OkPacket — D138 §核心原则 4 single
 // source of truth for affectedRows + lastInsertId. Non-OK responses (ERR
 // header, short read, or unrecognised first byte) all collapse onto one

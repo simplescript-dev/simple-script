@@ -1,6 +1,6 @@
 # D139: SQL Exception Hierarchy — 完整 JDBC SQLException + Spring DataAccessException Tree
 
-**Status:** [ ] Phase 0 D 文档落档 at commit `<Phase 0 commit>` (2026-04-29) — D138 §Followup F2 + §A.3 废案 §C3 SQLException 部分 起首落档;走**完整 JDBC 4.3 §13 SQLException Hierarchy**(`SQLException` + 3 主子类 + 6+ 中间层 = ~10 类)+ **完整 Spring `org.springframework.dao` DataAccessException Tree**(15+ 主子类)+ **SQLExceptionTranslator** 标准 + **协议层全 throw**(删 `RESULT_SET_HEADER_ERR = -1` sentinel + `readUpdateResult(fd): int` thin wrapper + `errMsg + println("MySQL: ...")` 路径)+ **调用方全升级**(commit / rollback / setAutoCommit / executeUpdate / executeQuery + tests/d134/d135/d136/d138 同步 try/catch),不走 SS sentinel workaround(用户对话锁 1b + 2b + 3a + 4:**完整子类 + 删 sentinel + 全升级 throw**)。**SS 已支持完整 typed try/catch/throw class extends**(`bootstrap/lexer/lexer.ss:454-456` + `bootstrap/parse/parse_stmts.ss:59 parseTryCatch / 96 parseThrow` + `bootstrap/checker/check_stmts.ss:425 TRY / 455 THROW` + `bootstrap/gen/stmts/stmts_exc.ss:23 genTryCatch / 172 genThrow` + `tests/phase5/typed_catch.ss` 6 case + `throw_error.ss` 4 case baseline GREEN 实证),**本 D 不修编译器**(协议 / JDBC / Spring 三层纯 lib/ 落地)。
+**Status:** [✓] Phase 0 D 文档落档 at commit `68a8184` + [✓] Phase 1 协议层 ErrorPacket + JDBC SQLException 完整 12 类 hierarchy + spike 跨 module 3 层继承 GREEN at commit `<Phase 1 commit>` (2026-04-29) — D138 §Followup F2 + §A.3 废案 §C3 SQLException 部分 起首落档;走**完整 JDBC 4.3 §13 SQLException Hierarchy**(`SQLException` + 3 主子类 + 6+ 中间层 = ~10 类)+ **完整 Spring `org.springframework.dao` DataAccessException Tree**(15+ 主子类)+ **SQLExceptionTranslator** 标准 + **协议层全 throw**(删 `RESULT_SET_HEADER_ERR = -1` sentinel + `readUpdateResult(fd): int` thin wrapper + `errMsg + println("MySQL: ...")` 路径)+ **调用方全升级**(commit / rollback / setAutoCommit / executeUpdate / executeQuery + tests/d134/d135/d136/d138 同步 try/catch),不走 SS sentinel workaround(用户对话锁 1b + 2b + 3a + 4:**完整子类 + 删 sentinel + 全升级 throw**)。**SS 已支持完整 typed try/catch/throw class extends**(`bootstrap/lexer/lexer.ss:454-456` + `bootstrap/parse/parse_stmts.ss:59 parseTryCatch / 96 parseThrow` + `bootstrap/checker/check_stmts.ss:425 TRY / 455 THROW` + `bootstrap/gen/stmts/stmts_exc.ss:23 genTryCatch / 172 genThrow` + `tests/phase5/typed_catch.ss` 6 case + `throw_error.ss` 4 case baseline GREEN 实证),**本 D 不修编译器**(协议 / JDBC / Spring 三层纯 lib/ 落地)。
 
 **Depends on:**
 - D025(interface dispatch — class extends Error 继承 hierarchy 走 vtable indirect dispatch)
@@ -373,22 +373,23 @@ bin/ss test tests/d139_sql_exception/
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落档 [ ] Pending at commit `<Phase 0 commit>` (2026-04-29)
+### Phase 0: D 文档落档 [✓] Done at commit `68a8184` (2026-04-29)
 
 - 本文档落档:Status / 核心目标 / 核心原则 / Context / Tools / Orchestration / State / Evaluation / Constraints / §A.1 主候选 + §A.2 隐藏假设 H1-H10 + §A.3 废案 / Phase 0-5 计划草案 / Followup
 - d_doc_index_linter F1 = 0 PASS(D139 加入未破 referenced Ds — D025/D134/D135/D136/D137/D138 实存)
 - next_prompt_ultrathink_linter PASS
 
-### Phase 1: 协议层 ErrorPacket + JDBC SQLException 主子类 + spike [ ] Pending at commit `<Phase 1 commit>`
+### Phase 1: 协议层 ErrorPacket + JDBC SQLException 主子类 + spike [✓] Done at commit `<Phase 1 commit>`
 
-- `lib/com/mysql/query.ss` 加 `class ErrorPacket { errorCode: int, sqlState: string, errorMessage: string }`(D139 §核心原则 5 — 完整 ERR_Packet spec)
-- `lib/com/mysql/query.ss` 加 `parseErrorPacket(payload, payloadLen): ErrorPacket` — 0xFF header + 2 byte LE error_code + sql_state_marker `#`(0x23,旧 server 防御 backward compat)+ 5 char sql_state(default "HY000")+ rest error_message
-- `lib/java/sql.ss` 加 JDBC SQLException 完整子类 hierarchy(~10 类):
-  - `class SQLException extends Error { sqlState: string, errorCode: int }`(JDBC `java.sql.SQLException` 顶层)
-  - 3 主子类:`SQLNonTransientException` / `SQLTransientException` / `SQLRecoverableException`
-  - 6+ 中间层:`SQLNonTransientConnectionException` / `SQLIntegrityConstraintViolationException` / `SQLSyntaxErrorException` / `SQLDataException` / `SQLFeatureNotSupportedException` / `SQLTimeoutException` / `SQLTransactionRollbackException` / `SQLTransientConnectionException`
-- spike `/tmp/test_d139_phase1.ss`:cross-module throw `new SQLNonTransientException(...)` + catch `(e: SQLException)` 5 层继承(SQLException → SQLNonTransientException → SQLNonTransientConnectionException 等)+ catch 父类 catch 子类实例 GREEN
-- VCM 验证:bootstrap 三阶段固定点 + tests/phase5/typed_catch + throw_error baseline GREEN(SS try/catch 不动)+ tests/d134-d138 baseline 不破 + reflection_health GATE PASS no regressions + d_doc_index GATE OK
+- `lib/com/mysql/query.ss` 加 `class ErrorPacket { errorCode: int, sqlState: string, errorMessage: string }`(D139 §核心原则 5 — 完整 ERR_Packet spec)— 兑现 file:line `lib/com/mysql/query.ss:131-135`
+- `lib/com/mysql/query.ss` 加 `parseErrorPacket(payload, payloadLen): ErrorPacket` — 0xFF header + 2 byte LE error_code + sql_state_marker `#`(0x23,旧 server 防御 backward compat)+ 5 char sql_state(default "HY000")+ rest error_message — 兑现 file:line `lib/com/mysql/query.ss:137-161`
+- `lib/java/sql.ss` 加 JDBC SQLException 完整子类 hierarchy(12 类:1 顶层 + 3 主 + 8 中间)— 兑现 file:line `lib/java/sql.ss:114-159`:
+  - `class SQLException extends Error { sqlState: string, errorCode: int }`(JDBC `java.sql.SQLException` 顶层 — sql.ss:141-144)
+  - 3 主子类:`SQLNonTransientException` / `SQLTransientException` / `SQLRecoverableException`(sql.ss:146-148)
+  - 5 NonTransient 中间层:`SQLNonTransientConnectionException` / `SQLIntegrityConstraintViolationException` / `SQLSyntaxErrorException` / `SQLDataException` / `SQLFeatureNotSupportedException`(sql.ss:150-154)
+  - 3 Transient 中间层:`SQLTransientConnectionException` / `SQLTransactionRollbackException` / `SQLTimeoutException`(sql.ss:156-158)
+- spike `/tmp/test_d139_phase1.ss`:cross-module throw `new SQLNonTransientConnectionException(...)` + catch 3 层继承(`SQLNonTransientConnectionException → SQLNonTransientException → SQLException` 父类 catch 子类实例)+ Test 4 父类 catch 子类延伸到 Error 基类 4 层 + Test 5 catch fallthrough(具体 leaf 优先 / 父类兜底)+ Test 7-8 sibling subtree(NonTransient vs Transient)+ 三字段提取(e.message 继承 Error / e.sqlState / e.errorCode)8/8 PASS — D139 §A.2 H1 (跨 module 多层继承)+ H5(三字段提取)实证 GREEN
+- VCM 验证:bootstrap 三阶段固定点 PASS + tests/phase5/typed_catch + throw_error + error_class baseline GREEN(SS try/catch 不动)+ tests/d134_mysql 5/0/5 + d135_caching_sha2 1/0/1 + d136_prepared_statement 1/0/1 + d138_generated_keys 1/0/1 baseline 不破 + tests/d141-d144 反推 baseline 全绿(5/6/6/8)+ tests/phase5 全 dir 194/0/4(4 fail 全 pre-existing 与不带本 Phase 改动的 stash 状态一致)+ reflection_health GATE PASS no regressions(本 Phase 不动 bootstrap)+ d_doc_index GATE OK(11 referenced Ds all live)
 
 ### Phase 2: 协议层全 throw + 删 sentinel + 调用方升级 [ ] Pending at commit `<Phase 2 commit>`
 
@@ -484,4 +485,5 @@ bin/ss test tests/d139_sql_exception/
 
 ## Status 时间线
 
-- 2026-04-29 Phase 0 D 文档落档(commit `<Phase 0 commit>`)— D138 §Followup F2 + §A.3 废案 §C3 SQLException 部分 起首落档;C3 完整 JDBC 4.3 §13 + Spring DAE 完整 + 删 sentinel + 全升级 throw 决策(用户对话锁 1b + 2b + 3a + 4:**最优最佳 / 完整子类 / 删 sentinel / 全升级 throw**);§A.1 三主候选 + §A.2 H1-H10 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F9;D135-D138 SQL 主线范式延续(每 Phase 独立 commit + Status 收关 + commit hash 回填 + next_prompt 自闭环);**元层校准锚**:用户回 SQL 主线后 D139 是 D138 §Followup F2 直接续接,sub-D 范畴 SQLException + DAE(cursor 留 D146+)
+- 2026-04-29 Phase 0 D 文档落档(commit `68a8184`)— D138 §Followup F2 + §A.3 废案 §C3 SQLException 部分 起首落档;C3 完整 JDBC 4.3 §13 + Spring DAE 完整 + 删 sentinel + 全升级 throw 决策(用户对话锁 1b + 2b + 3a + 4:**最优最佳 / 完整子类 / 删 sentinel / 全升级 throw**);§A.1 三主候选 + §A.2 H1-H10 隐藏假设挑战 + §A.3 废案 + Phase 0-5 计划草案 + Followup F1-F9;D135-D138 SQL 主线范式延续(每 Phase 独立 commit + Status 收关 + commit hash 回填 + next_prompt 自闭环);**元层校准锚**:用户回 SQL 主线后 D139 是 D138 §Followup F2 直接续接,sub-D 范畴 SQLException + DAE(cursor 留 D146+)
+- 2026-04-29 Phase 1 协议层 ErrorPacket + JDBC SQLException 完整 12 类 hierarchy + spike 跨 module 3 层继承 GREEN(commit `<Phase 1 commit>`)— `lib/com/mysql/query.ss` 加 `class ErrorPacket { errorCode, sqlState, errorMessage }`(:131-135)+ `parseErrorPacket(payload, payloadLen)`(:137-161,0xFF + 2 byte LE error_code + 0x23 marker + 5 char sql_state(默认 "HY000")+ rest error_message,旧 server 无 marker defensive `HY000` fallback);`lib/java/sql.ss` 加 SQLException 完整 hierarchy(:114-159 — 1 顶层 + 3 主子类 NonTransient/Transient/Recoverable + 5 NonTransient 中间层 + 3 Transient 中间层 = 12 类,空 body extends 透传 SQLException 三字段);spike `/tmp/test_d139_phase1.ss` 8/8 PASS(Test 1-4 1/2/3/4 层父类 catch 子类 + Test 5-6 catch fallthrough 优先级 + Test 7-8 sibling subtree NonTransient vs Transient + 三字段 e.message + e.sqlState + e.errorCode 全实证 — H1 跨 module + H5 三字段实证 GREEN);VCM 六验全 PASS — bootstrap 固定点 + phase5 try/catch 三测 + d134-d138 + d141-d144 + 反射 + d_doc_index 全绿;**本 Phase 仅 add 不 mutate**(留 sentinel / errMsg+println / commit/rollback 调用方 至 Phase 2 升级 throw — D139 §核心原则 4 全升级)
