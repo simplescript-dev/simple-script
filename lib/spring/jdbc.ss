@@ -145,125 +145,247 @@ class SQLExceptionTranslator {
 }
 
 // ── JdbcTemplate ─────────────────────────────────────────────
+//
+// D139 Phase 4 — Spring DataAccessException standard. Every method runs the
+// per-call Connection (D137/D138) inside an outer try / catch (e: SQLException)
+// → SQLExceptionTranslator.translate(e) → throw DAE so callers catch the DAE
+// subtree (DuplicateKey, BadSqlGrammar, …) and never see the underlying
+// java.sql.SQLException. Resource cleanup uses nested try / finally
+// (stmt.close + conn.close) so that throws on the executeUpdate path still
+// release the socket before the translate step fires.
+//
+// queryForList(...) is the streaming exception: the ResultSet aliases the
+// socket, so the Connection cannot be closed in this method — only the
+// SQLException → DAE translate step is wrapped, and conn / stmt leak on
+// failure (D137 simple per-call model; HikariCP D125+ sub-D recovers via
+// pool reclaim). Callers must still rs.close() the returned ResultSet.
 
 class JdbcTemplate {
     url: string
 
     function execute(sql: string): int {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.createStatement()
-        const r = stmt.execute(sql)
-        stmt.close()
-        conn.close()
+        let r = 0
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.createStatement()
+                try {
+                    r = stmt.execute(sql)
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
         return r
     }
 
     // D137 Phase 1: PreparedStatementSetter callback — setter binds positional params before executeUpdate fires.
     function execute(sql: string, setter: fn(PreparedStatement):void): int {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.prepareStatement(sql)
-        setter(stmt)
-        const r = stmt.executeUpdate()
-        stmt.close()
-        conn.close()
+        let r = 0
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.prepareStatement(sql)
+                try {
+                    setter(stmt)
+                    r = stmt.executeUpdate()
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
         return r
     }
 
     function update(sql: string): int {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.createStatement()
-        const r = stmt.executeUpdate(sql)
-        stmt.close()
-        conn.close()
+        let r = 0
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.createStatement()
+                try {
+                    r = stmt.executeUpdate(sql)
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
         return r
     }
 
     function update(sql: string, setter: fn(PreparedStatement):void): int {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.prepareStatement(sql)
-        setter(stmt)
-        const r = stmt.executeUpdate()
-        stmt.close()
-        conn.close()
+        let r = 0
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.prepareStatement(sql)
+                try {
+                    setter(stmt)
+                    r = stmt.executeUpdate()
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
         return r
     }
 
     // D138 Phase 3 — Spring KeyHolder INSERT path. Per-call Connection
     // (HikariCP D125+ sub-D for pooling).
     function update(sql: string, setter: fn(PreparedStatement):void, keyHolder: KeyHolder): int {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.prepareStatement(sql, RETURN_GENERATED_KEYS)
-        setter(stmt)
-        const r = stmt.executeUpdate()
-        const list = keyHolder.getKeyList()
-        const rs = stmt.getGeneratedKeys()
-        while (rs.next() == 1) {
-            let row: Map<string, int> = new Map()
-            row.set("GENERATED_KEY", rs.getInt("GENERATED_KEY"))
-            list.push(row)
+        let r = 0
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.prepareStatement(sql, RETURN_GENERATED_KEYS)
+                try {
+                    setter(stmt)
+                    r = stmt.executeUpdate()
+                    const list = keyHolder.getKeyList()
+                    const rs = stmt.getGeneratedKeys()
+                    try {
+                        while (rs.next() == 1) {
+                            let row: Map<string, int> = new Map()
+                            row.set("GENERATED_KEY", rs.getInt("GENERATED_KEY"))
+                            list.push(row)
+                        }
+                    } finally {
+                        rs.close()
+                    }
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
         }
-        rs.close()
-        stmt.close()
-        conn.close()
         return r
     }
 
     // ResultSet streams rows from the underlying socket — caller must call
     // rs.close() before issuing another query on the same url, and the
     // Connection leaks until then. Sub-D (HikariCP D125+) introduces pooling.
+    // On failure inside getConnection / createStatement / executeQuery the
+    // SQLException is translated to a DAE; allocated stmt / conn leak on the
+    // failure path (per-call simple model — HikariCP closes on pool reclaim).
     function queryForList(sql: string): ResultSet {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.createStatement()
-        return stmt.executeQuery(sql)
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            const stmt = conn.createStatement()
+            return stmt.executeQuery(sql)
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
     }
 
     // Same streaming semantics as queryForList(sql) — the Connection leaks
     // until rs.close(); PreparedStatement.close() releases the server-side
     // statement handle but the fd is owned by the caller via the leaked conn.
     function queryForList(sql: string, setter: fn(PreparedStatement):void): ResultSet {
-        const conn = DriverManager_getConnection(this.url)
-        const stmt = conn.prepareStatement(sql)
-        setter(stmt)
-        return stmt.executeQuery()
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            const stmt = conn.prepareStatement(sql)
+            setter(stmt)
+            return stmt.executeQuery()
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
     }
 
     function queryForString(sql: string, column: string): string {
-        const rs = this.queryForList(sql)
         let v = ""
-        if (rs.next() == 1) {
-            v = rs.getString(column)
+        try {
+            const rs = this.queryForList(sql)
+            try {
+                if (rs.next() == 1) {
+                    v = rs.getString(column)
+                }
+            } finally {
+                rs.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
         }
-        rs.close()
         return v
     }
 
     function queryForString(sql: string, setter: fn(PreparedStatement):void, column: string): string {
-        const rs = this.queryForList(sql, setter)
         let v = ""
-        if (rs.next() == 1) {
-            v = rs.getString(column)
+        try {
+            const rs = this.queryForList(sql, setter)
+            try {
+                if (rs.next() == 1) {
+                    v = rs.getString(column)
+                }
+            } finally {
+                rs.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
         }
-        rs.close()
         return v
     }
 
     function queryForInt(sql: string, column: string): int {
-        const rs = this.queryForList(sql)
         let v = 0
-        if (rs.next() == 1) {
-            v = rs.getInt(column)
+        try {
+            const rs = this.queryForList(sql)
+            try {
+                if (rs.next() == 1) {
+                    v = rs.getInt(column)
+                }
+            } finally {
+                rs.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
         }
-        rs.close()
         return v
     }
 
     function queryForInt(sql: string, setter: fn(PreparedStatement):void, column: string): int {
-        const rs = this.queryForList(sql, setter)
         let v = 0
-        if (rs.next() == 1) {
-            v = rs.getInt(column)
+        try {
+            const rs = this.queryForList(sql, setter)
+            try {
+                if (rs.next() == 1) {
+                    v = rs.getInt(column)
+                }
+            } finally {
+                rs.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
         }
-        rs.close()
         return v
     }
 }
