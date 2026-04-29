@@ -13,7 +13,7 @@
 // See docs/3-decisions/D134-jdbc-mysql-wire-protocol.md §3 §Phase 5
 // See docs/3-decisions/D138-mysql-generated-keys.md §Phase 3 (KeyHolder)
 
-import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS } from "@/lib/java/sql"
+import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS, SQLException } from "@/lib/java/sql"
 
 // ── KeyHolder ────────────────────────────────────────────────
 // D138 Phase 3 — Spring KeyHolder standard. JdbcTemplate.update(sql, setter,
@@ -54,6 +54,93 @@ class GeneratedKeyHolder : KeyHolder {
 
     function getKeyList(): Array<Map<string, int>> {
         return this.keyList
+    }
+}
+
+// ── DataAccessException Hierarchy — Spring DAE Tree ──────────
+// Mirrors org.springframework.dao.DataAccessException complete class tree
+// (Spring 7.0). Empty-body subclasses are intentional — Spring DAE
+// subclasses carry no extra state; type identity alone routes catch-clause
+// dispatch via bootstrap/gen/stmts/stmts_exc.ss:99 genCatchClauses.
+//
+// Constructor positional args: new <Subclass>(message, cause). The cause is
+// the underlying java.sql.SQLException (Spring `getRootCause()` standard) —
+// callers reach the wire-protocol-level sqlState / errorCode via
+//   catch (e: DataAccessException) { e.cause.sqlState ; e.cause.errorCode }
+// without DAE itself duplicating those fields.
+//
+//   DataAccessException (extends Error, adds cause: SQLException)
+//   ├── NonTransientDataAccessException                ← retry will not succeed
+//   │   ├── DataIntegrityViolationException            SQLState class 23
+//   │   │   └── DuplicateKeyException                  MySQL errorCode 1062
+//   │   ├── BadSqlGrammarException                     SQLState class 42
+//   │   ├── CannotGetJdbcConnectionException           SQLState class 08 / 28
+//   │   ├── DataAccessResourceFailureException         default fallback
+//   │   └── DataRetrievalFailureException
+//   │       ├── EmptyResultDataAccessException
+//   │       └── IncorrectResultSizeDataAccessException
+//   └── TransientDataAccessException                   ← retry may succeed
+//       ├── TransientDataAccessResourceException
+//       └── ConcurrencyFailureException                ← lock contention
+//           └── DeadlockLoserDataAccessException       MySQL errorCode 1213
+
+class DataAccessException extends Error {
+    cause: SQLException
+}
+
+class NonTransientDataAccessException extends DataAccessException {}
+class TransientDataAccessException extends DataAccessException {}
+
+class DataIntegrityViolationException extends NonTransientDataAccessException {}
+class BadSqlGrammarException extends NonTransientDataAccessException {}
+class CannotGetJdbcConnectionException extends NonTransientDataAccessException {}
+class DataAccessResourceFailureException extends NonTransientDataAccessException {}
+class DataRetrievalFailureException extends NonTransientDataAccessException {}
+
+class DuplicateKeyException extends DataIntegrityViolationException {}
+
+class EmptyResultDataAccessException extends DataRetrievalFailureException {}
+class IncorrectResultSizeDataAccessException extends DataRetrievalFailureException {}
+
+class TransientDataAccessResourceException extends TransientDataAccessException {}
+class ConcurrencyFailureException extends TransientDataAccessException {}
+
+class DeadlockLoserDataAccessException extends ConcurrencyFailureException {}
+
+// ── SQLExceptionTranslator ────────────────────────────────────
+// Mirrors org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator
+// (Spring 7.0 simplified). MySQL Connector/J errorCode primary table →
+// SQLState 2-char class fallback (JDBC 4.3 §13.4) → DataAccessResource
+// FailureException default. Phase 4 wires JdbcTemplate to call translate()
+// on every SQLException it catches before re-throwing.
+
+class SQLExceptionTranslator {
+    function translate(ex: SQLException): DataAccessException {
+        const code = ex.errorCode
+        const msg = ex.message
+
+        // MySQL errorCode primary table — overrides SQLState class to keep
+        // common cases (dup key, lock timeout) precise across the sqlState
+        // variants Connector/J reports for the same root cause.
+        if (code == 1062) { return new DuplicateKeyException(msg, ex) }
+        if (code == 1048) { return new DataIntegrityViolationException(msg, ex) }
+        if (code == 1452) { return new DataIntegrityViolationException(msg, ex) }
+        if (code == 1146) { return new BadSqlGrammarException(msg, ex) }
+        if (code == 1054) { return new BadSqlGrammarException(msg, ex) }
+        if (code == 1213) { return new DeadlockLoserDataAccessException(msg, ex) }
+        if (code == 1205) { return new ConcurrencyFailureException(msg, ex) }
+        if (code == 1045) { return new CannotGetJdbcConnectionException(msg, ex) }
+
+        // SQLState 2-char class fallback — JDBC 4.3 §13.4.
+        const state = ex.sqlState
+        const cls = state.length() < 2 ? "" : state.substring(0, 2)
+        if (cls == "08") { return new CannotGetJdbcConnectionException(msg, ex) }
+        if (cls == "28") { return new CannotGetJdbcConnectionException(msg, ex) }
+        if (cls == "23") { return new DataIntegrityViolationException(msg, ex) }
+        if (cls == "40") { return new DeadlockLoserDataAccessException(msg, ex) }
+        if (cls == "42") { return new BadSqlGrammarException(msg, ex) }
+
+        return new DataAccessResourceFailureException(msg, ex)
     }
 }
 
