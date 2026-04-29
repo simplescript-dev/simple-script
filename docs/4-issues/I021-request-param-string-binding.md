@@ -1,7 +1,7 @@
 # I021 — @RequestParam string 绑参 (v0: 单参 + V=string 优先 mirror I019 + ParamMeta annotations + MethodMeta.params 填充 + comptime 静态 unpack adapter)
 
 **父决策:** D123 §247-259 §Phase 4 §第一性需求 / D123 §253 "参数绑定用既有 ParamMeta 承,不新建 Meta"
-**状态:** Planned (2026-04-25 立项,等用户审 path A)
+**状态:** Done at `lib/spring/boot/application.ss:37-79` (RouteMeta.paramSpecs + comptime block 遍历 + dispatch ct unroll)+ `bootstrap/eval/interp_obj.ss` MethodMeta.params 填充段(ParamMeta InternPool key `PRM|${typeName}.${mName}.${pName}` 三段 + buildAnnotationMetaArray 复用)+ `bootstrap/parse/prelude.ss` ParamMeta.annotations 字段(对称 MethodMeta/FieldMeta/ClassMeta annotations 模式)+ commit 75f0516(@RequestParam string v0 反射 Meta 三层 + dispatcher paramSpecs-driven)+ commit 8844e5f(codegen module-level const literal comptime ref 喷顶层 load 双轨修)。**V 维度续作分流**(2026-04-25 §Root Cause 第一法则按根因解决度):V=int + V=double 同根因合并 → `docs/4-issues/I021bc-typed-request-param-cast.md`(Planned);V=class 跨域辨析 → `docs/3-decisions/D129-request-param-class-domain.md`(Drafted,**不在 @RequestParam 域**)
 **颗粒度:** 预估 ~70-100 LOC 大改 (prelude.ss +1 ParamMeta 字段 / interp_obj.ss +15-20 MethodMeta.params 填充 / application.ss +30-40 RouteMeta.paramSpecs + comptime block 扩 + dispatcher invoke 静态展开 / HelloController.ss 净 +1 / Java HelloController.java 净 +1 / test 新建 ~40)。**解析层 0 LOC** —— 2026-04-25 立项实测 RED probe 证实 `parser.ss:702-755 parseParams` line 710-723 + 750 已支持单 param-level annotation(`@RequestParam(name = "n") n: string` 解析为 PARAM 节点 + nSetI4 ANNOTATION 节点),无需扩解析层(下方 §步骤 §解析层校正 anchor)
 **依赖:** I019(Done, typed Map.get V=string 路由 ss_mapGetString) + I020a/I020b/I020c(Done, typed Map.get V=int/double/class lowering 全解锁,本 issue v0 仅用 V=string 但留下轮 I021-int/double/class 跨族扩展空间)+ I014(Done, invoke sentinel 静态派发 + funcParamCount pre-register)+ I018(Done, invoke sentinel runtime arg 透传 + httpServe query parse)+ D121 R1(Done, AnnotationMeta.args Map<string,string> 形态)+ D127 ASSIGN(Done, `@Ann(key = "val")` annotation arg 语法)+ D120 §决策 1(reflect.classes() Done)+ D117 §决策 1-2(五类 Meta 契约 Done)
 **创建:** 2026-04-25
@@ -62,13 +62,12 @@ SS 用户写 `function hello(@RequestParam(name = "name") name: string): string`
 - Java oracle HelloController.java 同步改 `@RequestParam(name = "name") String name`(Java 端无变化,但 oracle 文件需对齐显式 name= 形态保持 byte-identical 形参签名描述能力)
 - tests/phase5/i021_request_param_string.ss 新建覆盖:① 单参 @RequestParam string hit / ② miss(query 缺 key)→ 空串(走 ss_mapGetString miss 默认 `@.rt.str.empty`)/ ③ I018/I019 backward compat regression(Phase 3 Step 1 `req: Map<string,string>` 形态仍 work)/ ④ 静态 IR 锚:`grep "call ptr @HelloController_hello(ptr null, ptr %.*ss_mapGetString" main.ll` ≥ 1
 
-**留下轮**(独立 issue):
-- **I021b** — `@RequestParam` V=int(`@RequestParam(name = "age") age: int` → I020a typed Map<K,int>.get + dispatcher emit `trunc i64 to i32` 实参传递)
-- **I021c** — `@RequestParam` V=double(I020b mirror)
-- **I021d** — `@RequestParam` V=class(I020c mirror,需 D067 T? narrow 配合可空形参)
+**留下轮**(独立 issue / 决策档):
+- **I021bc** — `@RequestParam` V=int + V=double 同根因合并(silent miscompile RED:V=int `Hello, -591256928!` / V=double `Hello, 2.67057e-315!`;双层根因 `bootstrap/eval/method_call.ss:107` invoke sentinel hardcode `, ptr ${aReg}` + `bootstrap/gen/gen_registry.ss:42-58 registerClassMethodRetType` 漏 set funcParamTypes;按 CLAUDE.md §Root Cause 第一法则同根因合并,**不**按 V 类型分 I021b/I021c)→ `docs/4-issues/I021bc-typed-request-param-cast.md`
+- **I021d 域归属辨析** — `@RequestParam` V=class **跨域问题**,非 I020c mirror(query string `?user=...` → User class 实例无 deserializer 路径;@RequestParam 域契约 = url-encoded primitive/string,V=class 反序列化属 @RequestBody / @ModelAttribute 域)→ `docs/3-decisions/D129-request-param-class-domain.md` 独立讨论;未来 V=class 反序列化能力起独立 I021-modelattribute(query string 多 key → class 多字段 binding)/ I021-requestbody(JSON body → class)issue
 - **I021-multi-param** — 多参 @RequestParam(`function f(@RequestParam(name="x") x: string, @RequestParam(name="y") y: string)`)
 - **I021-pathvariable** — `@PathVariable` 路径占位符绑参(`/users/{id}` → 需 dispatcher 路径模式匹配 + 占位提取,工程量大)
-- **I021-requestbody** — `@RequestBody` JSON 反序列化绑参(需 lib/json.ss + class 反射构造)
+- **I021-requestbody** — `@RequestBody` JSON 反序列化绑参(需 lib/json.ss + class 反射构造;V=class 反序列化路径 D129 §5 决策段)
 - **I021-optional-defaults** — `@RequestParam(required = false, defaultValue = "x")` 可选参数 + 默认值
 
 **不做**:
@@ -94,7 +93,7 @@ SS 用户写 `function hello(@RequestParam(name = "name") name: string): string`
 9. **测试**:`tests/phase5/i021_request_param_string.ss` 新建,4 case(@RequestParam string hit / miss 默认空串 / I018 backward compat regression / 静态 IR 锚 grep)
 10. **bootstrap 固定点**:`./build.sh bootstrap` Stage 2 = Stage 3
 11. **gate**:`bin/ss run tools/reflection_health_linter.ss`(预估若触 F1 prelude.ss/interp_obj.ss/application.ss baseline 漂移,按 D097 §扩容申报走)+ `bin/ss run tools/d_doc_index_linter.ss`(D123 §扩容申报-I021 新段落 anchor 验证)
-12. **parity**:`/tmp/hello_ss --serve` + `curl "http://localhost:8080/hello?name=SS"` = `Hello, SS!` ✅;Java mvn `cd examples/spring-parity/hello/java && mvn spring-boot:run` + `curl "http://localhost:8081/hello?name=SS"` = `Hello, SS!` byte-identical ✅(Phase 5 mvn 工具链未接前可仅验证 SS 单端 + Java 单端手动启动对比)
+12. **parity**:`/tmp/hello_ss --serve` + `curl "http://localhost:8080/hello?name=SS"` = `Hello, SS!` ✅;Java gradle `cd examples/spring-parity/hello/java && ./gradlew bootRun` + `curl "http://localhost:8081/hello?name=SS"` = `Hello, SS!` byte-identical ✅(Phase 5 gradle 工具链未接前可仅验证 SS 单端 + Java 单端手动启动对比)
 
 ---
 
@@ -172,7 +171,7 @@ bin/ss test tests/                                                           # �
 
 # parity 端到端
 /tmp/hello_i021 --serve &                                                   # SS 端 8080
-cd examples/spring-parity/hello/java && mvn spring-boot:run &              # Java 端 (Phase 5 mvn 工具链未接前可手动启)
+cd examples/spring-parity/hello/java && ./gradlew bootRun &                # Java 端 (Phase 5 gradle 工具链未接前可手动启)
 curl -s "http://localhost:8080/hello?name=SS"                               # 期望: Hello, SS!
 curl -s "http://localhost:8080/hello?name=Alice"                            # 期望: Hello, Alice!
 curl -s "http://localhost:8080/hello"                                       # 期望: Hello, ! (miss 走 ss_mapGetString 默认空串)
