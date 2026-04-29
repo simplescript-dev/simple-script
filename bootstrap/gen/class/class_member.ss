@@ -14,6 +14,26 @@ function emitFieldLoad(className: string, objReg: string, field: string): string
     return loadReg
 }
 
+// Byte-offset variant — emits `getelementptr i8, ptr X, i64 idx*8` instead of
+// the `%${className}` typed GEP. Bypasses cross-module forward-ref of the
+// named struct type (LLVM `base element of getelementptr must be sized` when
+// className is decl'd in a sibling lib module that emits IR after this call
+// site — D139 §A.2 H1 fallback). All SS class fields occupy 8-byte slots
+// (i32/i64/f64/ptr) so byte stride is constant.
+function emitByteOffsetFieldLoad(className: string, objReg: string, field: string): string {
+    const idx = getFieldIndex(className, field)
+    if (idx < 0) {
+        println(`codegen error: class '${className}' has no field '${field}'`)
+        exit(1)
+    }
+    const fType = classFieldTypes.getString(`${className}.${field}`)
+    const gepReg = nextReg()
+    emitIR(`  ${gepReg} = getelementptr i8, ptr ${objReg}, i64 ${idx * 8}`)
+    const loadReg = nextReg()
+    emitIR(`  ${loadReg} = load ${ssTypeToLLVM(fType)}, ptr ${gepReg}, align 8`)
+    return loadReg
+}
+
 // D096: accessor getter retType lookup. Returns "" if no accessor or funcRetTypes
 // missing; distinguishes "no accessor" from "accessor exists" via paired
 // classAccessorGetters.has() check when the caller needs both signals.

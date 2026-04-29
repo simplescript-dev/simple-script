@@ -13,7 +13,7 @@
 // See docs/3-decisions/D138-mysql-generated-keys.md §Phase 4 (§核心目标 6 判据)
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS } from "@/lib/java/sql"
+import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS, SQLException, SQLSyntaxErrorException } from "@/lib/java/sql"
 import { JdbcTemplate, GeneratedKeyHolder } from "@/lib/spring/jdbc"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
@@ -33,13 +33,14 @@ function dropTable(): int {
 
 function main() {
     // Probe: skip the file (return 0) when 127.0.0.1:3307 is not reachable.
-    const probe = DriverManager_getConnection(URL)
-    if (probe.isClosed() == 1) {
+    try {
+        const probe = DriverManager_getConnection(URL)
+        probe.close()
+    } catch (e: SQLException) {
         println("D138 integration: 127.0.0.1:3307 unreachable — skip.")
         println("   start: docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait")
         return
     }
-    probe.close()
 
     recreateTable()
 
@@ -139,15 +140,20 @@ function main() {
     })
 
     // ── ERR packet defensive ─────────────────────────────────────
-    test("case 6: INSERT failure (ERR packet) — getLastInsertId defensive 0", () => {
+    test("case 6: INSERT failure (ERR packet) — throws SQLSyntaxErrorException", () => {
         const conn = DriverManager_getConnection(URL)
         const stmt = conn.createStatement()
-        // ERR packet path: target a non-existent table. readUpdateResultPacket
-        // returns OkPacket{-1, 0, 0, 0} sentinel; executeUpdate returns -1 and
-        // skips the lastInsertId write (D138 §A.2 H7), so a fresh Statement's
-        // lastInsertId stays at the default 0.
-        const r = stmt.executeUpdate("INSERT INTO d138_does_not_exist (col) VALUES (1)")
-        assertEqual(r, -1)
+        // ERR packet path: target a non-existent table. D139 Phase 2 升级:
+        // readUpdateResultPacket throws SQLSyntaxErrorException(table not exist
+        // → SQLState 42S02 → dispatchSQLException class "42"). lastInsertId is
+        // never written so it stays at the default 0.
+        let caught = 0
+        try {
+            stmt.executeUpdate("INSERT INTO d138_does_not_exist (col) VALUES (1)")
+        } catch (e: SQLSyntaxErrorException) {
+            caught = 1
+        }
+        assertEqual(caught, 1)
         assertEqual(stmt.getLastInsertId(), 0)
         stmt.close()
         conn.close()

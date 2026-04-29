@@ -493,9 +493,9 @@ class MysqlPreparedStatement : PreparedStatement {
     paramDoubles: Array<double>
     paramNullBits: Array<int>
     columnDefs: Array<ColumnDef>
-    // D138 Phase 2 — lastInsertId from the most recent executeUpdate. Default 0;
-    // ERR-path executeUpdate (readUpdateResultPacket sentinel affectedRows = -1)
-    // does not write — D138 §A.2 H7 防御.
+    // Last lastInsertId from the most recent executeUpdate; ERR path throws
+    // SQLException via readUpdateResultPacket so a failed INSERT never writes
+    // here. Default 0 mirrors MysqlStatement.lastInsertId.
     lastInsertId: int
     closed: int
 
@@ -551,9 +551,8 @@ class MysqlPreparedStatement : PreparedStatement {
     function executeUpdate(): int {
         sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits)
         const ok = readUpdateResultPacket(this.fd)
-        const rows = okPacketAffectedRows(ok)
-        if (rows >= 0) { this.lastInsertId = okPacketLastInsertId(ok) }
-        return rows
+        this.lastInsertId = okPacketLastInsertId(ok)
+        return okPacketAffectedRows(ok)
     }
 
     // D138 Phase 2 — JDBC 4.3 §PreparedStatement.getGeneratedKeys returns a

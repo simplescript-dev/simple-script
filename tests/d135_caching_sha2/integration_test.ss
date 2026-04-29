@@ -32,7 +32,7 @@
 //   firstByte == 0xFE (AUTH_SWITCH_REQUEST)     — out of scope (D135 §Principles 5)
 
 import { assertEqual } from "@/lib/test"
-import { DriverManager_getConnection } from "@/lib/java/sql"
+import { DriverManager_getConnection, SQLException } from "@/lib/java/sql"
 
 const URL            = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 const URL_WRONG_PWD  = "jdbc:mysql://root:wrong@127.0.0.1:3307/testdb"
@@ -40,13 +40,14 @@ const URL_FRESH_USER = "jdbc:mysql://d135fresh:pwd@127.0.0.1:3307/testdb"
 
 function main() {
     // Probe: skip the file (return 0) when 127.0.0.1:3307 is not reachable.
-    const probe = DriverManager_getConnection(URL)
-    if (probe.isClosed() == 1) {
+    try {
+        const probe = DriverManager_getConnection(URL)
+        probe.close()
+    } catch (e: SQLException) {
         println("D135 integration: 127.0.0.1:3307 unreachable — skip.")
         println("   start: docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait")
         return
     }
-    probe.close()
 
     // ── 1. caching_sha2 fast-path basic flow (cache hit via healthcheck) ──
     test("connect + isClosed transitions + close (caching_sha2 fast-path)", () => {
@@ -70,10 +71,15 @@ function main() {
     // and "user does not exist" onto the same wire response — both reply with
     // 0x01 0x04 perform_full_authentication so a remote attacker cannot tell
     // the two apart. Without RSA-OAEP the SS driver rejects 0x01 0x04 (same
-    // path as test 4 below) and surfaces as conn.isClosed() == 1.
+    // path as test 4 below) and throws SQLException via mysqlConnect.
     test("wrong password rejected (caching_sha2 anti-enumeration → 0x01 0x04)", () => {
-        const conn = DriverManager_getConnection(URL_WRONG_PWD)
-        assertEqual(conn.isClosed(), 1)
+        let caught = 0
+        try {
+            DriverManager_getConnection(URL_WRONG_PWD)
+        } catch (e: SQLException) {
+            caught = 1
+        }
+        assertEqual(caught, 1)
     })
 
     // ── 4. Fresh user cache miss = PERFORM_FULL_AUTHENTICATION (0x01 0x04) ──
@@ -81,9 +87,7 @@ function main() {
     // to log in as that user over TCP. The server has no cache entry for the
     // new user, so it requests RSA-OAEP full authentication (0x01 0x04). The
     // SS driver does not implement RSA-OAEP and rejects 0x04 in
-    // handshake.ss::mysqlConnect (errMsg "full auth not supported"), which
-    // surfaces as fd = -1 → MysqlConnection.closed = 1 in
-    // jdbc.ss::getMysqlConnection.
+    // handshake.ss::mysqlConnect, which throws SQLException (D139 Phase 2 升级).
     // (No FLUSH PRIVILEGES: MySQL 8 reloads grant tables automatically on
     // CREATE/DROP USER and GRANT, and FLUSH PRIVILEGES would purge the entire
     // caching_sha2 cache — including root@% — making the test non-idempotent.)
@@ -94,8 +98,13 @@ function main() {
         adminStmt.execute("CREATE USER 'd135fresh'@'%' IDENTIFIED WITH caching_sha2_password BY 'pwd'")
         adminStmt.execute("GRANT ALL ON testdb.* TO 'd135fresh'@'%'")
 
-        const conn = DriverManager_getConnection(URL_FRESH_USER)
-        assertEqual(conn.isClosed(), 1)
+        let caught = 0
+        try {
+            DriverManager_getConnection(URL_FRESH_USER)
+        } catch (e: SQLException) {
+            caught = 1
+        }
+        assertEqual(caught, 1)
 
         adminStmt.execute("DROP USER IF EXISTS 'd135fresh'@'%'")
         adminStmt.close()

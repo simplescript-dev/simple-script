@@ -8,12 +8,19 @@
 // direct GEP+load and bypasses ss_string_concat strlen truncation.
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { parseResultSetHeader, parseColumnDef, parseRow, isEofPacket, parseOkPacketAffectedRows, ColumnDef, MysqlResultSet, RESULT_SET_HEADER_ERR, RESULT_SET_HEADER_OK } from "@/lib/com/mysql/query"
+import { parseResultSetHeader, parseColumnDef, parseRow, isEofPacket, parseOkPacket, ColumnDef, MysqlResultSet, RESULT_SET_HEADER_OK } from "@/lib/com/mysql/query"
+import { SQLException } from "@/lib/java/sql"
 
 function main() {
-    // parseResultSetHeader: ERR / OK / column count / empty payload
-    test("parseResultSetHeader ERR (0xFF) returns -1", () => {
-        assertEqual(parseResultSetHeader(fromCharCode(0xFF), 1), RESULT_SET_HEADER_ERR)
+    // parseResultSetHeader: ERR throws / OK / column count / empty payload
+    test("parseResultSetHeader ERR (0xFF) throws SQLException", () => {
+        let caught = 0
+        try {
+            parseResultSetHeader(fromCharCode(0xFF), 1)
+        } catch (e: SQLException) {
+            caught = 1
+        }
+        assertEqual(caught, 1)
     })
 
     test("parseResultSetHeader OK (0x00) returns -2", () => {
@@ -146,39 +153,39 @@ function main() {
         assertEqual(rs4.getBoolean("flag"), 0)
     })
 
-    // ── parseOkPacketAffectedRows (Phase 5) ─────────────────────────
+    // ── parseOkPacket.affectedRows (Phase 5) ────────────────────────
     // OK packet payload layout: 0x00 + lenenc affectedRows + lenenc lastInsertId
     //                         + 2-byte status + 2-byte warnings + ...
-    test("parseOkPacketAffectedRows zero rows", () => {
+    test("parseOkPacket zero rows", () => {
         // 0x00 header + 0x00 (lenenc 0) + 0x00 (lenenc 0) + status + warnings.
         const cmd = "bash -c \"printf '\\x00\\x00\\x00\\x02\\x00\\x00\\x00' > /tmp/d134_q_ok0.bin\""
         system(cmd)
         const buf = readFile("/tmp/d134_q_ok0.bin")
-        assertEqual(parseOkPacketAffectedRows(buf, 7), 0)
+        assertEqual(parseOkPacket(buf, 7).affectedRows, 0)
     })
 
-    test("parseOkPacketAffectedRows one row", () => {
+    test("parseOkPacket one row", () => {
         const cmd = "bash -c \"printf '\\x00\\x01\\x00\\x02\\x00\\x00\\x00' > /tmp/d134_q_ok1.bin\""
         system(cmd)
         const buf = readFile("/tmp/d134_q_ok1.bin")
-        assertEqual(parseOkPacketAffectedRows(buf, 7), 1)
+        assertEqual(parseOkPacket(buf, 7).affectedRows, 1)
     })
 
-    test("parseOkPacketAffectedRows large rows (lenenc 2-byte)", () => {
+    test("parseOkPacket large rows (lenenc 2-byte)", () => {
         // 0x00 + 0xFC 0x10 0x27 (lenenc 0xFC + LE 10000) + 0x00 + status + warn
         const cmd = "bash -c \"printf '\\x00\\xFC\\x10\\x27\\x00\\x02\\x00\\x00\\x00' > /tmp/d134_q_okN.bin\""
         system(cmd)
         const buf = readFile("/tmp/d134_q_okN.bin")
-        assertEqual(parseOkPacketAffectedRows(buf, 9), 10000)
+        assertEqual(parseOkPacket(buf, 9).affectedRows, 10000)
     })
 
-    test("parseOkPacketAffectedRows non-OK header returns 0", () => {
-        // 0xFF first byte → not OK → 0 (defensive; readUpdateResult filters ERR upstream).
-        assertEqual(parseOkPacketAffectedRows(fromCharCode(0xFF) + fromCharCode(0x05), 2), 0)
+    test("parseOkPacket non-OK header returns zero-init", () => {
+        // 0xFF first byte → not OK → defensive zero-init OkPacket.
+        assertEqual(parseOkPacket(fromCharCode(0xFF) + fromCharCode(0x05), 2).affectedRows, 0)
     })
 
-    test("parseOkPacketAffectedRows empty payload returns 0", () => {
-        assertEqual(parseOkPacketAffectedRows("", 0), 0)
+    test("parseOkPacket empty payload returns zero-init", () => {
+        assertEqual(parseOkPacket("", 0).affectedRows, 0)
     })
 
     println("All D134 Phase 4 query tests passed!")

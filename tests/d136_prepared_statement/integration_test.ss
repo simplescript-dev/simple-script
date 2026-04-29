@@ -16,7 +16,7 @@
 // docs/3-decisions/D136-mysql-prepared-statement.md §附录 B Phase 3.
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { Connection, PreparedStatement, ResultSet, DriverManager_getConnection } from "@/lib/java/sql"
+import { Connection, PreparedStatement, ResultSet, DriverManager_getConnection, SQLException } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
@@ -38,13 +38,14 @@ function dropTable(): int {
 
 function main() {
     // Probe: skip the file (return 0) when 127.0.0.1:3307 is not reachable.
-    const probe = DriverManager_getConnection(URL)
-    if (probe.isClosed() == 1) {
+    try {
+        const probe = DriverManager_getConnection(URL)
+        probe.close()
+    } catch (e: SQLException) {
         println("D136 integration: 127.0.0.1:3307 unreachable — skip.")
         println("   start: docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait")
         return
     }
-    probe.close()
 
     recreateTable()
 

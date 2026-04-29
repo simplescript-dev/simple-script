@@ -13,14 +13,13 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ResultSet } from "@/lib/java/sql"
+import { ResultSet, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException } from "@/lib/java/sql"
 
 const COM_QUERY = 0x03
 const NULL_MARKER = 0xFB
 const ERR_HEADER = 0xFF
 const OK_HEADER = 0x00
 const EOF_HEADER = 0xFE
-const RESULT_SET_HEADER_ERR = -1
 const RESULT_SET_HEADER_OK = -2
 
 // Column definition (text protocol). Minimal field set — driver-relevant
@@ -45,14 +44,18 @@ function sendQuery(fd: int, sql: string): int {
 
 // Parses the first packet of a query response.
 // Returns:
-//   -1 (RESULT_SET_HEADER_ERR) if first byte = 0xFF (ERR packet)
 //   -2 (RESULT_SET_HEADER_OK)  if first byte = 0x00 (OK packet — no rows)
 //   N > 0                      length-encoded column count (SELECT result)
-//   0                          empty payload / unrecognised
+//   0                          empty payload
+// Throws SQLException subclass dispatched by SQLState class when first byte
+// is 0xFF (ERR packet) — D139 §核心原则 3+4 (sentinel removed; protocol
+// layer surfaces JDBC SQLException directly).
 function parseResultSetHeader(payload: string, payloadLen: int): int {
     if (payloadLen <= 0) { return 0 }
     const first = charCodeAt(payload, 0)
-    if (first == ERR_HEADER) { return RESULT_SET_HEADER_ERR }
+    if (first == ERR_HEADER) {
+        throw(dispatchSQLException(parseErrorPacket(payload, payloadLen)))
+    }
     if (first == OK_HEADER) { return RESULT_SET_HEADER_OK }
     return readLengthEncodedInt(payload, 0)
 }
@@ -100,13 +103,6 @@ function parseOkPacket(payload: string, payloadLen: int): OkPacket {
         ok.warnings = byteToInt(payload, off + 2, 2)
     }
     return ok
-}
-
-// Backward-compat thin wrapper — D138 §核心原则 5. Returns affectedRows; ERR
-// path returns 0 (caller filters ERR upstream). New consumers needing
-// lastInsertId / statusFlags / warnings should call parseOkPacket directly.
-function parseOkPacketAffectedRows(payload: string, payloadLen: int): int {
-    return parseOkPacket(payload, payloadLen).affectedRows
 }
 
 // ERR packet — D139 §核心原则 5 完整 ERR_Packet spec parse (MySQL Native
@@ -161,30 +157,46 @@ function parseErrorPacket(payload: string, payloadLen: int): ErrorPacket {
 }
 
 // Reads the response packet into a full OkPacket — D138 §核心原则 4 single
-// source of truth for affectedRows + lastInsertId. Non-OK responses (ERR
-// header, short read, or unrecognised first byte) all collapse onto one
-// OkPacket{affectedRows: -1, lastInsertId: 0, ...} sentinel, matching the
-// legacy readUpdateResult sentinel; lastInsertId stays 0 on error so
-// getLastInsertId returns 0 (D138 §A.2 H7 防御).
+// source of truth for affectedRows + lastInsertId. ERR header parses
+// ErrorPacket and throws an SQLException subclass dispatched by SQLState
+// class; short read / unrecognised first byte throw
+// SQLNonTransientConnectionException (08000 wire-protocol failure) — D139
+// §核心原则 3+4 (sentinel removed; thin wrapper retired).
 function readUpdateResultPacket(fd: int): OkPacket {
     const pkt = readPacket(fd)
-    if (pkt.payloadLen > 0) {
-        if (charCodeAt(pkt.payload, 0) == OK_HEADER) {
-            return parseOkPacket(pkt.payload, pkt.payloadLen)
-        }
+    if (pkt.payloadLen <= 0) {
+        throw(new SQLNonTransientConnectionException("MySQL: short read on update response", "08000", 0))
     }
-    return new OkPacket(-1, 0, 0, 0)
+    const first = charCodeAt(pkt.payload, 0)
+    if (first == OK_HEADER) {
+        return parseOkPacket(pkt.payload, pkt.payloadLen)
+    }
+    if (first == ERR_HEADER) {
+        throw(dispatchSQLException(parseErrorPacket(pkt.payload, pkt.payloadLen)))
+    }
+    throw(new SQLNonTransientConnectionException("MySQL: unrecognised header on update response", "08000", 0))
 }
 
-// Backward-compat thin wrapper — D138 §核心原则 5. INSERT / UPDATE / DELETE /
-// DDL callers (commit / rollback / setAutoCommit / d134 query test) consume
-// only affectedRows; getLastInsertId-aware callers (D138 Phase 2 executeUpdate)
-// must call readUpdateResultPacket directly.
-// Returns:
-//   N >= 0  affected rows (OK packet)
-//   -1      error (ERR packet, short read, or unrecognised first byte)
-function readUpdateResult(fd: int): int {
-    return readUpdateResultPacket(fd).affectedRows
+// SQLState class → SQLException subclass dispatch — JDBC 4.3 §13.4. Two-char
+// prefix routing per MySQL Connector/J convention; HY / unknown classes fall
+// back to the SQLException root so callers can still read sqlState/errorCode.
+function sqlStateClass(s: string): string {
+    if (s.length() < 2) { return "" }
+    return s.substring(0, 2)
+}
+
+function dispatchSQLException(ep: ErrorPacket): SQLException {
+    const cls = sqlStateClass(ep.sqlState)
+    // 08 connection failure / 28 invalid auth both surface as
+    // SQLNonTransientConnectionException per JDBC 4.3 §13.4.
+    if (cls == "08") { return new SQLNonTransientConnectionException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    if (cls == "28") { return new SQLNonTransientConnectionException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    if (cls == "23") { return new SQLIntegrityConstraintViolationException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    if (cls == "40") { return new SQLTransactionRollbackException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    if (cls == "42") { return new SQLSyntaxErrorException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    if (cls == "0A") { return new SQLFeatureNotSupportedException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    if (cls == "22") { return new SQLDataException(ep.errorMessage, ep.sqlState, ep.errorCode) }
+    return new SQLException(ep.errorMessage, ep.sqlState, ep.errorCode)
 }
 
 // Cross-module accessors — D138 Phase 2. lib/com/mysql/jdbc.ss + prepared.ss
@@ -305,7 +317,8 @@ function parseRow(payload: string, colCount: int): Array<string> {
 // remaining packets so the socket stays in sync for the next query.
 class MysqlResultSet : ResultSet {
     fd: int
-    // SELECT path = column count; OK / ERR path = sentinel RESULT_SET_HEADER_OK / _ERR.
+    // SELECT path = column count; OK path = RESULT_SET_HEADER_OK (-2); ERR
+    // path throws via parseResultSetHeader before the ResultSet is built.
     colCount: int
     colMetadata: Array<ColumnDef>
     currentRow: Array<string>
@@ -428,10 +441,10 @@ class GeneratedKeyResultSet : ResultSet {
 }
 
 // Reads a complete query response and returns a MysqlResultSet positioned
-// before the first row (caller must call next() to advance). For OK / ERR
-// responses (no result set), returns a closed ResultSet with colCount set
-// to RESULT_SET_HEADER_OK (-2) / RESULT_SET_HEADER_ERR (-1) so the caller
-// can distinguish update-vs-error.
+// before the first row (caller must call next() to advance). OK header
+// (no result set) returns a closed ResultSet with colCount = -2
+// (RESULT_SET_HEADER_OK). ERR header throws an SQLException subclass via
+// readResultSetHeader → parseResultSetHeader (D139 §核心原则 3+4).
 //
 // Wire flow (legacy EOF mode):
 //   1. result-set header packet (column count or OK / ERR)

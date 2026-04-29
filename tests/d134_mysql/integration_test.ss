@@ -14,7 +14,7 @@
 // ResultSet layer so all 8 sub-tests below remain unchanged.
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection } from "@/lib/java/sql"
+import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, SQLException } from "@/lib/java/sql"
 import { JdbcTemplate, withTransaction } from "@/lib/spring/jdbc"
 import { JpaRepository, JpaRepositoryFactory_create } from "@/lib/spring/data"
 
@@ -46,13 +46,14 @@ function countAll(): int {
 
 function main() {
     // Probe: skip the file (exit 0) when 127.0.0.1:3307 is not reachable.
-    const probe = DriverManager_getConnection(URL)
-    if (probe.isClosed() == 1) {
+    try {
+        const probe = DriverManager_getConnection(URL)
+        probe.close()
+    } catch (e: SQLException) {
         println("D134 integration: 127.0.0.1:3307 unreachable — skip.")
         println("   start: docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait")
         return
     }
-    probe.close()
 
     recreateTable()
 

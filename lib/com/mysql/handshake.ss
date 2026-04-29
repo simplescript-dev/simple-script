@@ -23,6 +23,8 @@ import { byteToInt } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
 import { Crypto } from "@/lib/crypto"
 import { hexByte } from "@/lib/sha256"
+import { parseErrorPacket, dispatchSQLException } from "@/lib/com/mysql/query"
+import { SQLException, SQLNonTransientConnectionException } from "@/lib/java/sql"
 
 const CLIENT_LONG_PASSWORD     = 1
 const CLIENT_LONG_FLAG         = 4
@@ -227,74 +229,82 @@ function sendHandshakeResponse41(fd: int, capFlags: int, charset: int, username:
 // Auth response branching (D135 §A.3):
 //   firstByte 0x00 → OK directly (rare)
 //   firstByte 0x01 secondByte 0x03 → fast_auth_success → readPacket → expect OK
-//   firstByte 0x01 secondByte 0x04 → perform_full_authentication → ERR (RSA-OAEP scope-out)
-//   firstByte 0xFE → AuthSwitchRequest → ERR (caching_sha2 fast-path direct mode)
-//   firstByte 0xFF → ERR packet (wrong password / user not found)
-// Returns the authenticated socket fd, or -1 on any failure (caller must check).
+//   firstByte 0x01 secondByte 0x04 → perform_full_authentication → throws (RSA-OAEP scope-out)
+//   firstByte 0xFE → AuthSwitchRequest → throws (caching_sha2 fast-path direct mode)
+//   firstByte 0xFF → ERR packet → parseErrorPacket → dispatchSQLException
+//                                    (wrong password / user not found / ...)
+// Returns the authenticated socket fd. Throws SQLNonTransientConnectionException
+// (sqlState 08001 wire failure) on tcp/handshake/auth read failure; ERR packets
+// dispatch to the SQLException subclass keyed by SQLState class (typically
+// 28xxx invalid auth → SQLNonTransientConnectionException).
 // Driver-layer Connection state (autoCommit / closed) is owned by
 // lib/com/mysql/jdbc.ss class MysqlConnection : Connection — handshake.ss owns
 // only the auth protocol, not connection lifecycle.
-// Diagnostics emitted via println.
 function mysqlConnect(host: string, port: int, username: string, password: string, database: string): int {
-    let errMsg = ""
-    let fd = tcpConnect(host, port)
-    if (fd < 0) { errMsg = "tcpConnect failed" }
-
-    let h: HandshakeV10 = new HandshakeV10(0, "", 0, "", 0, 0, 0, "")
-    if (errMsg == "") {
-        const handshakePkt = readPacket(fd)
-        if (handshakePkt.payloadLen <= 0) {
-            errMsg = "handshake read failed"
-        } else {
-            h = parseHandshakeV10(handshakePkt.payload)
-        }
+    const fd = tcpConnect(host, port)
+    if (fd < 0) {
+        throw(new SQLNonTransientConnectionException("MySQL: tcpConnect failed", "08001", 0))
     }
 
-    if (errMsg == "") {
-        const replyHex = cachingSha2Scramble(password, h.scrambleHex)
-        let capFlags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PLUGIN_AUTH
-        if (database.length() > 0) {
-            capFlags = capFlags | CLIENT_CONNECT_WITH_DB
-        }
-        sendHandshakeResponse41(fd, capFlags, h.charset, username, replyHex, database)
+    // fd valid past here — every throw site below must tcpClose(fd) first to
+    // avoid socket leaks (SS has no try-finally re-throw idiom for cleanup).
+    const handshakePkt = readPacket(fd)
+    if (handshakePkt.payloadLen <= 0) {
+        tcpClose(fd)
+        throw(new SQLNonTransientConnectionException("MySQL: handshake read failed", "08001", 0))
+    }
+    const h = parseHandshakeV10(handshakePkt.payload)
 
-        const authPkt = readPacket(fd)
-        if (authPkt.payloadLen <= 0) {
-            errMsg = "auth response read failed"
-        } else {
-            const firstByte = charCodeAt(authPkt.payload, 0)
-            if (firstByte == AUTH_OK) {
-                // OK packet directly — server accepted without AuthMoreData (rare but legal)
-            } else if (firstByte == AUTH_MORE_DATA) {
-                const secondByte = charCodeAt(authPkt.payload, 1)
-                if (secondByte == FAST_AUTH_SUCCESS) {
-                    // server cache hit; expect OK packet next
-                    const okPkt = readPacket(fd)
-                    if (okPkt.payloadLen <= 0) {
-                        errMsg = "post-fast_auth_success OK read failed"
-                    } else {
-                        const okFirst = charCodeAt(okPkt.payload, 0)
-                        if (okFirst == ERR_PACKET) { errMsg = "auth failed (ERR after fast_auth_success)" }
-                        if (okFirst != AUTH_OK && okFirst != ERR_PACKET) { errMsg = "unexpected post-fast_auth_success byte" }
-                    }
-                } else if (secondByte == PERFORM_FULL_AUTHENTICATION) {
-                    errMsg = "full auth not supported (server cache miss; RSA-OAEP scope-out)"
-                } else {
-                    errMsg = "unexpected AuthMoreData status byte"
-                }
-            } else if (firstByte == AUTH_SWITCH_REQUEST) {
-                errMsg = "server requested AuthSwitch (caching_sha2 fast-path direct mode)"
-            } else if (firstByte == ERR_PACKET) {
-                errMsg = "auth failed (ERR packet)"
-            } else {
-                errMsg = "unexpected auth response first byte"
+    const replyHex = cachingSha2Scramble(password, h.scrambleHex)
+    let capFlags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PLUGIN_AUTH
+    if (database.length() > 0) {
+        capFlags = capFlags | CLIENT_CONNECT_WITH_DB
+    }
+    sendHandshakeResponse41(fd, capFlags, h.charset, username, replyHex, database)
+
+    const authPkt = readPacket(fd)
+    if (authPkt.payloadLen <= 0) {
+        tcpClose(fd)
+        throw(new SQLNonTransientConnectionException("MySQL: auth response read failed", "08001", 0))
+    }
+    const firstByte = charCodeAt(authPkt.payload, 0)
+    if (firstByte == AUTH_OK) {
+        return fd
+    }
+    if (firstByte == AUTH_MORE_DATA) {
+        const secondByte = charCodeAt(authPkt.payload, 1)
+        if (secondByte == FAST_AUTH_SUCCESS) {
+            const okPkt = readPacket(fd)
+            if (okPkt.payloadLen <= 0) {
+                tcpClose(fd)
+                throw(new SQLNonTransientConnectionException("MySQL: post-fast_auth_success OK read failed", "08001", 0))
             }
+            const okFirst = charCodeAt(okPkt.payload, 0)
+            if (okFirst == ERR_PACKET) {
+                tcpClose(fd)
+                throw(dispatchSQLException(parseErrorPacket(okPkt.payload, okPkt.payloadLen)))
+            }
+            if (okFirst != AUTH_OK) {
+                tcpClose(fd)
+                throw(new SQLNonTransientConnectionException("MySQL: unexpected post-fast_auth_success byte", "08001", 0))
+            }
+            return fd
         }
+        if (secondByte == PERFORM_FULL_AUTHENTICATION) {
+            tcpClose(fd)
+            throw(new SQLNonTransientConnectionException("MySQL: full auth not supported (server cache miss; RSA-OAEP scope-out)", "08001", 0))
+        }
+        tcpClose(fd)
+        throw(new SQLNonTransientConnectionException("MySQL: unexpected AuthMoreData status byte", "08001", 0))
     }
-
-    if (errMsg != "") {
-        println("MySQL: " + errMsg)
-        return -1
+    if (firstByte == AUTH_SWITCH_REQUEST) {
+        tcpClose(fd)
+        throw(new SQLNonTransientConnectionException("MySQL: server requested AuthSwitch (caching_sha2 fast-path direct mode)", "08001", 0))
     }
-    return fd
+    if (firstByte == ERR_PACKET) {
+        tcpClose(fd)
+        throw(dispatchSQLException(parseErrorPacket(authPkt.payload, authPkt.payloadLen)))
+    }
+    tcpClose(fd)
+    throw(new SQLNonTransientConnectionException("MySQL: unexpected auth response first byte", "08001", 0))
 }

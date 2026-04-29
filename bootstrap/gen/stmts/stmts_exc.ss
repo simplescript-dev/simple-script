@@ -186,7 +186,9 @@ function genThrow(id: int) {
     if (classFields.has(exprType) == 1 && classFieldTypes.has(`${exprType}.message`) == 1) {
         emitIR(`  store i32 1, ptr @ss_exc_is_obj`)
         emitIR(`  store ptr ${exprVal}, ptr @ss_exc_obj`)
-        const msgReg = emitFieldLoad(exprType, exprVal, "message")
+        // Byte-offset GEP avoids cross-module forward-ref of `%${exprType}`
+        // when exprType is decl'd in a sibling lib module (D139 §A.2 H1).
+        const msgReg = emitByteOffsetFieldLoad(exprType, exprVal, "message")
         emitIR(`  call void @ss_throw(ptr ${msgReg})`)
     } else {
         emitIR(`  store i32 0, ptr @ss_exc_is_obj`)
