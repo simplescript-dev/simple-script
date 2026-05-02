@@ -375,11 +375,14 @@ class MysqlResultSet : ResultSet {
     }
 
     // ── D146 Phase 2 stubs — JDBC §15 cursor / scrollable method declarations ───
-    // forward-only fallback. Phase 3 plumbs setFetchSize / getFetchSize through
-    // useCursor + fetchSize fields when wiring the COM_STMT_FETCH cursor
-    // protocol; absolute / first / last / previous / getRow gain in-memory cache
-    // semantics for TYPE_SCROLL_INSENSITIVE then (MySQL 5.7+ has no server
-    // scrollable cursor — D146 §A.2 H5 fallback).
+    // MysqlResultSet wraps the COM_QUERY 0x03 text protocol, which has no
+    // server-side cursor (Phase 4 H4 dual semantics live exclusively on
+    // MysqlBinaryResultSet via MysqlPreparedStatement.setFetchSize). The
+    // setFetchSize call here is informational only — text protocol always
+    // streams the entire result set from the socket regardless of fetchSize,
+    // so INTEGER_MIN_VALUE / N >= 1 / 0 produce identical wire flow.
+    // absolute / first / last / previous / getRow stay forward-only no-ops
+    // (callers needing scrollable use prepareStatement + scrollable type).
     function setFetchSize(rows: int) {}
     function getFetchSize(): int { return 0 }
     function absolute(row: int): int { return 0 }
@@ -450,9 +453,11 @@ class GeneratedKeyResultSet : ResultSet {
         return 0
     }
 
-    // D146 Phase 2 — JDBC §15 cursor / scrollable methods. GeneratedKeyResultSet
-    // is a synthetic single-row ResultSet (lastInsertId wrapper); cursor /
-    // scrollable methods are no-ops for this driver-internal type.
+    // D146 Phase 2/4 — JDBC §15 cursor / scrollable methods. GeneratedKeyResultSet
+    // is a synthetic single-row ResultSet (lastInsertId wrapper); the row is
+    // already materialized at construction so neither setFetchSize batching
+    // nor scrollable positioning has any effect. INTEGER_MIN_VALUE / N >= 1 /
+    // 0 all produce the same single-row iteration.
     function setFetchSize(rows: int) {}
     function getFetchSize(): int { return 0 }
     function absolute(row: int): int { return 0 }

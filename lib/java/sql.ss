@@ -124,6 +124,25 @@ interface PreparedStatement {
     function setDouble(idx: int, val: double)
     function setBoolean(idx: int, val: int)
     function setNull(idx: int)
+    // D146 Phase 4 — JDBC 4.3 §16 Statement.setFetchSize lifted to
+    // PreparedStatement (since SS PreparedStatement is a standalone
+    // interface — D136 §A.5 retcon — it does not inherit Statement's
+    // setFetchSize via extends). Spring `JdbcTemplate.query(sql, setter,
+    // callback)` calls setter(ps) so the setter can invoke
+    // ps.setFetchSize(...) before executeQuery fires; declaring it here
+    // closes the abstraction gap that would otherwise force callers to
+    // cast to a driver-specific class.
+    //
+    // Dual semantics on MySQL driver (Connector/J 5.0.6+ idiom):
+    //   setFetchSize(N >= 1)             → server-side cursor
+    //                                        (COM_STMT_FETCH N rows / batch,
+    //                                         rs.useCursor=1)
+    //   setFetchSize(INTEGER_MIN_VALUE)  → client-side row streaming
+    //                                        (server flushes full ResultSet,
+    //                                         client reads row-by-row,
+    //                                         rs.useCursor=0)
+    //   setFetchSize(0) / no call        → client streaming default
+    function setFetchSize(rows: int)
     function executeQuery(): ResultSet
     function executeUpdate(): int
     function getGeneratedKeys(): ResultSet

@@ -15,6 +15,43 @@
 
 import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS, SQLException } from "@/lib/java/sql"
 
+// ── RowCallbackHandler — D146 Phase 4 streaming row callback ─
+// Mirrors org.springframework.jdbc.core.RowCallbackHandler. Single
+// processRow method invoked once per row by JdbcTemplate.query(sql,
+// callback) + JdbcTemplate.query(sql, setter, callback). Implementor
+// decides what to do with the row (sum / filter / write to file /
+// dispatch downstream) without materializing the full ResultSet.
+//
+// Combined with PreparedStatement.setFetchSize the dual semantics are:
+//   setFetchSize(N >= 1)             → server-side cursor (useCursor=1
+//                                        + COM_STMT_FETCH N rows / batch)
+//   setFetchSize(INTEGER_MIN_VALUE)  → MySQL Connector/J client-side
+//                                        row streaming (useCursor=0)
+//   setFetchSize(0) / no call        → client streaming default
+//
+// INTEGER_MIN_VALUE -2147483648 is the MySQL Connector/J 5.0.6+
+// magic value (java.lang.Integer.MIN_VALUE) — Spring "Streaming Query
+// Results" docs reference it.
+const INTEGER_MIN_VALUE = -2147483648
+
+interface RowCallbackHandler {
+    function processRow(rs: ResultSet): void
+}
+
+// Default no-op handler — kept here so that any translation unit that
+// imports jdbc.ss (e.g. tests/d139_sql_exception/translator_spike_test.ss)
+// transitively pulls a RowCallbackHandler implementor into its
+// ifaceImplementors map. SS interface dispatchers are only emitted when
+// the interface has at least one implementor in the unit's import
+// closure (see bootstrap/gen/gen_iface.ss generateInterfaceDispatchers
+// line 140 `if (impls == "") { continue }`); without this stub
+// JdbcTemplate.query's `callback.processRow(rs)` call site would
+// reference an undefined `@__iface_RowCallbackHandler_processRow`
+// symbol. Same idiom as KeyHolder + GeneratedKeyHolder above.
+class NoopRowCallbackHandler : RowCallbackHandler {
+    function processRow(rs: ResultSet): void {}
+}
+
 // ── KeyHolder ────────────────────────────────────────────────
 // D138 Phase 3 — Spring KeyHolder standard. JdbcTemplate.update(sql, setter,
 // keyHolder) populates keyHolder.getKeyList() with one Map<string,int> per
@@ -387,6 +424,73 @@ class JdbcTemplate {
             throw(translator.translate(e))
         }
         return v
+    }
+
+    // D146 Phase 4 — Spring JdbcTemplate.query(sql, callback) standard.
+    // Streams every row through callback.processRow(rs); the ResultSet,
+    // Statement, and Connection are released via four-deep try/finally
+    // before query returns — unlike queryForList this method does not
+    // leak the socket. This 1-arg path uses Statement.executeQuery
+    // (text protocol COM_QUERY 0x03) which has no server-side cursor;
+    // callers that need cursor semantics + setFetchSize use the
+    // parameterized overload below.
+    function query(sql: string, callback: RowCallbackHandler): void {
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.createStatement()
+                try {
+                    const rs = stmt.executeQuery(sql)
+                    try {
+                        while (rs.next() == 1) {
+                            callback.processRow(rs)
+                        }
+                    } finally {
+                        rs.close()
+                    }
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
+    }
+
+    // Parameterized variant — setter binds positional params and may
+    // also call ps.setFetchSize(N) to opt into server-side cursor
+    // (N >= 1) or ps.setFetchSize(INTEGER_MIN_VALUE) for MySQL
+    // Connector/J client-side row streaming (D146 §A.2 H4 dual
+    // semantics). Same four-deep try/finally release as the 1-arg
+    // path so the socket is clean before query returns.
+    function query(sql: string, setter: fn(PreparedStatement):void, callback: RowCallbackHandler): void {
+        try {
+            const conn = DriverManager_getConnection(this.url)
+            try {
+                const stmt = conn.prepareStatement(sql)
+                try {
+                    setter(stmt)
+                    const rs = stmt.executeQuery()
+                    try {
+                        while (rs.next() == 1) {
+                            callback.processRow(rs)
+                        }
+                    } finally {
+                        rs.close()
+                    }
+                } finally {
+                    stmt.close()
+                }
+            } finally {
+                conn.close()
+            }
+        } catch (e: SQLException) {
+            const translator = new SQLExceptionTranslator()
+            throw(translator.translate(e))
+        }
     }
 }
 

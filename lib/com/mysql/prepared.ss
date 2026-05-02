@@ -538,6 +538,16 @@ class MysqlBinaryResultSet : ResultSet {
     // positioning. Forward-only ResultSet (rsType == TYPE_FORWARD_ONLY) returns
     // 0 for absolute / first / last / previous per JDBC spec ("invalid cursor
     // movement on forward-only"); scrollable types drive the in-memory cache.
+    //
+    // D146 Phase 4 H4 dual-semantics note: cursor mode is decided at
+    // executeQuery time from MysqlPreparedStatement.fetchSize (see
+    // deriveCursorFlag at prepared.ss:788). Calling setFetchSize on the
+    // ResultSet *after* it is open updates the per-batch row count for
+    // subsequent COM_STMT_FETCH packets (useCursor=1) but cannot toggle
+    // useCursor itself — that decision was already plumbed by
+    // plumbCursorState. INTEGER_MIN_VALUE on this method has no effect on
+    // useCursor; callers wanting client streaming must call
+    // ps.setFetchSize(INTEGER_MIN_VALUE) before executeQuery fires.
     function setFetchSize(rows: int) { this.fetchSize = rows }
     function getFetchSize(): int { return this.fetchSize }
 
@@ -760,9 +770,11 @@ class MysqlPreparedStatement : PreparedStatement {
         this.bindParam(idx, MYSQL_TYPE_NULL, "", 0.0, 1)
     }
 
-    // Driver-specific setter; PreparedStatement interface does not declare
-    // setFetchSize. Phase 4 lifts it to the interface level alongside the
-    // Integer.MIN_VALUE dual-semantics path.
+    // D146 Phase 4 — Implements the PreparedStatement.setFetchSize SSoT
+    // (lib/java/sql.ss:127-145 dual-semantics docs). The setter is a
+    // plain field write; MySQL Connector/J's three-way fetchSize routing
+    // (MIN_VALUE / N>=1 / 0) falls out of deriveCursorFlag's
+    // `fetchSize > 0` predicate at the executeQuery dispatch site below.
     function setFetchSize(rows: int) { this.fetchSize = rows }
 
     // Cross-module cursor hint setter. Direct field writes from jdbc.ss

@@ -55,6 +55,11 @@ class NoopPreparedStatement : PreparedStatement {
     function setDouble(idx: int, val: double) {}
     function setBoolean(idx: int, val: int) {}
     function setNull(idx: int) {}
+    // D146 Phase 4 — PreparedStatement interface gained setFetchSize for
+    // Spring JdbcTemplate.query(sql, setter, callback) dual-semantics
+    // dispatch. Mock stub matches the interface signature; production
+    // path lives in MysqlPreparedStatement.setFetchSize (prepared.ss).
+    function setFetchSize(rows: int) {}
     function executeQuery(): ResultSet { return new NoopResultSet(0, 0) }
     function executeUpdate(): int { return 0 }
     function getGeneratedKeys(): ResultSet { return new NoopResultSet(0, 0) }
