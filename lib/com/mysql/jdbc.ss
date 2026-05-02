@@ -57,6 +57,16 @@ class MysqlConnection : Connection {
         return doPrepare(this.fd, sql)
     }
 
+    // D146 Phase 2 — JDBC 4.3 §Connection.prepareStatement(sql, type, concurrency).
+    // Phase 2 dispatches to the 1-arg form, ignoring type+concurrency. Phase 3
+    // routes the type byte through MysqlPreparedStatement.executeQuery to flip
+    // the COM_STMT_EXECUTE flags CURSOR_TYPE_READ_ONLY 0x01 bit when type ==
+    // TYPE_FORWARD_ONLY + setFetchSize > 0, or to wire in-memory cache when
+    // type == TYPE_SCROLL_INSENSITIVE / TYPE_SCROLL_SENSITIVE (D146 §A.2 H5).
+    function prepareStatement(sql: string, type: int, concurrency: int): PreparedStatement {
+        return doPrepare(this.fd, sql)
+    }
+
     function setAutoCommit(auto: int) {
         if (this.autoCommit == auto) { return }
         let sql = "SET autocommit=0"
@@ -99,6 +109,16 @@ class MysqlStatement : Statement {
     lastInsertId: int
 
     function executeQuery(sql: string): ResultSet {
+        sendQuery(this.fd, sql)
+        return readQueryResultSet(this.fd)
+    }
+
+    // D146 Phase 2 — JDBC 4.3 §Statement.executeQuery(sql, type, concurrency).
+    // MySQL Statement (COM_QUERY 0x03) has no server-side cursor support —
+    // type+concurrency are informational on this path. Server-side cursor lives
+    // exclusively on PreparedStatement (Connection.prepareStatement(sql, type,
+    // concurrency) + COM_STMT_EXECUTE flags CURSOR_TYPE_READ_ONLY 0x01).
+    function executeQuery(sql: string, type: int, concurrency: int): ResultSet {
         sendQuery(this.fd, sql)
         return readQueryResultSet(this.fd)
     }

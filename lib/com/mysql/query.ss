@@ -374,6 +374,20 @@ class MysqlResultSet : ResultSet {
         return 0
     }
 
+    // ── D146 Phase 2 stubs — JDBC §15 cursor / scrollable method declarations ───
+    // forward-only fallback. Phase 3 plumbs setFetchSize / getFetchSize through
+    // useCursor + fetchSize fields when wiring the COM_STMT_FETCH cursor
+    // protocol; absolute / first / last / previous / getRow gain in-memory cache
+    // semantics for TYPE_SCROLL_INSENSITIVE then (MySQL 5.7+ has no server
+    // scrollable cursor — D146 §A.2 H5 fallback).
+    function setFetchSize(rows: int) {}
+    function getFetchSize(): int { return 0 }
+    function absolute(row: int): int { return 0 }
+    function first(): int { return 0 }
+    function last(): int { return 0 }
+    function previous(): int { return 0 }
+    function getRow(): int { return 0 }
+
     function close() {
         if (this.closed != 0) { return }
         while (this.hasMoreRows != 0) {
@@ -435,6 +449,17 @@ class GeneratedKeyResultSet : ResultSet {
         if (s == "true") { return 1 }
         return 0
     }
+
+    // D146 Phase 2 — JDBC §15 cursor / scrollable methods. GeneratedKeyResultSet
+    // is a synthetic single-row ResultSet (lastInsertId wrapper); cursor /
+    // scrollable methods are no-ops for this driver-internal type.
+    function setFetchSize(rows: int) {}
+    function getFetchSize(): int { return 0 }
+    function absolute(row: int): int { return 0 }
+    function first(): int { return 0 }
+    function last(): int { return 0 }
+    function previous(): int { return 0 }
+    function getRow(): int { return 0 }
 
     function close() {
     }
