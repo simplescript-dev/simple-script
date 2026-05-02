@@ -48,6 +48,31 @@ interface ResultSet {
     function last(): int
     function previous(): int
     function getRow(): int
+    // ── D147 §Phase 2 Updatable Cursor methods ──────────────────
+    // JDBC 4.3 §15.2.5 update surface, paired with CURSOR_TYPE_FOR_UPDATE
+    // 0x02 (lib/com/mysql/query.ss) + CONCUR_UPDATABLE 1008. MySQL has no
+    // SQL-standard updatable cursor (5.7+ docs); the driver simulates it
+    // in MysqlBinaryResultSet (Phase 4) — updateXxx fills a pending dirty
+    // Map, then updateRow / deleteRow / insertRow flush via a fresh
+    // PreparedStatement on the same Connection (Connector/J 5.0+ pattern).
+    // 6 core SQL setters; extended types (BigDecimal / Timestamp / Bytes)
+    // left to D147 §Followup F1.
+    function updateRow()
+    function deleteRow()
+    function insertRow()
+    function cancelRowUpdates()
+    function refreshRow()
+    function moveToInsertRow()
+    function moveToCurrentRow()
+    function rowUpdated(): int
+    function rowDeleted(): int
+    function rowInserted(): int
+    function updateInt(col: string, val: int)
+    function updateString(col: string, val: string)
+    function updateLong(col: string, val: int)
+    function updateBoolean(col: string, val: int)
+    function updateDouble(col: string, val: double)
+    function updateNull(col: string)
     function close()
 }
 

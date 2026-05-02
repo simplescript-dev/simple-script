@@ -590,6 +590,29 @@ class MysqlBinaryResultSet : ResultSet {
 
     function getRow(): int { return this.cachedIdx }
 
+    // ── D147 Phase 2 placeholder stubs — JDBC §15.2.5 update methods ──────
+    // Phase 4 swaps these for the real driver-side updatable cursor (pending
+    // dirty Map + fresh PreparedStatement UPDATE / DELETE / INSERT on the
+    // same Connection — Connector/J 5.0+ `UpdatableResultSet`). For now they
+    // satisfy D025 vtable parity so the interface declaration can land
+    // independently of the row-mutation surface.
+    function updateRow() {}
+    function deleteRow() {}
+    function insertRow() {}
+    function cancelRowUpdates() {}
+    function refreshRow() {}
+    function moveToInsertRow() {}
+    function moveToCurrentRow() {}
+    function rowUpdated(): int { return 0 }
+    function rowDeleted(): int { return 0 }
+    function rowInserted(): int { return 0 }
+    function updateInt(col: string, val: int) {}
+    function updateString(col: string, val: string) {}
+    function updateLong(col: string, val: int) {}
+    function updateBoolean(col: string, val: int) {}
+    function updateDouble(col: string, val: double) {}
+    function updateNull(col: string) {}
+
     // Pulls one more row into cachedRows without advancing currentRow / cachedIdx
     // for absolute / last to size up the cache without disturbing the public
     // cursor position before the final assignment. Returns 1 if a row was

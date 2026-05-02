@@ -391,6 +391,28 @@ class MysqlResultSet : ResultSet {
     function previous(): int { return 0 }
     function getRow(): int { return 0 }
 
+    // ── D147 Phase 2 stubs — JDBC §15.2.5 update method declarations ────
+    // Text protocol (COM_QUERY 0x03) has no updatable cursor surface —
+    // simulation lives on MysqlBinaryResultSet via PreparedStatement +
+    // CONCUR_UPDATABLE 1008 (D147 §Phase 4). Stubs preserve D025 vtable
+    // parity; state queries return 0 so misuse falls through cleanly.
+    function updateRow() {}
+    function deleteRow() {}
+    function insertRow() {}
+    function cancelRowUpdates() {}
+    function refreshRow() {}
+    function moveToInsertRow() {}
+    function moveToCurrentRow() {}
+    function rowUpdated(): int { return 0 }
+    function rowDeleted(): int { return 0 }
+    function rowInserted(): int { return 0 }
+    function updateInt(col: string, val: int) {}
+    function updateString(col: string, val: string) {}
+    function updateLong(col: string, val: int) {}
+    function updateBoolean(col: string, val: int) {}
+    function updateDouble(col: string, val: double) {}
+    function updateNull(col: string) {}
+
     function close() {
         if (this.closed != 0) { return }
         while (this.hasMoreRows != 0) {
@@ -465,6 +487,26 @@ class GeneratedKeyResultSet : ResultSet {
     function last(): int { return 0 }
     function previous(): int { return 0 }
     function getRow(): int { return 0 }
+
+    // D147 Phase 2 stubs — driver-internal synthetic ResultSet has no underlying
+    // table / PK / row state to mutate, so all 16 JDBC §15.2.5 update methods
+    // are permanent no-ops. The stubs exist purely for D025 vtable parity.
+    function updateRow() {}
+    function deleteRow() {}
+    function insertRow() {}
+    function cancelRowUpdates() {}
+    function refreshRow() {}
+    function moveToInsertRow() {}
+    function moveToCurrentRow() {}
+    function rowUpdated(): int { return 0 }
+    function rowDeleted(): int { return 0 }
+    function rowInserted(): int { return 0 }
+    function updateInt(col: string, val: int) {}
+    function updateString(col: string, val: string) {}
+    function updateLong(col: string, val: int) {}
+    function updateBoolean(col: string, val: int) {}
+    function updateDouble(col: string, val: double) {}
+    function updateNull(col: string) {}
 
     function close() {
     }
