@@ -23,14 +23,20 @@ const EOF_HEADER = 0xFE
 const RESULT_SET_HEADER_OK = -2
 
 // Column definition (text protocol). Minimal field set — driver-relevant
-// metadata only. The wire packet also carries catalog / schema / table /
-// org_table / org_name (skipped during parse) and flags / decimals / 2-byte
-// reserved (skipped after the 0x0c filler).
+// metadata only. D147 Phase 3 promoted org_table + flags from "skip" to
+// "keep": driver-side updatable cursor needs the original (non-aliased)
+// table name for buildUpdateRowSql / buildDeleteRowSql / buildInsertRowSql
+// / buildRefreshRowSql WHERE pk=? clauses, and the flags i16 LE bit 1
+// (PRI_KEY_FLAG 0x0002) to discover the PK column without a SHOW INDEX
+// round-trip (D147 §A.2 H2). Catalog / schema / table (alias) / org_name
+// remain skipped — irrelevant to UPDATE / DELETE / INSERT generation.
 class ColumnDef {
     name: string
     colType: int
     columnLen: int
     charset: int
+    orgTable: string
+    flags: int
 }
 
 // Sends a COM_QUERY packet (cmd 0x03 + sql bytes) with seqId reset to 0.
@@ -226,22 +232,29 @@ function skipLengthEncodedString(payload: string, offset: int): int {
 //   lenenc str: catalog       (skip)
 //   lenenc str: schema        (skip)
 //   lenenc str: table         (skip — alias)
-//   lenenc str: org_table     (skip)
+//   lenenc str: org_table     (KEEP — D147 Phase 3 driver-side updatable cursor
+//                              needs the original table name for UPDATE / DELETE
+//                              / INSERT WHERE pk=? generation; alias `table`
+//                              would point at the SELECT alias not the storage
+//                              table)
 //   lenenc str: name          (KEEP — column alias used by getString)
 //   lenenc str: org_name      (skip)
 //   1 byte:    filler 0x0c    (constant length tag for the 12-byte metadata block)
 //   2 byte LE: character set
 //   4 byte LE: column length
 //   1 byte:    column type
-//   2 byte LE: flags          (skip)
+//   2 byte LE: flags          (KEEP — D147 Phase 3 bit 1 = PRI_KEY_FLAG 0x0002
+//                              identifies the primary-key column without a
+//                              SHOW INDEX FROM table round-trip; D147 §A.2 H2)
 //   1 byte:    decimals       (skip)
 //   2 byte:    reserved 0x0000(skip)
 function parseColumnDef(payload: string): ColumnDef {
-    const col = new ColumnDef("", 0, 0, 0)
+    const col = new ColumnDef("", 0, 0, 0, "", 0)
     let off = 0
     off = skipLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
+    col.orgTable = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
     col.name = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
@@ -252,6 +265,8 @@ function parseColumnDef(payload: string): ColumnDef {
     col.columnLen = byteToInt(payload, off, 4)
     off = off + 4
     col.colType = charCodeAt(payload, off)
+    off = off + 1
+    col.flags = byteToInt(payload, off, 2)
     return col
 }
 
@@ -274,6 +289,20 @@ function columnDefColType(col: ColumnDef): int {
 
 function columnDefName(col: ColumnDef): string {
     return col.name
+}
+
+// D147 Phase 3 — driver-side updatable cursor accessors. derivePkColumn /
+// deriveTableName (lib/com/mysql/prepared.ss) walk Array<ColumnDef> and need
+// orgTable + flags via the same indirect path columnDefName / columnDefColType
+// document. Direct GEP %ColumnDef from prepared.ss forward-references the type
+// (prepared.ss IR is concatenated before query.ss declares the struct), so the
+// access has to live in this module.
+function columnDefOrgTable(col: ColumnDef): string {
+    return col.orgTable
+}
+
+function columnDefFlags(col: ColumnDef): int {
+    return col.flags
 }
 
 // Legacy EOF marker: 0xFE header + payload length < 9 bytes.

@@ -123,7 +123,7 @@ function main() {
     test("MysqlPreparedStatement positional ctor + setXxx state writes", () => {
         let pDefs: Array<ColumnDef> = []
         let cols: Array<ColumnDef> = []
-        cols = cols.push(new ColumnDef("id", 3, 11, 33))
+        cols = cols.push(new ColumnDef("id", 3, 11, 33, "", 0))
         const stmt = new MysqlPreparedStatement(-1, 7, 3, pDefs, [0, 0, 0], ["", "", ""], [0.0, 0.0, 0.0], [0, 0, 0], cols, 0, 0, 0, 0, 0)
         assertEqual(stmt.fd, -1)
         assertEqual(stmt.statementId, 7)
@@ -174,10 +174,10 @@ function main() {
         system(cmd)
         const buf = readFile("/tmp/d136_binrow1.bin")
         let cols: Array<ColumnDef> = []
-        cols = cols.push(new ColumnDef("id", 3, 11, 33))
-        cols = cols.push(new ColumnDef("name", 253, 64, 33))
-        cols = cols.push(new ColumnDef("price", 5, 8, 63))
-        cols = cols.push(new ColumnDef("notes", 253, 64, 33))
+        cols = cols.push(new ColumnDef("id", 3, 11, 33, "", 0))
+        cols = cols.push(new ColumnDef("name", 253, 64, 33, "", 0))
+        cols = cols.push(new ColumnDef("price", 5, 8, 63, "", 0))
+        cols = cols.push(new ColumnDef("notes", 253, 64, 33, "", 0))
         const row = parseBinaryRow(buf, 20, cols)
         assertEqual(row.length(), 4)
         assertEqual(row[0], "42")
@@ -208,7 +208,7 @@ function main() {
         let cols: Array<ColumnDef> = []
         let j = 0
         while (j < 14) {
-            cols = cols.push(new ColumnDef("c", 3, 11, 33))
+            cols = cols.push(new ColumnDef("c", 3, 11, 33, "", 0))
             j = j + 1
         }
         const row = parseBinaryRow(buf, 55, cols)

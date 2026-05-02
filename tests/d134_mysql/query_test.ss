@@ -102,7 +102,7 @@ function main() {
 
     // ColumnDef positional constructor
     test("ColumnDef positional constructor", () => {
-        const c = new ColumnDef("price", 5, 12, 33)
+        const c = new ColumnDef("price", 5, 12, 33, "", 0)
         assertEqual(c.name, "price")
         assertEqual(c.colType, 5)
         assertEqual(c.columnLen, 12)
@@ -112,8 +112,8 @@ function main() {
     // MysqlResultSet manual construction + colIndex + getString / getInt / getLong
     test("MysqlResultSet positional ctor + colIndex + getters", () => {
         let cols: Array<ColumnDef> = []
-        cols = cols.push(new ColumnDef("id", 3, 11, 33))
-        cols = cols.push(new ColumnDef("name", 253, 80, 33))
+        cols = cols.push(new ColumnDef("id", 3, 11, 33, "", 0))
+        cols = cols.push(new ColumnDef("name", 253, 80, 33, "", 0))
         let row: Array<string> = []
         row = row.push("42")
         row = row.push("Alice")
@@ -131,7 +131,7 @@ function main() {
 
     test("MysqlResultSet getBoolean true variants", () => {
         let cols: Array<ColumnDef> = []
-        cols = cols.push(new ColumnDef("flag", 1, 1, 63))
+        cols = cols.push(new ColumnDef("flag", 1, 1, 63, "", 0))
         let row1: Array<string> = []
         row1 = row1.push("1")
         const rs1 = new MysqlResultSet(-1, 1, cols, row1, 0, 1)

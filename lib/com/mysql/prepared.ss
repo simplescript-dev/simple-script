@@ -41,7 +41,7 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
 import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
 
 // Command bytes — MySQL Native Protocol §6.5
@@ -706,6 +706,147 @@ function readQueryResultSetBinary(fd: int): MysqlBinaryResultSet {
     readPacket(fd)
     rs.hasMoreRows = 1
     return rs
+}
+
+// ── D147 Phase 3 — driver-side updatable cursor SQL templates + PK helpers ──
+//
+// MySQL has no SQL-standard updatable cursor (5.7+ docs explicit); the driver
+// simulates JDBC §15.2.5 update / delete / insert / refresh by issuing a fresh
+// PreparedStatement on the same Connection (Connector/J 5.0+ pattern). The
+// builders below produce the parameterized SQL each operation needs:
+//
+//   updateRow   →  buildUpdateRowSql(table, pkCol, dirtyCols)
+//   deleteRow   →  buildDeleteRowSql(table, pkCol)
+//   insertRow   →  buildInsertRowSql(table, cols)
+//   refreshRow  →  buildRefreshRowSql(table, pkCol, cols)
+//
+// Phase 4 wires these into MysqlBinaryResultSet alongside the pendingUpdates
+// Map / pendingInserts Array fields. Phase 3 only lands the helpers + unit
+// tests so the Phase 4 surface is small.
+//
+// These builders trust their inputs (table / column names already vetted by
+// derivePkColumn / deriveTableName + Phase 4 caller). No SQL escaping happens
+// here — MySQL identifier escape (backtick) belongs in the driver layer that
+// owns identifier sanitization, not the SQL template.
+
+// PRI_KEY_FLAG — MySQL Native Protocol §6.6 column definition packet flags
+// i16 LE bit 1 (0x0002). Set by the server when the column is part of the
+// table's PRIMARY KEY. derivePkColumn uses this to discover the PK column
+// from the SELECT result's column metadata without a separate SHOW INDEX
+// FROM table round-trip. D147 §A.2 H2.
+const PRI_KEY_FLAG = 0x0002
+
+// Builds `UPDATE <table> SET col1=?, col2=? WHERE <pkCol>=?` for the
+// driver-side updateRow path. Empty dirtyCols produces the syntactically
+// invalid `UPDATE <table> WHERE <pkCol>=?` — Phase 4 callers check
+// `dirtyCols.length() > 0` before invoking, so an empty call is a caller
+// bug that surfaces as a server-side syntax error (1064) routed through
+// D139 SQLExceptionTranslator.
+function buildUpdateRowSql(table: string, pkCol: string, dirtyCols: Array<string>): string {
+    let sql = "UPDATE " + table
+    const n = dirtyCols.length()
+    if (n > 0) {
+        sql = sql + " SET "
+        let i = 0
+        while (i < n) {
+            if (i > 0) { sql = sql + ", " }
+            sql = sql + dirtyCols[i] + "=?"
+            i = i + 1
+        }
+    }
+    sql = sql + " WHERE " + pkCol + "=?"
+    return sql
+}
+
+// Builds `DELETE FROM <table> WHERE <pkCol>=?` for the driver-side deleteRow
+// path. PK binding is the only WHERE — multi-row delete is out of scope
+// (caller iterates rs.next() + rs.deleteRow() per row).
+function buildDeleteRowSql(table: string, pkCol: string): string {
+    return "DELETE FROM " + table + " WHERE " + pkCol + "=?"
+}
+
+// Builds `INSERT INTO <table>(col1, col2) VALUES (?, ?)` for the driver-side
+// insertRow path. Placeholder count == cols.length() — the matched
+// PreparedStatement.setXxx calls happen in Phase 4 from pendingInserts last
+// element. Empty cols would emit `INSERT INTO <table>() VALUES ()` which the
+// server rejects (1064) — Phase 4 callers gate on `cols.length() > 0`.
+function buildInsertRowSql(table: string, cols: Array<string>): string {
+    let sql = "INSERT INTO " + table + "("
+    const n = cols.length()
+    let i = 0
+    while (i < n) {
+        if (i > 0) { sql = sql + ", " }
+        sql = sql + cols[i]
+        i = i + 1
+    }
+    sql = sql + ") VALUES ("
+    i = 0
+    while (i < n) {
+        if (i > 0) { sql = sql + ", " }
+        sql = sql + "?"
+        i = i + 1
+    }
+    sql = sql + ")"
+    return sql
+}
+
+// Builds `SELECT col1, col2 FROM <table> WHERE <pkCol>=?` for the driver-side
+// refreshRow path. Empty cols falls back to `SELECT *` so the driver gets at
+// least the row image even if Phase 4 forgets to populate cols (defensive,
+// matches Connector/J refreshRow fallback when no specific column list is
+// available).
+function buildRefreshRowSql(table: string, pkCol: string, cols: Array<string>): string {
+    let sql = "SELECT "
+    const n = cols.length()
+    if (n == 0) {
+        sql = sql + "*"
+    } else {
+        let i = 0
+        while (i < n) {
+            if (i > 0) { sql = sql + ", " }
+            sql = sql + cols[i]
+            i = i + 1
+        }
+    }
+    sql = sql + " FROM " + table + " WHERE " + pkCol + "=?"
+    return sql
+}
+
+// Discovers the PK column from a SELECT's column metadata by scanning each
+// ColumnDef.flags for PRI_KEY_FLAG bit 1. Returns the first PK column's name
+// when exactly one PK exists; returns "" for the no-PK / multi-PK / no-rows
+// cases — Phase 4 callers translate "" into SQLFeatureNotSupportedException
+// (SQLState 0A000) so updateRow / deleteRow / insertRow on a non-trivial
+// schema fails through D139 SQLExceptionTranslator instead of generating
+// a malformed WHERE clause. Multi-PK + multi-table-join schemas are covered
+// by D147 §Followup F3 (composite key support).
+function derivePkColumn(colMetadata: Array<ColumnDef>): string {
+    const n = colMetadata.length()
+    let pk = ""
+    let count = 0
+    let i = 0
+    while (i < n) {
+        const flags = columnDefFlags(colMetadata[i])
+        if ((flags & PRI_KEY_FLAG) != 0) {
+            if (count == 0) { pk = columnDefName(colMetadata[i]) }
+            count = count + 1
+        }
+        i = i + 1
+    }
+    if (count == 1) { return pk }
+    return ""
+}
+
+// Discovers the table name for the SELECT by reading the first column's
+// org_table (the unaliased storage table — alias lives in the skipped `table`
+// field of ColumnDefinition41). Single-table SELECT is the only supported
+// shape; multi-table joins where columns come from different org_tables
+// return the first column's table — Phase 4 callers trust the schema is
+// single-table. Empty colMetadata returns "" (same trap as derivePkColumn).
+// D147 §Followup F3 covers multi-table updatable-view scenarios.
+function deriveTableName(colMetadata: Array<ColumnDef>): string {
+    if (colMetadata.length() <= 0) { return "" }
+    return columnDefOrgTable(colMetadata[0])
 }
 
 // MysqlPreparedStatement — four parallel param-binding arrays indexed by
