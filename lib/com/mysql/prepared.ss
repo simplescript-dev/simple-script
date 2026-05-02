@@ -41,8 +41,8 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, isEofPacket, CURSOR_TYPE_READ_ONLY, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY } from "@/lib/java/sql"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
+import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
 
 // Command bytes — MySQL Native Protocol §6.5
 const COM_STMT_PREPARE = 0x16
@@ -720,8 +720,12 @@ class MysqlPreparedStatement : PreparedStatement {
     //   rsType        — set by MysqlConnection.prepareStatement(sql, type, conc)
     //                   so executeQuery() (0-arg) honors the cursor declaration
     //                   from prepareStatement.
-    //   concurrency   — informational (CONCUR_READ_ONLY only — CONCUR_UPDATABLE
-    //                   留 D147+ §Followup F1 Updatable cursor sub-D)
+    //   concurrency   — JDBC 4.3 ResultSet concurrency mode. Plumbed by
+    //                   Connection.prepareStatement(sql, type, conc) via
+    //                   setCursorMode below; read by deriveCursorFlag to
+    //                   pick CURSOR_TYPE_FOR_UPDATE 0x02 (CONCUR_UPDATABLE
+    //                   1008) vs CURSOR_TYPE_READ_ONLY 0x01 (CONCUR_READ_ONLY
+    //                   1007). D147 §Phase 1.
     fetchSize: int
     rsType: int
     concurrency: int
@@ -789,6 +793,10 @@ class MysqlPreparedStatement : PreparedStatement {
     }
 
     // Cursor flag derivation:
+    //   concurrency == CONCUR_UPDATABLE         → 0x02 FOR_UPDATE (driver-
+    //                                              side updatable cursor;
+    //                                              server treats same as
+    //                                              0x01, D147 §A.2 H1)
     //   type != TYPE_FORWARD_ONLY               → 0x01 server cursor +
     //                                              in-memory cache fallback
     //                                              (MySQL 5.7+ has no server
@@ -797,7 +805,12 @@ class MysqlPreparedStatement : PreparedStatement {
     //   otherwise                               → 0x00 client streaming
     // Caller passes type=0 sentinel from the 0-arg executeQuery() to fall
     // back to this.rsType (set by Connection.prepareStatement(sql,type,conc)).
-    private function deriveCursorFlag(type: int): int {
+    // Public (driver-specific extension, not on PreparedStatement interface)
+    // so phase1_packet_unit_test can verify dispatch directly.
+    function deriveCursorFlag(type: int): int {
+        if (this.concurrency == CONCUR_UPDATABLE) {
+            return CURSOR_TYPE_FOR_UPDATE
+        }
         let effective = type
         if (effective == 0) { effective = this.rsType }
         if (effective != 0 && effective != TYPE_FORWARD_ONLY) {

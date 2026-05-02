@@ -523,6 +523,13 @@ const COM_STMT_FETCH = 0x1c
 // server pre-buffers the full result set and floods all rows at once.
 const CURSOR_TYPE_READ_ONLY = 0x01
 
+// MySQL Native Protocol §6.5 — COM_STMT_EXECUTE flags field bit 1. Per
+// MySQL 5.7+ docs the server treats this identically to bit 0 (READ_ONLY)
+// — Updatable cursor is driver-side simulation (MySQL Connector/J 5.0+
+// `UpdatableResultSet`). The flag is still emitted for protocol parity +
+// future MySQL MERGE_ENABLE_UPDATABLE upgrade path. See D147 §A.2 H1.
+const CURSOR_TYPE_FOR_UPDATE = 0x02
+
 // MySQL Native Protocol §EOF_Packet status_flags (i16 LE at payload
 // offset 3 in legacy mode). Bit 6 = SERVER_STATUS_CURSOR_EXISTS — server
 // still holds rows for this cursor, another COM_STMT_FETCH will return

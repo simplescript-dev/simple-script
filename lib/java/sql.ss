@@ -62,12 +62,17 @@ interface ResultSet {
 // them through MysqlBinaryResultSet (cursor protocol upgrade + scrollable
 // in-memory cache for TYPE_SCROLL_INSENSITIVE / TYPE_SCROLL_SENSITIVE,
 // MySQL 5.7+ has no server scrollable cursor — D146 §A.2 H5).
-// CONCUR_UPDATABLE (1008) / Updatable cursor (CURSOR_TYPE_FOR_UPDATE 0x02)
-// is out-of-scope — D146 §A.3 废案 / D147+ independent sub-D.
+// CONCUR_UPDATABLE (1008) is the JDBC 4.3 §java.sql.ResultSet.CONCUR_UPDATABLE
+// integer value, paired with the MySQL CURSOR_TYPE_FOR_UPDATE 0x02 protocol
+// flag (lib/com/mysql/query.ss). MySQL has no server-side updatable cursor
+// (5.7+ docs explicit) — the driver simulates updatable behavior in
+// MysqlBinaryResultSet. Connector/J 5.0+ `UpdatableResultSet` pattern. See
+// D147 §核心目标 + §Phase 1.
 const TYPE_FORWARD_ONLY = 1003
 const TYPE_SCROLL_INSENSITIVE = 1004
 const TYPE_SCROLL_SENSITIVE = 1005
 const CONCUR_READ_ONLY = 1007
+const CONCUR_UPDATABLE = 1008
 
 // ── JDBC 4.3 §Statement constants — D138 §核心原则 6 ─────────
 // Mirror java.sql.Statement.RETURN_GENERATED_KEYS / NO_GENERATED_KEYS. Passed
