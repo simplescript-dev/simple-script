@@ -42,7 +42,7 @@
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
 import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
+import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException } from "@/lib/java/sql"
 
 // Command bytes — MySQL Native Protocol §6.5
 const COM_STMT_PREPARE = 0x16
@@ -404,6 +404,39 @@ function parseBinaryRow(payload: string, payloadLen: int, columnDefs: Array<Colu
 //   cachedRows      Array<Row> — batch buffer when forward-only cursor;
 //                   full row history when scrollable
 //   cachedIdx       1-based row position in cachedRows; 0 = not positioned
+//
+// D147 Phase 4 driver-side updatable cursor fields (MySQL 5.7+ has no server
+// SQL-standard updatable cursor — D147 §A.2 H1 driver-side simulation,
+// Connector/J 5.0+ pattern):
+//   pendingUpdates  col → string-encoded value buffer; updateXxx writes here
+//                   while not in insert mode, updateRow flushes via fresh
+//                   PreparedStatement UPDATE + clears the Map
+//   pendingInserts  buffer of insert-row Maps (each Map = col → val); the
+//                   trailing Map is the in-progress insert row added by
+//                   moveToInsertRow; insertRow flushes the trailing Map as
+//                   `INSERT INTO ... VALUES (...)` and pops it
+//   tableName       derived from colMetadata[0].orgTable in
+//                   readQueryResultSetBinary (single-table SELECT only)
+//   pkColumn        derived from colMetadata flags PRI_KEY_FLAG bit 1
+//                   (single PK only — composite PK / no PK / multi-PK
+//                   returns "" and triggers SQLFeatureNotSupportedException
+//                   from updateRow / deleteRow at flush time)
+//   inInsertMode    0 = normal (updateXxx → pendingUpdates), 1 = insert
+//                   mode (updateXxx → trailing pendingInserts Map);
+//                   moveToInsertRow / moveToCurrentRow toggle this
+//   rowState        ROW_STATE_CLEAN / UPDATED / DELETED / INSERTED — set by
+//                   updateRow / deleteRow / insertRow, read by rowUpdated /
+//                   rowDeleted / rowInserted; reset to CLEAN on every next()
+//                   so the JDBC §15.2.5 "current row" semantics holds
+
+// rowState — D147 §核心原则 8 driver-side row-mutation tracking. JDBC
+// §15.2.5 rowUpdated / rowDeleted / rowInserted reflect mutations to the
+// *current row only*; advancing past via next() resets the tracker.
+const ROW_STATE_CLEAN = 0
+const ROW_STATE_UPDATED = 1
+const ROW_STATE_DELETED = 2
+const ROW_STATE_INSERTED = 3
+
 class MysqlBinaryResultSet : ResultSet {
     fd: int
     colCount: int
@@ -418,9 +451,20 @@ class MysqlBinaryResultSet : ResultSet {
     rsType: int
     cachedRows: Array<Array<string>>
     cachedIdx: int
+    pendingUpdates: Map<string, string>
+    pendingInserts: Array<Map<string, string>>
+    tableName: string
+    pkColumn: string
+    inInsertMode: int
+    rowState: int
 
     function next(): int {
         if (this.closed != 0) { return 0 }
+        // D147 Phase 4 H7 — JDBC §15.2.5 rowUpdated / rowDeleted /
+        // rowInserted reflect mutations to the *current row only*; advancing
+        // to a new row resets the tracker. Reset on every next() call (even
+        // when no row is found below) — Connector/J idiom.
+        this.rowState = ROW_STATE_CLEAN
         if (this.cachedIdx < this.cachedRows.length()) {
             this.cachedIdx = this.cachedIdx + 1
             this.currentRow = this.cachedRows[this.cachedIdx - 1]
@@ -590,28 +634,229 @@ class MysqlBinaryResultSet : ResultSet {
 
     function getRow(): int { return this.cachedIdx }
 
-    // ── D147 Phase 2 placeholder stubs — JDBC §15.2.5 update methods ──────
-    // Phase 4 swaps these for the real driver-side updatable cursor (pending
-    // dirty Map + fresh PreparedStatement UPDATE / DELETE / INSERT on the
-    // same Connection — Connector/J 5.0+ `UpdatableResultSet`). For now they
-    // satisfy D025 vtable parity so the interface declaration can land
-    // independently of the row-mutation surface.
-    function updateRow() {}
-    function deleteRow() {}
-    function insertRow() {}
-    function cancelRowUpdates() {}
-    function refreshRow() {}
-    function moveToInsertRow() {}
-    function moveToCurrentRow() {}
-    function rowUpdated(): int { return 0 }
-    function rowDeleted(): int { return 0 }
-    function rowInserted(): int { return 0 }
-    function updateInt(col: string, val: int) {}
-    function updateString(col: string, val: string) {}
-    function updateLong(col: string, val: int) {}
-    function updateBoolean(col: string, val: int) {}
-    function updateDouble(col: string, val: double) {}
-    function updateNull(col: string) {}
+    // ── D147 Phase 4 — JDBC §15.2.5 update methods (driver-side simulation) ──
+    // updateXxx routes to writeCol — pendingUpdates buffer in normal mode,
+    // trailing pendingInserts Map in insert mode. updateRow / deleteRow /
+    // insertRow open a fresh PreparedStatement on the same fd (D147 §A.2 H3
+    // — server-side cursor is request-response synchronous, so a parallel
+    // prepare on the same fd does not break the parked cursor; D146 Phase 5
+    // Case 4 already established this fd-reuse pattern). refreshRow re-runs
+    // SELECT WHERE pkCol=? and mirrors the fields back into currentRow.
+    // cancelRowUpdates is purely client-side (D147 §A.2 H4): in insert mode
+    // it resets the trailing pendingInserts Map to a fresh empty Map (so the
+    // user can keep building the insert row), in normal mode it drops the
+    // pendingUpdates buffer. moveToInsertRow / moveToCurrentRow toggle
+    // inInsertMode + push a fresh empty Map onto pendingInserts (D147 §A.2
+    // H6). rowUpdated / rowDeleted / rowInserted read rowState which is set
+    // by the mutators and reset to CLEAN on every next() advance (D147 §A.2
+    // H7). Empty tableName / pkColumn (composite PK / no PK / multi-table)
+    // surface as SQLFeatureNotSupportedException via D139 SQLException
+    // translator — driver-side simulation degrades gracefully.
+
+    private function writeCol(col: string, val: string) {
+        if (this.inInsertMode == 1 && this.pendingInserts.length() > 0) {
+            const idx = this.pendingInserts.length() - 1
+            const buf = this.pendingInserts[idx]
+            buf.set(col, val)
+        } else {
+            this.pendingUpdates.set(col, val)
+        }
+    }
+
+    function updateInt(col: string, val: int) { this.writeCol(col, "" + val) }
+    function updateString(col: string, val: string) { this.writeCol(col, val) }
+    function updateLong(col: string, val: int) { this.writeCol(col, "" + val) }
+    function updateBoolean(col: string, val: int) {
+        let v = "0"
+        if (val != 0) { v = "1" }
+        this.writeCol(col, v)
+    }
+    function updateDouble(col: string, val: double) { this.writeCol(col, "" + val) }
+    function updateNull(col: string) { this.writeCol(col, "") }
+
+    // Trims the trailing entry of pendingInserts. SS Array<T> has no pop()
+    // and Array<T>[i] = X is rejected by codegen (ss_arraySet i64 third arg
+    // — phase2_spike line 86 note); we rebuild the array minus the last
+    // element and reassign.
+    private function popLastInsertRow() {
+        if (this.pendingInserts.length() <= 0) { return }
+        let trimmed: Array<Map<string, string>> = []
+        let i = 0
+        const lastIdx = this.pendingInserts.length() - 1
+        while (i < lastIdx) {
+            trimmed = trimmed.push(this.pendingInserts[i])
+            i = i + 1
+        }
+        this.pendingInserts = trimmed
+    }
+
+    function updateRow() {
+        // No-op on empty dirty set — JDBC §15.2.5 makes updateRow without
+        // preceding updateXxx idempotent (Connector/J also a no-op). Skip
+        // both the SQL round-trip and the SQLFeatureNotSupportedException
+        // gate so unmutated rows in updatable cursors stay free.
+        if (this.pendingUpdates.size() <= 0) {
+            this.rowState = ROW_STATE_UPDATED
+            return
+        }
+        if (this.tableName == "" || this.pkColumn == "") {
+            throw(new SQLFeatureNotSupportedException("updateRow requires single-table SELECT with single PK column", "0A000", 0))
+        }
+        let dirtyCols: Array<string> = []
+        let dirtyVals: Array<string> = []
+        const keys = this.pendingUpdates.keys()
+        let i = 0
+        while (i < keys.length()) {
+            const k = keys[i]
+            dirtyCols = dirtyCols.push(k)
+            dirtyVals = dirtyVals.push(this.pendingUpdates.get(k))
+            i = i + 1
+        }
+        const sql = buildUpdateRowSql(this.tableName, this.pkColumn, dirtyCols)
+        const ps = doPrepare(this.fd, sql)
+        let j = 0
+        while (j < dirtyCols.length()) {
+            ps.setString(j + 1, dirtyVals[j])
+            j = j + 1
+        }
+        ps.setString(dirtyCols.length() + 1, this.currentRow[this.colIndex(this.pkColumn)])
+        const affected = ps.executeUpdate()
+        ps.close()
+        if (affected != 1) {
+            throw(new SQLException("updateRow affected " + affected + " rows (expected 1)", "01000", 0))
+        }
+        let cleared: Map<string, string> = new Map()
+        this.pendingUpdates = cleared
+        this.rowState = ROW_STATE_UPDATED
+    }
+
+    function deleteRow() {
+        if (this.tableName == "" || this.pkColumn == "") {
+            throw(new SQLFeatureNotSupportedException("deleteRow requires single-table SELECT with single PK column", "0A000", 0))
+        }
+        const sql = buildDeleteRowSql(this.tableName, this.pkColumn)
+        const ps = doPrepare(this.fd, sql)
+        ps.setString(1, this.currentRow[this.colIndex(this.pkColumn)])
+        const affected = ps.executeUpdate()
+        ps.close()
+        if (affected != 1) {
+            throw(new SQLException("deleteRow affected " + affected + " rows (expected 1)", "01000", 0))
+        }
+        this.rowState = ROW_STATE_DELETED
+    }
+
+    function insertRow() {
+        if (this.tableName == "") {
+            throw(new SQLFeatureNotSupportedException("insertRow requires single-table SELECT", "0A000", 0))
+        }
+        if (this.pendingInserts.length() <= 0) {
+            throw(new SQLException("insertRow called without moveToInsertRow", "07000", 0))
+        }
+        const idx = this.pendingInserts.length() - 1
+        const buf = this.pendingInserts[idx]
+        if (buf.size() <= 0) {
+            this.popLastInsertRow()
+            throw(new SQLException("insertRow with no updateXxx — empty insert buffer", "07000", 0))
+        }
+        let cols: Array<string> = []
+        let vals: Array<string> = []
+        const keys = buf.keys()
+        let i = 0
+        while (i < keys.length()) {
+            const k = keys[i]
+            cols = cols.push(k)
+            vals = vals.push(buf.get(k))
+            i = i + 1
+        }
+        const sql = buildInsertRowSql(this.tableName, cols)
+        const ps = doPrepare(this.fd, sql)
+        let j = 0
+        while (j < cols.length()) {
+            ps.setString(j + 1, vals[j])
+            j = j + 1
+        }
+        const affected = ps.executeUpdate()
+        ps.close()
+        this.popLastInsertRow()
+        if (affected != 1) {
+            throw(new SQLException("insertRow affected " + affected + " rows (expected 1)", "01000", 0))
+        }
+        this.rowState = ROW_STATE_INSERTED
+    }
+
+    function cancelRowUpdates() {
+        if (this.inInsertMode == 1 && this.pendingInserts.length() > 0) {
+            // Reset trailing insert-row buffer to a fresh empty Map; preserve
+            // inInsertMode + pendingInserts.length() so subsequent updateXxx
+            // continues to land on the trailing Map.
+            let trimmed: Array<Map<string, string>> = []
+            let i = 0
+            const lastIdx = this.pendingInserts.length() - 1
+            while (i < lastIdx) {
+                trimmed = trimmed.push(this.pendingInserts[i])
+                i = i + 1
+            }
+            let fresh: Map<string, string> = new Map()
+            trimmed = trimmed.push(fresh)
+            this.pendingInserts = trimmed
+        } else {
+            let cleared: Map<string, string> = new Map()
+            this.pendingUpdates = cleared
+        }
+        this.rowState = ROW_STATE_CLEAN
+    }
+
+    function refreshRow() {
+        if (this.tableName == "" || this.pkColumn == "") {
+            throw(new SQLFeatureNotSupportedException("refreshRow requires single-table SELECT with single PK column", "0A000", 0))
+        }
+        let cols: Array<string> = []
+        let i = 0
+        while (i < this.colCount) {
+            cols = cols.push(columnDefName(this.colMetadata[i]))
+            i = i + 1
+        }
+        const sql = buildRefreshRowSql(this.tableName, this.pkColumn, cols)
+        const ps = doPrepare(this.fd, sql)
+        ps.setString(1, this.currentRow[this.colIndex(this.pkColumn)])
+        const rs = ps.executeQuery()
+        if (rs.next() == 1) {
+            let refreshed: Array<string> = []
+            let j = 0
+            while (j < this.colCount) {
+                refreshed = refreshed.push(rs.getString(columnDefName(this.colMetadata[j])))
+                j = j + 1
+            }
+            this.currentRow = refreshed
+        }
+        rs.close()
+        ps.close()
+    }
+
+    function moveToInsertRow() {
+        this.inInsertMode = 1
+        let fresh: Map<string, string> = new Map()
+        this.pendingInserts = this.pendingInserts.push(fresh)
+    }
+
+    function moveToCurrentRow() {
+        this.inInsertMode = 0
+    }
+
+    function rowUpdated(): int {
+        if (this.rowState == ROW_STATE_UPDATED) { return 1 }
+        return 0
+    }
+
+    function rowDeleted(): int {
+        if (this.rowState == ROW_STATE_DELETED) { return 1 }
+        return 0
+    }
+
+    function rowInserted(): int {
+        if (this.rowState == ROW_STATE_INSERTED) { return 1 }
+        return 0
+    }
 
     // Pulls one more row into cachedRows without advancing currentRow / cachedIdx
     // for absolute / last to size up the cache without disturbing the public
@@ -688,7 +933,9 @@ function readQueryResultSetBinary(fd: int): MysqlBinaryResultSet {
     let cols: Array<ColumnDef> = []
     let row: Array<string> = []
     let cached: Array<Array<string>> = []
-    const rs = new MysqlBinaryResultSet(fd, 0, cols, row, 0, 0, 0, 0, 0, 0, TYPE_FORWARD_ONLY, cached, 0)
+    let pu: Map<string, string> = new Map()
+    let pi: Array<Map<string, string>> = []
+    const rs = new MysqlBinaryResultSet(fd, 0, cols, row, 0, 0, 0, 0, 0, 0, TYPE_FORWARD_ONLY, cached, 0, pu, pi, "", "", 0, ROW_STATE_CLEAN)
     const headerPkt = readPacket(fd)
     const header = parseResultSetHeader(headerPkt.payload, headerPkt.payloadLen)
     if (header <= 0) {
@@ -703,6 +950,12 @@ function readQueryResultSetBinary(fd: int): MysqlBinaryResultSet {
         i = i + 1
     }
     rs.colMetadata = cols
+    // D147 Phase 4 — derive metadata for driver-side updatable cursor.
+    // deriveTableName reads colMetadata[0].orgTable; derivePkColumn scans
+    // for PRI_KEY_FLAG bit 1. Empty-string fallback (no PK / multi-PK / no
+    // rows) is checked at flush time inside updateRow / deleteRow.
+    rs.tableName = deriveTableName(cols)
+    rs.pkColumn = derivePkColumn(cols)
     readPacket(fd)
     rs.hasMoreRows = 1
     return rs
