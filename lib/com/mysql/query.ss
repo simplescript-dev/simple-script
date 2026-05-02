@@ -473,3 +473,109 @@ function readQueryResultSet(fd: int): MysqlResultSet {
     rs.hasMoreRows = 1
     return rs
 }
+
+// ── D146 Phase 1: server-side cursor protocol layer ─────────────
+// Building blocks for COM_STMT_FETCH 0x1c + EOF status_flags double-flag
+// detection. Higher-level wiring (MysqlBinaryResultSet useCursor field /
+// JDBC ResultSet setFetchSize / Spring RowCallbackHandler) lives at
+// Phase 2-4 — D146 §Phase 收关锚.
+
+// MySQL Native Protocol §6.5 — COM_STMT_FETCH command byte. Sent on a
+// previously-opened server cursor (COM_STMT_EXECUTE flags = 0x01) to fetch
+// the next batch of binary-protocol rows.
+const COM_STMT_FETCH = 0x1c
+
+// MySQL Native Protocol §6.5 — COM_STMT_EXECUTE flags field bit 0.
+// Setting this bit on COM_STMT_EXECUTE asks the server to keep the result
+// set on its side and emit only column defs + EOF; subsequent
+// COM_STMT_FETCH requests stream the rows N at a time. Without the bit
+// (default CURSOR_TYPE_NO_CURSOR 0x00 in lib/com/mysql/prepared.ss) the
+// server pre-buffers the full result set and floods all rows at once.
+const CURSOR_TYPE_READ_ONLY = 0x01
+
+// MySQL Native Protocol §EOF_Packet status_flags (i16 LE at payload
+// offset 3 in legacy mode). Bit 6 = SERVER_STATUS_CURSOR_EXISTS — server
+// still holds rows for this cursor, another COM_STMT_FETCH will return
+// more data.
+const SERVER_STATUS_CURSOR_EXISTS = 0x0040
+
+// Bit 7 = SERVER_STATUS_LAST_ROW_SENT — cursor exhausted, the server has
+// released its row buffer; further COM_STMT_FETCH on this statement_id
+// will yield an empty EOF (no rows).
+const SERVER_STATUS_LAST_ROW_SENT = 0x0080
+
+// Builds the COM_STMT_FETCH 9-byte payload. Returns Array<int> rather than
+// string because the LE-encoded statement_id / num_rows often have
+// embedded 0x00 high bytes (e.g. statement_id = 1 → bytes [0x01, 0x00,
+// 0x00, 0x00]) and SS string concat with fromCharCode(0) truncates via
+// ss_string_concat strlen — see lib/binary.ss header note + lib/com/mysql/
+// wire.ss writePacket header construction comment. Caller writes the
+// bytes byte-by-byte to the fd via writeStmtFetchPacket; unit tests
+// inspect the array directly.
+//
+// Layout per MySQL Native Protocol §6.5.1.4:
+//   1 byte  : 0x1c (COM_STMT_FETCH)
+//   4 byte  : statement_id  u32 LE
+//   4 byte  : num_rows      u32 LE
+//   ────────
+//   9 byte  : total payload
+function buildStmtFetchPayload(statementId: int, numRows: int): Array<int> {
+    // Single 9-element allocation; each push() in SS Array<int> reallocates.
+    // Layout maps 1:1 to MySQL Native Protocol §6.5.1.4 field table above.
+    return [
+        COM_STMT_FETCH,
+        statementId & 0xFF,
+        (statementId >>> 8) & 0xFF,
+        (statementId >>> 16) & 0xFF,
+        (statementId >>> 24) & 0xFF,
+        numRows & 0xFF,
+        (numRows >>> 8) & 0xFF,
+        (numRows >>> 16) & 0xFF,
+        (numRows >>> 24) & 0xFF
+    ]
+}
+
+// Sends a COM_STMT_FETCH packet — header (4 bytes) + payload (9 bytes) =
+// 13 bytes total. Returns the byte count on success. Like sendComStmtClose
+// / sendComStmtExecute in lib/com/mysql/prepared.ss this writes byte-by-
+// byte via tcpWriteBytes(fd, fromCharCode(b), 1) — payload contains
+// embedded 0x00 in the LE-encoded statement_id / num_rows high bytes,
+// which would truncate via writePacket's payload string parameter.
+//
+// seqId is reset to 0 — every COM_STMT_FETCH is the start of a new
+// command/response sequence pair (server replies seqId 1, 2, ... up to
+// the terminating EOF).
+function writeStmtFetchPacket(fd: int, statementId: int, numRows: int): int {
+    const bytes = buildStmtFetchPayload(statementId, numRows)
+    const payloadLen = bytes.length()
+    tcpWriteBytes(fd, fromCharCode(payloadLen & 0xFF), 1)
+    tcpWriteBytes(fd, fromCharCode((payloadLen >>> 8) & 0xFF), 1)
+    tcpWriteBytes(fd, fromCharCode((payloadLen >>> 16) & 0xFF), 1)
+    tcpWriteBytes(fd, fromCharCode(0), 1)
+    let i = 0
+    while (i < payloadLen) {
+        tcpWriteBytes(fd, fromCharCode(bytes[i] & 0xFF), 1)
+        i = i + 1
+    }
+    return 4 + payloadLen
+}
+
+// Extracts the status_flags field (i16 LE) from an EOF_Packet payload.
+// Legacy EOF layout (CLIENT_DEPRECATE_EOF unset — see query.ss header):
+//   1 byte  : 0xFE header
+//   2 byte  : warnings    u16 LE
+//   2 byte  : status_flags u16 LE  ← this function returns
+// Total 5 bytes. Pre-4.1 servers without CLIENT_PROTOCOL_41 omit the
+// status fields — defensive return 0 when payload is too short or the
+// header byte is wrong (the caller already drained an EOF; mismatch
+// implies wire corruption, not a state we can recover by guessing).
+//
+// Caller uses bit-AND with SERVER_STATUS_CURSOR_EXISTS (0x0040) /
+// SERVER_STATUS_LAST_ROW_SENT (0x0080) to drive cursor lifecycle —
+// CURSOR_EXISTS = more rows pending (issue another COM_STMT_FETCH);
+// LAST_ROW_SENT = server released the cursor (no more rows).
+function eofStatusFlags(payload: string, payloadLen: int): int {
+    if (payloadLen < 5) { return 0 }
+    if (charCodeAt(payload, 0) != EOF_HEADER) { return 0 }
+    return byteToInt(payload, 3, 2)
+}
