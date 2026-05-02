@@ -41,8 +41,8 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, isEofPacket } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet } from "@/lib/java/sql"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, isEofPacket, CURSOR_TYPE_READ_ONLY, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
+import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY } from "@/lib/java/sql"
 
 // Command bytes — MySQL Native Protocol §6.5
 const COM_STMT_PREPARE = 0x16
@@ -65,6 +65,11 @@ const EXECUTE_FIXED_PREFIX_LEN = 10  // 0x17 + statement_id 4B + flags 1B + iter
 const NEW_PARAMS_BOUND_FLAG_FIRST = 0x01
 const CURSOR_TYPE_NO_CURSOR  = 0x00
 const EXECUTE_ITERATION_COUNT = 1
+
+// D146 Phase 3 — fallback batch size for COM_STMT_FETCH when scrollable cursor
+// opens without an explicit setFetchSize hint. MySQL Connector/J 8.0 uses 100;
+// matches the conservative window for in-memory cache fallback.
+const DEFAULT_CURSOR_FETCH_SIZE = 100
 
 // COM_STMT_PREPARE_OK response — D136 §A.2.
 class PrepareOk {
@@ -131,7 +136,7 @@ function doPrepare(fd: int, sql: string): MysqlPreparedStatement {
         paramNullBits = paramNullBits.push(0)
         i = i + 1
     }
-    return new MysqlPreparedStatement(fd, ok.statementId, ok.numParams, paramDefs, paramTypes, paramValues, paramDoubles, paramNullBits, columnDefs, 0, 0)
+    return new MysqlPreparedStatement(fd, ok.statementId, ok.numParams, paramDefs, paramTypes, paramValues, paramDoubles, paramNullBits, columnDefs, 0, 0, 0, 0, 0)
 }
 
 // Reads numParams × ColumnDef41 packet + 1 trailing legacy EOF packet.
@@ -255,7 +260,13 @@ function writeBinaryValue(fd: int, typeCode: int, val: string, dval: double) {
 // (vs taking a MysqlPreparedStatement) sidesteps the same `getelementptr base
 // element must be sized` forward-ref that columnDefColType / columnDefName
 // document — top-level functions are emitted before class structs are declared.
-function sendComStmtExecute(fd: int, statementId: int, paramTypes: Array<int>, paramValues: Array<string>, paramDoubles: Array<double>, paramNullBits: Array<int>): int {
+//
+// D146 Phase 3 — cursorFlag parameter explicit (caller passes CURSOR_TYPE_NO_CURSOR
+// 0x00 for client streaming or CURSOR_TYPE_READ_ONLY 0x01 for server-side cursor;
+// MySQL Native Protocol §6.5.1.2 flags byte bit 0). Server-side cursor opens
+// when bit 0 is set + the server replies with col defs + EOF (CURSOR_EXISTS)
+// without rows; subsequent COM_STMT_FETCH 0x1c packets stream rows in batches.
+function sendComStmtExecute(fd: int, statementId: int, paramTypes: Array<int>, paramValues: Array<string>, paramDoubles: Array<double>, paramNullBits: Array<int>, cursorFlag: int): int {
     const numParams = paramTypes.length()
     const bitmapLen = (numParams + 7) / 8
     let payloadLen = EXECUTE_FIXED_PREFIX_LEN + bitmapLen + 1 + numParams * 2
@@ -270,7 +281,7 @@ function sendComStmtExecute(fd: int, statementId: int, paramTypes: Array<int>, p
     writeByteToFd(fd, 0)
     writeByteToFd(fd, COM_STMT_EXECUTE)
     writeIntLEToFd(fd, statementId, 4)
-    writeByteToFd(fd, CURSOR_TYPE_NO_CURSOR)
+    writeByteToFd(fd, cursorFlag)
     writeIntLEToFd(fd, EXECUTE_ITERATION_COUNT, 4)
     i = 0
     while (i < bitmapLen) {
@@ -369,10 +380,30 @@ function parseBinaryRow(payload: string, payloadLen: int, columnDefs: Array<Colu
     return row
 }
 
-// MysqlBinaryResultSet — binary protocol mirror of query.ss MysqlResultSet:
-// same fields, same close()-drain semantics, only next() differs (parseBinaryRow
-// vs parseRow). Streaming model: next() reads one row packet at a time and
-// decodes via columnDefs.
+// MysqlBinaryResultSet — binary protocol mirror of query.ss MysqlResultSet,
+// extended with D146 server-side cursor + scrollable in-memory cache.
+//
+// D146 Phase 3 cursor protocol fields:
+//   useCursor       0 = client streaming (server pushes full ResultSet, client
+//                       drains row-by-row), 1 = server cursor (server holds
+//                       ResultSet, client drives via COM_STMT_FETCH batches)
+//   fetchSize       rows per COM_STMT_FETCH batch when useCursor=1; 0 falls
+//                   back to DEFAULT_CURSOR_FETCH_SIZE inside fetchNextBatch
+//   cursorExhausted 1 once an EOF with SERVER_STATUS_LAST_ROW_SENT 0x0080 is
+//                   observed — server has freed its row buffer; further
+//                   COM_STMT_FETCH yields empty EOF
+//   statementId     server-allocated id for COM_STMT_FETCH packet payload
+//
+// D146 Phase 3 scrollable in-memory cache fields (MySQL 5.7+ has no server
+// scrollable cursor — D146 §A.2 H5 fallback to MySQL Connector/J idiom):
+//   rsType          TYPE_FORWARD_ONLY 1003 / TYPE_SCROLL_INSENSITIVE 1004 /
+//                   TYPE_SCROLL_SENSITIVE 1005; FORWARD_ONLY drops the cache
+//                   on every fetchNextBatch (bounded memory),  SCROLL_*
+//                   accumulates every row for absolute / previous in-memory
+//                   back-track
+//   cachedRows      Array<Row> — batch buffer when forward-only cursor;
+//                   full row history when scrollable
+//   cachedIdx       1-based row position in cachedRows; 0 = not positioned
 class MysqlBinaryResultSet : ResultSet {
     fd: int
     colCount: int
@@ -380,9 +411,76 @@ class MysqlBinaryResultSet : ResultSet {
     currentRow: Array<string>
     closed: int
     hasMoreRows: int
+    useCursor: int
+    fetchSize: int
+    cursorExhausted: int
+    statementId: int
+    rsType: int
+    cachedRows: Array<Array<string>>
+    cachedIdx: int
 
     function next(): int {
-        if (this.closed != 0 || this.hasMoreRows == 0) { return 0 }
+        if (this.closed != 0) { return 0 }
+        if (this.cachedIdx < this.cachedRows.length()) {
+            this.cachedIdx = this.cachedIdx + 1
+            this.currentRow = this.cachedRows[this.cachedIdx - 1]
+            return 1
+        }
+        if (this.useCursor == 1) {
+            if (this.cursorExhausted != 0) { return 0 }
+            return this.fetchNextBatch()
+        }
+        if (this.hasMoreRows == 0) { return 0 }
+        return this.readOneStreamingRow()
+    }
+
+    // Sends COM_STMT_FETCH(statementId, fetchSize) and drains the response into
+    // cachedRows. For forward-only cursor (rsType == TYPE_FORWARD_ONLY) the
+    // cache is reset before refilling so memory stays bounded by fetchSize;
+    // scrollable cursors accumulate indefinitely so absolute(N) / previous()
+    // can hit the cache without a re-fetch (MySQL 5.7+ has no server
+    // scrollable cursor — D146 §A.2 H5).
+    private function fetchNextBatch(): int {
+        let n = this.fetchSize
+        if (n <= 0) { n = DEFAULT_CURSOR_FETCH_SIZE }
+        writeStmtFetchPacket(this.fd, this.statementId, n)
+        if (this.rsType == TYPE_FORWARD_ONLY) {
+            let empty: Array<Array<string>> = []
+            this.cachedRows = empty
+            this.cachedIdx = 0
+        }
+        let added = 0
+        let draining = 1
+        while (draining == 1) {
+            const pkt = readPacket(this.fd)
+            if (pkt.payloadLen <= 0) {
+                this.cursorExhausted = 1
+                this.hasMoreRows = 0
+                draining = 0
+            } else if (isEofPacket(pkt.payload, pkt.payloadLen) == 1) {
+                const flags = eofStatusFlags(pkt.payload, pkt.payloadLen)
+                if ((flags & SERVER_STATUS_LAST_ROW_SENT) != 0) {
+                    this.cursorExhausted = 1
+                    this.hasMoreRows = 0
+                }
+                draining = 0
+            } else {
+                const row = parseBinaryRow(pkt.payload, pkt.payloadLen, this.colMetadata)
+                this.cachedRows = this.cachedRows.push(row)
+                added = added + 1
+            }
+        }
+        if (added == 0) { return 0 }
+        this.cachedIdx = this.cachedIdx + 1
+        this.currentRow = this.cachedRows[this.cachedIdx - 1]
+        return 1
+    }
+
+    // Reads a single binary row packet from the socket (client streaming path,
+    // useCursor=0). Scrollable client streaming (rsType != TYPE_FORWARD_ONLY)
+    // appends each row to cachedRows so absolute / previous can back-track
+    // without re-issuing the query (MySQL Connector/J 5.7+ idiom).
+    private function readOneStreamingRow(): int {
         const pkt = readPacket(this.fd)
         if (pkt.payloadLen <= 0) {
             this.hasMoreRows = 0
@@ -393,6 +491,10 @@ class MysqlBinaryResultSet : ResultSet {
             return 0
         }
         this.currentRow = parseBinaryRow(pkt.payload, pkt.payloadLen, this.colMetadata)
+        if (this.rsType != TYPE_FORWARD_ONLY) {
+            this.cachedRows = this.cachedRows.push(this.currentRow)
+            this.cachedIdx = this.cachedRows.length()
+        }
         return 1
     }
 
@@ -430,22 +532,101 @@ class MysqlBinaryResultSet : ResultSet {
         return 0
     }
 
-    // ── D146 Phase 2 stubs — JDBC §15 cursor / scrollable method declarations ───
-    // forward-only fallback. Phase 3 plumbs setFetchSize / getFetchSize through
-    // useCursor + fetchSize + cursorExhausted + statementId fields when wiring
-    // the COM_STMT_FETCH cursor protocol; absolute / first / last / previous /
-    // getRow gain in-memory cache semantics for TYPE_SCROLL_INSENSITIVE then
-    // (MySQL 5.7+ has no server scrollable cursor — D146 §A.2 H5 fallback).
-    function setFetchSize(rows: int) {}
-    function getFetchSize(): int { return 0 }
-    function absolute(row: int): int { return 0 }
-    function first(): int { return 0 }
-    function last(): int { return 0 }
-    function previous(): int { return 0 }
-    function getRow(): int { return 0 }
+    // ── D146 Phase 3 — JDBC 4.3 §15 cursor / scrollable methods ────────────
+    // setFetchSize / getFetchSize: hint to driver for COM_STMT_FETCH batch size.
+    // absolute / first / last / previous: scrollable cursor multi-direction
+    // positioning. Forward-only ResultSet (rsType == TYPE_FORWARD_ONLY) returns
+    // 0 for absolute / first / last / previous per JDBC spec ("invalid cursor
+    // movement on forward-only"); scrollable types drive the in-memory cache.
+    function setFetchSize(rows: int) { this.fetchSize = rows }
+    function getFetchSize(): int { return this.fetchSize }
 
+    function absolute(row: int): int {
+        if (this.closed != 0) { return 0 }
+        if (this.rsType == TYPE_FORWARD_ONLY) { return 0 }
+        if (row <= 0) { return 0 }
+        while (this.cachedRows.length() < row) {
+            if (this.fillOneMore() == 0) { return 0 }
+        }
+        this.cachedIdx = row
+        this.currentRow = this.cachedRows[row - 1]
+        return 1
+    }
+
+    function first(): int { return this.absolute(1) }
+
+    function last(): int {
+        if (this.closed != 0) { return 0 }
+        if (this.rsType == TYPE_FORWARD_ONLY) { return 0 }
+        while (this.fillOneMore() == 1) {}
+        const total = this.cachedRows.length()
+        if (total == 0) { return 0 }
+        this.cachedIdx = total
+        this.currentRow = this.cachedRows[total - 1]
+        return 1
+    }
+
+    function previous(): int {
+        if (this.closed != 0) { return 0 }
+        if (this.rsType == TYPE_FORWARD_ONLY) { return 0 }
+        if (this.cachedIdx <= 1) {
+            this.cachedIdx = 0
+            return 0
+        }
+        this.cachedIdx = this.cachedIdx - 1
+        this.currentRow = this.cachedRows[this.cachedIdx - 1]
+        return 1
+    }
+
+    function getRow(): int { return this.cachedIdx }
+
+    // Pulls one more row into cachedRows without advancing currentRow / cachedIdx
+    // for absolute / last to size up the cache without disturbing the public
+    // cursor position before the final assignment. Returns 1 if a row was
+    // appended, 0 if the underlying source is exhausted.
+    private function fillOneMore(): int {
+        if (this.useCursor == 1) {
+            if (this.cursorExhausted != 0) { return 0 }
+            const savedIdx = this.cachedIdx
+            const savedRow = this.currentRow
+            const r = this.fetchNextBatch()
+            if (r == 0) {
+                this.cachedIdx = savedIdx
+                this.currentRow = savedRow
+                return 0
+            }
+            this.cachedIdx = savedIdx
+            this.currentRow = savedRow
+            return 1
+        }
+        if (this.hasMoreRows == 0) { return 0 }
+        const savedIdx = this.cachedIdx
+        const savedRow = this.currentRow
+        const r = this.readOneStreamingRow()
+        if (r == 0) { return 0 }
+        this.cachedIdx = savedIdx
+        this.currentRow = savedRow
+        return 1
+    }
+
+    // close() — D146 Phase 3 dual-mode drain. Cursor protocol (useCursor=1) is
+    // request-response synchronous (each COM_STMT_FETCH returns rows + EOF
+    // before the next FETCH request); when next() returns to user without
+    // exhausting the cursor, the server is parked waiting for the next FETCH
+    // and the socket has no pending data. Closing the PreparedStatement (which
+    // sends COM_STMT_CLOSE 0x19) releases the server-side statement + cursor
+    // — so this close() does not drain in cursor mode (D139 finally chain
+    // handles fd cleanup at Connection level).
+    //
+    // Client streaming (useCursor=0): server has flushed the entire ResultSet
+    // to the socket; mid-iteration close must drain remaining row + EOF
+    // packets so the next command on this fd sees a clean response.
     function close() {
         if (this.closed != 0) { return }
+        if (this.useCursor == 1) {
+            this.closed = 1
+            return
+        }
         while (this.hasMoreRows != 0) {
             const pkt = readPacket(this.fd)
             if (pkt.payloadLen <= 0) {
@@ -464,10 +645,17 @@ class MysqlBinaryResultSet : ResultSet {
 // MysqlBinaryResultSet. For OK / ERR responses (no result set), returns a
 // closed ResultSet with colCount = -2 (RESULT_SET_HEADER_OK) / -1 so callers
 // can distinguish update-vs-error. Mirrors query.ss readQueryResultSet flow.
+//
+// D146 Phase 3 — cursor / scrollable fields default to non-cursor / forward-only;
+// the executeQuery 3-arg overload (MysqlPreparedStatement.executeQuery(sql,
+// type, conc)) sets useCursor / fetchSize / statementId / rsType after
+// readQueryResultSetBinary returns, so the legacy 1-arg executeQuery and
+// executeUpdate paths leave them at the safe streaming defaults.
 function readQueryResultSetBinary(fd: int): MysqlBinaryResultSet {
     let cols: Array<ColumnDef> = []
     let row: Array<string> = []
-    const rs = new MysqlBinaryResultSet(fd, 0, cols, row, 0, 0)
+    let cached: Array<Array<string>> = []
+    const rs = new MysqlBinaryResultSet(fd, 0, cols, row, 0, 0, 0, 0, 0, 0, TYPE_FORWARD_ONLY, cached, 0)
     const headerPkt = readPacket(fd)
     const header = parseResultSetHeader(headerPkt.payload, headerPkt.payloadLen)
     if (header <= 0) {
@@ -512,6 +700,21 @@ class MysqlPreparedStatement : PreparedStatement {
     // here. Default 0 mirrors MysqlStatement.lastInsertId.
     lastInsertId: int
     closed: int
+    // D146 Phase 3 cursor hint state.
+    //   fetchSize     — driver-specific extension (PreparedStatement interface
+    //                   has no setFetchSize in JDBC 4.3 spec; setter below is
+    //                   the MySQL driver entry point used by Phase 3 spike).
+    //                   Plumbed into MysqlBinaryResultSet.fetchSize at
+    //                   executeQuery time so COM_STMT_FETCH batches the right
+    //                   row count.
+    //   rsType        — set by MysqlConnection.prepareStatement(sql, type, conc)
+    //                   so executeQuery() (0-arg) honors the cursor declaration
+    //                   from prepareStatement.
+    //   concurrency   — informational (CONCUR_READ_ONLY only — CONCUR_UPDATABLE
+    //                   留 D147+ §Followup F1 Updatable cursor sub-D)
+    fetchSize: int
+    rsType: int
+    concurrency: int
 
     // Single bind helper. `this.X[i] = v` is parser-rejected (test confirmed),
     // so we alias each parallel array into a local — Array values are reference
@@ -557,13 +760,72 @@ class MysqlPreparedStatement : PreparedStatement {
         this.bindParam(idx, MYSQL_TYPE_NULL, "", 0.0, 1)
     }
 
+    // Driver-specific setter; PreparedStatement interface does not declare
+    // setFetchSize. Phase 4 lifts it to the interface level alongside the
+    // Integer.MIN_VALUE dual-semantics path.
+    function setFetchSize(rows: int) { this.fetchSize = rows }
+
+    // Cross-module cursor hint setter. Direct field writes from jdbc.ss
+    // (`ps.rsType = type`) trigger an SS codegen forward-ref llc rejection
+    // because the top-level access emits before the foreign struct's type
+    // declaration; method dispatch sidesteps this because method bodies emit
+    // after struct declarations. Same workaround shape as columnDefColType /
+    // columnDefName at query.ss:271-277.
+    function setCursorMode(type: int, concurrency: int) {
+        this.rsType = type
+        this.concurrency = concurrency
+    }
+
+    // Cursor flag derivation:
+    //   type != TYPE_FORWARD_ONLY               → 0x01 server cursor +
+    //                                              in-memory cache fallback
+    //                                              (MySQL 5.7+ has no server
+    //                                              scrollable cursor)
+    //   type == TYPE_FORWARD_ONLY + fetchSize>0 → 0x01 forward-only cursor
+    //   otherwise                               → 0x00 client streaming
+    // Caller passes type=0 sentinel from the 0-arg executeQuery() to fall
+    // back to this.rsType (set by Connection.prepareStatement(sql,type,conc)).
+    private function deriveCursorFlag(type: int): int {
+        let effective = type
+        if (effective == 0) { effective = this.rsType }
+        if (effective != 0 && effective != TYPE_FORWARD_ONLY) {
+            return CURSOR_TYPE_READ_ONLY
+        }
+        if (this.fetchSize > 0) { return CURSOR_TYPE_READ_ONLY }
+        return CURSOR_TYPE_NO_CURSOR
+    }
+
+    private function plumbCursorState(rs: MysqlBinaryResultSet, cursorFlag: int, type: int) {
+        if (cursorFlag == CURSOR_TYPE_READ_ONLY) { rs.useCursor = 1 }
+        rs.fetchSize = this.fetchSize
+        rs.statementId = this.statementId
+        if (type != 0) { rs.rsType = type }
+    }
+
     function executeQuery(): ResultSet {
-        sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits)
-        return readQueryResultSetBinary(this.fd)
+        const cursorFlag = this.deriveCursorFlag(0)
+        sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits, cursorFlag)
+        const rs = readQueryResultSetBinary(this.fd)
+        this.plumbCursorState(rs, cursorFlag, this.rsType)
+        return rs
+    }
+
+    // sql is informational — PreparedStatement is already bound at
+    // prepareStatement time per JDBC 4.3 §A.4.2. The overload mirrors the
+    // Statement.executeQuery(sql, type, conc) signature and returns the
+    // concrete MysqlBinaryResultSet (this overload is not in the
+    // PreparedStatement interface) so callers can inspect cursor / cache
+    // fields directly.
+    function executeQuery(sql: string, type: int, concurrency: int): MysqlBinaryResultSet {
+        const cursorFlag = this.deriveCursorFlag(type)
+        sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits, cursorFlag)
+        const rs = readQueryResultSetBinary(this.fd)
+        this.plumbCursorState(rs, cursorFlag, type)
+        return rs
     }
 
     function executeUpdate(): int {
-        sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits)
+        sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits, CURSOR_TYPE_NO_CURSOR)
         const ok = readUpdateResultPacket(this.fd)
         this.lastInsertId = okPacketLastInsertId(ok)
         return okPacketAffectedRows(ok)

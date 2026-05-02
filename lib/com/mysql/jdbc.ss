@@ -57,14 +57,17 @@ class MysqlConnection : Connection {
         return doPrepare(this.fd, sql)
     }
 
-    // D146 Phase 2 — JDBC 4.3 §Connection.prepareStatement(sql, type, concurrency).
-    // Phase 2 dispatches to the 1-arg form, ignoring type+concurrency. Phase 3
-    // routes the type byte through MysqlPreparedStatement.executeQuery to flip
-    // the COM_STMT_EXECUTE flags CURSOR_TYPE_READ_ONLY 0x01 bit when type ==
-    // TYPE_FORWARD_ONLY + setFetchSize > 0, or to wire in-memory cache when
-    // type == TYPE_SCROLL_INSENSITIVE / TYPE_SCROLL_SENSITIVE (D146 §A.2 H5).
+    // D146 Phase 3 — JDBC 4.3 §Connection.prepareStatement(sql, type, concurrency).
+    // type / concurrency are stashed on the MysqlPreparedStatement so that the
+    // 0-arg executeQuery() (PreparedStatement interface) can derive the
+    // COM_STMT_EXECUTE cursor flag without needing the user to call the
+    // driver-specific 3-arg overload. Scrollable type (TYPE_SCROLL_INSENSITIVE
+    // / SENSITIVE) opens a server-side cursor + activates the in-memory cache
+    // fallback (D146 §A.2 H5 — MySQL 5.7+ has no server scrollable cursor).
     function prepareStatement(sql: string, type: int, concurrency: int): PreparedStatement {
-        return doPrepare(this.fd, sql)
+        const ps = doPrepare(this.fd, sql)
+        ps.setCursorMode(type, concurrency)
+        return ps
     }
 
     function setAutoCommit(auto: int) {
