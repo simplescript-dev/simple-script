@@ -214,8 +214,8 @@ function resolveObjClass(nodeId: int): string {
     }
     // GROUPING → 递归 inner expr(`(expr).field` 字段访问入口)
     if (kind == "GROUPING") { return resolveObjClass(nGetI1(nodeId)) }
-    // D144 Phase 2: TERNARY → 优先读 nSetS2 反推 branchType(checker 阶段两分支同类型回填 /
-    // codegen 阶段 inferTernaryBranchType 反推 callee branchType),fallback then 分支递归;
+    // D144 Phase 2: TERNARY → 优先读 nSetS2 反推 branchType(checker `checkerInferType`
+    // TERNARY case + check_exprs.ss D144 两分支同类型回填),fallback then 分支递归;
     // X4-1 字段访问 RED 修复入口 — `((cond)?u1:u2).name` 走通 resolveObjClass → "User"
     if (kind == "TERNARY") {
         const ternStoredOC = nGetS2(nodeId)
@@ -556,8 +556,8 @@ function inferType(id: int): string {
     if (kind == "GROUPING") { return inferType(nGetI1(id)) }
     if (kind == "UNARY") { return inferType(nGetI1(id)) }
     if (kind == "TERNARY") {
-        // D144 Phase 2: codegen 阶段 TERNARY inferType — 反推回填 branchType 后(checker 阶段
-        // 两分支同类型回填 / inferTernaryBranchType 反推 callee branchType),优先消费;
+        // D144 Phase 2: codegen 阶段 TERNARY inferType — 反推回填 branchType 后(checker
+        // `checkerInferType` TERNARY case + check_exprs.ss D144 两分支同类型回填),优先消费;
         // 否则 fallback then 分支 inferType(对偶 D143 OBJ_LITERAL line 544-551 模式)
         const ternStoredCG = nGetS2(id)
         if (ternStoredCG != "") { return ternStoredCG }
@@ -566,9 +566,9 @@ function inferType(id: int): string {
     if (kind == "ARRAY_LIT") { return "ptr" }
     if (kind == "ARROW_FUNC") { return "fn" }
     if (kind == "OBJ_LITERAL") {
-        // D143 Phase 2: codegen 阶段 inferType — 反推回填 className 后(inferObjLiteralFields
-        // 三步原子改 nKind→NEW_EXPR + nSetS1 + nSetS2),OBJ_LITERAL 自身 kind 已不再可见;
-        // 遗留 OBJ_LITERAL 节点(反推不得 / 调用方不在 funcParamTypes)读 nGetS2 fallback "ptr"。
+        // D143 Phase 2: codegen 阶段 inferType — 反推回填 className 后(checker
+        // `checkerInferType` OBJ_LITERAL case 三步原子改 nKind→NEW_EXPR + nSetS1 + nSetS2),
+        // OBJ_LITERAL 自身 kind 已不再可见;遗留节点(checker 反推不得)读 nGetS2 fallback "ptr"。
         const objClsCG = nGetS2(id)
         if (objClsCG != "") { return objClsCG }
         return "ptr"
@@ -796,164 +796,15 @@ function extractFnRetType(fnSig: string): string {
     return fnSig.substring(rparenIdx + 2, fnSig.length() - rparenIdx - 2)
 }
 
-// 反推回填 ARROW_FUNC PARAM s2:查 funcParamTypes[`${typeCallee}:${argIdx}`] 拿到 callee
-// PARAM 类型,若结构化签名(fn(...))则 extractFnParamType 提取 Pi 反填 ARROW_FUNC PARAM
-// s2;H6 显式优先(已有 s2 不覆盖);H13 非结构化 callee skip(不破现有 setter: fn 路径)。
-// D141 Phase 3 — 同步反推 ARROW_FUNC retT(slot s2 of arrow node)从 callee `fn(...):R`
-// 提取 R 回填,gen_arrows.ss:109 默认 "int" 破裂修正。
-function inferArrowFuncParams(argId: int, typeCallee: string, argIdx: int) {
-    if (nGetKind(argId) != "ARROW_FUNC") { return }
-    const ptKey = `${typeCallee}:${argIdx}`
-    if (funcParamTypes.has(ptKey) == 0) { return }
-    const calleeParamType = funcParamTypes.getString(ptKey)
-    if (calleeParamType.startsWith("fn(") == 0) { return }  // H13: 非结构化 skip
-    const arrowParamList = nGetList(argId)
-    if (arrowParamList != "") {
-        const arrParts = arrowParamList.split(",")
-        let pi = 0
-        for (apId in arrParts) {
-            const aPid = parseInt(apId)
-            if (aPid > 0 && nGetKind(aPid) == "PARAM") {
-                if (nGetS2(aPid) == "") {  // H6 显式优先
-                    const inferredType = extractFnParamType(calleeParamType, pi)
-                    if (inferredType != "") {
-                        nSetS2(aPid, inferredType)
-                    }
-                }
-                pi = pi + 1
-            }
-        }
-    }
-    if (nGetS2(argId) == "") {  // H6 显式优先 — ARROW_FUNC retT 反推
-        const inferredRet = extractFnRetType(calleeParamType)
-        if (inferredRet != "") {
-            nSetS2(argId, inferredRet)
-        }
-    }
-}
-
-// ── D142 Phase 2: array literal contextual typing helper ──────
-// 从 "Array<T>" / "List<T>" / "Tuple<T>" 提取 T;非 array 容器(Map<K,V> / fn(...) / 类名等)返 ""。
-// Array/List/Tuple 白名单是 H13 失败硬错粒度的关键 — 不能与 checker/check_types.ss extractElemType
-// 合并(后者无白名单,会误从 Map<int> 提 int / 从 fn(int):int 提 int):int 等语义错配)。
-function extractArrayElemType(arrType: string): string {
-    if (arrType == "") { return "" }
-    const ltIdx = arrType.indexOf("<")
-    if (ltIdx <= 0) { return "" }
-    if (arrType.length() < ltIdx + 3) { return "" }
-    const aBase = arrType.substring(0, ltIdx)
-    if (aBase != "Array" && aBase != "List" && aBase != "Tuple") { return "" }
-    return arrType.substring(ltIdx + 1, arrType.length() - ltIdx - 2)
-}
-
-// D142 Phase 2: ARRAY_LIT 反推回填 nSetS2 — 查 funcParamTypes[typeCallee:argIdx] 拿
-// callee PARAM 结构化签名 Array<T>,extractArrayElemType 提取 T 反填 ARRAY_LIT 节点
-// nSetS2(参 D141 inferArrowFuncParams 同模式;H6 显式优先 — 已有 nSetS2 不覆盖;
-// H13 非结构化 callee skip 不破现有 "Array" 单一字符串调用方)。
-function inferArrayLitElems(argId: int, typeCallee: string, argIdx: int) {
-    if (argId <= 0) { return }
-    if (nGetKind(argId) != "ARRAY_LIT") { return }
-    if (nGetS2(argId) != "") { return }
-    const ptKey = `${typeCallee}:${argIdx}`
-    if (funcParamTypes.has(ptKey) == 0) { return }
-    const calleeParamType = funcParamTypes.getString(ptKey)
-    const elemType = extractArrayElemType(calleeParamType)
-    if (elemType == "") { return }
-    nSetS2(argId, elemType)
-}
-
-// ── D143 Phase 2: object literal contextual typing helper ─────
-// 判定 t 是否是用户 class 类型(已注册到 classFields);剥 nullable "?" + 拒 Array/Map/fn/built-in
-// 容器(防 OBJ_LITERAL 误反推 Array<T> elemType 等异类情形)。
-function isClassType(t: string): int {
-    if (t == "") { return 0 }
-    let raw = t
-    if (raw.charAt(raw.length() - 1) == "?") {
-        raw = raw.substring(0, raw.length() - 1)
-    }
-    if (raw == "" || raw == "int" || raw == "double" || raw == "string" || raw == "bool" || raw == "void" || raw == "auto" || raw == "fn") { return 0 }
-    if (raw.startsWith("fn(") == 1) { return 0 }
-    if (raw.indexOf("<") >= 0) { return 0 }
-    if (classFields.has(raw) == 1) { return 1 }
-    return 0
-}
-
-// 从 callee PARAM 类型 t 提取 class 名(IDENT 单 token,无嵌套 generic — 比 D142 H12 弱);
-// 非 class 类型(fn / Array<T> / 内置)返 ""。剥 nullable "?"。
-function extractClassName(t: string): string {
-    if (t == "") { return "" }
-    let raw = t
-    if (raw.charAt(raw.length() - 1) == "?") {
-        raw = raw.substring(0, raw.length() - 1)
-    }
-    if (isClassType(raw) == 0) { return "" }
-    return raw
-}
-
-// D143 Phase 2: OBJ_LITERAL → NEW_EXPR 三步原子 rewrite — D084 rewrite 同模式 inline:
-// (1) nSetS2(argId, className) 反推回填 — checker inferType OBJ_LITERAL case 优先消费;
-// (2) nKind.set(argId+"", "NEW_EXPR")— D084 rewrite kind 改写;
-// (3) nSetS1(argId, className)— NEW_EXPR className slot;
-// nList(NAMED_ARG fields)保留,直接被 NEW_EXPR genNamedConstructorArgs 消费(class.ss:264-272)。
-// H6 显式优先 — 已有 nGetS2 不覆盖;H13 非 class 类型 skip(不破现有 callee)。
-function inferObjLiteralFromType(argId: int, expectedType: string) {
-    if (argId <= 0) { return }
-    if (nGetKind(argId) != "OBJ_LITERAL") { return }
-    if (nGetS2(argId) != "") { return }
-    const className = extractClassName(expectedType)
-    if (className == "") { return }
-    nSetS2(argId, className)
-    nKind.set(argId + "", "NEW_EXPR")
-    nSetS1(argId, className)
-}
-
-// D143 Phase 2: fn/method args 路径 OBJ_LITERAL 反推 — 查 funcParamTypes[typeCallee:argIdx]
-// 拿 callee PARAM class 名,委托 inferObjLiteralFromType rewrite。
-function inferObjLiteralFields(argId: int, typeCallee: string, argIdx: int) {
-    if (argId <= 0) { return }
-    if (nGetKind(argId) != "OBJ_LITERAL") { return }
-    if (nGetS2(argId) != "") { return }
-    const ptKey = `${typeCallee}:${argIdx}`
-    if (funcParamTypes.has(ptKey) == 0) { return }
-    const calleeParamType = funcParamTypes.getString(ptKey)
-    inferObjLiteralFromType(argId, calleeParamType)
-}
-
-// ── D144 Phase 2: ternary contextual typing helper ─────
-// 判定 t 是否是 nullable 类型(以 `?` 结尾)。D067 落地后 callee PARAM `T?` 已结构化注册到
-// funcParamTypes,反推时直接读 `?` 后缀即可。
-function isNullableType(t: string): int {
-    if (t == "") { return 0 }
-    if (t.length() == 0) { return 0 }
-    if (t.charAt(t.length() - 1) == "?") { return 1 }
-    return 0
-}
-
-// 从 nullable 类型 `T?` 提取 inner type `T`(无 `?` 时原样返回)。
-function extractInnerType(t: string): string {
-    if (t == "") { return "" }
-    if (isNullableType(t) == 1) {
-        return t.substring(0, t.length() - 1)
-    }
-    return t
-}
-
-// D144 Phase 2: 两分支类型统一 — 反推得 callee branchType 后,两分支按 branchType widen /
-// null literal 类型化(D067 nullable 路径复用)。当前只用同类型严格匹配 + nullable inner widen;
-// 不一致返 ""(由调用方决定 skip 或硬错)。
-function unifyBranchTypes(thenT: string, elseT: string): string {
-    if (thenT == "" || elseT == "") { return "" }
-    if (thenT == elseT) { return thenT }
-    if (thenT == "null" && isNullableType(elseT) == 1) { return elseT }
-    if (elseT == "null" && isNullableType(thenT) == 1) { return thenT }
-    if (thenT == "null") { return `${elseT}?` }
-    if (elseT == "null") { return `${thenT}?` }
-    return ""
-}
-
-// D144 Phase 2: 嵌套 TERNARY 递归回填 — 反推得外层 branchType 后,所有嵌套内层 TERNARY
-// 共享同 branchType(H3 嵌套反推链路)。例:`(c1)?null:((c2)?null:new User("X"))` 外层 + 内层
-// 两层 TERNARY 都需 nSetS2="User?",否则内层 ternary phi llType 反推不得 silent miscompile。
+// D148 Phase 6 — 嵌套 TERNARY 递归回填 propagateTernaryBranchType(checker `checkerInferType`
+// TERNARY case + check_exprs.ss D144 两分支同类型回填 共享 helper);D141-D144 其余 11 个
+// codegen 层 ad-hoc trap helper(inferArrowFuncParams / extractArrayElemType /
+// inferArrayLitElems / isClassType / extractClassName / inferObjLiteralFromType /
+// inferObjLiteralFields / isNullableType / extractInnerType / unifyBranchTypes /
+// inferTernaryBranchType — 注:isNullableType 此处指 codegen 层副本,checker/check_types.ss:7
+// 同名 helper D067 路径仍存活)Phase 4 checker bidirectional 接管后 0 caller 物理删,
+// 本文件仅留 4 共享 helper(isFnType + extractFnParamType + extractFnRetType +
+// propagateTernaryBranchType,跨 file caller 见 grep)
 function propagateTernaryBranchType(argId: int, branchType: string) {
     if (argId <= 0) { return }
     if (nGetKind(argId) != "TERNARY") { return }
@@ -961,20 +812,6 @@ function propagateTernaryBranchType(argId: int, branchType: string) {
     nSetS2(argId, branchType)
     propagateTernaryBranchType(nGetI2(argId), branchType)
     propagateTernaryBranchType(nGetI3(argId), branchType)
-}
-
-// D144 Phase 2: TERNARY 反推回填 nSetS2 — 查 funcParamTypes[typeCallee:argIdx]
-// 拿 callee PARAM expectedType,反推回填 TERNARY branchType slot;嵌套 ternary 递归回填(H3)。
-// H6 显式优先 — 已有 nSetS2 不覆盖;H13 callee 不在 funcParamTypes / 类型空 → skip。
-function inferTernaryBranchType(argId: int, typeCallee: string, argIdx: int) {
-    if (argId <= 0) { return }
-    if (nGetKind(argId) != "TERNARY") { return }
-    if (nGetS2(argId) != "") { return }
-    const ptKey = `${typeCallee}:${argIdx}`
-    if (funcParamTypes.has(ptKey) == 0) { return }
-    const calleeParamType = funcParamTypes.getString(ptKey)
-    if (calleeParamType == "" || calleeParamType == "auto") { return }
-    propagateTernaryBranchType(argId, calleeParamType)
 }
 
 // ── Method overloading: type signature ───────────────────────

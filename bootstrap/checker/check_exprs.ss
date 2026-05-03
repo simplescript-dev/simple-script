@@ -284,8 +284,8 @@ function checkExpr(id: int) {
     }
     if (kind == "OBJ_LITERAL") {
         // D143 Phase 2: untyped OBJ_LITERAL 改 checker 放行(D141 ARROW_FUNC + D142 ARRAY_LIT 同模式)—
-        // 反推回填 nSetS2 发生在 codegen 阶段 gen_calls.ss + gen/methods/gen_methods.ss args 循环
-        // (inferObjLiteralFields helper),反推得 className 后 D084 rewrite OBJ_LITERAL → NEW_EXPR;
+        // 反推回填 nSetS2 + D084 rewrite 由 checker `checkerInferType` OBJ_LITERAL case 接管
+        // (D148 Phase 4 candidate B1 深接管;原 codegen `inferObjLiteralFields` helper Phase 6 物理删);
         // 反推不得 + 非 typed 上下文 → codegen 阶段硬错(H13 粒度)。checker 阶段先 checkExpr 字段值表达式
         // 让字段值类型检查不漏(部分字段值可能是 nested expr),但不再阻塞 OBJ_LITERAL 节点本身。
         const objLitFields = nGetList(id)
@@ -309,7 +309,7 @@ function checkExpr(id: int) {
         // X mismatch 修复入口:`takesInt((cond)?1:"X")` 当前 silent miscompile,
         // 两分支基础类型不一致硬错(参 D143 §A.2 H4 决策行严格模式继承);两分支同类型时回填
         // nSetS2 让下游 inferType 直接消费(显式优先于 codegen 反推);含 NULL_LIT 分支 / class 分支
-        // mismatch 跳过严格 check,等 codegen 阶段 inferTernaryBranchType 反推 callee T?/IShape upcast
+        // mismatch 跳过严格 check,等 checker `checkerInferType` TERNARY case 反推 callee T?/IShape upcast
         if (nGetS2(id) == "") {
             const ternThenT = checkerInferType(nGetI2(id), "")
             const ternElseT = checkerInferType(nGetI3(id), "")
