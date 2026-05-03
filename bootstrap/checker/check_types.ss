@@ -50,11 +50,13 @@ function checkerInferType(nodeId: int, expectedType: string): string {
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
     if (kind == "NULL_LIT") { return "null" }
     if (kind == "ARRAY_LIT") {
-        // D142 Phase 2 + D148 Phase 3: nGetS2 优先 → expectedType=Array<T> 反推 → "Array"
         const arrLitS2 = nGetS2(nodeId)
         if (arrLitS2 != "") { return `Array<${arrLitS2}>` }
         const arrIsArrExp = (expectedType != "" && baseTypeName(expectedType) == "Array") ? 1 : 0
         const arrElemExpected = arrIsArrExp == 1 ? extractElemType(expectedType) : ""
+        if (arrIsArrExp == 1 && arrElemExpected != "") {
+            nSetS2(nodeId, arrElemExpected)
+        }
         const arrElems = nGetList(nodeId)
         if (arrElems == "") {
             if (arrIsArrExp == 1) { return expectedType }
@@ -80,10 +82,21 @@ function checkerInferType(nodeId: int, expectedType: string): string {
         return "Array"
     }
     if (kind == "OBJ_LITERAL") {
-        // D143 Phase 2 + D148 Phase 3: nGetS2 → expectedType → "auto"
         const objClsS2 = nGetS2(nodeId)
         if (objClsS2 != "") { return objClsS2 }
-        if (expectedType != "" && expectedType != "auto") { return expectedType }
+        if (expectedType != "" && expectedType != "auto") {
+            // Map<K,V> 留 OBJ_LITERAL kind 走 codegen Map literal 路径(Phase 5);ClassName 触发 D084 rewrite
+            // checker 接管避免 codegen helper short-circuit `if (nGetS2 != "") return` 漏 rewrite
+            const objBase = baseTypeName(expectedType)
+            if (objBase == "Map") {
+                nSetS2(nodeId, expectedType)
+            } else if (checkerClassFields.has(objBase) == 1) {
+                nSetS2(nodeId, objBase)
+                nKind.set(nodeId + "", "NEW_EXPR")
+                nSetS1(nodeId, objBase)
+            }
+            return expectedType
+        }
         return "auto"
     }
     if (kind == "ARROW_FUNC") {
@@ -104,11 +117,31 @@ function checkerInferType(nodeId: int, expectedType: string): string {
             }
         }
         if (hasAnyAnnotated == 0) {
-            // D148 Phase 3: expectedType=fn 时反推 fallback
-            if (expectedType != "" && (expectedType == "fn" || expectedType.startsWith("fn(") == 1)) {
-                return expectedType
+            if (expectedType == "" || (expectedType != "fn" && expectedType.startsWith("fn(") == 0)) {
+                return "fn"
             }
-            return "fn"
+            // 结构化 fn(P,...):R 时反填 PARAM children s2 + ARROW_FUNC retT s2(D141 inferArrowFuncParams 同模式)
+            if (expectedType.startsWith("fn(") == 1 && arrowParamList != "") {
+                const arrParamPartsBack = arrowParamList.split(",")
+                let backPi = 0
+                for (apIdBack in arrParamPartsBack) {
+                    const aPidBack = parseInt(apIdBack)
+                    if (aPidBack > 0 && nGetKind(aPidBack) == "PARAM" && nGetS2(aPidBack) == "") {
+                        const inferredParam = extractFnParamType(expectedType, backPi)
+                        if (inferredParam != "") {
+                            nSetS2(aPidBack, inferredParam)
+                        }
+                        backPi = backPi + 1
+                    }
+                }
+                if (nGetS2(nodeId) == "") {
+                    const inferredRet = extractFnRetType(expectedType)
+                    if (inferredRet != "") {
+                        nSetS2(nodeId, inferredRet)
+                    }
+                }
+            }
+            return expectedType
         }
         let arrowRetT = nGetS2(nodeId)
         if (arrowRetT == "") { arrowRetT = "void" }
@@ -213,9 +246,12 @@ function checkerInferType(nodeId: int, expectedType: string): string {
     if (kind == "UNARY") { return checkerInferType(nGetI1(nodeId), expectedType) }
     if (kind == "GROUPING") { return checkerInferType(nGetI1(nodeId), expectedType) }
     if (kind == "TERNARY") {
-        // D144 Phase 2 + D148 Phase 3: nSetS2 → expectedType 透传 then 分支
         const ternStored = nGetS2(nodeId)
         if (ternStored != "") { return ternStored }
+        if (expectedType != "" && expectedType != "auto") {
+            propagateTernaryBranchType(nodeId, expectedType)
+            return expectedType
+        }
         return checkerInferType(nGetI2(nodeId), expectedType)
     }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { return "int" }
