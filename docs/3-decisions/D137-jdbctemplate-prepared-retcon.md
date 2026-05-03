@@ -62,7 +62,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 7. **tests retcon 范围明示** — tests/d134_mysql/ 8 case 全部含动态值(`INSERT INTO users VALUES (1, 'Alice', 30)` 等)→ retcon 走 callback;tests/d135_caching_sha2/ 4 case adminStmt DDL → 不动;tests/d136_prepared_statement/ 5 case 已直接走 prepared driver 接口 → 不动
 8. **Phase 边界 = commit 边界** — 5 Phase 各自独立 commit,禁打包(承 D134 §Principles 7 + D135 §Principles 9 + D136 §Principles 11)
 9. **bootstrap 隔离** — 全 Phase 仅改 lib/ + tests/ + docs/,**不动** bootstrap;PreparedStatement 接口 + MysqlPreparedStatement 实施 + binary protocol IEEE 754 cast pair 等基础设施 D136 全就绪;SS fn 类型多语句 lambda 是既有能力(D134 `withTransaction(db, fn)` 已实证)
-10. **不实现 NamedParameterJdbcTemplate / RowMapper 泛型 / SqlParameterSource / batchUpdate / queryForObject + class mapping**(范围外,F1-F3 sub-D follow-up;依赖 SS 泛型 D026/D027 落地的 RowMapper 不能本轮做)
+10. **不实现 NamedParameterJdbcTemplate / RowMapper 泛型 / SqlParameterSource / batchUpdate / queryForObject + class mapping**(范围外,F1-F3 sub-D follow-up;RowMapper 本 D 范围外 — memory feedback_d026_d027_phantom_anchor — generic 已落 gen_generic_class.ss 14 case GREEN 现可做)
 11. **不变量保留**(承 D136):D018 / D022 / D025 / D068 / D088 / D123 / D130-136 全不动;mimalloc C link axiom 例外保留;D134 driver 拼装架构 + D136 prepared 接口契约不破
 
 ---
@@ -110,7 +110,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 ### 禁止的 Context 操作
 
 - ❌ 引入 NamedParameterJdbcTemplate `:name` 风格(F1 sub-D follow-up)
-- ❌ 引入 RowMapper 泛型 callback(F2 sub-D,依赖 SS 泛型 D026/D027 落地)
+- ❌ 引入 RowMapper 泛型 callback(F2 sub-D,本 D 范围外 — memory feedback_d026_d027_phantom_anchor — generic 已落 gen_generic_class.ss 14 case GREEN 现可做)
 - ❌ 引入 SqlParameterSource Map-based(F3 sub-D)
 - ❌ 引入 batchUpdate / addBatch(范围外)
 - ❌ 引入 generated keys retrieval / metadata API(D136 §核心原则 7 范围外)
@@ -408,7 +408,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 | # | 锚 | 描述 |
 |---|---|---|
 | F1 | NamedParameterJdbcTemplate `:name` 命名参数 | sub-D 评估 — 命名参数风格 `WHERE id = :userId` 替代 `?` 占位,可读性提升;依赖 SS Map<string, value> 参数源(类似 SqlParameterSource);本 D 范围外 |
-| F2 | RowMapper 泛型 callback | sub-D 评估 — `queryForObject(sql, RowMapper<T>, args)` 返自定义类;**强依赖 SS 泛型(D026 generic functions / D027 generic classes)落地**;本 D 范围外 |
+| F2 | RowMapper 泛型 callback | sub-D 评估 — `queryForObject(sql, RowMapper<T>, args)` 返自定义类;memory feedback_d026_d027_phantom_anchor — generic 已落 gen_generic_class.ss 14 case GREEN 现可做;本 D 范围外 |
 | F3 | SqlParameterSource(Map<string, value>)Map-based parameter binding | sub-D 评估 — Map 参数源替代 callback;依赖 NamedParameterJdbcTemplate(F1);本 D 范围外 |
 | F4 | D136 §F1 D138 编号冲突 | D136 §R4(line 362)写"留 D138 sub-follow-up handle" cache miss + D136 §F1(line 386)写"sub-D D138 cross-module struct GEP",D138 编号双指(cache miss vs cross-module struct GEP),需 D 治理后续修正(可能 D138 = cache miss / D140 = cross-module GEP);本 D Phase 4 仅在 D136 §F1 加注释指出冲突,**不动**编号(D 治理后续轮处理) |
 | F5 | tests/d135_caching_sha2/ 4 处 adminStmt.execute DDL | DDL + 用户 const 字符串(不接 user input),不在 SQL 注入面,本 D 不 retcon;若未来 d135 测试新增动态值路径(罕见,d135 范围是 caching_sha2 认证不是 SQL 业务),再按 D137 范式 retcon |
@@ -533,7 +533,7 @@ grep -c "prepareStatement" lib/spring/jdbc.ss
 | # | 锚 | 状态 | 触发条件 |
 |---|---|---|---|
 | F1 | NamedParameterJdbcTemplate `:name` 命名参数 | sub-D 待评估 | 业务层需可读性提升时 |
-| F2 | RowMapper 泛型 callback | sub-D 待评估 | **强依赖 SS 泛型(D026/D027)落地**,不在本轮范围 |
+| F2 | RowMapper 泛型 callback | sub-D 待评估 | memory feedback_d026_d027_phantom_anchor — generic 已落 gen_generic_class.ss 14 case GREEN 现可做,不在本轮范围 |
 | F3 | SqlParameterSource(Map<string, value>) | sub-D 待评估 | 依赖 F1 NamedParameterJdbcTemplate |
 | F4 | D136 §F1 D138 编号冲突 | **本 Phase 4 已加注释** | D 治理后续轮选定 D138 真归属 + 另一引用 retcon 新编号 |
 | F5 | tests/d135_caching_sha2/ 4 处 adminStmt DDL | 不 retcon | DDL + 用户 const,不在 SQL 注入面 |
