@@ -116,7 +116,7 @@ function checkStmt(id: int) {
         }
         // Type check: annotation vs initializer
         if (typeAnn != "auto" && initId > 0) {
-            const initType = checkerInferType(initId)
+            const initType = checkerInferType(initId, typeAnn)
             if (initType != "" && isTypeCompatible(typeAnn, initType) == 0) {
                 checkerError(`type mismatch: cannot assign '${initType}' to variable '${name}' of type '${typeAnn}'`, nGetLine(id), nGetCol(id))
             }
@@ -202,7 +202,7 @@ function checkStmt(id: int) {
         if (nGetS2(id) == "ASSIGN") {
             const varType = lookupVar(name)
             if (varType != "" && varType != "auto" && valId > 0) {
-                const rhsType = checkerInferType(valId)
+                const rhsType = checkerInferType(valId, varType)
                 if (rhsType != "" && isTypeCompatible(varType, rhsType) == 0) {
                     checkerError(`type mismatch: cannot assign '${rhsType}' to variable '${name}' of type '${varType}'`, nGetLine(id), nGetCol(id))
                 }
@@ -238,7 +238,7 @@ function checkStmt(id: int) {
             }
             if (nGetS2(id) == "ASSIGN" && checkerFieldTypes.has(sfKey) == 1 && valId > 0) {
                 const sfType = checkerFieldTypes.getString(sfKey)
-                const sfvType = checkerInferType(valId)
+                const sfvType = checkerInferType(valId, sfType)
                 if (sfvType != "" && isTypeCompatible(sfType, sfvType) == 0) {
                     checkerError(`type mismatch: cannot assign '${sfvType}' to static field '${fieldName}' of type '${sfType}'`, nGetLine(id), nGetCol(id))
                 }
@@ -268,7 +268,7 @@ function checkStmt(id: int) {
             // Type check: field type vs assigned value
             if (nGetS2(id) == "ASSIGN" && checkerFieldTypes.has(fieldKey) == 1 && valId > 0) {
                 const fType = checkerFieldTypes.getString(fieldKey)
-                const vType = checkerInferType(valId)
+                const vType = checkerInferType(valId, fType)
                 if (vType != "" && isTypeCompatible(fType, vType) == 0) {
                     checkerError(`type mismatch: cannot assign '${vType}' to field '${fieldName}' of type '${fType}'`, nGetLine(id), nGetCol(id))
                 }
@@ -287,7 +287,7 @@ function checkStmt(id: int) {
         if (arrType != "" && arrType != "auto" && valId > 0) {
             const elemType = extractElemType(arrType)
             if (elemType != "") {
-                const vType = checkerInferType(valId)
+                const vType = checkerInferType(valId, elemType)
                 if (vType != "" && isTypeCompatible(elemType, vType) == 0) {
                     checkerError(`type mismatch: cannot assign '${vType}' to element of '${arrType}'`, nGetLine(id), nGetCol(id))
                 }
@@ -305,7 +305,7 @@ function checkStmt(id: int) {
         if (valId > 0) { checkExpr(valId) }
         // Type check: return value type vs function return type
         if (currentFuncRetType != "" && currentFuncRetType != "void" && valId > 0) {
-            const retValType = checkerInferType(valId)
+            const retValType = checkerInferType(valId, currentFuncRetType)
             if (retValType != "" && isTypeCompatible(currentFuncRetType, retValType) == 0) {
                 checkerError(`type mismatch: cannot return '${retValType}' from function with return type '${currentFuncRetType}'`, nGetLine(id), nGetCol(id))
             }

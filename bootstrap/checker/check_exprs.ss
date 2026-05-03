@@ -39,7 +39,7 @@ function checkExpr(id: int) {
             const rightId = nGetI2(id)
             const opName = binOp == "Instanceof" ? "instanceof" : "as"
             // Validate left side is a class or interface type
-            const leftType = checkerInferType(nGetI1(id))
+            const leftType = checkerInferType(nGetI1(id), "")
             if (leftType != "" && leftType != "null") {
                 const stripped = stripNullable(leftType)
                 if (stripped != "" && checkerClassFields.has(stripped) == 0 && ifaceMethods.has(stripped) == 0) {
@@ -90,7 +90,7 @@ function checkExpr(id: int) {
                     const ptKey = `${callee}:${callArgIdx}`
                     if (funcParamTypes.has(ptKey) == 1) {
                         const expectedType = funcParamTypes.getString(ptKey)
-                        const actualType = checkerInferType(caId)
+                        const actualType = checkerInferType(caId, expectedType)
                         if (actualType != "" && isTypeCompatible(expectedType, actualType) == 0) {
                             checkerError(`argument ${callArgIdx + 1} of '${callee}': expected '${expectedType}', got '${actualType}'`, nGetLine(caId), nGetCol(caId))
                         }
@@ -152,7 +152,7 @@ function checkExpr(id: int) {
                     }
                     const mcExpType = lookupMethodParamType(recvClass, methodName, mcArgIdx)
                     if (mcExpType != "") {
-                        const mcActType = checkerInferType(mcaId)
+                        const mcActType = checkerInferType(mcaId, mcExpType)
                         if (mcActType != "" && isTypeCompatible(mcExpType, mcActType) == 0) {
                             checkerError(`argument ${mcArgIdx + 1} of method '${methodName}': expected '${mcExpType}', got '${mcActType}'`, nGetLine(mcaId), nGetCol(mcaId))
                         }
@@ -266,7 +266,7 @@ function checkExpr(id: int) {
                     if (naId <= 0) { continue }
                     const expType = lookupConsParamType(className, newArgIdx)
                     if (expType != "") {
-                        const actType = checkerInferType(naId)
+                        const actType = checkerInferType(naId, expType)
                         if (actType != "" && isTypeCompatible(expType, actType) == 0) {
                             checkerError(`argument ${newArgIdx + 1} of constructor '${className}': expected '${expType}', got '${actType}'`, nGetLine(naId), nGetCol(naId))
                         }
@@ -311,8 +311,8 @@ function checkExpr(id: int) {
         // nSetS2 让下游 inferType 直接消费(显式优先于 codegen 反推);含 NULL_LIT 分支 / class 分支
         // mismatch 跳过严格 check,等 codegen 阶段 inferTernaryBranchType 反推 callee T?/IShape upcast
         if (nGetS2(id) == "") {
-            const ternThenT = checkerInferType(nGetI2(id))
-            const ternElseT = checkerInferType(nGetI3(id))
+            const ternThenT = checkerInferType(nGetI2(id), "")
+            const ternElseT = checkerInferType(nGetI3(id), "")
             if (ternThenT != "" && ternElseT != "" && ternThenT != ternElseT) {
                 const tIsP = (ternThenT == "int" || ternThenT == "double" || ternThenT == "string" || ternThenT == "bool") ? 1 : 0
                 const eIsP = (ternElseT == "int" || ternElseT == "double" || ternElseT == "string" || ternElseT == "bool") ? 1 : 0

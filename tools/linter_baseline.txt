@@ -19,25 +19,26 @@
 # bump-group F1:bootstrap/gen/methods/gen_methods.ss=726 F1:bootstrap/gen/gen_calls.ss=740 F1:bootstrap/gen/gen_types.ss=915 trail=D142#扩容申报-Phase2 date=2026-04-22
 # bump-group M1=5550 M2=81600 M4=3250 N2=408000 N3=562000 F1:bootstrap/gen/gen_types.ss=970 trail=D143#扩容申报-Phase2 date=2026-04-22
 # bump-group M1=5600 M2=82100 M3a=12880 M3b=2010 M4=3280 M5=1840 M7b=710 N2=410100 N3=565400 F1:bootstrap/gen/methods/gen_methods.ss=730 F1:bootstrap/gen/gen_types.ss=1050 trail=D144#扩容申报-Phase2 date=2026-04-27
-M1=5592:5600
-M2=82002:82100
-M3a=12863:12880
+# bump-group M1=5680 M2=82800 M3a=12970 M4=3330 M5=1860 M7b=725 N2=414000 N3=571000 trail=D148#扩容申报-Phase3-checker-bidirectional date=2026-05-03
+M1=5657:5680
+M2=82712:82800
+M3a=12937:12970
 M3b=2005:2010
-M4=3274:3280
-M5=1836:1840
+M4=3303:3330
+M5=1845:1860
 M6=37:37
 M7a=27:27
-M7b=706:710
+M7b=713:725
 N1=34:34
-N2=410010:410100
-N3=565301:565400
+N2=413560:414000
+N3=570525:571000
 N4=350:350
 N5=0:0
 F1:bootstrap/main.ss=627:630
 F1:bootstrap/parse/parser.ss=870:870
 F1:bootstrap/parse/parse_stmts.ss=617:617
-F1:bootstrap/gen/methods/gen_methods.ss=728:730
+F1:bootstrap/gen/methods/gen_methods.ss=711:730
 F1:bootstrap/gen/gen_calls.ss=737:740
-F1:bootstrap/gen/gen_types.ss=1047:1050
-F1:bootstrap/gen/gen_decls.ss=730:730
+F1:bootstrap/gen/gen_types.ss=1050:1050
+F1:bootstrap/gen/gen_decls.ss=726:730
 F1:bootstrap/gen/gen_runtime.ss=613:623

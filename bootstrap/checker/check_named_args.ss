@@ -67,7 +67,7 @@ function checkNamedConstructorArgs(className: string, argList: string, line: int
             }
             if (fieldOwner != "" && checkerGenericClasses.has(fieldOwner) == 0) {
                 const naExpType = checkerFieldTypes.getString(`${fieldOwner}.${argName}`)
-                const naActType = checkerInferType(nGetI1(argId))
+                const naActType = checkerInferType(nGetI1(argId), naExpType)
                 if (naActType != "" && naExpType != "" && isTypeCompatible(naExpType, naActType) == 0) {
                     checkerError(`field '${argName}' of constructor '${className}': expected '${naExpType}', got '${naActType}'`, nGetLine(argId), nGetCol(argId))
                 }

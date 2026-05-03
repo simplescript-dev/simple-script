@@ -39,7 +39,9 @@ function getNarrowedType(name: string): string {
 
 // ── Type inference + compatibility ────────────────────────────
 
-function checkerInferType(nodeId: int): string {
+// D148 Phase 3: bidirectional 单一 entry — expectedType="" 时与原 inferType 行为等价;
+// 非空时驱动 ARRAY_LIT / OBJ_LITERAL / ARROW_FUNC / TERNARY 4 case fallback 反推。
+function checkerInferType(nodeId: int, expectedType: string): string {
     if (nodeId <= 0) { return "" }
     const kind = nGetKind(nodeId)
     if (kind == "INT_LIT") { return "int" }
@@ -48,12 +50,16 @@ function checkerInferType(nodeId: int): string {
     if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
     if (kind == "NULL_LIT") { return "null" }
     if (kind == "ARRAY_LIT") {
-        // D142 Phase 2: ARRAY_LIT inferType 返结构化 Array<elemType>;全空 / 异质 / SPREAD 降级 "Array"
-        // (向后兼容 isTypeCompatible base 比对 line 240-244)
+        // D142 Phase 2 + D148 Phase 3: nGetS2 优先 → expectedType=Array<T> 反推 → "Array"
         const arrLitS2 = nGetS2(nodeId)
         if (arrLitS2 != "") { return `Array<${arrLitS2}>` }
+        const arrIsArrExp = (expectedType != "" && baseTypeName(expectedType) == "Array") ? 1 : 0
+        const arrElemExpected = arrIsArrExp == 1 ? extractElemType(expectedType) : ""
         const arrElems = nGetList(nodeId)
-        if (arrElems == "") { return "Array" }
+        if (arrElems == "") {
+            if (arrIsArrExp == 1) { return expectedType }
+            return "Array"
+        }
         const arrParts = arrElems.split(",")
         let arrInfer = ""
         let arrHomo = 1
@@ -62,20 +68,22 @@ function checkerInferType(nodeId: int): string {
             const eId = parseInt(apId)
             if (eId <= 0) { continue }
             if (nGetKind(eId) == "SPREAD_ELEM") { arrHomo = 0; break }
-            const eType = checkerInferType(eId)
+            const eType = checkerInferType(eId, arrElemExpected)
             if (eType == "") { arrHomo = 0; break }
             if (arrInfer == "") { arrInfer = eType } else if (arrInfer != eType) { arrHomo = 0 }
         }
-        if (arrHomo == 1 && arrInfer != "") { return `Array<${arrInfer}>` }
+        if (arrHomo == 1 && arrInfer != "") {
+            if (arrIsArrExp == 1 && arrInfer == arrElemExpected) { return expectedType }
+            return `Array<${arrInfer}>`
+        }
+        if (arrIsArrExp == 1) { return expectedType }
         return "Array"
     }
     if (kind == "OBJ_LITERAL") {
-        // D143 Phase 2: OBJ_LITERAL inferType — 反推回填发生在 codegen 阶段(nGetS2),
-        // checker 阶段 nGetS2 仍空 → fallback "auto" 让 isTypeCompatible 放行(declared="User"
-        // + actual="auto" return 1)。codegen 阶段反推得 className 后 D084 rewrite NEW_EXPR
-        // 走 NEW_EXPR 路径(line 116);反推得而 checker 已读到 → 优先返 className 与 NEW_EXPR 同形。
+        // D143 Phase 2 + D148 Phase 3: nGetS2 → expectedType → "auto"
         const objClsS2 = nGetS2(nodeId)
         if (objClsS2 != "") { return objClsS2 }
+        if (expectedType != "" && expectedType != "auto") { return expectedType }
         return "auto"
     }
     if (kind == "ARROW_FUNC") {
@@ -95,7 +103,13 @@ function checkerInferType(nodeId: int): string {
                 if (arrowParamTypes == "") { arrowParamTypes = aPtype } else { arrowParamTypes = `${arrowParamTypes},${aPtype}` }
             }
         }
-        if (hasAnyAnnotated == 0) { return "fn" }
+        if (hasAnyAnnotated == 0) {
+            // D148 Phase 3: expectedType=fn 时反推 fallback
+            if (expectedType != "" && (expectedType == "fn" || expectedType.startsWith("fn(") == 1)) {
+                return expectedType
+            }
+            return "fn"
+        }
         let arrowRetT = nGetS2(nodeId)
         if (arrowRetT == "") { arrowRetT = "void" }
         return `fn(${arrowParamTypes}):${arrowRetT}`
@@ -161,7 +175,7 @@ function checkerInferType(nodeId: int): string {
         return ""
     }
     if (kind == "INDEX_ACCESS") {
-        const arrType = checkerInferType(nGetI1(nodeId))
+        const arrType = checkerInferType(nGetI1(nodeId), "")
         if (arrType != "") {
             const base = baseTypeName(arrType)
             if (base == "Array" || base == "List" || base == "Tuple") {
@@ -175,9 +189,9 @@ function checkerInferType(nodeId: int): string {
         const op = nGetS1(nodeId)
         // ?? (null coalescing): result is non-nullable (D067)
         if (op == "NullCoalesce") {
-            const ncLeft = checkerInferType(nGetI1(nodeId))
+            const ncLeft = checkerInferType(nGetI1(nodeId), "")
             if (isNullableType(ncLeft) == 1) { return stripNullable(ncLeft) }
-            const ncRight = checkerInferType(nGetI2(nodeId))
+            const ncRight = checkerInferType(nGetI2(nodeId), "")
             if (ncLeft != "" && ncLeft != "null") { return ncLeft }
             if (ncRight != "") { return ncRight }
             return ""
@@ -188,27 +202,26 @@ function checkerInferType(nodeId: int): string {
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or" || op == "Instanceof") {
             return "int"
         }
-        const blt = checkerInferType(nGetI1(nodeId))
-        const brt = checkerInferType(nGetI2(nodeId))
+        const blt = checkerInferType(nGetI1(nodeId), "")
+        const brt = checkerInferType(nGetI2(nodeId), "")
         if (op == "Add" && (blt == "string" || brt == "string")) { return "string" }
         if (blt == "double" || brt == "double") { return "double" }
         if (blt == "int") { return "int" }
         if (brt == "int") { return "int" }
         return ""
     }
-    if (kind == "UNARY") { return checkerInferType(nGetI1(nodeId)) }
-    if (kind == "GROUPING") { return checkerInferType(nGetI1(nodeId)) }
+    if (kind == "UNARY") { return checkerInferType(nGetI1(nodeId), expectedType) }
+    if (kind == "GROUPING") { return checkerInferType(nGetI1(nodeId), expectedType) }
     if (kind == "TERNARY") {
-        // D144 Phase 2: TERNARY inferType — 反推回填 nSetS2 后(checker 阶段两分支同类型回填 /
-        // codegen 阶段 inferTernaryBranchType 反推 callee branchType),优先消费;
-        // 否则 fallback then 分支 inferType(对偶 D143 OBJ_LITERAL line 544-551 + D142 ARRAY_LIT 模式)
+        // D144 Phase 2 + D148 Phase 3: nSetS2 → expectedType 透传 then 分支
         const ternStored = nGetS2(nodeId)
         if (ternStored != "") { return ternStored }
-        return checkerInferType(nGetI2(nodeId))
+        return checkerInferType(nGetI2(nodeId), expectedType)
     }
     if (kind == "POSTFIX_INC" || kind == "POSTFIX_DEC") { return "int" }
-    if (kind == "NAMED_ARG") { return checkerInferType(nGetI1(nodeId)) }
-    if (kind == "SPREAD_ELEM") { return checkerInferType(nGetI1(nodeId)) }
+    if (kind == "NAMED_ARG") { return checkerInferType(nGetI1(nodeId), expectedType) }
+    // SPREAD_ELEM inner expr 是数组(不是 elem),不透传 outer expectedType — elem vs array 维度差
+    if (kind == "SPREAD_ELEM") { return checkerInferType(nGetI1(nodeId), "") }
     return ""
 }
 
