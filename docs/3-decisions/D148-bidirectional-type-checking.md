@@ -1,6 +1,6 @@
 # D148: SS Bidirectional Type Checking — 全编译器双向类型检查 sub-D 起首(D141-D145 §A.1 C3 + §A.3 五处一致锁的 SS 类型系统 v2 起首入口)
 
-**Status:** Phase 1 — RED 复现 + 信息源探查 + scope 实测 [✓] Done at commit `<placeholder>` (2026-05-03)— Phase 0 D 文档落档 commit `73eb4c5` 已闭环(详 §Status 时间线);**Phase 1 兑现 a-g**:(a) D141-D144 累计 **15 ad-hoc trap helper** grep 实证(D141:4 isFnType/extractFnParamType/extractFnRetType/inferArrowFuncParams + D142:2 extractArrayElemType/inferArrayLitElems + D143:4 isClassType/extractClassName/inferObjLiteralFromType/inferObjLiteralFields + D144:5 isNullableType/extractInnerType/unifyBranchTypes/propagateTernaryBranchType/inferTernaryBranchType,全在 `bootstrap/gen/gen_types.ss:766-981`)+ **D145 异常发现** 0 helper 主线未实施完(`tests/d145_map_literal_inference/` 目录不存在 + grep MAP_LIT 节点全 0 命中 + D145.md 仅 Phase 1 RED commit `17a1573` 实施未落);(b) G1 **16 落点**(`gen_calls.ss:279/281/284/286` + `gen_methods.ss:196/198/200/202` + `eval/method_call.ss:61/63/65/69` + `eval/call.ss:33/35/39/41`,4 helper × 4 落点)+ **outer pre-eval 9 处**(method_call.ss 4 + call.ss 4 + new_expr.ss 1);(c) **bootstrap LOC delta 实测 ~500-850 修正**(D148 §核心目标 原估 > 2000 LOC 高估 — checker 已局部 bidirectional `check_exprs.ss:91/156/270` funcParamTypes 反推三处 fn arg / method arg / ctor arg + `check_types.ss:229 isTypeCompatible`,bidirectional refactor 是**统一已存机制 entry** 不是从零重写);(d) **Phase 拆分细化建议 N=5**(Phase 3 checker 单一 entry inferTypeWithExpected + Phase 4 gen_types 5 helper 统一接管 + Phase 5 G1 16 落点收 + Phase 6=N+1 cleanup helper 删 + Followup 自然解 + Phase 7=N+2 全 Phase 收关 hash trail);(e) **H9 PASS 初步**(`pir/pir.ss:101 startsWith("Array<")/("Map<")` + `pir.ss:200 inferType` + `pir_lower.ss:89-90 inferType` 只读类型字符串前缀做 RC 判定不参与推断,bidirectional 是 codegen-time 推断 PIR 不需扩)+ **H10 PASS 实证**(`ls tests/phase5/generic_*.ss | wc -l` = 14 + `gen_generic_class.ss` 427 行 + `gen_types.ss:711 resolveTypeParam` 实存,memory feedback_d026_d027_phantom_anchor §事实层 §实现锚兑现)+ H8 待 Phase 3+ 子 Phase bootstrap 三阶段固定点实测 + H14 入档 + **H15 留 Phase 2 用户对话锁定**(推翻 D141-D145 5 sub-D 一致 v2 决策授权门槛);(f) spike form 1-N 用 `tests/d141_lambda_inference/` 11 + `tests/d142_array_literal_inference/` 6 + `tests/d143_object_literal_inference/` 6 + `tests/d144_ternary_inference/` 8 baseline + grep/ls 实测代替(更纯 docs only,VCM §1 豁免锚成立);(g) Phase 0 commit hash `73eb4c5` 回填 **3 处真锚**(line 3 Status header + line 382 §Phase 收关锚 §Phase 0 + line 452 §Status 时间线 Phase 0 entry — **用户口号校验**「Phase 0 hash 4 处回填」字面口号实测 占位符行数实测 = 3,memory feedback_user_literal_vs_d_ssot 同形防御兑现);**新发现总结**:checker 已局部 bidirectional 机制存在(funcParamTypes 反推三处 fn/method/ctor + isTypeCompatible)+ 5 helper 在 codegen 阶段反推 — bidirectional refactor 是**统一已存机制 entry** 不是从零重写,scope 比原估小 3-4 倍(~500-850 vs > 2000);Phase 1 详细 fact 入 §A.2 H8/H9/H10/H14 + §Phase 收关锚 §Phase 1 + §Status 时间线;D135/D136/D137/D140/D141/D142/D143/D144/D145/D147 范式延续(每 Phase 独立 commit + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环);**Phase 0 描述保留**:D141 §F5 + D142 §F4 + D143 §F5 + D144 §F7 + D145 §F6 **五合真锚** sub-D 起首落档(用户口号「D142/D143 §F7 同位 bidirectional」是 §F 编号机械套用错位虚锚 — D142 §F7 = NEW_EXPR ctor 实参 array literal 反推 / D143 §F7 = spread 反推,bidirectional 真锚是 D142 §F4 / D143 §F5,memory feedback_user_literal_vs_d_ssot 防御范畴);bidirectional type checking 全局 — checker 改 expected/actual 双向类型检查,所有表达式从调用上下文反推类型,消除 D141-D145 5 处独立 ad-hoc 接口层 trap 反推机制(`isFnType` / `isArrayType` / `isClassType` / `isMapType` / `extractFnParamType` / `extractArrayElemType` / `extractClassName` / `extractMapKVTypes` / `inferArrowFuncParams` / `inferArrayLitElems` / `inferObjLiteralFields` / `inferMapLiteralKVTypes` 等 N helper)→ 统一 bidirectional 框架(checker 单一 entry point + 各表达式 case 走 bidirectional);后续 Tuple / NEW_EXPR ctor 子节点 / partial fields / spread / 反推失败粒度等同模式 sub-D(D145 §F1-F5 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4)bidirectional 落地后全部 unnecessary;**scope > 2000 LOC + bootstrap 重写多核心文件**(checker / gen_types / 各 inferType 落点 / eval pre-eval / funcParamTypes 重构等)→ Phase 0 仅落档不实施,Phase 1+ 启动需用户对话锁定 C2 渐进 vs C3 完整 + 子 Phase 拆分细化;D141-D145 5 sub-D §A.1 C3 + §A.3 一致锁「留 SS 类型系统 v2」是审慎决策不是未考虑,D148 Phase 0 兑现 v2 起首最小动作不轻易推翻;前置依赖已满足:**generic 基础设施已落** `bootstrap/gen/gen_generic_class.ss` 整文件 427 行 + `bootstrap/gen/gen_types.ss:711 resolveTypeParam` + 14 case GREEN(`tests/phase5/generic_*.ss`,memory feedback_d026_d027_phantom_anchor §事实层 §实现锚 grep 实证),不再用 D026/D027 历史代号占位;§A.1 C1/C2/C3 + §A.1.1 G1/G2/G3 + §A.2 H1-H15 + §A.3 + Phase 0-N 计划草案 + Followup F1-F6 全锚定;D135/D136/D137/D140/D141/D142/D143/D144/D145 范式延续(D145 Phase 0 commit `d2fb4e1` 同模式 — Phase 0 D 文档落档 + Phase 1+ bootstrap 改各独立 commit + Status 时间线 + commit hash 回填 + next_prompt 自闭环)
+**Status:** Phase 2 — 候选 C2 渐进锁定 + 子 Phase N=5 拆分 + 实施前置 fact 入 §1 [✓] Done at commit `<placeholder>` (2026-05-03)— Phase 0 D 文档落档 commit `73eb4c5` + Phase 1 RED 复现 + 信息源探查 + scope 实测 commit `2be17f8` 已闭环(详 §Status 时间线);**Phase 2 兑现 a-h**:(a) **C2 渐进锁定**(用户对话 2026-05-03 H15 授权通过 — 推翻 D141-D145 5 sub-D「留 v2」一致决策门槛通过 + scope ~500-850 LOC 拆 N=5 子 Phase 风险可控 + 业界对标 TS contextual typing incremental migration 范式)+ 不选 C3(单 commit ~500-850 LOC 违 D135-D145 大改档不打包范式 + 一锅炖风险高);(b) **D145 异常处理选项 A 自然接管锁定**(bidirectional 落地后 Phase 4 gen_types 统一接管自动覆盖 MAP_LIT,D145 主线 0 helper 不独立实施 — D145 选项 B 独立先行 sub-D 完成 + 选项 C deprecated 跳过 全废入 §A.3);(c) **§1 Context 实施前置 fact 新增段**(checker 单一 entry `inferTypeWithExpected(exprId, expectedType)` 设计 + gen_types 15 helper 统一接管路径从 fn/method/ctor 三处 expectedType 收集 → 单一反推 entry + G1 16 落点收方案 + eval pre-eval expected 类型传递路径);(d) **§A.1 决策行 C2 锁定 + C3 不选 + 决策行授权落档**;(e) **§A.2 H15 授权通过**(Phase 3+ bootstrap 改启动门槛降至 H15 通过条件,具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围);(f) **§3 Orchestration 表 Phase 3-7 N=5 详细化**(Phase 3 checker 单一 entry inferTypeWithExpected ~150-300 LOC + Phase 4 gen_types 15 helper 统一接管 ~150-200 LOC + Phase 5 G1 16 落点收 ~100-150 LOC + Phase 6=N+1 cleanup helper 删 + Followup 自然解 ~100-150 LOC + Phase 7=N+2 全 Phase 收关 hash trail ~50 LOC);(g) **Phase 1 commit hash `2be17f8` 回填 3 处真锚**(line 3 Status header + line 394 §Phase 收关锚 §Phase 1 + line 506 §Status 时间线 Phase 1 entry — D135-D145 范式延续 Phase X+1 启动轮回填上一 Phase hash);(h) **D135-D145 范式延续**(单 Phase 独立 commit + Status 时间线 + next_prompt 自闭环 — D147 Phase 5 commit `8323501` 同模式即时回填);**Phase 1 兑现 a-g 沿用**(详 §Phase 收关锚 §Phase 1):(a) D141-D144 累计 **15 ad-hoc trap helper** grep 实证(D141:4 isFnType/extractFnParamType/extractFnRetType/inferArrowFuncParams + D142:2 extractArrayElemType/inferArrayLitElems + D143:4 isClassType/extractClassName/inferObjLiteralFromType/inferObjLiteralFields + D144:5 isNullableType/extractInnerType/unifyBranchTypes/propagateTernaryBranchType/inferTernaryBranchType,全在 `bootstrap/gen/gen_types.ss:766-981`)+ **D145 异常发现** 0 helper 主线未实施完(`tests/d145_map_literal_inference/` 目录不存在 + grep MAP_LIT 节点全 0 命中 + D145.md 仅 Phase 1 RED commit `17a1573` 实施未落);(b) G1 **16 落点**(`gen_calls.ss:279/281/284/286` + `gen_methods.ss:196/198/200/202` + `eval/method_call.ss:61/63/65/69` + `eval/call.ss:33/35/39/41`,4 helper × 4 落点)+ **outer pre-eval 9 处**(method_call.ss 4 + call.ss 4 + new_expr.ss 1);(c) **bootstrap LOC delta 实测 ~500-850 修正**(D148 §核心目标 原估 > 2000 LOC 高估 — checker 已局部 bidirectional `check_exprs.ss:91/156/270` funcParamTypes 反推三处 fn arg / method arg / ctor arg + `check_types.ss:229 isTypeCompatible`,bidirectional refactor 是**统一已存机制 entry** 不是从零重写);(d) **Phase 拆分细化建议 N=5**(Phase 3 checker 单一 entry inferTypeWithExpected + Phase 4 gen_types 5 helper 统一接管 + Phase 5 G1 16 落点收 + Phase 6=N+1 cleanup helper 删 + Followup 自然解 + Phase 7=N+2 全 Phase 收关 hash trail);(e) **H9 PASS 初步**(`pir/pir.ss:101 startsWith("Array<")/("Map<")` + `pir.ss:200 inferType` + `pir_lower.ss:89-90 inferType` 只读类型字符串前缀做 RC 判定不参与推断,bidirectional 是 codegen-time 推断 PIR 不需扩)+ **H10 PASS 实证**(`ls tests/phase5/generic_*.ss | wc -l` = 14 + `gen_generic_class.ss` 427 行 + `gen_types.ss:711 resolveTypeParam` 实存,memory feedback_d026_d027_phantom_anchor §事实层 §实现锚兑现)+ H8 待 Phase 3+ 子 Phase bootstrap 三阶段固定点实测 + H14 入档 + **H15 留 Phase 2 用户对话锁定**(推翻 D141-D145 5 sub-D 一致 v2 决策授权门槛);(f) spike form 1-N 用 `tests/d141_lambda_inference/` 11 + `tests/d142_array_literal_inference/` 6 + `tests/d143_object_literal_inference/` 6 + `tests/d144_ternary_inference/` 8 baseline + grep/ls 实测代替(更纯 docs only,VCM §1 豁免锚成立);(g) Phase 0 commit hash `73eb4c5` 回填 **3 处真锚**(line 3 Status header + line 382 §Phase 收关锚 §Phase 0 + line 452 §Status 时间线 Phase 0 entry — **用户口号校验**「Phase 0 hash 4 处回填」字面口号实测 占位符行数实测 = 3,memory feedback_user_literal_vs_d_ssot 同形防御兑现);**新发现总结**:checker 已局部 bidirectional 机制存在(funcParamTypes 反推三处 fn/method/ctor + isTypeCompatible)+ 5 helper 在 codegen 阶段反推 — bidirectional refactor 是**统一已存机制 entry** 不是从零重写,scope 比原估小 3-4 倍(~500-850 vs > 2000);Phase 1 详细 fact 入 §A.2 H8/H9/H10/H14 + §Phase 收关锚 §Phase 1 + §Status 时间线;D135/D136/D137/D140/D141/D142/D143/D144/D145/D147 范式延续(每 Phase 独立 commit + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环);**Phase 0 描述保留**:D141 §F5 + D142 §F4 + D143 §F5 + D144 §F7 + D145 §F6 **五合真锚** sub-D 起首落档(用户口号「D142/D143 §F7 同位 bidirectional」是 §F 编号机械套用错位虚锚 — D142 §F7 = NEW_EXPR ctor 实参 array literal 反推 / D143 §F7 = spread 反推,bidirectional 真锚是 D142 §F4 / D143 §F5,memory feedback_user_literal_vs_d_ssot 防御范畴);bidirectional type checking 全局 — checker 改 expected/actual 双向类型检查,所有表达式从调用上下文反推类型,消除 D141-D145 5 处独立 ad-hoc 接口层 trap 反推机制(`isFnType` / `isArrayType` / `isClassType` / `isMapType` / `extractFnParamType` / `extractArrayElemType` / `extractClassName` / `extractMapKVTypes` / `inferArrowFuncParams` / `inferArrayLitElems` / `inferObjLiteralFields` / `inferMapLiteralKVTypes` 等 N helper)→ 统一 bidirectional 框架(checker 单一 entry point + 各表达式 case 走 bidirectional);后续 Tuple / NEW_EXPR ctor 子节点 / partial fields / spread / 反推失败粒度等同模式 sub-D(D145 §F1-F5 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4)bidirectional 落地后全部 unnecessary;**scope > 2000 LOC + bootstrap 重写多核心文件**(checker / gen_types / 各 inferType 落点 / eval pre-eval / funcParamTypes 重构等)→ Phase 0 仅落档不实施,Phase 1+ 启动需用户对话锁定 C2 渐进 vs C3 完整 + 子 Phase 拆分细化;D141-D145 5 sub-D §A.1 C3 + §A.3 一致锁「留 SS 类型系统 v2」是审慎决策不是未考虑,D148 Phase 0 兑现 v2 起首最小动作不轻易推翻;前置依赖已满足:**generic 基础设施已落** `bootstrap/gen/gen_generic_class.ss` 整文件 427 行 + `bootstrap/gen/gen_types.ss:711 resolveTypeParam` + 14 case GREEN(`tests/phase5/generic_*.ss`,memory feedback_d026_d027_phantom_anchor §事实层 §实现锚 grep 实证),不再用 D026/D027 历史代号占位;§A.1 C1/C2/C3 + §A.1.1 G1/G2/G3 + §A.2 H1-H15 + §A.3 + Phase 0-N 计划草案 + Followup F1-F6 全锚定;D135/D136/D137/D140/D141/D142/D143/D144/D145 范式延续(D145 Phase 0 commit `d2fb4e1` 同模式 — Phase 0 D 文档落档 + Phase 1+ bootstrap 改各独立 commit + Status 时间线 + commit hash 回填 + next_prompt 自闭环)
 
 **Depends on:**
 - D141(lambda 参数类型推断 — §Followup F5 bidirectional 真锚 line 466 + §A.1 C3 + §A.3 留 v2 一致决策)
@@ -128,6 +128,46 @@
 - ❌ 删 / 合并 / deprecate 既有 D 文档(D026/D027 已清零完结,本轮不动)
 - ❌ 改 CLAUDE.md / docs/3-MNK.md / memory 既存 feedback(本轮 D148 自带 §核心原则 引用既存 memory,不修)
 
+### Phase 2 实施前置 fact(N=5 子 Phase 实施关键设计 — 2026-05-03 落档)
+
+> Phase 3+ bootstrap 改启动门槛降至 H15 通过条件,但具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围;本段为 Phase 2 落档实施前置 fact 支撑 Phase 3+ 启动。
+
+#### bidirectional 关键设计 entry(已存机制复用 — scope 修正关键)
+
+| Entry | 现状 | bidirectional 改后 |
+|---|---|---|
+| `bootstrap/checker/check_types.ss:inferType(exprId)` | 单向类型推断 | **bidirectional 单一 entry** `inferTypeWithExpected(exprId, expectedType)` — `expectedType` 默认 `""` 表示无 expected(单向推断回退) |
+| `bootstrap/checker/check_exprs.ss:91/156/270` | funcParamTypes 反推三处(fn arg / method arg / ctor arg)— **已局部 bidirectional 机制** | 三处统一收 expectedType → 传入 inferTypeWithExpected,不再各自独立反推 |
+| `bootstrap/checker/check_types.ss:229 isTypeCompatible` | 双向类型兼容判定 — **已存机制** | 复用 `isTypeCompatible(expectedType, actualType)` 不改造 |
+| `bootstrap/gen/gen_types.ss:766-981` 15 helper | D141:4 + D142:2 + D143:4 + D144:5 ad-hoc trap 反推 | bidirectional 接管 — checker entry 反推 expectedType → 各 helper 单一 dispatch;MAP_LIT case 自动覆盖(D145 选项 A 自然接管) |
+| `bootstrap/gen/gen_calls.ss:279/281/284/286` + `gen_methods.ss:196/198/200/202` + `eval/method_call.ss:61/63/65/69` + `eval/call.ss:33/35/39/41` | G1 16 落点 4 helper × 4 落点 | 统一调用 checker 单一 entry — 落点收 |
+| `bootstrap/eval/method_call.ss:61-69` + `call.ss:33-41` + `new_expr.ss:41` | outer pre-eval 9 处 expected 类型传递分散 | bidirectional 统一 — outer call site `genVal(argId, expectedType)` expected 沿 call 链下传 |
+| `bootstrap/gen/codegen.ss:110-112` + `gen_registry.ss:56-57` funcParamTypes Map | 信息源 SSoT(D141-D144 已存)| **不动数据结构** — bidirectional expected 类型源直接读原始 SS 类型字符串(`fn(P,...):R` / `Array<T>` / `class<X>` / `Map<K,V>` / `T?`)|
+| `bootstrap/gen/gen_generic_class.ss` + `gen_types.ss:711 resolveTypeParam` | generic 基础设施 14 case GREEN | **不动 generic 基础设施** — bidirectional 复用 resolveTypeParam 解析 `Map<K,V>` / `Array<T>` / `class<X>` / `T?` 嵌套 |
+| `bootstrap/pir/pir.ss + pir_lower.ss + pir_opt.ss` | PIR 中间层 — Phase 1 H9 PASS 初步 | **不动 PIR** — bidirectional 是 codegen-time 推断,PIR 只消费 inferType 输出不参与推断 |
+
+#### N=5 子 Phase LOC delta 估对齐 Phase 1 实测
+
+- **Phase 3** checker 单一 entry inferTypeWithExpected ~150-300(funcParamTypes 反推三处统一收 expectedType + check 函数链 expectedType 形参贯穿)
+- **Phase 4** gen_types 15 helper 统一接管 ~150-200(15 helper 改造 + MAP_LIT case 添加 D145 自然接管)
+- **Phase 5** G1 16 落点 + eval pre-eval 收 ~100-150(16 落点统一 dispatch + outer pre-eval 9 处 expected 传递)
+- **Phase 6 (= N+1)** 15 helper 删 + Followup F1-F7 自然解 ~100-150
+- **Phase 7 (= N+2)** 全 Phase 0-7 收关 hash trail ~50
+- **总 LOC delta ~550-850 ≈ Phase 1 实测 ~500-850**(对齐验证 — bidirectional refactor 是统一已存机制 entry 不是从零重写,scope 比原估 > 2000 LOC 小 3-4 倍)
+
+#### 已存机制 entry 复用清单(scope 修正关键)
+
+- **funcParamTypes Map<K,V> SSoT** — `codegen.ss:110-112` 普通函数 + `gen_registry.ss:56-57` class method,不动数据结构,bidirectional expected 类型源直接读
+- **generic 基础设施 resolveTypeParam** — `gen_types.ss:711`,不动,bidirectional 复用解析嵌套类型
+- **isTypeCompatible 双向兼容判定** — `check_types.ss:229`,不动,bidirectional 复用
+- **check_exprs.ss:91/156/270 funcParamTypes 反推三处** — 已局部 bidirectional 机制,改造路径是「统一 entry」不是从零重写 → **scope 比原估小 3-4 倍**(~500-850 vs > 2000)
+
+#### 子 Phase bootstrap 三阶段固定点风险(H8 待 Phase 3+ 实测)
+
+- Phase 3-7 各子 Phase 必跑 `./build.sh bootstrap` 三阶段固定点验证(seed → stage1 → stage2 → stage3,验证 stage2 == stage3)
+- 失败 → 子 Phase 回滚 + 修根因 + 重跑(D135-D145 范式延续)
+- LOC delta 估每子 Phase ~50-300,符合 D135-D145 大改档不打包范式
+
 ---
 
 ## 2. Tools
@@ -162,19 +202,23 @@
 | Phase | 目标 | 关键产出 | 验证 |
 |-------|------|----------|------|
 | **Phase 0** | D 文档落档(本 Phase) | `docs/3-decisions/D148-*.md` | d_doc_index_linter F1 = 0 + ultrathink_linter PASS + VCM §1 豁免锚成立 |
-| **Phase 1** | RED 复现 + 信息源探查 + scope 实测 | (a) D141-D145 5 处 ad-hoc trap helper grep 实证(`isFnType` / `isArrayType` / `isClassType` / `isMapType` / `extractFnParamType` / `extractArrayElemType` / `extractClassName` / `extractMapKVTypes` / `inferArrowFuncParams` / `inferArrayLitElems` / `inferObjLiteralFields` / `inferMapLiteralKVTypes`)+ (b) bootstrap LOC delta 估(checker / gen_types / 各 inferType 落点 / eval pre-eval / funcParamTypes 重构)+ (c) Phase 拆分细化(N=4-8?)+ (d) 候选 C2 渐进 vs C3 完整 实测对比 + (e) 隐藏假设 H1-H15 探查(generic 基础设施复用充分性 H10 / PIR 是否需扩 H9 / bootstrap 固定点 scope > 2000 是否破 H8 / scope 实测 > 估值 H14)| Phase 1 commit + scope 实测 fact 入 §1 + 隐藏假设探查 fact 入 §A.2 |
-| **Phase 2** | 候选 C2 vs C3 用户对话锁定 + 子 Phase 拆分 + 实施前置 | §A.1 C2 vs C3 用户对话锁定决策行 + 子 Phase 拆分 D 文档草案 + 实施前置 fact 入 §1 | Phase 2 commit + 用户对话决策行 |
-| **Phase 3-N** | bidirectional 渐进实施(子 Phase 拆 — N=4-8?)| `bootstrap/checker/check_types.ss` + `check_exprs.ss` bidirectional 改 + 单一 entry `inferTypeWithExpected(exprId, expectedType)` + `gen_types` 5 helper 渐进删 + eval pre-eval bidirectional expected 类型传递 + funcParamTypes expected 类型源重构等 | bootstrap 固定点 PASS + spike GREEN + tests/d141-d145 baseline 不破 + tests/phase5/generic baseline 不破 + reflection GATE PASS |
-| **Phase N+1** | D141-D145 5 处 ad-hoc trap helper 删 + workaround cleanup + Followup 队列 bidirectional 自然解 | 5 helper 删(`isFnType` / `extractFnParamType` / `inferArrowFuncParams` 等)+ tests/d141-d145 仍 GREEN(bidirectional 接管)+ Followup 队列(D145 §F1 Tuple / D145 §F2 NEW_EXPR ctor / D145 §F3 partial / D145 §F4 spread / D145 §F5 反推失败粒度 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4)bidirectional 自然解 | bootstrap 固定点 + tests/ 全绿 + grep 5 helper = 0 + Followup 队列各形态 spike GREEN |
-| **Phase N+2** | 全 Phase 收关 hash trail | D148 全 Phase commit hash 全列 + 兑现成果 a-g + 隐藏假设 H1-H15 全 PASS / OOD 标 + Followup 锚明确 + Status 时间线全 [✓] | D148 主线 close + d_doc_index_linter F1=0 永久 + reflection GATE PASS 永久 |
+| **Phase 1** [✓ Done at commit `2be17f8`] | RED 复现 + 信息源探查 + scope 实测 | (a) D141-D144 累计 15 ad-hoc trap helper grep 实证(全在 `bootstrap/gen/gen_types.ss:766-981` — D141:4 + D142:2 + D143:4 + D144:5)+ D145 异常发现 0 helper 主线未实施完 + (b) G1 16 落点 + outer pre-eval 9 处 + (c) bootstrap LOC delta 实测 ~500-850 修正(checker 已局部 bidirectional `check_exprs.ss:91/156/270` funcParamTypes 反推三处 + `check_types.ss:229 isTypeCompatible`)+ (d) Phase 拆分细化建议 N=5 + (e) 候选 C2 渐进 vs C3 完整 实测对比初步 fact + (f) 隐藏假设 H8/H9/H10/H14/H15 探查 + (g) spike form 1-N 用 tests/d141-d144 baseline + (h) Phase 0 commit hash `73eb4c5` 回填 3 处真锚 | Phase 1 commit + scope 实测 fact 入 §1 + 隐藏假设探查 fact 入 §A.2 |
+| **Phase 2** [✓ Done at commit `<placeholder>`] | 候选 C2 渐进锁定 + 子 Phase N=5 拆分 + 实施前置 | §A.1 C2 锁定 + C3 不选 + §A.2 H15 授权通过 + 子 Phase N=5 详细化(Phase 3-7)+ 实施前置 fact 入 §1 + D145 选项 A 自然接管 + Phase 1 commit hash `2be17f8` 回填 3 处真锚 | Phase 2 commit + H15 授权通过 + 子 Phase N=5 表 GREEN |
+| **Phase 3** | checker 单一 entry inferTypeWithExpected | `bootstrap/checker/check_types.ss` + `check_exprs.ss` bidirectional 改 + 单一 entry `inferTypeWithExpected(exprId, expectedType)` + 双向类型检查贯穿 check 函数 + funcParamTypes 反推三处(line 91/156/270 已局部 bidirectional)统一收 expectedType + 已存机制 entry 不是从零重写,LOC delta 估 ~150-300 | bootstrap 固定点 PASS + checker bidirectional spike GREEN + tests/d141-d144 baseline 不破 |
+| **Phase 4** | gen_types 15 helper 统一接管 | `bootstrap/gen/gen_types.ss` 15 helper(D141:4 + D142:2 + D143:4 + D144:5)从 ad-hoc trap 改为 bidirectional 实现接管(checker entry 反推 expectedType → 各 helper 单一 dispatch)+ MAP_LIT case 自动覆盖(D145 选项 A 自然接管,主线 0 helper 直接 bidirectional 接管不需独立先行)+ LOC delta 估 ~150-200 | bootstrap 固定点 PASS + gen_types 接管 spike GREEN + tests/d141-d144 仍 GREEN(渐进 refactor) + MAP_LIT case GREEN(D145 自然接管) |
+| **Phase 5** | G1 16 落点 + eval pre-eval 收 | `bootstrap/gen/gen_calls.ss:279/281/284/286` 4 落点 + `gen_methods.ss:196/198/200/202` 4 落点 + `eval/method_call.ss:61/63/65/69` 4 落点 + `eval/call.ss:33/35/39/41` 4 落点 = G1 16 落点统一调用 checker 单一 entry + outer pre-eval 9 处(method_call.ss 4 + call.ss 4 + new_expr.ss 1)expected 类型传递路径接通 + LOC delta 估 ~100-150 | bootstrap 固定点 PASS + 16 落点 spike GREEN + tests/d141-d144 + tests/phase5/generic baseline 不破 |
+| **Phase 6 (= N+1)** | D141-D144 15 ad-hoc trap helper 删 + Followup bidirectional 自然解 | 15 helper 删(D141 4 + D142 2 + D143 4 + D144 5,全在 `bootstrap/gen/gen_types.ss:766-981`)+ tests/d141-d144 仍 GREEN(bidirectional 接管 — H12 假设)+ Followup 队列(D145 §F1 Tuple / D145 §F2 NEW_EXPR ctor / D145 §F3 partial / D145 §F4 spread / D145 §F5 反推失败粒度 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4 + D148 §F1-F7)bidirectional 自然解 | bootstrap 固定点 + tests/ 全绿 + grep 15 helper = 0 + Followup 队列各形态 spike GREEN |
+| **Phase 7 (= N+2)** | 全 Phase 0-7 收关 hash trail | D148 全 Phase commit hash 全列(Phase 0-6 commit hash + Phase 7 占位下下轮回填)+ 兑现成果 a-h(C2 锁定 / D145 选项 A 自然接管 / 15 helper 删 / H1-H15 全 PASS / OOD 标 / d_doc_index_linter F1=0 永久 / reflection_health_linter GATE PASS 永久 / bootstrap 隔离破例 D141-D145 §核心原则 同位例外)+ Followup F1-F7 锚明确 + Status 时间线全 [✓] | D148 主线 close + d_doc_index_linter F1=0 永久 + reflection GATE PASS 永久 |
 
 ### Phase 间依赖
 
 - Phase 0 → Phase 1(D 文档落档 → RED 复现 + 信息源探查 + scope 实测)
-- Phase 1 → Phase 2(scope 实测 + 隐藏假设探查 fact → 候选 C2 vs C3 用户对话锁定)
-- Phase 2 → Phase 3-N(候选锁定 + 子 Phase 拆分 → 子 Phase bootstrap 渐进改)
-- Phase 3-N → Phase N+1(bidirectional 接管 → ad-hoc trap helper 删 + Followup 自然解)
-- Phase N+1 → Phase N+2(workaround cleanup → 全 Phase 收关 hash trail)
+- Phase 1 → Phase 2(scope 实测 + 隐藏假设探查 fact → C2 渐进锁定 + 子 Phase N=5 拆分)
+- Phase 2 → Phase 3(C2 锁定 + 子 Phase N=5 详细化 + 实施前置 fact → checker 单一 entry inferTypeWithExpected)
+- Phase 3 → Phase 4(checker 单一 entry → gen_types 15 helper 统一接管)
+- Phase 4 → Phase 5(gen_types 接管 → G1 16 落点 + eval pre-eval 收)
+- Phase 5 → Phase 6(G1 落点接通 → 15 helper 删 + Followup 自然解)
+- Phase 6 → Phase 7(workaround cleanup → 全 Phase 0-7 收关 hash trail)
 
 ### 反模式
 
@@ -310,22 +354,25 @@
 | 候选 | 层次 | 描述 | 优势 | 劣势 | 决策 |
 |-----|------|------|------|------|------|
 | **C1** | **数据层 patch** | D141-D145 5 处 ad-hoc trap 持续扩 — 后续 Tuple / spread / partial fields / 反推失败粒度等同模式 sub-D 持续扩(D145 §F1-F5 + D144 §F2-F6 + 等)| 单 sub-D 单点修 + scope 可控 + 不推翻 D141-D145 「留 v2」决策 | 5 处独立反推机制持续累积 → 10 → 15 处技术债 + N 年返工度极高 + 无统一 bidirectional 框架 + 业界对标 TS/Flow/HM 主流范式偏离 | **不选** — 数据层 zero-spread 不消除根因(`feedback_root_cause_no_cost.md` 红线 + D141-D145 §A.1 C1 同形废)|
-| **C2** | **接口层 trap** | 渐进 bidirectional refactor — 分多 Phase 把 D141-D145 5 处 ad-hoc trap 改为 bidirectional 实现 + 新表达式直接 bidirectional 路径 | scope 可控(单子 Phase ~200-300 LOC) + D141-D145 baseline 渐进迁移不一锅炖 + 风险可控 + 符合 D141-D145 大改档不打包范式 | scope 大但分 Phase 缓解 + D141-D145 5 处 ad-hoc trap 在迁移期间共存 + Phase N+1 删 trap helper 才完结 + Phase 数多(N=4-8?)| **候选** — Phase 2 用户对话锁定决策行(C2 vs C3),Phase 0 仅落档不锁 |
-| **C3** | **架构层 refactor** | 完整 bidirectional 重写 — 类型推断器整体改 bidirectional + checker 改 expected/actual 双向 + 所有表达式从调用上下文反推类型 + 单一 entry `inferTypeWithExpected(exprId, expectedType)` 一次性落 | 类型系统统一性最高 + 一次性消除 D141-D145 5 处 ad-hoc trap + 业界主流范式 + Phase 数少 | scope 爆炸 LOC > 2000 + bootstrap 重写多核心文件 + 一锅炖风险高 + 推翻 D141-D145 5 sub-D 一致决策 + 单 commit 大改档不打包违 D135-D145 范式 | **候选** — Phase 2 用户对话锁定决策行(C2 vs C3),Phase 0 仅落档不锁 |
+| **C2** | **接口层 trap** | 渐进 bidirectional refactor — 分多 Phase 把 D141-D145 5 处 ad-hoc trap 改为 bidirectional 实现 + 新表达式直接 bidirectional 路径 | scope 可控(单子 Phase ~100-300 LOC) + D141-D144 baseline 渐进迁移不一锅炖 + 风险可控 + 符合 D141-D145 大改档不打包范式 + checker 已局部 bidirectional 机制存在(`check_exprs.ss:91/156/270` funcParamTypes 反推 + `check_types.ss:229 isTypeCompatible`)统一 entry 不是从零重写 | D141-D145 5 处 ad-hoc trap 在迁移期间共存 + Phase 6=N+1 删 trap helper 才完结 + Phase 数 N=5 | **✓ 锁定**(Phase 2 用户对话授权 2026-05-03 通过)— C2 渐进 + N=5 子 Phase 拆分 + D145 选项 A 自然接管 |
+| **C3** | **架构层 refactor** | 完整 bidirectional 重写 — 类型推断器整体改 bidirectional + checker 改 expected/actual 双向 + 所有表达式从调用上下文反推类型 + 单一 entry `inferTypeWithExpected(exprId, expectedType)` 一次性落 | 类型系统统一性最高 + 一次性消除 D141-D145 5 处 ad-hoc trap + 业界主流范式 + Phase 数少 | scope ~500-850 LOC(Phase 1 实测修正 — 原估 > 2000 高估)+ bootstrap 重写多核心文件 + 一锅炖风险高 + 推翻 D141-D145 5 sub-D 一致决策 + 单 commit ~500-850 LOC 违 D135-D145 大改档不打包范式 | **✗ 不选**(Phase 2 用户对话授权 2026-05-03 — 单 commit ~500-850 LOC 违范式 + 一锅炖风险高,虽 LOC 修正小但仍违范式)|
 
-**决策行**(Phase 0 落档版,Phase 1+ 用户对话锁定):
+**决策行**(Phase 2 用户对话锁定版,2026-05-03):
 
-- **Phase 0 决策**:**落档 D148 = bidirectional 全局上位入口**,候选 C2 渐进 vs C3 完整 留 Phase 1+ 用户对话锁定。
+- **Phase 2 决策**(2026-05-03):**C2 渐进锁定 + 子 Phase N=5 拆分授权 + D145 选项 A 自然接管 + H15 授权通过**(用户对话 — 推翻 D141-D145 5 sub-D「留 v2」一致决策门槛通过,Phase 3+ bootstrap 改启动门槛降至 H15 通过条件,具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围)
 - **不选 C1**:数据层 zero-spread 不消除根因(feedback_root_cause_no_cost.md 红线 + D141-D145 §A.1 C1 同形废)
-- **C2 vs C3 留 Phase 1+ 用户对话锁定**:
-  - **C2 渐进**:scope 可控但 D141-D145 5 处 ad-hoc trap 在迁移期间共存,Phase N+1 删 trap helper 才完结;符合 D141-D145 范式延续(每 Phase 独立 commit + 大改档不打包)+ 风险可控
-  - **C3 完整**:scope 爆炸但一次性消除 D141-D145 5 处 ad-hoc trap;一锅炖风险高 + 推翻 D141-D145 5 sub-D「留 v2」一致决策需用户对话授权 + 单 commit 大改档不打包违 D135-D145 范式
+- **不选 C3**:单 commit ~500-850 LOC(Phase 1 实测修正,原估 > 2000 高估)违 D135-D145 大改档不打包范式 + 一锅炖风险高 + 推翻 D141-D145 5 sub-D 一致决策风险更高(虽 LOC 比原估小但仍违范式)
+- **选 C2 渐进 + N=5 子 Phase**:scope ~500-850 LOC 拆 N=5 子 Phase × 每 Phase ~100-300 LOC 完全符合 D135-D145 大改档不打包范式;checker 已局部 bidirectional 机制存在(`check_exprs.ss:91/156/270` funcParamTypes 反推三处 + `check_types.ss:229 isTypeCompatible`)— bidirectional refactor 是统一已存机制 entry 不是从零重写;业界对标 TS contextual typing incremental migration 范式;N 年返工度低 N=5 子 Phase 每步可观测;风险可控 — 子 Phase bootstrap 三阶段固定点逐个验证
+- **D145 选项 A 自然接管锁定**:bidirectional 落地后 Phase 4 gen_types 15 helper 统一接管自动覆盖 MAP_LIT,D145 主线 0 helper 不独立实施(D145 选项 B 独立先行 sub-D 完成 + 选项 C deprecated 跳过 全废入 §A.3)
+- **历史 Phase 0/1 决策行沿用**:
+  - **Phase 0 决策**:落档 D148 = bidirectional 全局上位入口,候选 C2 vs C3 留 Phase 1+ 用户对话锁定(✓ Phase 2 锁定 C2)
+  - **Phase 1 实测对比**:scope 修正 ~500-850 LOC(原估 > 2000 高估)+ checker 已局部 bidirectional 机制存在 → C2 渐进可行性大幅提升 → Phase 2 锁定 C2 fact 支撑
 - **长久 / 演化维度**(MNK §M §字段 10 (d) 三维):
-  - **底层依赖链**:bidirectional 是底层,D141-D145 ad-hoc trap 是上层补救;按"先 X 后 Y"原则,bidirectional 应先于其他同模式扩 sub-D ✓ C2 / C3 都满足,C1 不满足(继续上层补救)
-  - **业界对标**:TypeScript / Flow / OCaml / Scala / Hindley-Milner bidirectional 是主流范式(Pierce & Turner "Local Type Inference" 2000)✓ C2 / C3 都满足,C1 不满足(继续 ad-hoc 偏离主流)
-  - **N 年返工度**:bidirectional 落地后 D145 §F1-F5 + D144 §F2-F6 + 等同模式 sub-D 全部 unnecessary ✓ C2 / C3 都满足,C1 不满足(累积 5 → 10 → 15 处技术债返工度极高)
+  - **底层依赖链**:bidirectional 是底层,D141-D145 ad-hoc trap 是上层补救;按"先 X 后 Y"原则 ✓ C2 锁定满足
+  - **业界对标**:TypeScript contextual typing incremental migration / Flow / OCaml bidirectional 主流范式(Pierce & Turner "Local Type Inference" 2000)✓ C2 锁定对标
+  - **N 年返工度**:bidirectional 落地后 D145 §F1-F5 + D144 §F2-F6 + 等同模式 sub-D 全部 unnecessary + Phase 6 删 15 helper + Followup F1-F7 自然解 ✓ C2 锁定满足
 - **前置依赖已满足**:generic 基础设施(`gen_generic_class.ss` 整文件 + `gen_types.ss:711 resolveTypeParam` + 14 case GREEN — memory feedback_d026_d027_phantom_anchor 实证)+ funcParamTypes SSoT(`codegen.ss:110-112` + `gen_registry.ss:56-57`)
-- **D141-D145 §A.1 C3 五处一致决策推翻**:Phase 1+ 用户对话授权门槛(H15 假设 — 推翻 D141-D145 5 sub-D「留 v2」一致决策授权门槛);Phase 0 落档兑现 v2 起首最小动作(不推翻"留 v2",而是把"v2"具体化 — 把 5 sub-D 一致锁的废案抬到主线起首)
+- **D141-D145 §A.1 C3 五处一致决策推翻 H15 授权通过**:Phase 2 用户对话授权 2026-05-03 通过 — 推翻不是「拒绝 v2」,是「把 v2 具体化」(把 5 sub-D 一致锁的废案抬到主线起首);Phase 3+ 子 Phase bootstrap 改启动门槛降至 H15 通过条件,但具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围
 
 ---
 
@@ -357,7 +404,7 @@
 | H12 | D141-D145 5 处 ad-hoc trap helper 删后 tests/d141-d145 是否 GREEN | Phase N+1 删 5 helper(`isFnType` / `extractFnParamType` / `inferArrowFuncParams` 等)后 tests/d141-d145 baseline 不破 | Phase N+1 实测假设 — bidirectional 接管 5 处 ad-hoc trap | 删后 tests/d141-d145 破 → 回 Phase 3-N 修 + 不删 helper |
 | H13 | Followup 队列 bidirectional 自然解度 | D145 §F1 Tuple / D145 §F2 NEW_EXPR ctor / D145 §F3 partial / D145 §F4 spread / D145 §F5 反推失败粒度 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4 等 bidirectional 落地后自然解度 | Phase N+2 实测假设 — Followup 队列各形态 spike GREEN | 自然解不足 → Followup 留 sub-D(D148 §Followup F1+)|
 | **H14** (D148 新增) | scope 实测 vs 估值 + Phase 拆分细化 | bootstrap LOC delta 估 + Phase 拆分细化(原估 N=4-8) | **Phase 1 已实证 fact 入档**:**LOC delta 实测 ~500-850 (< 估值 > 2000 — 修正高估)**;关键 fact — checker 已局部 bidirectional 机制存在(`check_exprs.ss:91/156/270` funcParamTypes 反推三处 fn/method/ctor + `check_types.ss:229 isTypeCompatible`),bidirectional refactor 是**统一已存机制 entry** 不是从零重写;**Phase 拆分 N=5 建议**(Phase 3 checker 单一 entry inferTypeWithExpected + Phase 4 gen_types 5 helper 统一接管 + Phase 5 G1 16 落点收 + Phase 6=N+1 cleanup helper 删 + Followup 自然解 + Phase 7=N+2 全 Phase 收关 hash trail) | scope 修正后 C2 渐进 vs C3 完整 决策行 fact 支撑 — Phase 2 用户对话锁定 |
-| **H15** (D148 新增) | 推翻 D141-D145 5 sub-D「留 v2」一致决策授权门槛 | 5 sub-D §A.1 C3 + §A.3 一致决策不是未考虑,Phase 1+ 实施需用户对话授权;Phase 0 落档兑现 v2 起首最小动作不推翻决策本身 | Phase 2 用户对话锁定假设 — C2 vs C3 决策行 + 子 Phase 拆分授权 | 用户对话不通过 → 回 Phase 1 实测细化 + 等用户进一步对话 |
+| **H15** (D148 新增) | 推翻 D141-D145 5 sub-D「留 v2」一致决策授权门槛 | 5 sub-D §A.1 C3 + §A.3 一致决策不是未考虑,Phase 1+ 实施需用户对话授权;Phase 0 落档兑现 v2 起首最小动作不推翻决策本身 | **Phase 2 已通过**(2026-05-03)— C2 渐进锁定 + 子 Phase N=5 拆分授权 + D145 选项 A 自然接管 + H15 推翻不是「拒绝 v2」是「把 v2 具体化」(把 5 sub-D 一致锁的废案抬到主线起首);Phase 3+ bootstrap 改启动门槛降至 H15 通过条件,但具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围 | 失败回退条款保持(用户对话不通过 → 回 Phase 1 实测细化 + 等用户进一步对话)|
 
 ---
 
@@ -374,6 +421,10 @@
 - **改 D141-D145 文档本体全废**(同位例外锚 D148 同模式继承,文档不动)
 - **改 D025 / D052 / D067 / D131 等依赖 D 文档全废**(数据结构 + interface vtable + null safety 路径不破)
 - **删 D141-D145 5 处 ad-hoc trap helper 在 Phase N+1 之前全废**(bidirectional 渐进 refactor 期间 trap helper 继续工作 — H12 假设;Phase N+1 删才完结)
+- **C3 完整 bidirectional 重写废**(Phase 2 用户对话锁定 2026-05-03 不选 — 单 commit ~500-850 LOC 违 D135-D145 大改档不打包范式 + 一锅炖风险高 + 推翻 D141-D145 5 sub-D 一致决策风险更高,虽 LOC 比原估 > 2000 修正小但仍违范式;Phase 1 实测后 C2 渐进 fact 支撑放大,C3 优势消失)
+- **D145 选项 B 独立先行 sub-D 完成废**(Phase 2 锁定 D145 选项 A 自然接管 — bidirectional 落地后 Phase 4 gen_types 15 helper 统一接管自动覆盖 MAP_LIT,D145 主线 0 helper 不独立实施;选项 B 实施 5 helper 后 bidirectional 落地立刻删除,返工度高违反 §核心原则 6 N 年返工度极低)
+- **D145 选项 C deprecated 跳过废**(Phase 2 锁定 D145 选项 A 自然接管 — D141-D144 已实施 + D145 deprecated 不对称违一致性;bidirectional 落地后 D145 自然接管不需 deprecated 标记)
+- **Phase 3+ bootstrap 改本轮 Phase 2 启动废**(Phase 2 H15 授权通过仅锁定 C2 + N=5 子 Phase 拆分 + 实施前置 fact;具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围 — Phase 2 commit 不实施 Phase 3+ bootstrap 改,仅准备 fact 支撑)
 
 ---
 
@@ -391,7 +442,7 @@
 - generic 基础设施前置依赖实证(memory feedback_d026_d027_phantom_anchor §事实层 §实现锚 14 case GREEN — bidirectional 起首前置依赖满足,不再用 D026/D027 占位)
 - Status 时间线 Phase 0 entry
 
-### Phase 1: RED 复现 + 信息源探查 + scope 实测 [✓] Done at commit `<placeholder>` (2026-05-03)
+### Phase 1: RED 复现 + 信息源探查 + scope 实测 [✓] Done at commit `2be17f8` (2026-05-03)
 
 **兑现成果 a-h(七项 fact 全 GREEN + 用户口号校验防御)**:
 
@@ -454,34 +505,115 @@
 
 **验证**:Phase 1 commit + scope 实测 fact 入 Status header line 3 + §A.2 H8/H9/H10/H14 + 本 §Phase 收关锚 §Phase 1 + §Status 时间线 + Phase 0 hash 3 处真锚回填 + d_doc_index_linter F1=0 PASS + ultrathink_linter PASS
 
-### Phase 2: 候选 C2 vs C3 用户对话锁定 + 子 Phase 拆分 [ ] 待 Phase 2 commit
+### Phase 2: 候选 C2 渐进锁定 + 子 Phase N=5 拆分 + 实施前置 [✓] Done at commit `<placeholder>` (2026-05-03)
 
-- §A.1 C2 vs C3 用户对话锁定决策行(H15 推翻 D141-D145 5 sub-D「留 v2」一致决策授权门槛)
-- 子 Phase 拆分 D 文档草案(N=4-8 子 Phase)
-- 实施前置 fact 入 §1
-- 验证:Phase 2 commit + 用户对话决策行
+**兑现成果 a-h(用户对话授权 H15 通过 + scope fact 支撑 + 实施前置就绪)**:
 
-### Phase 3-N: bidirectional 渐进实施(子 Phase 拆) [ ] 待 Phase 3-N commit
+- (a) **C2 渐进锁定**(用户对话 2026-05-03 H15 授权通过 — 推翻 D141-D145 5 sub-D「留 v2」一致决策门槛通过):
+  - 不选 C3:单 commit ~500-850 LOC(Phase 1 实测修正,原估 > 2000 高估)违 D135-D145 大改档不打包范式 + 一锅炖风险高 + 推翻 5 sub-D 一致决策风险更高(虽 LOC 比原估小但仍违范式)
+  - 选 C2 渐进:scope ~500-850 LOC 拆 N=5 子 Phase × 每 Phase ~100-300 LOC 完全符合 D135-D145 大改档不打包范式 + checker 已局部 bidirectional 机制存在(`check_exprs.ss:91/156/270` funcParamTypes 反推三处 + `check_types.ss:229 isTypeCompatible`)统一已存机制 entry 不是从零重写 + 业界对标 TS contextual typing incremental migration 范式 + N 年返工度低 N=5 子 Phase 每步可观测 + 风险可控
 
-- `bootstrap/checker/check_types.ss` + `check_exprs.ss` bidirectional 改 + 单一 entry `inferTypeWithExpected(exprId, expectedType)`
-- `bootstrap/gen/gen_types.ss` 5 helper 渐进删
-- `bootstrap/eval/method_call.ss + call.ss + new_expr.ss` outer call site bidirectional expected 类型传递
-- `bootstrap/gen/codegen.ss + gen_registry.ss` funcParamTypes expected 类型源重构
-- 验证:bootstrap 固定点 PASS + spike GREEN + tests/d141-d145 baseline 不破 + tests/phase5/generic baseline 不破 + reflection GATE PASS
+- (b) **D145 异常处理选项 A 自然接管锁定**:
+  - bidirectional 落地后 Phase 4 gen_types 15 helper 统一接管自动覆盖 MAP_LIT
+  - D145 主线 0 helper 不独立实施(D145 选项 B 独立先行 sub-D 完成 + 选项 C deprecated 跳过 全废入 §A.3)
+  - D145 在 D141-D145 5 sub-D 中独缺 → bidirectional 自然解,Phase 数不增
 
-### Phase N+1: D141-D145 5 处 ad-hoc trap helper 删 + workaround cleanup [ ] 待 Phase N+1 commit
+- (c) **§1 Context 实施前置 fact 新增段**:
+  - bidirectional 关键设计 entry 表(checker 单一 entry inferTypeWithExpected + funcParamTypes 反推三处统一收 expectedType + isTypeCompatible 复用 + 15 helper bidirectional 接管 + G1 16 落点 + outer pre-eval 9 处统一)
+  - 已存机制 entry 复用清单(funcParamTypes Map + generic 基础设施 + isTypeCompatible)
+  - N=5 子 Phase LOC delta 估对齐 Phase 1 实测(总 ~550-850 ≈ Phase 1 实测 ~500-850)
+  - 子 Phase bootstrap 三阶段固定点风险条款(H8 待 Phase 3+ 实测)
 
-- 5 helper 删(`isFnType` / `extractFnParamType` / `inferArrowFuncParams` / `isArrayType` / `extractArrayElemType` / `inferArrayLitElems` / `isClassType` / `extractClassName` / `inferObjLiteralFields` / `isMapType` / `extractMapKVTypes` / `inferMapLiteralKVTypes` 等 N helper)
-- tests/d141-d145 仍 GREEN(bidirectional 接管 — H12 假设)
-- Followup 队列(D145 §F1 Tuple / D145 §F2 NEW_EXPR ctor / D145 §F3 partial / D145 §F4 spread / D145 §F5 反推失败粒度 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4)bidirectional 自然解 spike(H13 假设)
-- 验证:bootstrap 固定点 + tests/ 全绿 + grep 5 helper = 0 + Followup 队列各形态 spike GREEN
+- (d) **§A.1 决策行 C2 锁定 + C3 不选 + 决策段 Phase 2 锁定版重写**:
+  - C2 决策行标 ✓ 锁定(C2 渐进 + N=5 子 Phase 拆分 + D145 选项 A 自然接管)
+  - C3 决策行标 ✗ 不选(违 D135-D145 范式 + 一锅炖风险)
+  - 决策段重写 Phase 2 锁定版(2026-05-03)— Phase 2 决策 + 不选 C1/C3 + 选 C2 + D145 选项 A 锁定 + 历史 Phase 0/1 决策行沿用 + 长久/演化维度 + 前置依赖 + H15 授权通过段
 
-### Phase N+2: 全 Phase 收关 hash trail [ ] 待 Phase N+2 commit
+- (e) **§A.2 H15 授权通过**(Phase 2 已通过 2026-05-03):
+  - C2 渐进锁定 + 子 Phase N=5 拆分授权 + D145 选项 A 自然接管
+  - H15 推翻不是「拒绝 v2」是「把 v2 具体化」(把 5 sub-D 一致锁的废案抬到主线起首)
+  - Phase 3+ bootstrap 改启动门槛降至 H15 通过条件,但具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围
+  - 失败回退条款保持
 
-- D148 全 Phase commit hash 全列(Phase 0-N+1 的 commit hash + Phase N+2 占位下下轮 hash 回填轮替换)
-- 兑现成果 a-g(C2/C3 落地 / 5 helper 删 / H1-H15 全 PASS / OOD 标 / axiom 红线 grep = 0 永久 / d_doc_index_linter F1=0 永久 / reflection_health_linter GATE PASS 永久 / bootstrap 隔离破例 D141-D145 §核心原则 同位例外)
+- (f) **§3 Orchestration 表 Phase 3-7 N=5 详细化 + Phase 间依赖更新**:
+  - Phase 3 checker 单一 entry inferTypeWithExpected ~150-300 LOC
+  - Phase 4 gen_types 15 helper 统一接管 ~150-200 LOC
+  - Phase 5 G1 16 落点 + eval pre-eval 收 ~100-150 LOC
+  - Phase 6 (= N+1) 15 helper 删 + Followup F1-F7 自然解 ~100-150 LOC
+  - Phase 7 (= N+2) 全 Phase 0-7 收关 hash trail ~50 LOC
+  - Phase 间依赖更新(Phase 1 → 2 → 3 → 4 → 5 → 6 → 7 N=5 全链)
+
+- (g) **Phase 1 commit hash `2be17f8` 回填 3 处真锚**:
+  - line 3 Status header(Phase 1 → Phase 2 状态升级 + Phase 1 hash 一并回填)
+  - line 394 §Phase 收关锚 §Phase 1
+  - line 506 §Status 时间线 Phase 1 entry
+  - D135-D145 范式延续(Phase X+1 启动轮回填上一 Phase hash)
+
+- (h) **§A.3 加 D145 选项 B/C + C3 完整 + Phase 3+ 本轮启动 4 处废案**:
+  - C3 完整 bidirectional 重写废(Phase 2 用户对话锁定不选 — 单 commit 违范式 + 一锅炖风险)
+  - D145 选项 B 独立先行 sub-D 完成废(返工度高违 §核心原则 6)
+  - D145 选项 C deprecated 跳过废(违一致性)
+  - Phase 3+ bootstrap 改本轮 Phase 2 启动废(具体 Phase 3 启动需用户进一步对话锁定)
+
+**新发现 / 锚定**:
+- (i) checker 已局部 bidirectional 机制存在 → C2 渐进可行性大幅提升 → Phase 2 锁定 C2 fact 支撑(Phase 1 实测延续)
+- (ii) D145 选项 A 自然接管 — 不独立实施 → bidirectional 落地后 Phase 4 自然覆盖 → Phase 数 N=5 不增
+- (iii) Phase 3+ bootstrap 改本轮 Phase 2 不启动 — 具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围(H15 授权通过仅锁定 C2 + N=5 总体方向,具体子 Phase 范围留下轮)
+- (iv) D135-D145 范式延续(每 Phase 独立 commit + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环 — D147 Phase 5 commit `8323501` 同模式立即回填)
+
+**验证**:Phase 2 commit + 用户对话授权 H15 通过 + §A.1 决策行 C2 锁定 + §A.2 H15 授权通过 + §A.3 加 4 处废案 + §1 Context 实施前置 fact 新增段 + §3 Orchestration 表 Phase 3-7 N=5 详细化 + Phase 1 commit hash 回填 3 处真锚 + d_doc_index_linter F1=0 PASS + ultrathink_linter PASS + VCM §1 豁免锚成立(docs only)
+
+### Phase 3: checker 单一 entry inferTypeWithExpected [ ] 待 Phase 3 commit(启动需用户对话锁定子 Phase 范围)
+
+- `bootstrap/checker/check_types.ss` 改 `inferType(exprId)` → `inferTypeWithExpected(exprId, expectedType)` — `expectedType` 默认 `""` 表示无 expected(单向推断回退)
+- `bootstrap/checker/check_exprs.ss:91/156/270` funcParamTypes 反推三处统一收 expectedType(已局部 bidirectional 机制 entry 复用)
+- `bootstrap/checker/check_types.ss:229 isTypeCompatible(declared, actual)` 复用双向兼容判定
+- check 函数链 `expectedType` 形参贯穿(`checkExpr` / `checkBinop` / `checkCall` / `checkMethodCall` / `checkNewExpr` / `checkArrowFunc` / `checkArrayLit` / `checkObjLiteral` / `checkTernary` / `checkMapLit` 等)
+- LOC delta 估 ~150-300
+- 验证:bootstrap 固定点 PASS + checker bidirectional spike GREEN + tests/d141-d144 baseline 不破
+
+### Phase 4: gen_types 15 helper 统一接管 [ ] 待 Phase 4 commit
+
+- `bootstrap/gen/gen_types.ss:766-981` 15 helper(D141:4 + D142:2 + D143:4 + D144:5)从 ad-hoc trap 改为 bidirectional 实现接管:
+  - **D141 ARROW_FUNC** 4 helper:`isFnType:766` / `extractFnParamType:775` / `extractFnRetType:791` / `inferArrowFuncParams:804`
+  - **D142 ARRAY_LIT** 2 helper:`extractArrayElemType:839` / `inferArrayLitElems:853`
+  - **D143 OBJ_LITERAL → class<X>** 4 helper:`isClassType:868` / `extractClassName:883` / `inferObjLiteralFromType:899` / `inferObjLiteralFields:912`
+  - **D144 TERNARY** 5 helper:`isNullableType:925` / `extractInnerType:933` / `unifyBranchTypes:944` / `propagateTernaryBranchType:957` / `inferTernaryBranchType:969`
+- 改造路径:checker entry 反推 expectedType → 各 helper 单一 dispatch
+- **D145 选项 A 自然接管**:MAP_LIT case 自动覆盖 — bidirectional 框架统一 dispatch `expected = "Map<K,V>"` 时直接进 MAP_LIT 反推路径,D145 主线 0 helper 不独立实施
+- LOC delta 估 ~150-200
+- 验证:bootstrap 固定点 PASS + gen_types 接管 spike GREEN + tests/d141-d144 仍 GREEN(渐进 refactor) + MAP_LIT case GREEN(D145 自然接管)
+
+### Phase 5: G1 16 落点 + eval pre-eval 收 [ ] 待 Phase 5 commit
+
+- G1 16 落点(4 helper × 4 落点)统一调用 checker 单一 entry:
+  - `bootstrap/gen/gen_calls.ss:279/281/284/286` 4 落点(call args resolveCallArgs)
+  - `bootstrap/gen/gen_methods.ss:196/198/200/202` 4 落点(method call emitClassMethodCall)
+  - `bootstrap/eval/method_call.ss:61/63/65/69` 4 落点(eval method call)
+  - `bootstrap/eval/call.ss:33/35/39/41` 4 落点(eval call)
+- outer pre-eval 9 处 expected 类型传递路径接通:
+  - `bootstrap/eval/method_call.ss:61-69` 4 helper(D143/D144 H10 锚)
+  - `bootstrap/eval/call.ss:33-41` 4 helper(D141 H10 锚)
+  - `bootstrap/eval/new_expr.ss:41` 1 helper(`inferObjLiteralFromType` ctor 实参反推)
+- 改造方向:从「outer call site 各 helper 独立反推」改为「outer call site 统一 genVal(argId, expectedType)」(bidirectional expected 类型沿 call 链下传)
+- LOC delta 估 ~100-150
+- 验证:bootstrap 固定点 PASS + 16 落点 spike GREEN + tests/d141-d144 + tests/phase5/generic baseline 不破 + reflection GATE PASS
+
+### Phase 6 (= N+1): D141-D144 15 ad-hoc trap helper 删 + Followup F1-F7 bidirectional 自然解 [ ] 待 Phase 6 commit
+
+- 15 helper 删(`isFnType` / `extractFnParamType` / `extractFnRetType` / `inferArrowFuncParams` / `extractArrayElemType` / `inferArrayLitElems` / `isClassType` / `extractClassName` / `inferObjLiteralFromType` / `inferObjLiteralFields` / `isNullableType` / `extractInnerType` / `unifyBranchTypes` / `propagateTernaryBranchType` / `inferTernaryBranchType`,全在 `bootstrap/gen/gen_types.ss:766-981`)
+- tests/d141-d144 仍 GREEN(bidirectional 接管 — H12 假设)
+- Followup F1-F7 bidirectional 自然解(D145 §F1 Tuple / §F2 NEW_EXPR ctor / §F3 partial / §F4 spread / §F5 反推失败粒度 + D144 §F2-F6 + D143 §F3+/F6+/F7+/F8 + D142 §F6+ + D141 §F4 + D148 §F1-F7)
+- LOC delta 估 ~100-150
+- 验证:bootstrap 固定点 + tests/ 全绿 + grep 15 helper = 0 + Followup 队列各形态 spike GREEN
+
+### Phase 7 (= N+2): 全 Phase 0-7 收关 hash trail [ ] 待 Phase 7 commit
+
+- D148 全 Phase commit hash 全列(Phase 0-6 commit hash + Phase 7 占位下下轮 hash 回填轮替换)
+- 兑现成果 a-h 总览(C2 锁定 / D145 选项 A 自然接管 / 15 helper 删 / H1-H15 全 PASS / OOD 标 / d_doc_index_linter F1=0 永久 / reflection_health_linter GATE PASS 永久 / bootstrap 隔离破例 D141-D145 §核心原则 同位例外)
 - 隐藏假设 H1-H15 全 PASS / OOD 标
-- Followup F1-F6 锚明确(D148 §Followup 入下一 D 文档启动队列,bidirectional 落地后 D141-D145 §Followup 队列大部分自然解,剩余留 D148 §Followup F1+)
+- Followup F1-F7 锚明确(D148 §Followup 入下一 D 文档启动队列,bidirectional 落地后 D141-D145 §Followup 队列大部分自然解,剩余留 D148 §Followup F1+)
+- LOC delta 估 ~50
 - 验证:D148 主线 close + d_doc_index_linter F1=0 永久 + reflection GATE PASS 永久
 
 ---
@@ -503,4 +635,5 @@
 ## Status 时间线
 
 - 2026-05-03 Phase 0 D 文档落档(commit `73eb4c5`)— D141 §F5 + D142 §F4 + D143 §F5 + D144 §F7 + D145 §F6 五合真锚兑现 v2 起首最小动作;C2 渐进 vs C3 完整 留 Phase 1+ 用户对话锁定;§A.1 C1/C2/C3 + §A.1.1 G1/G2/G3 + §A.2 H1-H15(D141-D145 H1-H13 同模式继承 + H14-H15 D148 新增 scope 实测 + 推翻 v2 决策授权门槛)+ §A.3 废案(D026/D027 历史代号占位全废 + Phase 0 锁定 C2 vs C3 全废 + 单 Phase 一锅炖全废 + G3 空转全废 + 等)+ Phase 0-N+2 计划草案(N=4-8 待 Phase 1 实测确定)+ Followup F1-F6;用户口号虚锚校验报告(D142/D143 §F7 bidirectional 是 §F 编号机械套用错位虚锚,真锚 D142 §F4 + D143 §F5 — memory feedback_user_literal_vs_d_ssot 防御兑现);generic 基础设施前置依赖实证(memory feedback_d026_d027_phantom_anchor §事实层 §实现锚 14 case GREEN — bidirectional 起首前置依赖满足);D135/D136/D137/D140/D141/D142/D143/D144/D145 范式延续(每 Phase 独立 commit 大改档 + Status 收关 + commit hash 回填 + next_prompt 自闭环 — D145 Phase 0 commit `d2fb4e1` 同模式)
-- 2026-05-03 Phase 1 RED 复现 + 信息源探查 + scope 实测(commit `<placeholder>`)— **Phase 1 兑现 a-h 七项 fact 全 GREEN + 新发现总结**(详 §Phase 收关锚 §Phase 1):(a) D141-D144 累计 **15 ad-hoc trap helper** grep 实证(D141:4 + D142:2 + D143:4 + D144:5,全在 `bootstrap/gen/gen_types.ss:766-981`)+ **D145 异常发现** 0 helper 主线未实施完(`tests/d145_map_literal_inference/` 不存在 + MAP_LIT 节点全 0 命中 + D145.md 仅 Phase 1 RED commit `17a1573` 实施未落);(b) G1 **16 落点** + **outer pre-eval 9 处**(method_call.ss 4 + call.ss 4 + new_expr.ss 1);(c) **bootstrap LOC delta 实测 ~500-850 修正**(D148 §核心目标 原估 > 2000 LOC 高估 — **关键发现** checker 已局部 bidirectional 机制 `check_exprs.ss:91/156/270` funcParamTypes 反推三处 fn/method/ctor + `check_types.ss:229 isTypeCompatible`,bidirectional refactor 是**统一已存机制 entry** 不是从零重写);(d) **Phase 拆分细化建议 N=5**(Phase 3 checker 单一 entry inferTypeWithExpected + Phase 4 gen_types 15 helper 统一接管 + Phase 5 G1 16 落点收 + Phase 6=N+1 cleanup helper 删 + Followup 自然解 + Phase 7=N+2 全 Phase 收关 hash trail);(e) C2 渐进 vs C3 完整 实测对比初步 fact(scope 修正后 C2 优势放大 — 单子 Phase ~100-300 LOC 符合 D135-D145 大改档不打包范式 vs C3 单 commit ~500-850 LOC 违范式)— Phase 2 用户对话锁定决策行;(f) 隐藏假设探查 — **H9 PASS 初步**(`pir/pir.ss:101 startsWith("Array<")/("Map<")` + `pir.ss:200 inferType(initId)` + `pir_lower.ss:89-90 ssType = inferType(initId)` 只读类型字符串前缀做 RC 判定不参与推断,bidirectional 是 codegen-time 推断 PIR 不需扩) + **H10 PASS 实证**(`ls tests/phase5/generic_*.ss | wc -l` = 14 + `gen_generic_class.ss` 427 行 + `gen_types.ss:711 resolveTypeParam` 实存,memory feedback_d026_d027_phantom_anchor §事实层 §实现锚双重实证) + H8 待 Phase 3+ 子 Phase bootstrap 实测 + H14 入档 + **H15 留 Phase 2 用户对话锁定**(推翻 D141-D145 5 sub-D 一致 v2 决策授权门槛);(g) spike form 1-N 用 `tests/d141_lambda_inference/` 11 + `tests/d142_array_literal_inference/` 6 + `tests/d143_object_literal_inference/` 6 + `tests/d144_ternary_inference/` 8 baseline + grep/ls 实测代替(更纯 docs only,VCM §1 豁免锚成立)+ form 5 D145 RED + form 6/7 var decl typeAnn / class field init partial 支持;(h) Phase 0 commit hash `73eb4c5` 回填 **3 处真锚**(line 3 Status header + line 382 §Phase 收关锚 §Phase 0 + line 452 §Status 时间线 Phase 0 entry — **用户口号校验**「Phase 0 hash 4 处回填」字面口号实测 占位符行数实测 = 3 处,memory feedback_user_literal_vs_d_ssot 同形防御兑现 — D148 因 Phase 0 起步无 §全 Phase 总览段所以仅 3 处真锚 vs D147 范式 4 处含 §全 Phase 总览段自指描述同步);**新发现总结**:(i) checker 已局部 bidirectional 机制存在(funcParamTypes 反推三处 + isTypeCompatible)+ 5 helper(D141-D144 共 15)在 codegen 阶段反推 — bidirectional refactor 是**统一已存机制 entry** 不是从零重写,scope 比原估小 3-4 倍(~500-850 vs > 2000)— C2 渐进可行性大幅提升;(ii) D145 主线未实施完(0 helper)— D141-D145 5 sub-D 中独缺,bidirectional 落地后 D145 可被自然接管或独立先行 sub-D 完成 — Phase 2 用户对话锁定 H15 决策行变量;(iii) 用户口号「Phase 0 hash 4 处回填」字面口号实测 = 3 处真锚(memory feedback_user_literal_vs_d_ssot 同形防御兑现);(iv) PIR 不需扩(H9 PASS 初步) — bidirectional 是 codegen-time 推断,PIR 只消费 inferType 输出;D135/D136/D137/D140/D141/D142/D143/D144/D145/D147 范式延续(每 Phase 独立 commit + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环 — D147 Phase 5 commit `8323501` 同模式立即回填)
+- 2026-05-03 Phase 1 RED 复现 + 信息源探查 + scope 实测(commit `2be17f8`)— **Phase 1 兑现 a-h 七项 fact 全 GREEN + 新发现总结**(详 §Phase 收关锚 §Phase 1):(a) D141-D144 累计 **15 ad-hoc trap helper** grep 实证(D141:4 + D142:2 + D143:4 + D144:5,全在 `bootstrap/gen/gen_types.ss:766-981`)+ **D145 异常发现** 0 helper 主线未实施完(`tests/d145_map_literal_inference/` 不存在 + MAP_LIT 节点全 0 命中 + D145.md 仅 Phase 1 RED commit `17a1573` 实施未落);(b) G1 **16 落点** + **outer pre-eval 9 处**(method_call.ss 4 + call.ss 4 + new_expr.ss 1);(c) **bootstrap LOC delta 实测 ~500-850 修正**(D148 §核心目标 原估 > 2000 LOC 高估 — **关键发现** checker 已局部 bidirectional 机制 `check_exprs.ss:91/156/270` funcParamTypes 反推三处 fn/method/ctor + `check_types.ss:229 isTypeCompatible`,bidirectional refactor 是**统一已存机制 entry** 不是从零重写);(d) **Phase 拆分细化建议 N=5**(Phase 3 checker 单一 entry inferTypeWithExpected + Phase 4 gen_types 15 helper 统一接管 + Phase 5 G1 16 落点收 + Phase 6=N+1 cleanup helper 删 + Followup 自然解 + Phase 7=N+2 全 Phase 收关 hash trail);(e) C2 渐进 vs C3 完整 实测对比初步 fact(scope 修正后 C2 优势放大 — 单子 Phase ~100-300 LOC 符合 D135-D145 大改档不打包范式 vs C3 单 commit ~500-850 LOC 违范式)— Phase 2 用户对话锁定决策行;(f) 隐藏假设探查 — **H9 PASS 初步**(`pir/pir.ss:101 startsWith("Array<")/("Map<")` + `pir.ss:200 inferType(initId)` + `pir_lower.ss:89-90 ssType = inferType(initId)` 只读类型字符串前缀做 RC 判定不参与推断,bidirectional 是 codegen-time 推断 PIR 不需扩) + **H10 PASS 实证**(`ls tests/phase5/generic_*.ss | wc -l` = 14 + `gen_generic_class.ss` 427 行 + `gen_types.ss:711 resolveTypeParam` 实存,memory feedback_d026_d027_phantom_anchor §事实层 §实现锚双重实证) + H8 待 Phase 3+ 子 Phase bootstrap 实测 + H14 入档 + **H15 留 Phase 2 用户对话锁定**(推翻 D141-D145 5 sub-D 一致 v2 决策授权门槛);(g) spike form 1-N 用 `tests/d141_lambda_inference/` 11 + `tests/d142_array_literal_inference/` 6 + `tests/d143_object_literal_inference/` 6 + `tests/d144_ternary_inference/` 8 baseline + grep/ls 实测代替(更纯 docs only,VCM §1 豁免锚成立)+ form 5 D145 RED + form 6/7 var decl typeAnn / class field init partial 支持;(h) Phase 0 commit hash `73eb4c5` 回填 **3 处真锚**(line 3 Status header + line 382 §Phase 收关锚 §Phase 0 + line 452 §Status 时间线 Phase 0 entry — **用户口号校验**「Phase 0 hash 4 处回填」字面口号实测 占位符行数实测 = 3 处,memory feedback_user_literal_vs_d_ssot 同形防御兑现 — D148 因 Phase 0 起步无 §全 Phase 总览段所以仅 3 处真锚 vs D147 范式 4 处含 §全 Phase 总览段自指描述同步);**新发现总结**:(i) checker 已局部 bidirectional 机制存在(funcParamTypes 反推三处 + isTypeCompatible)+ 5 helper(D141-D144 共 15)在 codegen 阶段反推 — bidirectional refactor 是**统一已存机制 entry** 不是从零重写,scope 比原估小 3-4 倍(~500-850 vs > 2000)— C2 渐进可行性大幅提升;(ii) D145 主线未实施完(0 helper)— D141-D145 5 sub-D 中独缺,bidirectional 落地后 D145 可被自然接管或独立先行 sub-D 完成 — Phase 2 用户对话锁定 H15 决策行变量;(iii) 用户口号「Phase 0 hash 4 处回填」字面口号实测 = 3 处真锚(memory feedback_user_literal_vs_d_ssot 同形防御兑现);(iv) PIR 不需扩(H9 PASS 初步) — bidirectional 是 codegen-time 推断,PIR 只消费 inferType 输出;D135/D136/D137/D140/D141/D142/D143/D144/D145/D147 范式延续(每 Phase 独立 commit + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环 — D147 Phase 5 commit `8323501` 同模式立即回填)
+- 2026-05-03 Phase 2 候选 C2 渐进锁定 + 子 Phase N=5 拆分 + 实施前置(commit `<placeholder>`)— **Phase 2 兑现 a-h 八项 fact 全 GREEN + H15 授权通过**(详 §Phase 收关锚 §Phase 2):(a) **C2 渐进锁定**(用户对话 2026-05-03 H15 授权通过 — 推翻 D141-D145 5 sub-D「留 v2」一致决策门槛通过 + scope ~500-850 LOC 拆 N=5 子 Phase × 每 Phase ~100-300 LOC 完全符合 D135-D145 大改档不打包范式 + checker 已局部 bidirectional 机制存在统一已存机制 entry + 业界对标 TS contextual typing incremental migration 范式 + N 年返工度低);(b) **D145 选项 A 自然接管锁定**(bidirectional 落地后 Phase 4 gen_types 15 helper 统一接管自动覆盖 MAP_LIT,D145 主线 0 helper 不独立实施 — D145 选项 B 独立先行 sub-D / 选项 C deprecated 跳过 全废入 §A.3);(c) **§1 Context 实施前置 fact 新增段**(bidirectional 关键设计 entry 表 9 行:checker 单一 entry inferTypeWithExpected + funcParamTypes 反推三处统一收 expectedType + isTypeCompatible 复用 + 15 helper bidirectional 接管 + G1 16 落点 + outer pre-eval 9 处统一 + funcParamTypes Map 不动 + generic 基础设施不动 + PIR 不动;N=5 子 Phase LOC delta 估对齐 Phase 1 实测;已存机制 entry 复用清单 4 项);(d) **§A.1 决策行 C2 锁定 + C3 不选 + 决策段 Phase 2 锁定版重写**(C2 ✓ 锁定 + C3 ✗ 不选 + 决策行 Phase 2 决策 + 不选 C1/C3 + 选 C2 + D145 选项 A 锁定 + 历史 Phase 0/1 决策行沿用 + 长久/演化维度 + 前置依赖 + H15 授权通过段);(e) **§A.2 H15 授权通过**(Phase 2 已通过 2026-05-03 — C2 渐进锁定 + 子 Phase N=5 拆分授权 + D145 选项 A 自然接管,H15 推翻不是「拒绝 v2」是「把 v2 具体化」 — Phase 3+ bootstrap 改启动门槛降至 H15 通过条件,但具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围);(f) **§3 Orchestration 表 Phase 3-7 N=5 详细化 + Phase 间依赖更新**(Phase 3 checker 单一 entry inferTypeWithExpected ~150-300 + Phase 4 gen_types 15 helper 统一接管 ~150-200 + Phase 5 G1 16 落点 + eval pre-eval 收 ~100-150 + Phase 6=N+1 cleanup 15 helper 删 + Followup F1-F7 自然解 ~100-150 + Phase 7=N+2 全 Phase 0-7 收关 hash trail ~50;Phase 间依赖 Phase 1 → 2 → 3 → 4 → 5 → 6 → 7 N=5 全链);(g) **Phase 1 commit hash `2be17f8` 回填 3 处真锚**(line 3 Status header + line 394 §Phase 收关锚 §Phase 1 + line 506 §Status 时间线 Phase 1 entry — D135-D145 范式延续 Phase X+1 启动轮回填上一 Phase hash);(h) **§A.3 加 4 处废案**(C3 完整 bidirectional 重写废 — Phase 2 用户对话锁定不选 + D145 选项 B 独立先行 sub-D 完成废 — 返工度高违 §核心原则 6 + D145 选项 C deprecated 跳过废 — 违一致性 + Phase 3+ bootstrap 改本轮 Phase 2 启动废 — 具体 Phase 3 启动需用户进一步对话锁定);**新发现 / 锚定**:(i) checker 已局部 bidirectional 机制存在(funcParamTypes 反推三处 + isTypeCompatible)→ C2 渐进可行性大幅提升 → Phase 2 锁定 C2 fact 支撑(Phase 1 实测延续);(ii) D145 选项 A 自然接管 — 不独立实施 → bidirectional 落地后 Phase 4 自然覆盖 → Phase 数 N=5 不增;(iii) Phase 3+ bootstrap 改本轮 Phase 2 不启动 — 具体 Phase 3 启动需用户进一步对话锁定子 Phase 范围(H15 授权通过仅锁定 C2 + N=5 总体方向,具体子 Phase 范围留下轮);(iv) D135-D147 范式延续(每 Phase 独立 commit + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环)
