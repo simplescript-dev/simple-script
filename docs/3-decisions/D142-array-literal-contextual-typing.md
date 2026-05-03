@@ -174,7 +174,7 @@
 - ❌ 改 funcParamTypes 注册路径(已就绪 — §核心原则 8)
 - ❌ 把 inferArrayElemType helper 重写(已就绪 gen_types.ss:126-151,Phase 2 复用)
 - ❌ 顺带改 array literal RHS var decl 路径(gen_decls.ss:566-571 既有,显式优先 — H6)
-- ❌ 起全局 bidirectional type checking(C3 候选废,留 D026/D027 generic 落地后再开 D 文档评估)
+- ❌ 起全局 bidirectional type checking(C3 候选废,留 留独立 sub-D 评估 — memory feedback_d026_d027_phantom_anchor — generic 已落 gen_generic_class.ss,bidirectional 是真正剩余项)
 - ❌ 实施 D141 §Followup F2/F3(object literal / ternary contextual typing)— 留同模式扩 sub-D 后续轮
 
 ---
@@ -307,7 +307,7 @@ EOF
 |---|---|---|---|---|---|---|
 | **C1** | **数据层 patch** | `gen_calls.ss:643/711 inferType(elemId)` 路径加 fallback — 元素类型未知时从 callee funcParamTypes 取 elemType 兜底 | 破裂入口在 ARRAY_LIT inferType 返单一 "Array",信息丢失;C1 仅在 genArrayLit 单点补 fallback,不消除根因 — check_class.ss:33 method dispatch / inferArrayElemType 等其他消费者仍走错 | LOC 极小 5-10 行;不动 checker | 零散 patch — 多消费者(genArrayLit / inferArrayElemType / classFieldTypes 等)都用 ARRAY_LIT inferType,信息源不单点;同模式 array literal 在 method 实参 / map literal 等场景仍 RED | **不选** — 数据层不消除根因(`feedback_root_cause_no_cost.md` 红线,与 D141 §A.1 C1 同形废) |
 | **C2** | **接口层 trap** | checker `check_types.ss:50` ARRAY_LIT 改返 `Array<elemType>` 结构化签名(与 ARROW_FUNC `fn(P,...):R` 同形)+ codegen 阶段 fn/method 实参反推回填 ARRAY_LIT elemType slot + eval pre-eval 时序 + funcParamTypes SSoT 复用 | **彻底消除** — ARRAY_LIT inferType 结构化,所有下游(genArrayLit / inferArrayElemType / classFieldTypes / method dispatch)信息源一致;eval pre-eval 反推前移避免 D141 H10 同形时序破裂 | 单点信息源回填;TS / Java 8+ contextual typing 主线;D141 G1 路径同模式复刻;workaround cleanup 落锚 | LOC 中等 ~250(check_types.ss + check_class.ss + gen_calls.ss + eval/method_call.ss + eval/call.ss + helper);需考虑嵌套 array / 空数组 / interface upcast 边界 | **选** — 接口层 trap 消除根因 + scope 可控 + D141 同模式复用 |
-| **C3** | **架构层 refactor** | 全编译器 bidirectional type checking — checker 改 expected/actual 双向类型检查,所有表达式从调用上下文反推类型(包括 array literal + object literal + ternary + null literal 等) | 消除根因 + 消除其他 silent miscompile(object literal / ternary 类型推断等)| 类型系统统一性最高;未来扩 SS 泛型 D026/D027 时直接复用;D141 §Followup F5 已锁此候选废留 SS 类型系统 v2 | scope 爆炸 LOC > 2000 + 多 sub-D + bootstrap 重写多个核心文件;F1 单 sub-D scope 远超(D142 不应承载架构层 refactor) | **不选** — scope 远超 D142 单 sub-D 范围;**D141 §Followup F5 已锁此候选废**,留作未来 SS 类型系统 v2 评估 |
+| **C3** | **架构层 refactor** | 全编译器 bidirectional type checking — checker 改 expected/actual 双向类型检查,所有表达式从调用上下文反推类型(包括 array literal + object literal + ternary + null literal 等) | 消除根因 + 消除其他 silent miscompile(object literal / ternary 类型推断等)| 类型系统统一性最高;复用现有 generic 基础设施(已落 gen_generic_class.ss + gen_types.ss:711 resolveTypeParam,memory feedback_d026_d027_phantom_anchor);D141 §Followup F5 已锁此候选废留 SS 类型系统 v2 | scope 爆炸 LOC > 2000 + 多 sub-D + bootstrap 重写多个核心文件;F1 单 sub-D scope 远超(D142 不应承载架构层 refactor) | **不选** — scope 远超 D142 单 sub-D 范围;**D141 §Followup F5 已锁此候选废**,留作未来 SS 类型系统 v2 评估 |
 
 **决策行**:**选 C2 接口层 trap** 因 (a) 单点信息源回填,消除 ARRAY_LIT inferType 单一 "Array" 的假设破裂入口;(b) D141 G1 路径同模式复刻 — eval pre-eval 时序 + funcParamTypes SSoT + codegen 阶段反推 + 失败硬错粒度全沿用;(c) workaround cleanup 落锚 Phase 4(临时变量绑定形态全删);(d) scope 可控 ~250 LOC delta < D141 ~267 LOC。**为何不选 C1**:数据层 zero-spread 不消除根因(`feedback_root_cause_no_cost.md` 红线,与 D141 §A.1 C1 同形废)。**为何不选 C3**:scope 爆炸 — D141 §Followup F5 已锁 C3 废留 SS 类型系统 v2,D142 单 sub-D 不承载架构层 refactor。
 
@@ -484,7 +484,7 @@ EOF
 - F1 object literal contextual typing — `{ name: "X", age: 18 }` 在 fn 实参 `class User` 时反推字段类型(D141 §Followup F2 同模式锚,**留 D143 起首候选**)
 - F2 ternary contextual typing — `cond ? a : b` 在 fn 实参 `Maybe<int>` 时反推分支类型(D141 §Followup F3 同模式锚,留 D144+ sub-D)
 - F3 array method first-class param 反推 — `arr.filter((x) => x > 0)` lambda 参数从 array elemType 反推(D141 反推机制 + D142 elemType 联动 sub-D)
-- F4 bidirectional type checking 全局 — C3 候选废案,留作未来 SS 类型系统 v2(D026/D027 落地后再开 D 文档评估,D141 §Followup F5 同位)
+- F4 bidirectional type checking 全局 — C3 候选废案,留作未来 SS 类型系统 v2(memory feedback_d026_d027_phantom_anchor,D141 §Followup F5 同位)
 - F5 Map literal contextual typing — `{ "k": "v" }` Map literal 在 fn 实参 `Map<string,string>` 反推
 - F6 Tuple literal contextual typing — tuple literal 在 fn 实参 `Tuple<int,string>` 反推
 - **F7 NEW_EXPR ctor 实参 array literal 反推**(本 Phase 4 实测加锚)— `new MysqlPreparedStatement(-1, 7, 3, pDefs, [0,0,0], ["","",""], [0.0,0.0,0.0], [0,0,0], cols, 0)` 等 ctor args 反推 — D142 Phase 2 G1 4 落点(`resolveCallArgs` / `emitClassMethodCall` / `eval/method_call.ss` / `eval/call.ss`)未含 NEW_EXPR;`bootstrap/gen/class/class.ss:288-301 genNewExpr` args 循环未调 inferArrayLitElems;Phase 4 实测 cleanup 4 处全在此路径(元素自身可推路径 GREEN,本轮不需要扩),空 ctor array / 异质 / interface upcast 场景需要 — array literal 同模式 sub-D
@@ -514,7 +514,7 @@ EOF
 | F1 | object literal contextual typing | `{ name: "X", age: 18 }` 在 fn 实参 `class User` 时反推字段类型 — D141 §Followup F2 同模式锚,留 D143+ sub-D |
 | F2 | ternary contextual typing | `cond ? a : b` 在 fn 实参 `Maybe<int>` 时反推分支类型 — D141 §Followup F3 同模式锚,留 D144+ sub-D |
 | F3 | array method first-class param 反推 | `arr.filter((x) => x > 0)` lambda 参数从 array elemType 反推 — D141 反推机制 + D142 elemType 联动 sub-D |
-| F4 | bidirectional type checking 全局 | C3 候选废案,留作未来 SS 类型系统 v2(D026/D027 落地后再开 D 文档)— D141 §Followup F5 同位 |
+| F4 | bidirectional type checking 全局 | C3 候选废案,留作未来 SS 类型系统 v2(memory feedback_d026_d027_phantom_anchor)— D141 §Followup F5 同位 |
 | F5 | Map literal contextual typing | `{ "k": "v" }` Map literal 在 fn 实参 `Map<string,string>` 反推 — array literal 同模式 sub-D |
 | F6 | Tuple literal contextual typing | tuple literal 在 fn 实参 `Tuple<int,string>` 反推 — array literal 同模式 sub-D |
 | F7 | NEW_EXPR ctor 实参 array literal 反推 | `new MysqlPreparedStatement(-1, 7, 3, pDefs, [0,0,0], ["","",""], [0.0,0.0,0.0], [0,0,0], cols, 0)` 等 ctor args 反推 — D142 Phase 2 G1 4 落点(`resolveCallArgs` / `emitClassMethodCall` / `eval/method_call.ss` / `eval/call.ss`)未含 NEW_EXPR;`bootstrap/gen/class/class.ss:288-301 genNewExpr` args 循环未调 inferArrayLitElems;Phase 4 实测 cleanup 4 处全在此路径(元素自身可推路径 GREEN,本轮不需要扩),空 ctor array / 异质 / interface upcast 场景需要 — array literal 同模式 sub-D |

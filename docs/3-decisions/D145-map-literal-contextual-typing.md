@@ -176,7 +176,7 @@
 - ❌ 把 D052 ss_mapNew / ss_mapSet 重写(已就绪,Phase 2 反推得 callee `Map<K,V>` 后 codegen emit 调原 D052 路径)
 - ❌ 把 D143 OBJ_LITERAL className 反推路径重写(D143 路径不破,callee 类型分叉判定加并行路径)
 - ❌ 顺带改 OBJ_LITERAL 在 var decl RHS 路径(scope 留 sub-D 后续轮 — H6 显式优先)
-- ❌ 起全局 bidirectional type checking(C3 候选废,留 D026/D027 generic 落地后再开 D 文档评估)
+- ❌ 起全局 bidirectional type checking(C3 候选废,留 留独立 sub-D 评估 — memory feedback_d026_d027_phantom_anchor — generic 已落 gen_generic_class.ss,bidirectional 是真正剩余项)
 - ❌ 实施 D141 §F4+ / D142 §F6+ / D143 §F3+ / D144 §F2+ 后续 sub-D(Tuple/spread/partial fields/反推失败粒度等留同模式扩 sub-D 后续轮)
 
 ---
@@ -314,7 +314,7 @@ EOF
 |---|---|---|---|---|---|---|
 | **C1** | **数据层 patch** | `gen_calls.ss` fn 实参 OBJ_LITERAL 路径加 fallback — OBJ_LITERAL 类型未知时若 callee = `Map<K,V>` 直接 emit ss_mapNew + ss_mapSet 链不在 checker 反推 | 破裂入口在 OBJ_LITERAL inferType 在 D143 反推 className 单一路径,信息丢失;C1 仅在 fn 实参单点补 fallback,不消除根因 — D143 path / classFieldTypes / inferType 等其他消费者仍走错 | LOC 极小 5-10 行;不动 checker | 零散 patch — 多消费者(D143 className / classFieldTypes / inferType / D084 rewrite 等)都用 OBJ_LITERAL inferType,信息源不单点;同模式 Map literal 在 method 实参 / var decl typeAnn 等场景仍 RED | **不选** — 数据层不消除根因(`feedback_root_cause_no_cost.md` 红线,与 D141/D142/D143/D144 §A.1 C1 同形废)|
 | **C2** | **接口层 trap** | checker `check_exprs.ss:OBJ_LITERAL case` 加 callee 类型分叉判定(`Map<K,V>` → Map literal 反推 K + V;`class<X>` → 走 D143 既有 className 反推) + codegen 阶段 fn/method 实参反推回填 OBJ_LITERAL keyType + valueType slot + eval pre-eval 时序 + funcParamTypes SSoT 复用 + D052 ss_mapNew + ss_mapSet 路径复用 + codegen 路径分叉 emit | **彻底消除** — OBJ_LITERAL 反推结构化分叉,所有下游(D143 className / classFieldTypes / inferType / Map literal codegen)信息源一致;eval pre-eval 反推前移避免 D141/D142/D143/D144 H10 同形时序破裂 | 单点信息源回填;TS / Java contextual typing 主线;D141/D142/D143/D144 G1 路径同模式复刻;workaround cleanup 落锚;D052 + D143 路径双复用 | LOC 中等 ~140(check_exprs.ss + gen_calls.ss + gen_methods.ss + eval/method_call.ss + eval/call.ss + eval/new_expr.ss + gen_types.ss helper);需考虑嵌套 Map / Map<K,Array<V>> 嵌套泛型 / Map<K,V?> nullable values / callee 类型分叉判定边界 | **选** — 接口层 trap 消除根因 + scope 可控 + D141/D142/D143/D144 同模式复用 + D052 + D143 双路径复用 |
-| **C3** | **架构层 refactor** | 全编译器 bidirectional type checking — checker 改 expected/actual 双向类型检查,所有表达式从调用上下文反推类型 | 消除根因 + 消除其他 silent miscompile | 类型系统统一性最高;未来扩 SS 泛型 D026/D027 时直接复用 | scope 爆炸 LOC > 2000 + 多 sub-D + bootstrap 重写多个核心文件;F1 单 sub-D scope 远超(D145 不应承载架构层 refactor) | **不选** — scope 远超 D145 单 sub-D 范围;**D141 §Followup F5 + D142 §A.3 + D143 §A.3 + D144 §A.3 已锁此候选废**,留作未来 SS 类型系统 v2 评估 |
+| **C3** | **架构层 refactor** | 全编译器 bidirectional type checking — checker 改 expected/actual 双向类型检查,所有表达式从调用上下文反推类型 | 消除根因 + 消除其他 silent miscompile | 类型系统统一性最高;复用现有 generic 基础设施(已落 gen_generic_class.ss + gen_types.ss:711 resolveTypeParam,memory feedback_d026_d027_phantom_anchor) | scope 爆炸 LOC > 2000 + 多 sub-D + bootstrap 重写多个核心文件;F1 单 sub-D scope 远超(D145 不应承载架构层 refactor) | **不选** — scope 远超 D145 单 sub-D 范围;**D141 §Followup F5 + D142 §A.3 + D143 §A.3 + D144 §A.3 已锁此候选废**,留作未来 SS 类型系统 v2 评估 |
 
 **决策行**:**选 C2 接口层 trap** 因 (a) 单点信息源回填 + callee 类型分叉判定,消除 OBJ_LITERAL inferType 在 D143 单一 className 路径的假设破裂入口;(b) D141/D142/D143/D144 G1 路径同模式复刻 — eval pre-eval 时序 + funcParamTypes SSoT + codegen 阶段反推 + 失败硬错粒度全沿用;(c) D052 ss_mapNew + ss_mapSet 路径复用 — 反推得 callee `Map<K,V>` 后 codegen emit 走原 D052 机制;(d) D143 OBJ_LITERAL className 反推路径并行不破;(e) workaround cleanup 落锚 Phase 4(临时变量绑定 + .set 链形态全删);(f) scope 可控 ~140 LOC delta < D144 ~150 LOC > D143 ~130 LOC ≈ D142 ~91 LOC < D141 ~267 LOC。**为何不选 C1**:数据层 zero-spread 不消除根因(`feedback_root_cause_no_cost.md` 红线,与 D141/D142/D143/D144 §A.1 C1 同形废)。**为何不选 C3**:scope 爆炸 — D141 §Followup F5 + D142 §A.3 + D143 §A.3 + D144 §A.3 已锁 C3 废留 SS 类型系统 v2,D145 单 sub-D 不承载架构层 refactor。
 
@@ -457,7 +457,7 @@ EOF
 | F3 | partial fields + ctor 默认值 | object literal / Map literal 部分字段 + class ctor 漏字段默认值机制 — D143 §Followup F6 + D144 §Followup F4 同位 |
 | F4 | spread `{...base, name: "X"}` 反推 | spread 子节点反推 + 字段覆盖 — array literal SPREAD + object literal SPREAD + Map literal SPREAD 同模式 sub-D(D143 §Followup F7 + D144 §Followup F5 同位)|
 | F5 | 反推失败粒度细化 | 倒置类型 silent miscompile / 无 callee context unknown kind LLC error 等粒度细化 — D143 §Followup F8 + D144 §Followup F6 H4+H13 同形(本 D §A.2 H2 mismatch 同位风险)|
-| F6 | bidirectional type checking 全局 | C3 候选废案,留作未来 SS 类型系统 v2(D026/D027 落地后再开 D 文档评估,D141 §Followup F5 + D142 §A.3 + D143 §A.3 + D144 §Followup F7 同位)|
+| F6 | bidirectional type checking 全局 | C3 候选废案,留作未来 SS 类型系统 v2(memory feedback_d026_d027_phantom_anchor,D141 §Followup F5 + D142 §A.3 + D143 §A.3 + D144 §Followup F7 同位)|
 
 ---
 

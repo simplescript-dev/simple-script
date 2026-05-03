@@ -192,9 +192,9 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 |---|---|---|---|---|---|---|
 | **C1** | **数据层 patch** | 仅 `gen_arrows.ss:135` 改 fallback — 无类型注解时 fallback 默认类型 / 报错 | 破裂入口在 PARAM s2 留空 → ssTypeToLLVM("") 默认;C1 仅在该单点补 fallback,不消除根因 | LOC 极小 5-10 行;不动 checker | 零散 patch — method_call.ss / gen_methods.ss vtable dispatch 等多处都用 PARAM s2(后续若 lambda body 有 nested method call 仍走错);信息源不单点 | **不选** — 数据层不消除根因(`feedback_root_cause_no_cost.md` 红线)|
 | **C2** | **接口层 trap** | checker 阶段 ARROW_FUNC 作 fn/method 实参时,查 callee `funcParamTypes` 反推回填 PARAM s2;`check_types.ss:51` ARROW_FUNC 改 `fn(P1,P2,...):R` 结构化签名 | **彻底消除** — PARAM s2 在 codegen 之前就被回填,gen_arrows.ss:135 直读 s2 路径不变,所有下游(method_call.ss / vtable dispatch / setVarType)信息源一致 | 单点信息源回填;TS contextual typing 主线;codegen 路径 100% 不变;workaround 10 处可全删 | LOC 中等 ~150-200(check_types.ss + check_exprs.ss + 局部 gen_calls.ss);需考虑嵌套 lambda / 多参 lambda / interface upcast 边界 | **选** — 接口层 trap 消除根因 + scope 可控 |
-| **C3** | **架构层 refactor** | 全编译器 bidirectional type checking — checker 改成 expected/actual 双向类型检查,所有表达式从调用上下文反推类型(包括 lambda + array literal + object literal + ternary) | 消除根因 + 消除其他类似 silent miscompile(array literal 类型推断 / object literal 类型推断等) | 类型系统统一性最高;未来扩 SS 泛型 D026/D027 时直接复用 | scope 爆炸 LOC > 2000 + 多 sub-D + bootstrap 重写多个核心文件;F9 单 sub-D scope 远超(D141 不应承载架构层 refactor)| **不选** — scope 远超 D141 单 sub-D 范围;未来若启 D026/D027 generic 实施时再开 D 文档评估 |
+| **C3** | **架构层 refactor** | 全编译器 bidirectional type checking — checker 改成 expected/actual 双向类型检查,所有表达式从调用上下文反推类型(包括 lambda + array literal + object literal + ternary) | 消除根因 + 消除其他类似 silent miscompile(array literal 类型推断 / object literal 类型推断等) | 类型系统统一性最高;复用现有 generic 基础设施(已落 gen_generic_class.ss + gen_types.ss:711 resolveTypeParam,memory feedback_d026_d027_phantom_anchor) | scope 爆炸 LOC > 2000 + 多 sub-D + bootstrap 重写多个核心文件;F9 单 sub-D scope 远超(D141 不应承载架构层 refactor)| **不选** — scope 远超 D141 单 sub-D 范围;留独立 sub-D 评估(memory feedback_d026_d027_phantom_anchor — bidirectional 是 D141-D145 真正剩余项,generic 已落 gen_generic_class.ss) |
 
-**决策行**:**选 C2 接口层 trap** 因 (a) 单点信息源回填,消除 PARAM s2 缺失的假设破裂入口;(b) codegen 路径 100% 不变,gen_arrows.ss:135 直读 s2 仍 GREEN;(c) workaround 10 处可全删(Phase 4 cleanup 落锚);(d) scope 可控 ~200 LOC delta。**为何不选 C1**:数据层 zero-spread,不消除根因(`feedback_root_cause_no_cost.md` 红线 — 数据层 patch 多处零散补 fallback)。**为何不选 C3**:scope 爆炸 — bidirectional type checking 全局 refactor 远超 D141 单 sub-D scope,留作未来 D026/D027 generic 实施时再评估。
+**决策行**:**选 C2 接口层 trap** 因 (a) 单点信息源回填,消除 PARAM s2 缺失的假设破裂入口;(b) codegen 路径 100% 不变,gen_arrows.ss:135 直读 s2 仍 GREEN;(c) workaround 10 处可全删(Phase 4 cleanup 落锚);(d) scope 可控 ~200 LOC delta。**为何不选 C1**:数据层 zero-spread,不消除根因(`feedback_root_cause_no_cost.md` 红线 — 数据层 patch 多处零散补 fallback)。**为何不选 C3**:scope 爆炸 — bidirectional type checking 全局 refactor 远超 D141 单 sub-D scope,留独立 sub-D 评估(memory feedback_d026_d027_phantom_anchor — bidirectional 是 D141-D145 真正剩余项)。
 
 ### A.1.1 C2 实施路径对比(Phase 2 起首,2026-04-27 G 系列追加)
 
@@ -421,8 +421,8 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 - F1 array literal contextual typing — `[1, 2, 3]` 在 fn 实参 `Array<int>` 时反推元素类型,**D141 反推机制同模式扩**(下一 D 文档候选 D142 入口)
 - F2 object literal contextual typing — `{ name: "X" }` 在 fn 实参 `class User` 时反推字段类型,**同模式复用**
 - F3 ternary contextual typing — `cond ? a : b` 在 fn 实参 `Maybe<int>` 时反推分支类型
-- F4 interface method overload 反推 — 依赖 D026/D027 generic
-- F5 bidirectional type checking 全局 — C3 候选废案,留作未来 SS 类型系统 v2(D026/D027 落地后再开 D 文档)
+- F4 interface method overload 反推 — 依赖 generic 基础设施(已落,memory feedback_d026_d027_phantom_anchor)
+- F5 bidirectional type checking 全局 — C3 候选废案,留作未来 SS 类型系统 v2(memory feedback_d026_d027_phantom_anchor — bidirectional 是 D141-D145 真正剩余项,generic 已落 gen_generic_class.ss)
 - F6 D138 编号冲突独立 — D 治理后续轮处理
 
 **Phase 5 兑现成果**:D141 主线 untyped lambda 反推机制 5 Phase 全闭环 — Phase 0 落档 → Phase 1 RED 探查 + H1 破裂修正路径 → Phase 2 G1 路径实施 → Phase 3 测试覆盖 + 兑现漏点根因修 → Phase 4 workaround cleanup → **Phase 5 全 Phase 收关 D141 主线 close**;Followup F1-F6 入下一 D 文档启动队列(F1 array literal contextual typing 候选 D142 入口);D135/D136/D137/D140 范式延续(每 Phase 独立 commit 大改档,Phase 5 终结 Phase docs-only commit)
@@ -464,8 +464,8 @@ grep -c "(s: PreparedStatement)" lib/spring/data.ss tests/d134_mysql/integration
 | F1 | array literal contextual typing | `[1, 2, 3]` 在 fn 实参 `Array<int>` 时反推元素类型 — 是否同模式复用 D141 反推机制 |
 | F2 | object literal contextual typing | `{ name: "X" }` 在 fn 实参 `class User` 时反推字段类型 — 同模式复用 |
 | F3 | ternary contextual typing | `cond ? a : b` 在 fn 实参 `Maybe<int>` 时反推分支类型 |
-| F4 | interface method overload 反推 | `setInt(1, x)` 在 `PreparedStatement` interface 多 setInt 重载(setInt:i / setInt:l / setInt:d)时反推 x 类型 — 依赖 D026/D027 generic |
-| F5 | bidirectional type checking 全局 | C3 候选废案,留作未来 SS 类型系统 v2 评估(D026/D027 落地后再开 D 文档)|
+| F4 | interface method overload 反推 | `setInt(1, x)` 在 `PreparedStatement` interface 多 setInt 重载(setInt:i / setInt:l / setInt:d)时反推 x 类型 — 依赖 generic 基础设施(已落,memory feedback_d026_d027_phantom_anchor) |
+| F5 | bidirectional type checking 全局 | C3 候选废案,留作未来 SS 类型系统 v2 评估(memory feedback_d026_d027_phantom_anchor — bidirectional 是 D141-D145 真正剩余项,generic 已落 gen_generic_class.ss)|
 | F6 | F4 D138 编号冲突独立 | D 治理后续轮处理 D136 §R4 + §F1 双指 D138 冲突,与 D141 独立 |
 
 ---
