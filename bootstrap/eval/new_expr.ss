@@ -21,32 +21,8 @@ function evalNewExpr(astId: int): int {
     let newCtArgVals: Array<string> = []
     let newCtNamedArgs = new Map()
     const newArgList = nGetList(astId)
-    // D143 Phase 2: NAMED_ARG OBJ_LITERAL 嵌套反推前移 — D141/D142 H10 同模式
-    // (eval/new_expr.ss line 38 pre-eval `genVal(nGetI1(newArgId))` 之前 inner OBJ_LITERAL
-    // 必须 rewrite,否则 genVal unknown kind fallback "ptr 0" silent miscompile;H3 嵌套链路)
-    // D144 Phase 2: 同点扩 TERNARY — NAMED_ARG inner TERNARY 也需 branchType 反推(field 类型),
-    //   否则 outer call site `genVal(napValId)` 路过 TERNARY 走默认 phi llType silent miscompile;
-    //   D141/D142/D143 H10 cross-D 反思继承 — feedback_h10_cross_d_verify.md
-    if (comptimeDepth == 0 && newArgList != "") {
-        const newArgPartsR = newArgList.split(",")
-        for (napR in newArgPartsR) {
-            const newArgIdR = parseInt(napR)
-            if (newArgIdR > 0 && nGetKind(newArgIdR) == "NAMED_ARG") {
-                const napValId = nGetI1(newArgIdR)
-                if (napValId > 0) {
-                    const napFieldKey = `${newClassName}.${nGetS1(newArgIdR)}`
-                    if (classFieldTypes.has(napFieldKey) == 1) {
-                        const napFieldType = classFieldTypes.getString(napFieldKey)
-                        if (nGetKind(napValId) == "OBJ_LITERAL") {
-                            inferObjLiteralFromType(napValId, napFieldType)
-                        } else if (nGetKind(napValId) == "TERNARY" && nGetS2(napValId) == "" && napFieldType != "" && napFieldType != "auto") {
-                            nSetS2(napValId, napFieldType)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // D148 Phase 5: NAMED_ARG OBJ_LITERAL/TERNARY 反推循环全删 — checker 已写 nSetS2
+    // (check_named_args.ss:70 NAMED_ARG naActType = checkerInferType(nGetI1, naExpType) 反推 ★)。
     if (newArgList != "") {
         const newArgParts = newArgList.split(",")
         for (nap in newArgParts) {

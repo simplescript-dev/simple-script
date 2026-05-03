@@ -15,34 +15,8 @@ function evalCall(astId: int): int {
             return 0 - constVal(genGenericCall(astId, callName, callArgList)) - 1
         }
     }
-    // D141 Phase 2.2: 在 pre-eval 之前 resolve mangled name + 反推 ARROW_FUNC PARAM s2
-    // (eval/call.ss pre-eval `genVal(callArgId)` 触发 genArrowFunc 必须先看到回填的 PARAM s2)
-    if (comptimeDepth == 0 && callArgList != "") {
-        let callResolvedR = callName
-        if (overloadCount.has(callName) == 1 && parseInt(overloadCount.getString(callName)) > 1) {
-            const callSigR = argsSig(callArgList)
-            if (callSigR != "" && funcRetTypes.has(`${callName}_${callSigR}`) == 1) {
-                callResolvedR = `${callName}_${callSigR}`
-            }
-        }
-        const callArgPartsR = callArgList.split(",")
-        let callArgIdxR = 0
-        for (capR in callArgPartsR) {
-            const callArgIdR = parseInt(capR)
-            if (callArgIdR > 0) {
-                inferArrowFuncParams(callArgIdR, callResolvedR, callArgIdxR)
-                // D142 Phase 2: ARRAY_LIT 反推前移 — D141 H10 同模式
-                inferArrayLitElems(callArgIdR, callResolvedR, callArgIdxR)
-                // D143 Phase 2: OBJ_LITERAL 反推前移 + D084 rewrite NEW_EXPR — D141/D142 H10 同模式
-                // (eval/call.ss line 86 pre-eval `genVal(callArgId)` 之前 OBJ_LITERAL 必须 rewrite,
-                // 否则 genVal unknown kind fallback "ptr 0" silent miscompile;D143 Phase 2 H10 实证修正)
-                inferObjLiteralFields(callArgIdR, callResolvedR, callArgIdxR)
-                // D144 Phase 2: TERNARY 反推前移 — D141/D142/D143 H10 同模式 cross-D 反思继承
-                inferTernaryBranchType(callArgIdR, callResolvedR, callArgIdxR)
-                callArgIdxR = callArgIdxR + 1
-            }
-        }
-    }
+    // D148 Phase 5: outer pre-eval 4 helper 反推循环全删(含 mangled name resolution) — checker 已写
+    // nSetS2(check_exprs.ss:91 CALL fn arg 反推 ★ + check_types.ss:42 checkerInferType 4 case)。
     const savedCallPreRegs = callPreRegs
     callPreRegs = new Map()
     let callCtArgVals: Array<string> = []

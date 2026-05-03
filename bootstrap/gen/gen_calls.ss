@@ -273,17 +273,8 @@ function resolveCallArgs(callee: string, argList: string, typeCallee: string): s
         for (ap in argParts) {
             const argId = parseInt(ap)
             if (argId > 0) {
-                // D141 Phase 2.2: untyped lambda 反推 — 查 funcParamTypes[typeCallee:argIdx]
-                // 拿 callee PARAM 结构化签名 fn(...):R,提取 Pi 反填 ARROW_FUNC PARAM s2
-                // (gen_arrows.ss:135 直读 PARAM s2 / emitParamAllocas:26 setVarType 自然走通 H10)
-                inferArrowFuncParams(argId, typeCallee, argIdx)
-                // D142 Phase 2: untyped array literal 反推 — Array<T> elemType 回填 ARRAY_LIT nSetS2
-                inferArrayLitElems(argId, typeCallee, argIdx)
-                // D143 Phase 2: untyped object literal 反推 — class 名回填 OBJ_LITERAL nSetS2 +
-                // D084 rewrite OBJ_LITERAL → NEW_EXPR(走 NEW_EXPR genNamedConstructorArgs 路径)
-                inferObjLiteralFields(argId, typeCallee, argIdx)
-                // D144 Phase 2: untyped ternary 反推 — branchType 回填 TERNARY nSetS2(D141/D142/D143 同模式)
-                inferTernaryBranchType(argId, typeCallee, argIdx)
+                // D148 Phase 5: G1 4 落点 helper 调用全删 — checker 已写 nSetS2(check_types.ss:42
+                // checkerInferType 4 case),codegen 阶段 helper 触发 H6 short-circuit 已 noop。
                 let val = genExpr(argId)
                 let vType = inferType(argId)
                 const ptKey = `${typeCallee}:${argIdx}`

@@ -30,48 +30,9 @@ function evalMethodCall(astId: int): int {
     let mcObjReg = ""
     if (isCt(mcObj) == 0) { mcObjReg = reg(mcObj) }
     const mcArgList = nGetList(astId)
-    // D141 Phase 2.2: 在 pre-eval 之前 resolve mangled name + 反推 ARROW_FUNC PARAM s2
-    // (eval/method_call.ss pre-eval `genVal(mcArgId)` 触发 genArrowFunc 必须先看到回填的 PARAM s2,
-    // 否则 ARROW_FUNC define 已 emit 到 arrowDefs,emit 阶段反推无效;典型 D137 §F9 主线场景路径)
-    if (comptimeDepth == 0 && mcArgList != "") {
-        const mcObjClassR = resolveObjClass(mcObjNode)
-        if (mcObjClassR != "") {
-            let methodClassR = mcObjClassR
-            while (methodClassR != "") {
-                if (funcRetTypes.has(`${methodClassR}_${mcMethod}`) == 1) { break }
-                if (classParents.has(methodClassR) == 1) {
-                    methodClassR = classParents.getString(methodClassR)
-                } else {
-                    methodClassR = mcObjClassR
-                    break
-                }
-            }
-            let mcResolvedR = `${methodClassR}_${mcMethod}`
-            if (isOverloaded(mcResolvedR) == 1) {
-                const mcSigR = argsSig(mcArgList)
-                if (mcSigR != "" && funcRetTypes.has(`${mcResolvedR}_${mcSigR}`) == 1) {
-                    mcResolvedR = `${mcResolvedR}_${mcSigR}`
-                }
-            }
-            const mcArgPartsR = mcArgList.split(",")
-            let mcArgIdxR = 0
-            for (mcapR in mcArgPartsR) {
-                const mcArgIdR = parseInt(mcapR)
-                if (mcArgIdR > 0) {
-                    inferArrowFuncParams(mcArgIdR, mcResolvedR, mcArgIdxR)
-                    // D142 Phase 2: ARRAY_LIT 反推前移 — D141 H10 同模式(genVal pre-eval 之前回填 nSetS2)
-                    inferArrayLitElems(mcArgIdR, mcResolvedR, mcArgIdxR)
-                    // D143 Phase 2: OBJ_LITERAL 反推前移 + D084 rewrite NEW_EXPR — D141/D142 H10 同模式
-                    inferObjLiteralFields(mcArgIdR, mcResolvedR, mcArgIdxR)
-                    // D144 Phase 2: TERNARY 反推前移 — D141/D142/D143 H10 同模式 cross-D 反思继承
-                    // (outer call site 通用 pre-eval `genVal(mcArgId)` 路过 TERNARY 走 phi llType,
-                    // 反推必须前移到 outer call site 之前;feedback_h10_cross_d_verify.md 教训)
-                    inferTernaryBranchType(mcArgIdR, mcResolvedR, mcArgIdxR)
-                    mcArgIdxR = mcArgIdxR + 1
-                }
-            }
-        }
-    }
+    // D148 Phase 5: outer pre-eval 4 helper 反推循环全删(含 mangled name resolution) — checker 已写
+    // nSetS2(check_exprs.ss:155 METHOD_CALL arg 反推 ★ + check_types.ss:42 checkerInferType 4 case),
+    // codegen 阶段 H6 short-circuit 已 noop;eval pre-eval 时序前移亦无价值。
     const mcSavedCPR = callPreRegs
     callPreRegs = new Map()
     let mcCtArgs: Array<string> = []

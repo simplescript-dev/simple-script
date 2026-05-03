@@ -179,32 +179,19 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
             break
         }
     }
-    // D141 Phase 2.2: 提前 resolve mangled name 以便 args 循环里反推 ARROW_FUNC PARAM
-    // (typeSig 把任何 fn 形式压缩为 "f",反推前后 sig 一致,resolve 不受 ARROW_FUNC inferType 结构化影响)
     let resolved = pickClassMethodKey(methodClass, method, argList)
     // Build args: static calls skip this, instance calls include this as first arg
     let callArgs = ""
     if (isStatic == 0) { callArgs = `ptr ${objVal}` }
     if (argList != "") {
         const argParts = argList.split(",")
-        let cmcArgIdx = 0
         for (ap in argParts) {
             const argId = parseInt(ap)
             if (argId > 0) {
-                // D141 Phase 2.2: untyped lambda 反推 — 查 funcParamTypes[resolved:cmcArgIdx]
-                // 反填 ARROW_FUNC PARAM s2(D137 §F9 主线场景 — JdbcTemplate.update(sql, lambda))
-                inferArrowFuncParams(argId, resolved, cmcArgIdx)
-                // D142 Phase 2: untyped array literal 反推 — Array<T> elemType 回填 ARRAY_LIT nSetS2
-                inferArrayLitElems(argId, resolved, cmcArgIdx)
-                // D143 Phase 2: untyped object literal 反推 — class 名回填 + D084 rewrite NEW_EXPR
-                inferObjLiteralFields(argId, resolved, cmcArgIdx)
-                // D144 Phase 2: untyped ternary 反推 — branchType 回填 TERNARY nSetS2(D141/D142/D143 同模式)
-                inferTernaryBranchType(argId, resolved, cmcArgIdx)
                 let aVal = genExpr(argId)
                 let aType = inferType(argId)
                 if (callArgs != "") { callArgs = `${callArgs}, ` }
                 callArgs = `${callArgs}${ssTypeToLLVM(aType)} ${aVal}`
-                cmcArgIdx = cmcArgIdx + 1
             }
         }
     }
