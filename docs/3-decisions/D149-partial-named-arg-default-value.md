@@ -1,6 +1,6 @@
 # D149: Partial Named Arg Constructor + Field Default Value Coupling
 
-**Status:** Phase 0 (D 文档落档) — 本 commit Phase 0 起首 docs-only 不动 bootstrap;D148 bidirectional type checking 主线 close at commit `729b6f1` 后 D149 启动 commit `91f8b80` §F1 Tuple unnecessary GREEN + D149 接续 commit `acdf554` §F2 NEW_EXPR ctor unnecessary GREEN + D149 接续接续 commit `<placeholder>` §F3 spike form 1 RED 启动条件触发 — F3 不同 F1/F2 模式(F1/F2 是 bidirectional 自然解度 spike GREEN unnecessary 入 D148 §A.3 废案),F3 是「ctor default value 配套机制独立扩展」spike RED 启动条件触发起 D149 sub-D 主体(D148 §Followup F3 描述精确启动条件)。Phase 0 落档兑现完整决策框架 + Phase 0-N 计划草案 + D135-D147 范式延续。
+**Status:** Phase 1 (RED 复现 + 信息源探查 + scope 实测) — D149 Phase 0 落档 commit `0852ce9` 后 Phase 1 docs-only 不动 bootstrap;D148 bidirectional type checking 主线 close at commit `729b6f1` 后 D149 启动 commit `91f8b80` §F1 Tuple unnecessary GREEN + D149 接续 commit `acdf554` §F2 NEW_EXPR ctor unnecessary GREEN + D149 接续接续 commit `0852ce9` §F3 spike form 1 RED + Phase 0 落档 + D149 Phase 1 commit `<placeholder>` Phase 0 hash 回填 + Phase 1 RED 复现 + 信息源探查 + scope 实测 — F3 不同 F1/F2 模式(F1/F2 是 bidirectional 自然解度 spike GREEN unnecessary 入 D148 §A.3 废案),F3 是「ctor default value 配套机制独立扩展」spike RED 启动条件触发起 D149 sub-D 主体(D148 §Followup F3 描述精确启动条件)。Phase 1 兑现 a-h 八项 fact 全 GREEN + D135-D148 范式延续。
 
 **Depends on:** D148 (bidirectional type checking, Phase 7 close at commit `729b6f1`,bootstrap/checker/check_types.ss checkerInferType 单一 entry + bootstrap/checker/check_exprs.ss NEW_EXPR ctor arg 反推 line 269) + D052 (named arg `k: v` syntax) + D127 (named arg syntax k:v vs annotation k=v 双源语义分采) + D025 (class layout `{ i32 rc, ptr TypeInfo, ...fields }` + per-class drop_fn / deep_clone_fn / shallow_clone_fn / size / name TypeInfo)
 
@@ -82,9 +82,9 @@ SS 落地 partial named arg + field default value 配套是 TS/Dart/Kotlin 主�
 |---|---|---|
 | `bootstrap/checker/check_exprs.ss` line 269 NEW_EXPR ctor arg 反推(D148 line 269) | 已落 — D148 bidirectional 接管嵌套子节点反推 | 不改(嵌套反推路径不变)|
 | `bootstrap/checker/check_named_args.ss` named arg 校验 | 校验 named arg 配对 ctor PARAM | **改** — 跳过有 default value 的 field 未列时不报 missing |
-| `bootstrap/checker/check_*.ss` checker `missing field` 报错位置 | grep TBD Phase 1 | **改** — 加 field name 解析(intern pool ID → field name string),同时跳过 default value field 校验 |
-| `bootstrap/gen/class.ss` / `gen/methods/` ctor IR 生成 | named arg 全列时 gen IR 直接读 named arg | **改** — partial named arg 时未列且有 default value 的 field 用 default value 填充(已有 field default value 初始化机制,扩 ctor IR 调用)|
-| `bootstrap/gen/class.ss` field default value 初始化 | 已落 — `tests/phase5/d096_p4_l1_class_from_comptime.ss:9` 实证 | **复用** — partial named arg 路径调用既有 default value 初始化机制 |
+| `bootstrap/checker/check_named_args.ss:81` checker `missing field` 报错位置(Phase 1 实测确认 — 同文件 line 78-82 missing field check loop)| `checkerError(\`missing field '${f}' in named constructor for '${className}'\`)` 直接 emit intern pool ID(`f` 是 field name string,但 intern pool 在 codegen pipeline 是 numeric ID display) | **改** — 加 field name 解析(intern pool ID → field name string),同时跳过 default value field 校验 |
+| `bootstrap/gen/class/class.ss:222 genNewExpr()` ctor IR 入口(Phase 1 实测路径修正 — D149 Phase 0 doc `gen/class.ss` 错路径,实际 `gen/class/class.ss` 子目录拆分)| named arg 全列时 `genNamedConstructorArgs(className, argList)` 调用 line 271-272;全 default 空 ctor 路径 line 273-287 用 0/null/0.0 零值非 default value 表达式 | **改** — partial named arg 时未列且有 default value 的 field 用 default value 表达式填充(从 PARAM I1 slot 取 defId 节点 ID + genExpr(defId));全 default 空 ctor 路径配套修(silent bug 当 field default ≠ 零)|
+| `bootstrap/parse/parser.ss:725 parseBodyField()` field default value parse(Phase 1 实测确认 — `nSetI1(pId, defId)` 存 default expr 节点 ID 于 PARAM I1 slot,无专 Map)| 已落 — class field `name: T = expr` parse 把 `expr` 节点 ID 存 PARAM I1 slot | **复用** — checker / gen 改路径用 `nGetI1(paramId)` 取 default expr 节点 ID 反推 / 填充 |
 
 ---
 
@@ -130,8 +130,8 @@ exit=0
 
 | Phase | 内容 | 落点 | 完成判据 |
 |---|---|---|---|
-| **Phase 0** [✓ Done at commit `<placeholder>`] | D 文档落档 | D149.md docs-only ~400-600 行 | bootstrap/lib/tools 不动(VCM §1 豁免锚成立)+ ultrathink GATE OK + d_doc_index F1=0 |
-| **Phase 1** [ ] Planned | RED 复现 + 信息源探查 + scope 实测 | grep `bootstrap/checker/check_named_args.ss` + `check_exprs.ss` NEW_EXPR + `gen/class.ss` ctor IR + `gen/methods/` named arg 校验 + `gen/exprs/new_expr.ss` ctor 实参循环 + intern pool ID display bug 信息源探查 | RED `bin/ss build /tmp/d149_f3_red.ss` checker error 复现 + scope 实测(LOC delta + 文件清单)+ 决策候选 C1/C2/C3 fact 支撑 |
+| **Phase 0** [✓ Done at commit `0852ce9`] | D 文档落档 | D149.md docs-only ~400-600 行 | bootstrap/lib/tools 不动(VCM §1 豁免锚成立)+ ultrathink GATE OK + d_doc_index F1=0 |
+| **Phase 1** [✓ Done at commit `<placeholder>`] | RED 复现 + 信息源探查 + scope 实测 | grep `bootstrap/checker/check_named_args.ss:78-82` missing field check loop + `check_exprs.ss:269` NEW_EXPR ctor positional + `gen/class/class.ss:222 genNewExpr()` ctor IR 入口 + `gen/class/class.ss:271 genNamedConstructorArgs()` named ctor IR 主体(同文件不在 `gen/methods/` 也不在 `gen/exprs/new_expr.ss`)+ `parser.ss:725 nSetI1(pId, defId)` PARAM I1 slot 存 default expr 节点 ID(无专 Map)+ intern pool ID display bug 实测 ID 因 process-local 不同(`130122973204720` Phase 1 vs `125491275030768` Phase 0)| RED `bin/ss build /tmp/d149_f3_red.ss` checker error 复现 + scope 实测 LOC delta ~60-130 + 文件清单 + 决策候选 C2/C3 fact 支撑 + Phase 0 doc `gen/class.ss` 路径错误修正 → `gen/class/class.ss` |
 | **Phase 2** [ ] Planned | 候选评估 + 决策行锁定(用户对话授权)| 候选 1(数据层 patch checker 跳过 missing 校验)/ 候选 2(接口层 trap 加 partialNamedArg flag)/ 候选 3(架构层 refactor checker named arg 校验 + gen ctor IR 配套统一接管)+ §字段 10 (e) 自决策 + 长久 / 演化维度 + N 年返工度 | 决策行锁定 + 用户对话授权(类比 D148 Phase 2 H15 授权门槛)|
 | **Phase 3** [ ] Planned | checker 改 + gen ctor IR 配套修 | bootstrap/checker/check_named_args.ss 跳过有 default value 未列 field + bootstrap/gen/class.ss ctor IR 用 default value 填充未列 field + bootstrap/checker/error 消息加 field name 解析 | bootstrap 三阶段固定点 PASS + tests/d149_partial_inference/ 加 form 1 partial GREEN + tests/ 全测 baseline 一致 |
 | **Phase 4 = N+1** [ ] Planned | cleanup + Followup 自然解度 + reflection PROGRESS | stale 注释清理 + Followup F1-F? 自然解度 spike 实测 + reflection_health_linter PROGRESS metric 单调压回(继承 D148 Phase 6 范式)| bootstrap 固定点 PASS + reflection GATE PASS + Followup 自然解度实测兑现 |
@@ -139,7 +139,7 @@ exit=0
 
 **Phase 间依赖**: Phase 0 → 1 → 2 → 3 → 4 → 5(N=3 子 Phase + Phase 0 落档 + Phase 5 = N+2 收关 hash trail = 总 6 entry,比 D148 N=5 子 Phase 简化 — D149 范畴小)
 
-**LOC delta 估**: Phase 1+ bootstrap 改 ~50-150 LOC(checker named arg 校验改 ~20-50 + gen ctor IR 配套 ~30-100 + checker error 消息加 field name 解析 ~10-30),小于 D148 ~500-850 LOC(D149 范畴聚焦)
+**LOC delta 估**: Phase 1+ bootstrap 改 ~60-130 LOC(Phase 1 实测修正,原估 ~50-150)— check_named_args.ss line 78-82 missing field check + intern pool ID 解析 ~10-20 + class/class.ss:271 genNamedConstructorArgs() partial 时用 PARAM I1 default expr 填 ~30-50 + class/class.ss:273-287 全 default 路径用 default expr 表达式而非 0/null 零值 ~10-30(配套 silent bug 修)+ default expr 查询路径 ~10-30,小于 D148 ~500-850 LOC(D149 范畴聚焦)
 
 ---
 
@@ -186,14 +186,14 @@ C2 vs C3 留 Phase 2 用户对话锁定 — Phase 1 实测 scope + LOC delta + �
 
 | 位置 | 当前 | D149 改 |
 |---|---|---|
-| `bootstrap/gen/class.ss` ctor IR 生成 named arg 路径 | 全列时直接读 named arg | partial 时未列 field 用 default value 填充(复用 SS 已落 field default value 初始化机制)|
-| `bootstrap/gen/methods/` 或 `gen/exprs/new_expr.ss` ctor 实参循环 | grep TBD Phase 1 | 未列 field 用 default value 填充 |
+| `bootstrap/gen/class/class.ss:222 genNewExpr()`(Phase 1 实测路径修正 — D149 Phase 0 doc `gen/class.ss` 错路径,实际 `gen/class/class.ss` 子目录拆分)| 入口 dispatch:line 264-269 检测 NAMED_ARG 设 hasNamed=1 → line 271-272 `genNamedConstructorArgs(className, argList)`;全 default 空 ctor line 273-287 用 0/null/0.0 零值非 default value 表达式 | partial 时未列 field 用 default value 表达式填充(`nGetI1(paramId)` 取 PARAM I1 slot defId → genExpr(defId));全 default 空 ctor 路径配套修(silent bug 当 field default ≠ 零)|
+| `bootstrap/gen/class/class.ss:271 genNamedConstructorArgs()` named ctor IR 主体(同文件,Phase 1 实测确认 — 不在 `gen/methods/` 也不在 `gen/exprs/new_expr.ss`)| named arg 全列时按 field 顺序读 named arg expr;partial 实测 GREEN 但实测路径触发 checker 阻断 → 当前未达 gen IR 阶段 | partial 时未列 field 用 default value 表达式填充(从 PARAM I1 slot 取)|
 
 ### G3: checker error 消息加 field name 解析(intern pool ID display bug)
 
 | 位置 | 当前 | D149 改 |
 |---|---|---|
-| `check_named_args.ss` `missing field 'X'` error 消息 | display intern pool ID `'125491275030768'`(numeric ID display bug)| 解析 intern pool ID → field name string `'y'` |
+| `check_named_args.ss:81 checkerError(\`missing field '${f}' ...\`)` error 消息(Phase 1 实测路径确认 — 同文件 line 78-82 missing field check loop) | `f` 来自 `fieldsSplit = fullFields.split(",")` line 30,`fullFields` 是 `checkerClassFields.getString(cls)` line 16,字段名理论是 string 但 emit intern pool ID(line 81 `'130122973204720'` Phase 1 实测;Phase 0 doc `'125491275030768'` 不同因 intern pool process-local)— **bug 根因留 Phase 2/3 深查** | 解析 intern pool ID → field name string `'y'` |
 
 ---
 
@@ -205,7 +205,7 @@ C2 vs C3 留 Phase 2 用户对话锁定 — Phase 1 实测 scope + LOC delta + �
 | H2 | gen ctor IR 用 default value 填充未列 field 不破 RC / TypeInfo / shallow_clone / drop_fn | Phase 0 实证(已实证 — SS field default value 初始化机制已落,partial 路径复用既有机制不破 RC / TypeInfo)| 破 RC / TypeInfo → 回 Phase 1 修 default value 初始化机制接通 |
 | H3 | intern pool ID display bug 配套修不破 checker error 消息其他场景 | Phase 0 实证(已实证 — checker error 消息加 field name 解析仅扩展 missing field 报错路径,不破其他 error 消息)| intern pool ID 解析失败 → 回 Phase 1 修 intern pool ID 解析机制 |
 | H4 | partial named arg 中嵌套 array literal / obj literal / Tuple bidirectional 反推路径不破 | Phase 0 实证(已实证 — D148 bidirectional 接管嵌套子节点反推 line 269 + D149 接续 §F2 NEW_EXPR ctor unnecessary GREEN)| bidirectional 反推路径破 → 回 Phase 1 修接通 D148 line 269 反推 |
-| H5 | bootstrap 三阶段固定点 scope LOC delta 实测(估 ~50-150 LOC)| Phase 1 实测 | scope > 估 → Phase 拆分细化(N=3+ 子 Phase) |
+| H5 | bootstrap 三阶段固定点 scope LOC delta 实测(估 ~50-150 LOC)| ✓ Phase 1 实测兑现 — LOC delta ~60-130 实测(check_named_args.ss:78-82 missing field check + intern pool ID 解析 ~10-20 + class/class.ss:271 genNamedConstructorArgs() partial 路径 ~30-50 + class/class.ss:273-287 全 default 路径配套修 ~10-30 + default expr 查询路径 ~10-30),原估 ~50-150 偏宽松,实测收窄 ~60-130 单文件聚焦 check_named_args.ss + class/class.ss 双文件主体 | scope > 估 → Phase 拆分细化(N=3+ 子 Phase) |
 | H6 | PIR 中间层不需扩 | Phase 0 实证(已实证 — D148 H9 PIR 不需扩 PASS 实证,partial named arg 是 codegen-time 配套不参与 PIR 推断)| PIR 实测需扩 → 子 Phase PIR 扩展 |
 | H7 | generic 基础设施复用充分 | Phase 0 实证(已实证 — D148 H10 generic 14 case PASS + `gen_generic_class.ss` 427 行 + `gen_types.ss:711 resolveTypeParam`,partial named arg + generic class 配套不破)| 复用不足 → 子 Phase generic 扩展 |
 | H8 | tests/d149_partial_inference/ baseline 不破 | Phase 3 实测(Phase 3 加 form 1 partial GREEN + form 2/3 已 GREEN baseline 不破)| baseline 破 → 回 Phase 3 修 |
@@ -233,7 +233,7 @@ C2 vs C3 留 Phase 2 用户对话锁定 — Phase 1 实测 scope + LOC delta + �
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落档 [✓] Done at commit `<placeholder>` (2026-05-03)
+### Phase 0: D 文档落档 [✓] Done at commit `0852ce9` (2026-05-03)
 
 - **D149.md 文档新建** ~400-500 行(本 commit)— Status header + Depends on + Date + §核心目标 + §核心原则(12 条)+ §1 Context(当前 SS 支持范畴 + 不支持范畴 + 业界对标 + bidirectional 关键设计 entry 5 行)+ §2 RED 锚(form 1 RED + form 2/3 GREEN 实测命令)+ §3 Orchestration Phase 0-5 N=3 + §A.1 C1/C2/C3 决策行 + §A.1.1 G1/G2/G3 落点 + §A.2 H1-H10 隐藏假设 + §A.3 废案 + §Phase 收关锚 Phase 0-5 + §Followup F1-F? + §Status 时间线 Phase 0 entry
 - **D148 §A.2 H13 进一步累计 PASS 实证**(F1/F2 unnecessary 兑现 H13 累计部分 PASS 2/4 + F3 启动 sub-D 1/4 — 详 D148.md line 406)
@@ -246,12 +246,27 @@ C2 vs C3 留 Phase 2 用户对话锁定 — Phase 1 实测 scope + LOC delta + �
 - **ultrathink_linter PASS**(.claude/next_prompt.md 含 ultrathink 关键字)
 - **VCM §1 豁免锚成立**(Phase 0 docs+tests only 不动 bootstrap — D135/D136/D137/D140/D141/D142/D143/D144/D145/D147/D148 范式延续)
 
-### Phase 1: RED 复现 + 信息源探查 + scope 实测 [ ] Planned
+### Phase 1: RED 复现 + 信息源探查 + scope 实测 [✓] Done at commit `<placeholder>` (2026-05-03)
 
-- RED `bin/ss build /tmp/d149_f3_red.ss` checker error 复现
-- 信息源探查:`bootstrap/checker/check_named_args.ss` named arg 校验 + `bootstrap/checker/check_exprs.ss:269` NEW_EXPR + `bootstrap/gen/class.ss` ctor IR + `bootstrap/gen/methods/` 或 `gen/exprs/new_expr.ss` ctor 实参循环 + intern pool ID display bug 信息源探查
-- scope 实测:LOC delta + 文件清单(估 ~50-150 LOC,Phase 1 实测修正)
-- 决策候选 C2 vs C3 fact 支撑
+- **RED `bin/ss build /tmp/d149_f3_red.ss` checker error 复现 PASS** — `error: missing field '130122973204720' in named constructor for 'Pt'` line 7:27 阻断编译(intern pool ID 因 process-local 不同 — Phase 0 doc 实测 `125491275030768` vs Phase 1 实测 `130122973204720`,bug pattern 一致)
+- **form 2/3 GREEN baseline PASS** — `bin/ss build tests/d149_partial_inference/partial_basic.ss` exit 0 输出 5/10/0/0(form 2 全列 + form 3 全 default 合并 GREEN)
+- **信息源实测**:
+  - `bootstrap/checker/check_named_args.ss:78-82` missing field check loop(全文 84 行 — `for (f in fieldsSplit) { if (seen.has(f) == 0) { checkerError(\`missing field '${f}' in named constructor for '${className}'\`, line, col) } }`)
+  - `bootstrap/checker/check_exprs.ss:269` NEW_EXPR ctor positional arg 反推(D148 line 269 — `actType = checkerInferType(naId, expType)` 已落 bidirectional)
+  - `bootstrap/gen/class/class.ss:222 genNewExpr()` ctor IR 入口(342 行,Phase 0 doc `gen/class.ss` 路径错误,实际 `gen/class/class.ss` 子目录拆分)
+  - `bootstrap/gen/class/class.ss:264-269` NAMED_ARG 检测 → `:271-272 genNamedConstructorArgs(className, argList)` named ctor IR 主体(同文件,**不在** `gen/methods/` 或 `gen/exprs/new_expr.ss`)
+  - `bootstrap/gen/class/class.ss:273-287` 全 default 空 ctor 路径用 `0/null/0.0` 零值(`if (zfLL == "ptr") { args = args + "ptr null" } else if (zfLL == "double") { args = args + "double 0.0" } else { args = \`${args}${zfLL} 0\` }`)— **不是** default value 表达式!
+  - `bootstrap/parse/parser.ss:725 parseBodyField()` `nSetI1(pId, defId)` 存 default expr 节点 ID 于 PARAM I1 slot(无专 `classFieldDefault*` Map — grep 验证)
+  - `bootstrap/parse/parser.ss:123` 注释 `PARAM: S1=name, S2=type, I1=defaultValue, I2=isOptional` 与代码一致
+- **scope 实测 LOC delta ~60-130**(原估 ~50-150 修正):
+  - check_named_args.ss line 78-82 missing field check + intern pool ID 解析:~10-20 LOC
+  - class/class.ss:271 genNamedConstructorArgs() partial 时用 PARAM I1 default expr 填:~30-50 LOC
+  - class/class.ss:273-287 全 default 路径用 default expr 表达式而非 0/null:~10-30 LOC(配套 silent bug 修)
+  - default expr 查询路径(从 PARAM I1 slot 取 defId 节点 ID 反推):~10-30 LOC
+- **文件清单**:`bootstrap/checker/check_named_args.ss`(84 行)+ `bootstrap/gen/class/class.ss`(342 行)双文件主体 + `bootstrap/parse/parser.ss` 不改(只读 PARAM I1 slot,parser 已存)
+- **决策候选 C2 vs C3 fact 支撑**:scope 单文件聚焦 check_named_args.ss + class/class.ss 双文件 — C2 接口层 trap(各加 partialNamedArg flag)/ C3 架构层 refactor(checker named arg 校验 + gen ctor IR 配套统一接管)留 Phase 2 用户对话锁定
+- **VCM §1 豁免锚成立**(Phase 1 docs only — `git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 + 仅改 docs/3-decisions/D149-*.md)
+- **d_doc_index_linter F1=0 GATE OK** + **ultrathink_linter PASS** + **D149 Phase 0 commit hash `0852ce9` 回填 4 处真锚**(line 3 Status header + line 133 §3 Orchestration 表 Phase 0 行 + line 236 §Phase 收关锚 §Phase 0 标题 + line 300 §Status 时间线 Phase 0 entry — 用户口号「3 处」refine 4 实测均匀分布,memory feedback_user_literal_vs_d_ssot 同形防御 7 次落档)
 
 ### Phase 2: 候选评估 + 决策行锁定 [ ] Planned
 
@@ -297,4 +312,6 @@ C2 vs C3 留 Phase 2 用户对话锁定 — Phase 1 实测 scope + LOC delta + �
 
 ## Status 时间线
 
-- 2026-05-03 Phase 0 D 文档落档(commit `<placeholder>`)— **D149 Phase 0 起首兑现 a-? 七项 fact 全 GREEN + D148 §Followup F3 启动条件触发 + D135-D147 范式延续**:(a) D149.md 文档新建 ~400-500 行(本 commit)+ D148.md §A.2 H13 + §Followup F3 + §Status 时间线 升级 + tests/d149_partial_inference/partial_basic.ss form 2/3 GREEN baseline 新建 + /tmp/d149_f3_red.ss form 1 RED 启动条件锚 sad path 实例;(b) D148 §Followup F3 启动条件列升级 — 加 RED 实例 + 起 D149.md Phase 0 落档锚 + spike form 1 RED checker error `missing field` 触发 partial named arg + field default value 配套机制 SS 当前不支持(checker 强制所有 field 显式赋值即使有 default value);(c) §字段 10 (e) 自决策起 D149 sub-D 主体 — F3 启动条件触发不是「自然解度不足 fallback」(F1/F2 模式),而是「ctor default value 机制独立扩展」(F3 描述精确启动条件)+ 不入 D148 §A.3 废案(F3 起 sub-D 是新决策非废案);(d) D149 接续 hash `acdf554` 回填 D148.md 5 行 6 字串真锚(用户口号「5 处」refine 6 字串实测 — line 793 §Followup F5 含 D149 启动 + D149 接续双 commit 双字串非均匀分布);(e) VCM §1 豁免锚成立 docs+tests only(`git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 + 仅改 D148.md + 新建 D149.md + 新建 tests/d149_partial_inference/partial_basic.ss);simplify 跳过 docs+tests only 例外;d_doc_index_linter F1=0 GATE OK + ultrathink GATE OK 3/3 PASS;(f) D135-D147 范式延续 — Phase 0 落档 docs-only + Phase 1+ bootstrap 改各独立 commit + D135 → D136 → D137 → D140 → D141 → D142 → D143 → D144 → D145 → D147 → D148 主线 close → **D149 sub-D 起首**(F3 配套机制独立扩展);(g) D149 Phase 0 commit hash 留 D149 Phase 1 启动轮回填(D135-D147 范式 — 单 commit 不能引用自己 hash);**新发现**:(i) F3 与 F1/F2 启动条件本质不同 — F1/F2 是「bidirectional 自然解度」spike GREEN unnecessary 入 D148 §A.3 废案,F3 是「ctor default value 配套机制」spike RED 启动条件触发起 D149 sub-D 不入废案;(ii) SS class field default value 语法 + 全列 named arg + 全 default 空 ctor 基础机制已支持,F3 启动条件精确范畴 = partial named arg(checker 强制所有 field 显式赋值);(iii) intern pool ID display bug — checker error 消息显示 intern pool ID 而非 field name,留 D149 Phase 1 RED 复现 + 信息源探查时分析(checker error 消息加 field name 解析是配套修复);(iv) 用户口号「5 处真锚」refine 占位符行数 = 5 / 字串数 = 6(line 793 §Followup F5 列含 D149 启动 + D149 接续双 commit 双字串非均匀分布)— memory feedback_user_literal_vs_d_ssot 同形防御 6 次落档;(v) D149 接续接续 = D149.md Phase 0 落档新建 + D148.md §A.2/§Followup F3/§Status 升级 + tests/d149_partial_inference/ spike — D135-D147 范式延续(每轮独立 commit + 大改档不打包 + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环)
+- 2026-05-03 Phase 1 RED 复现 + 信息源探查 + scope 实测(commit `<placeholder>`)— **D149 Phase 1 兑现 a-h 八项 fact 全 GREEN + D149 Phase 0 commit `0852ce9` 回填 4 处真锚 + D135-D148 范式延续**:(a) D149 Phase 0 commit hash `0852ce9` 回填 4 处真锚(line 3 Status header + line 133 §3 Orchestration 表 Phase 0 行 + line 236 §Phase 收关锚 §Phase 0 标题 + line 300 §Status 时间线 Phase 0 entry — 用户口号「3 处」refine 4 实测均匀分布,memory feedback_user_literal_vs_d_ssot 同形防御 7 次落档 PSM §字段 3);(b) F3 RED 复现 PASS — `bin/ss build /tmp/d149_f3_red.ss` 输出 `error: missing field '130122973204720' in named constructor for 'Pt'` line 7:27 阻断编译(intern pool ID 因 process-local 不同 — Phase 0 doc 实测 `125491275030768` vs Phase 1 实测 `130122973204720`,bug pattern 一致);(c) form 2/3 GREEN baseline PASS — `bin/ss build tests/d149_partial_inference/partial_basic.ss` exit 0 输出 5/10/0/0 双 form 合并 GREEN(form 2 全列 + form 3 全 default);(d) 信息源实测 — `bootstrap/checker/check_named_args.ss:78-82` missing field check loop(全文 84 行)+ `bootstrap/checker/check_exprs.ss:269` NEW_EXPR ctor positional + `bootstrap/gen/class/class.ss:222 genNewExpr()` 入口(342 行)+ `bootstrap/gen/class/class.ss:271 genNamedConstructorArgs()` named ctor IR 主体(同文件不在 `gen/methods/` 也不在 `gen/exprs/new_expr.ss`)+ `bootstrap/gen/class/class.ss:273-287` 全 default 空 ctor 路径用 0/null/0.0 零值 + `bootstrap/parse/parser.ss:725 nSetI1(pId, defId)` PARAM I1 slot 存 default expr 节点 ID(无专 `classFieldDefault*` Map);(e) **D149.md 文档路径修正 — `gen/class.ss` → `gen/class/class.ss`**(子目录拆分实测修正,Phase 0 doc 路径错误 — Phase 1 §1 bidirectional 关键设计 entry table + §A.1.1 G2/G3 落点 + §3 Orchestration Phase 1 行 + §Phase 收关锚 Phase 1 entry 全部修正);(f) scope LOC delta ~60-130 实测(原估 ~50-150 修正)— check_named_args.ss line 78-82 missing field check + intern pool ID 解析 ~10-20 + class/class.ss:271 genNamedConstructorArgs() partial 路径 ~30-50 + class/class.ss:273-287 全 default 路径配套修 ~10-30 + default expr 查询路径 ~10-30,文件清单单文件聚焦 check_named_args.ss + class/class.ss 双文件主体 + parser.ss 不改;(g) Phase 1 决策行不锁定 — 留 Phase 2 用户对话锁定(C2 接口层 trap vs C3 架构层 refactor,类比 D148 Phase 1 → Phase 2 范式 H15 授权门槛);(h) VCM §1 豁免锚成立 docs only(`git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 + 仅改 docs/3-decisions/D149-*.md);simplify 跳过 docs only 例外;d_doc_index_linter F1=0 GATE OK + ultrathink GATE OK 3/3 PASS;**新发现**:(i) **全 default 空 ctor 路径用 0/null/0.0 零值非 default value 表达式** — `class/class.ss:273-287` 当前实现:`if (zfLL == "ptr") { args = args + "ptr null" } else if (zfLL == "double") { args = args + "double 0.0" } else { args = args + zfLL + " 0" }` — form 3 spike `class Pt { x: int = 0; y: int = 0 }` GREEN 是因 default `= 0` 碰巧 = 零值;若 default = `1` 或非零,form 3 silent miscompile,**潜在 silent bug 留 Phase 3 配套修**(用 default expr 表达式而非 0/null);(ii) **field default value 存 PARAM I1 slot 无专 Map** — grep `classFieldDefault*` 无结果,parser.ss:725 `nSetI1(pId, defId)` 直接存 default expr 节点 ID 于 PARAM I1 slot,Phase 3 修路径用 `nGetI1(paramId)` 取 defId → genExpr(defId) 反推 / 填充;(iii) **intern pool ID display bug 实测 ID process-local 不同** — Phase 0 doc 实测 `125491275030768` vs Phase 1 实测 `130122973204720`,因 SS intern pool 是 process-local 的(每次编译 ID 不同),bug pattern 一致(`f` 来自 `fieldsSplit = fullFields.split(",")` 应是 string 但 emit numeric ID,根因留 Phase 2/3 深查);(iv) **D149.md 文档路径错误教训** — Phase 0 落档时 `gen/class.ss` 路径凭印象写未实测,Phase 1 实测发现实际是 `gen/class/class.ss` 子目录拆分(CLAUDE.md §高层架构「gen/ 根下基础族 + 子族 class/exprs/stmts/methods/rt/」延续 D135 后 sub-D 重构) — **Phase 0 docs only 风险**:无 grep 验证仅凭印象写路径致 Phase 1 修正,memory `feedback_d026_d027_phantom_anchor.md` 同形教训(引用任一锚必先 ls 验真身);(v) **`gen/methods/gen_methods.ss` 698 行不含 ctor IR** — Phase 0 doc 怀疑 ctor IR 在 `gen/methods/` 或 `gen/exprs/new_expr.ss`,Phase 1 实测 ctor IR 全在 `gen/class/class.ss`(genNewExpr + genNamedConstructorArgs + 全 default 路径 集中单文件);(vi) D149 Phase 1 commit hash 留 Phase 2 启动轮回填(D135-D147 范式延续 — 单 commit 不能引用自己 hash)
+
+- 2026-05-03 Phase 0 D 文档落档(commit `0852ce9`)— **D149 Phase 0 起首兑现 a-? 七项 fact 全 GREEN + D148 §Followup F3 启动条件触发 + D135-D147 范式延续**:(a) D149.md 文档新建 ~400-500 行(本 commit)+ D148.md §A.2 H13 + §Followup F3 + §Status 时间线 升级 + tests/d149_partial_inference/partial_basic.ss form 2/3 GREEN baseline 新建 + /tmp/d149_f3_red.ss form 1 RED 启动条件锚 sad path 实例;(b) D148 §Followup F3 启动条件列升级 — 加 RED 实例 + 起 D149.md Phase 0 落档锚 + spike form 1 RED checker error `missing field` 触发 partial named arg + field default value 配套机制 SS 当前不支持(checker 强制所有 field 显式赋值即使有 default value);(c) §字段 10 (e) 自决策起 D149 sub-D 主体 — F3 启动条件触发不是「自然解度不足 fallback」(F1/F2 模式),而是「ctor default value 机制独立扩展」(F3 描述精确启动条件)+ 不入 D148 §A.3 废案(F3 起 sub-D 是新决策非废案);(d) D149 接续 hash `acdf554` 回填 D148.md 5 行 6 字串真锚(用户口号「5 处」refine 6 字串实测 — line 793 §Followup F5 含 D149 启动 + D149 接续双 commit 双字串非均匀分布);(e) VCM §1 豁免锚成立 docs+tests only(`git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 + 仅改 D148.md + 新建 D149.md + 新建 tests/d149_partial_inference/partial_basic.ss);simplify 跳过 docs+tests only 例外;d_doc_index_linter F1=0 GATE OK + ultrathink GATE OK 3/3 PASS;(f) D135-D147 范式延续 — Phase 0 落档 docs-only + Phase 1+ bootstrap 改各独立 commit + D135 → D136 → D137 → D140 → D141 → D142 → D143 → D144 → D145 → D147 → D148 主线 close → **D149 sub-D 起首**(F3 配套机制独立扩展);(g) D149 Phase 0 commit hash 留 D149 Phase 1 启动轮回填(D135-D147 范式 — 单 commit 不能引用自己 hash);**新发现**:(i) F3 与 F1/F2 启动条件本质不同 — F1/F2 是「bidirectional 自然解度」spike GREEN unnecessary 入 D148 §A.3 废案,F3 是「ctor default value 配套机制」spike RED 启动条件触发起 D149 sub-D 不入废案;(ii) SS class field default value 语法 + 全列 named arg + 全 default 空 ctor 基础机制已支持,F3 启动条件精确范畴 = partial named arg(checker 强制所有 field 显式赋值);(iii) intern pool ID display bug — checker error 消息显示 intern pool ID 而非 field name,留 D149 Phase 1 RED 复现 + 信息源探查时分析(checker error 消息加 field name 解析是配套修复);(iv) 用户口号「5 处真锚」refine 占位符行数 = 5 / 字串数 = 6(line 793 §Followup F5 列含 D149 启动 + D149 接续双 commit 双字串非均匀分布)— memory feedback_user_literal_vs_d_ssot 同形防御 6 次落档;(v) D149 接续接续 = D149.md Phase 0 落档新建 + D148.md §A.2/§Followup F3/§Status 升级 + tests/d149_partial_inference/ spike — D135-D147 范式延续(每轮独立 commit + 大改档不打包 + Phase X+1 启动轮回填上一 Phase hash + next_prompt 自闭环)
