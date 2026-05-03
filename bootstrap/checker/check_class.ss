@@ -360,6 +360,10 @@ function registerCheckerClassDecl(s: int, overrideName: string) {
                 const fType = nGetS2(fId)
                 const fKey = `${className}.${fName}`
                 checkerFieldTypes.set(fKey, fType)
+                // D149: track class fields with default value (= expr) for partial named arg ctor
+                if (nGetI1(fId) > 0) {
+                    checkerFieldHasDefault.set(fKey, "1")
+                }
                 if (nGetI4(fId) == 1) {
                     staticFields.set(fKey, "1")
                 } else {

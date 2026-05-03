@@ -110,6 +110,10 @@ function registerClass(id: int) {
                     if (fType != strippedType) {
                         classFieldNullable.set(`${name}.${fName}`, "1")
                     }
+                    // D149: track field default value expr id for partial named arg ctor + 全 default 路径
+                    if (nGetI1(pId) > 0) {
+                        classFieldDefaultIds.set(`${name}.${fName}`, `${nGetI1(pId)}`)
+                    }
                 }
             }
         }
@@ -227,6 +231,10 @@ function resolveInheritanceForClass(cls: string) {
                 classFieldTypes.set(`${cls}.${pf}`, classFieldTypes.getString(`${parentCls}.${pf}`))
                 if (classConstFields.has(`${parentCls}.${pf}`) == 1) {
                     classConstFields.set(`${cls}.${pf}`, "1")
+                }
+                // D149: inherit field default value expr id (parallel to classFieldTypes copy)
+                if (classFieldDefaultIds.has(`${parentCls}.${pf}`) == 1) {
+                    classFieldDefaultIds.set(`${cls}.${pf}`, classFieldDefaultIds.getString(`${parentCls}.${pf}`))
                 }
             }
         }

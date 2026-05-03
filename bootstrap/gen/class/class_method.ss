@@ -107,9 +107,59 @@ function genClassMethod(className: string, id: int) {
     currentClassName = ""
 }
 
-// Generate constructor args in field order from NAMED_ARG nodes
+// D149: default value expr id (PARAM I1 slot); 0 if field has no default.
+function lookupFieldDefaultId(className: string, fieldName: string): int {
+    const owner = findFieldOwner(fieldName, className)
+    if (owner == "") { return 0 }
+    const key = `${owner}.${fieldName}`
+    if (classFieldDefaultIds.has(key) == 0) { return 0 }
+    return parseInt(classFieldDefaultIds.getString(key))
+}
+
+// D149: field's SS type, walking parent chain.
+function lookupFieldType(className: string, fieldName: string): string {
+    const owner = findFieldOwner(fieldName, className)
+    return owner == "" ? "" : classFieldTypes.getString(`${owner}.${fieldName}`)
+}
+
+// D149: C3 helper — unified ctor args builder.
+// Walks class fields in declaration order; for each field, prefers named arg value,
+// then falls back to field default value expr, then to zero (LLVM type-correct).
+// Used by both partial named arg path (genNamedConstructorArgs) and 全 default 空 ctor path.
+function genCtorArgsWithDefaults(className: string, namedVals: Map, namedLLTypes: Map): string {
+    const fieldStr = classFields.getString(className)
+    let result = ""
+    if (fieldStr == "") { return result }
+    const fields = fieldStr.split(",")
+    let first = 1
+    for (f in fields) {
+        if (first == 1) { first = 0 } else { result = result + ", " }
+        if (namedVals.has(f) == 1) {
+            const val = namedVals.getString(f)
+            const llType = namedLLTypes.getString(f)
+            result = `${result}${llType} ${val}`
+        } else {
+            const defId = lookupFieldDefaultId(className, f)
+            if (defId > 0) {
+                const defVal = genExpr(defId)
+                const defType = inferType(defId)
+                const defLLType = ssTypeToLLVM(defType)
+                result = `${result}${defLLType} ${defVal}`
+            } else {
+                const fType = lookupFieldType(className, f)
+                const llType = ssTypeToLLVM(fType)
+                if (llType == "ptr") { result = result + "ptr null" }
+                else if (llType == "double") { result = result + "double 0.0" }
+                else { result = `${result}${llType} 0` }
+            }
+        }
+    }
+    return result
+}
+
+// Generate constructor args in field order from NAMED_ARG nodes.
+// D149: missing fields fall through to default value expr via genCtorArgsWithDefaults.
 function genNamedConstructorArgs(className: string, argList: string): string {
-    // Evaluate all named arg expressions and store values by name
     let namedVals = Map()
     let namedLLTypes = Map()
     const parts = argList.split(",")
@@ -127,18 +177,5 @@ function genNamedConstructorArgs(className: string, argList: string): string {
             namedLLTypes.set(argName, ssTypeToLLVM(vType))
         }
     }
-    // Build args string in field declaration order
-    const fieldStr = classFields.getString(className)
-    let result = ""
-    if (fieldStr != "") {
-        const fields = fieldStr.split(",")
-        let first = 1
-        for (f in fields) {
-            if (first == 1) { first = 0 } else { result = result + ", " }
-            const val = namedVals.getString(f)
-            const llType = namedLLTypes.getString(f)
-            result = `${result}${llType} ${val}`
-        }
-    }
-    return result
+    return genCtorArgsWithDefaults(className, namedVals, namedLLTypes)
 }

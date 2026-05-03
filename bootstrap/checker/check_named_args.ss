@@ -1,7 +1,22 @@
 // check_named_args.ss — D084 named constructor args validation.
 // Parent field walk + duplicate detection + per-field type check.
 // State read via global scope: checkerDeferredAliases / checkerClassFields /
-// checkerClassParents / checkerFieldTypes / checkerGenericClasses.
+// checkerClassParents / checkerFieldTypes / checkerFieldHasDefault / checkerGenericClasses.
+
+// D149: walk parent chain to check if a class field has default value (= expr).
+// Used by partial named arg ctor: missing field is OK when default exists.
+function hasFieldDefault(className: string, fieldName: string): int {
+    let cls = className
+    while (cls != "") {
+        if (checkerFieldHasDefault.has(`${cls}.${fieldName}`) == 1) { return 1 }
+        if (checkerClassParents.has(cls) == 1) {
+            cls = checkerClassParents.getString(cls)
+        } else {
+            cls = ""
+        }
+    }
+    return 0
+}
 
 // Validate named constructor arguments: all names must be valid fields, no duplicates
 function checkNamedConstructorArgs(className: string, argList: string, line: int, col: int) {
@@ -27,7 +42,8 @@ function checkNamedConstructorArgs(className: string, argList: string, line: int
     }
     let seen = Map()
     let namedCount = 0
-    const fieldsSplit = fullFields != "" ? fullFields.split(",") : "".split(",")
+    // D149 §Followup F6: ternary on Array<string> codegen bug — direct split + empty-string skip below.
+    const fieldsSplit = fullFields.split(",")
     const parts = argList.split(",")
     for (p in parts) {
         const argId = parseInt(p)
@@ -74,11 +90,13 @@ function checkNamedConstructorArgs(className: string, argList: string, line: int
             }
         }
     }
-    // Check all required fields are provided
-    for (f in fieldsSplit) {
-        if (f == "" ) { continue }
-        if (seen.has(f) == 0) {
-            checkerError(`missing field '${f}' in named constructor for '${className}'`, line, col)
+    // Check all required fields are provided.
+    // D149: skip missing-check for fields with default value (partial named arg).
+    for (fld in fieldsSplit) {
+        if (fld == "" ) { continue }
+        if (seen.has(fld) == 0) {
+            if (hasFieldDefault(className, fld) == 1) { continue }
+            checkerError(`missing field '${fld}' in named constructor for '${className}'`, line, col)
         }
     }
 }

@@ -40,6 +40,7 @@ let checkerFieldsForInVars = ""
 let constFields = ""         // "ClassName.fieldName" -> "1" if const field
 let checkerFieldTypes = ""   // "ClassName.fieldName" -> type string
 let checkerClassFields = ""  // "ClassName" -> "field1,field2,..." (ordered field list)
+let checkerFieldHasDefault = "" // D149: "ClassName.fieldName" -> "1" if class field has default value (= expr)
 let funcParamTypes = ""     // "funcName:paramIndex" -> type string
 let funcOverloaded = ""     // "funcName" -> "1" if overloaded (skip type check)
 let methodParamTypes = ""   // "ClassName.methodName:paramIndex" -> type string
@@ -83,6 +84,7 @@ function initChecker() {
     constFields = Map()
     checkerFieldTypes = Map()
     checkerClassFields = Map()
+    checkerFieldHasDefault = Map()
     funcParamTypes = Map()
     funcOverloaded = Map()
     methodParamTypes = Map()

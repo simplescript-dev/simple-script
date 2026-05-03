@@ -3,7 +3,7 @@
 
 import { emitClassStruct, emitClassConstructor } from "./class_register"
 import { emitClassComptimeMethods, runComptimeAnnotationCall } from "./class_annotation"
-import { genClassMethod, genNamedConstructorArgs } from "./class_method"
+import { genClassMethod, genNamedConstructorArgs, genCtorArgsWithDefaults } from "./class_method"
 import { emitFieldLoad, genMemberAccess, genOptionalMemberAccess } from "./class_member"
 import { emitClassVtableConst, emitClassDropFieldsFn, emitClassConstructorReuse, genAutoToJson, emitClassDtorRegister, emitClassTypeInfo } from "../gen_type_ops"
 import { genGenericNewExpr } from "../gen_generic_class"
@@ -12,6 +12,7 @@ import { genGenericNewExpr } from "../gen_generic_class"
 
 let classFields = ""     // "ClassName" -> "field1,field2,..."
 let classFieldTypes = "" // "ClassName.field" -> "type" (stripped — D067 codegen invariant)
+let classFieldDefaultIds = "" // D149: "ClassName.field" -> "<defExprNodeId>" string (PARAM I1 slot)
 // I021-requestbody-nested-optional + D067 — 字段 nullable metadata,emit 反序列化时
 //   恢复 nullable 标记给 emitDeserializeForType。classFieldTypes 保 stripped 不变(D067
 //   codegen invariant);本 Map 局部 metadata 单独 track,反序列化路径 emitClassDeserializeFn
@@ -60,6 +61,7 @@ function initClassState() {
     if (classStateReady == 1) { return }
     classFields = Map()
     classFieldTypes = Map()
+    classFieldDefaultIds = Map()
     classFieldNullable = Map()
     classMethods = Map()
     objClasses = Map()
@@ -271,20 +273,9 @@ function genNewExpr(id: int): string {
     if (hasNamed == 1) {
         args = genNamedConstructorArgs(className, argList)
     } else if (argList == "" && classFields.has(className) == 1) {
-        // No args: fill in zero values for all fields
-        const zfStr = classFields.getString(className)
-        if (zfStr != "") {
-            const zfParts = zfStr.split(",")
-            let zfFirst = 1
-            for (zf in zfParts) {
-                const zfType = classFieldTypes.getString(`${className}.${zf}`)
-                const zfLL = ssTypeToLLVM(zfType)
-                if (zfFirst == 1) { zfFirst = 0 } else { args = args + ", " }
-                if (zfLL == "ptr") { args = args + "ptr null" }
-                else if (zfLL == "double") { args = args + "double 0.0" }
-                else { args = `${args}${zfLL} 0` }
-            }
-        }
+        // D149: 全 default 空 ctor — fields with default expr use that expr;
+        // remaining fields fall back to LLVM zero. Unified with partial path via helper.
+        args = genCtorArgsWithDefaults(className, Map(), Map())
     } else if (argList != "") {
         const parts = argList.split(",")
         let first = 1
