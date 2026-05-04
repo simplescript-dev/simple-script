@@ -278,17 +278,17 @@ class SQLTimeoutException extends SQLTransientException {}
 // D151 §核心原则 1 完整不裁剪).
 //
 // Stream methods (Blob.getBinaryStream / Clob.getCharacterStream /
-// SQLXML.getBinaryStream / SQLXML.getCharacterStream) return
-// java.io.InputStream / java.io.Reader and are added in D152 §Phase 4
-// once lib/java/io.ss declares those interfaces. Phase 3 declares the
-// non-stream API surface so this file remains self-contained (no
-// forward import dependency on a file that does not yet exist).
+// NClob.getCharacterStream / SQLXML.getBinaryStream / SQLXML.
+// getCharacterStream) return java.io.InputStream / java.io.Reader.
+// Added in D152 §Phase 4 once lib/java/io.ss landed (this Phase).
 //
 // Naming: java.sql.Array → SqlArray. SS Array<T> is the built-in generic
 // array type — declaring `interface Array` would shadow the keyword.
 // The Sql- prefix matches the convention used by JPA driver bindings.
 //
-// See docs/3-decisions/D152-jdbc-type-class-foundation.md §Phase 3.
+// See docs/3-decisions/D152-jdbc-type-class-foundation.md §Phase 3 / §Phase 4.
+
+import { InputStream, Reader } from "@/lib/java/io"
 
 // ── Timestamp — JDBC 4.3 §13.2.1 / java.sql.Timestamp ────────
 // Date + time + nanosecond precision. JDBC convention:
@@ -366,6 +366,7 @@ interface Blob {
     function setBytes(pos: int, bytes: string): int
     function position(pattern: string, start: int): int
     function truncate(len: int)
+    function getBinaryStream(): InputStream
     function free()
 }
 
@@ -379,6 +380,7 @@ interface Clob {
     function setString(pos: int, str: string): int
     function position(pattern: string, start: int): int
     function truncate(len: int)
+    function getCharacterStream(): Reader
     function free()
 }
 
@@ -394,6 +396,7 @@ interface NClob {
     function setString(pos: int, str: string): int
     function position(pattern: string, start: int): int
     function truncate(len: int)
+    function getCharacterStream(): Reader
     function free()
 }
 
@@ -417,6 +420,8 @@ interface RowId {
 interface SQLXML {
     function getString(): string
     function setString(value: string)
+    function getBinaryStream(): InputStream
+    function getCharacterStream(): Reader
     function free()
 }
 

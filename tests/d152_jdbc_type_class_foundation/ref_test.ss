@@ -9,6 +9,33 @@
 
 import { assertEqual } from "@/lib/test"
 import { Ref, RowId, SQLXML } from "@/lib/java/sql"
+import { InputStream, Reader } from "@/lib/java/io"
+
+// Empty stub streams returned by SQLXML.getBinaryStream /
+// getCharacterStream — interface dispatch only, real driver impls
+// follow in §Followup.
+
+class EmptyInputStream : InputStream {
+    function read(): int { return -1 }
+    function readN(len: int): string { return "" }
+    function skip(n: int): int { return 0 }
+    function available(): int { return 0 }
+    function close() {}
+    function mark(readlimit: int) {}
+    function reset() {}
+    function markSupported(): int { return 0 }
+}
+
+class EmptyReader : Reader {
+    function read(): int { return -1 }
+    function readN(len: int): string { return "" }
+    function skip(n: int): int { return 0 }
+    function ready(): int { return 0 }
+    function close() {}
+    function mark(readlimit: int) {}
+    function reset() {}
+    function markSupported(): int { return 0 }
+}
 
 class StubRef : Ref {
     typeName: string
@@ -36,6 +63,8 @@ class StubSQLXML : SQLXML {
 
     function getString(): string { return this.xml }
     function setString(value: string) { this.xml = value }
+    function getBinaryStream(): InputStream { return new EmptyInputStream() }
+    function getCharacterStream(): Reader { return new EmptyReader() }
     function free() { this.xml = "" }
 }
 

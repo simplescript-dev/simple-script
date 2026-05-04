@@ -9,6 +9,32 @@
 
 import { assertEqual } from "@/lib/test"
 import { Blob, Clob, NClob } from "@/lib/java/sql"
+import { InputStream, Reader } from "@/lib/java/io"
+
+// Empty stub streams returned by getBinaryStream / getCharacterStream
+// — interface dispatch only, real driver impls follow in §Followup.
+
+class EmptyInputStream : InputStream {
+    function read(): int { return -1 }
+    function readN(len: int): string { return "" }
+    function skip(n: int): int { return 0 }
+    function available(): int { return 0 }
+    function close() {}
+    function mark(readlimit: int) {}
+    function reset() {}
+    function markSupported(): int { return 0 }
+}
+
+class EmptyReader : Reader {
+    function read(): int { return -1 }
+    function readN(len: int): string { return "" }
+    function skip(n: int): int { return 0 }
+    function ready(): int { return 0 }
+    function close() {}
+    function mark(readlimit: int) {}
+    function reset() {}
+    function markSupported(): int { return 0 }
+}
 
 class StubBlob : Blob {
     data: string
@@ -31,6 +57,7 @@ class StubBlob : Blob {
     function truncate(len: int) {
         this.data = this.data.substring(0, len)
     }
+    function getBinaryStream(): InputStream { return new EmptyInputStream() }
     function free() { this.data = "" }
 }
 
@@ -54,6 +81,7 @@ class StubClob : Clob {
     function truncate(len: int) {
         this.text = this.text.substring(0, len)
     }
+    function getCharacterStream(): Reader { return new EmptyReader() }
     function free() { this.text = "" }
 }
 
@@ -77,6 +105,7 @@ class StubNClob : NClob {
     function truncate(len: int) {
         this.text = this.text.substring(0, len)
     }
+    function getCharacterStream(): Reader { return new EmptyReader() }
     function free() { this.text = "" }
 }
 
