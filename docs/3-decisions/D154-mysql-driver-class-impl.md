@@ -1,0 +1,280 @@
+# D154: MySQL driver class impl — production driver impl class(MysqlTimestamp/MysqlBlob/MysqlClob/MysqlNClob/MysqlRowId/MysqlSQLXML/MysqlSqlArray/MysqlRef + AsciiStream/BinaryStream/CharacterStream/NCharacterStream production class)落地 真 stringify dispatch 闭环(D151 §F1 / D153 §F7 sub-D)
+
+**Status:** Phase 0 落档(D153 主线 close at `7ef14a7` 后 §F7 sub-D 起首接力 — D151 §F1 driver class impl line 318 锚 / D153 §F7 line 331 锚 — production driver impl class 落地 真 stringify dispatch 闭环;Phase 0 docs-only 落档 4 候选 fact 入档 + §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C + 决策行不锁定 留用户对话授权门槛触发;commit `<placeholder>` 留下下轮起首接力轮回填 — D135-D153 范式 单 commit 不能引用自己 hash 下下轮回填)+ VCM §1 豁免锚成立 docs-only + d_doc_index F1=0 GATE OK 14 referenced Ds all live + ultrathink GATE OK 3/3 PASS + simplify 跳过 docs-only 例外。
+
+**Depends on:** D153(SS 编译器 interface dispatch fallthrough sub-D close at `7ef14a7`,本 D 起 §F7 driver class impl 真 stringify dispatch 干净落地路径具备)+ D151(ResultSet update type extension 主线 close at `b646978`,本 D 起 §F1 driver class impl)+ D147(updatable cursor + ResultSet update 6 核心 setter,Phase 5 close at `8323501`)+ D152(JDBC type class foundation — `lib/java/{math,sql,io}.ss` ≥10 底层 type class)+ D025(class layout `{ i32 rc, ptr TypeInfo, ...fields }` + interface vtable `__iface_<I>_<m>` dispatch fn 范式)+ D097(reflection 根因 metrics — 编译器层 metrics 治理)+ D052(named arg `k: v` syntax)+ D134(MySQL wire protocol)
+
+**Date:** 2026-05-04
+
+---
+
+## 核心目标
+
+D151 §F1 line 318 / D153 §F7 line 331 "production driver impl class — MysqlTimestamp / MysqlBlob / MysqlClob / MysqlNClob / MysqlRowId / MysqlSQLXML / MysqlSqlArray / MysqlRef + AsciiStream/BinaryStream/CharacterStream/NCharacterStream production class" sub-D 起首,根因解 D151 Phase 4 实证 H8 假设破裂部分降级 + D153 §F2 修复后 surface 路径具备 — production driver impl class 落地后 d151 integration_test 18 case stub-based dispatch 替换为真 implementor 真 stringify dispatch + d152 sibling 测试因 production driver class 提供 implementor 而 vtable 解析 OK + bidirectional getter/setter 闭环(read 路径 D146/D147 已落 + write 路径 D151 setter 18 method 已落 + production driver class 落地完整闭环);业界对标 JDBC 4.3 driver impl pattern — MySQL Connector/J 8.x `com.mysql.cj.jdbc.MysqlxBlob/MysqlxClob/MysqlxRowId/MysqlxSQLXML` + Postgres JDBC `org.postgresql.jdbc.PgBlob/PgClob/PgSQLXML` 范式直翻。
+
+**第一性需求**:
+- D151 Phase 4 H8 假设破裂实证 — 12 interface-typed setter 真 stringify 阻塞,降级 stub no-op fallback(D147 §核心原则 10 临时降级保护),违反 CLAUDE.md §Root Cause 优先 + D151 §核心原则 1 "完整不裁剪"
+- D153 §F2 修复后(commit `7ef14a7`)— SS 编译器 codegen `__iface_<I>_<m>` dispatch fn 在 interface 无 implementor 时 emit `unreachable` allow link,根因解 H8 stringify pattern 限制,使 driver class impl 真 stringify dispatch 有干净落地路径
+- 业界对标 — JDBC 4.3 standard driver impl class pattern(MySQL Connector/J 8.x + Postgres JDBC + Oracle JDBC 各成熟 driver 都有 production driver impl class,SS lib/com/mysql/ 当前缺)
+- 完整 bidirectional getter/setter 闭环 — D146/D147 已落 read 路径(getBigDecimal/getTimestamp 等)+ D151 已落 write 路径 setter 18 method,本 D 落 production driver impl class 完整 bidirectional 闭环验证
+
+**不在范畴**:
+- ❌ user-side override stub class 已废(违反 CLAUDE.md "编译器吸收复杂度" + D153 §F2 修复后用户层 stub 不需要)
+- ❌ postpone driver class impl 到下个 sub-D 已废(D153 §F2 修复后 §F7 已 mature,优先级 §F7 ≥ 其他 SQL 主线 followup)
+- ❌ 越过用户对话授权门槛自决策 C-A/C-B(类比 D148 H15 / D149 H12 / D150 H3 / D151 Phase 0 / D153 Phase 0 范式,Phase 0 不锁子候选,等用户对话二次授权)
+- ❌ 改 D025 class layout / D147/D146/D138/D152/D151 主线 / D153 主线 dependencies(D025 不破 + 各依赖 D 文档已 close 不破 — D154 仅在 lib/com/mysql/ 添加 production driver impl class)
+- ❌ 引入新关键字 / 新语法(CLAUDE.md §Java/TS 语法优先红线;production driver impl class 是 SS class + interface impl 标准语法机制)
+
+---
+
+## 核心原则
+
+(继承 CLAUDE.md + D151 §核心原则 13 条 + D147 §核心原则 + D153 §核心原则):
+
+1. **完整不裁剪**(继承 D151 §核心原则 1)— 8 production type driver class(MysqlTimestamp/MysqlBlob/MysqlClob/MysqlNClob/MysqlRowId/MysqlSQLXML/MysqlSqlArray/MysqlRef)+ 4 production stream class(AsciiStream/BinaryStream/CharacterStream/NCharacterStream)= 12 driver impl class 完整落地,不裁剪到部分子集
+2. **不引入新关键字 / 新语法**(继承 D147 §核心原则 1)— 复用 SS class + interface impl 标准语法机制
+3. **Root Cause 优先**(CLAUDE.md §Root Cause 优先 第一法则,无例外)— 候选评估按根因解决度 + 长久 / 演化维度排序;driver class impl 是 D153 §F2 surface 修复(根因 §F2 已解,本 D 是干净落地路径补全)
+4. **业界对标**(CLAUDE.md §长久 / 演化维度)— JDBC 4.3 driver impl pattern + MySQL Connector/J 8.x / Postgres JDBC / Oracle JDBC 各成熟 driver 范式直翻
+5. **N 年返工度低**(CLAUDE.md §长久 / 演化维度)— 一次到位 12 driver class 完整落地,后续仅按 JDBC spec 演化新 type 时增量
+6. **底层依赖链已先决**(CLAUDE.md §长久 / 演化维度 + memory `feedback_root_cause_no_cost.md` §8)— D153 §F2 编译器 fallthrough 已修复(`7ef14a7`)+ D152 type class foundation 已落(`6ded44d`)+ D151 setter 18 method 已落(`b646978`)+ D147 主线已 close(`8323501`)+ D146 cursor 已落 — 全部前置依赖具备
+7. **bootstrap 三阶段固定点不破**(D135-D153 范式延续)— Phase 1+ 修改 lib/com/mysql/ 后 `./build.sh bootstrap` Stage 2 = Stage 3
+8. **决策行不锁定 留用户对话授权门槛触发**(类比 D148 Phase 2 H15 / D149 Phase 2 H12 / D150 Phase 0 H3 / D151 Phase 0 / D153 Phase 0 范式)— Phase 0 启动轮 4 候选 fact 入档 + §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C,但决策行不锁定,等用户对话明确锁定后才入 Phase 1 候选范畴细化
+9. **D147 §核心原则 10 stub fallback 临时降级保护**(继承)— Phase 0 期间 D151 Phase 4 落地的 14 stub no-op + D147 6 setter 真 stringify 现状不破;Phase 1+ driver class impl 落地后逐步替换 stub 为真 implementor
+10. **Phase 计划独立 commit**(继承 D147 §核心原则 11)— Phase 0-N+ 独立 commit
+11. **integration_test 真 implementor 验证**(继承 D147 §核心原则 12)— Phase 1+ driver class impl 落地后 d151 integration_test 18 case stub-based dispatch 替换为真 implementor + d152 sibling 测试 import sql.ss 不破
+12. **SS 编译器扩按需 + 业界对标确认**(继承 D147 §核心原则 13)— Phase 0 不预判 driver class LOC,Phase 1+ 实测 spike 走假设破裂回路 fallback;driver class impl 业界对标 JDBC 4.3 driver pattern
+13. **D151 §A.2 H8 + D153 §A.2 H8 实证锚不破**(本 D 核心)— D151 Phase 4 H8 部分破裂实证已恢复 D153 Phase 2 GREEN;本 D 落地后 H8 假设全 PASS,12 interface-typed setter 真 stringify dispatch via production driver class 完整闭环
+
+---
+
+## §1 Context
+
+### D153 主线 close 后 §F7 起首状态(commit `7ef14a7`)
+
+- ✓ **D153 主线 GREEN** — SS 编译器 codegen `__iface_<I>_<m>` dispatch fn 在 interface 无 implementor 时 emit `unreachable` allow link(close at commit `7ef14a7` — 编译器层 sub-D 第一例 close)
+- ✓ **D151 §F1 line 318 / D153 §F7 line 331 起首条件具备** — D153 主线 close 后 §F7 RED 启动条件 = D151 Phase 4 实证 H8 假设破裂部分降级 + D153 §F2 修复后 surface 路径具备(production driver class 落地后真 stringify dispatch 干净落地)
+- ⚠ **driver class impl 实证**(§A.2 H1)— 当前 lib/com/mysql/ 缺 production driver class for 8 SQL types(Timestamp/Blob/Clob/NClob/RowId/SQLXML/SqlArray/Ref)+ 4 stream types(AsciiStream/BinaryStream/CharacterStream/NCharacterStream);d151 integration_test 用 D151TestStub 14 stub class 验证 stub-based dispatch,需替换为真 production driver class
+
+### 累计 sub-D 链路
+
+D135 → D136 → D137 → D138 → D139 → D140 → D141 → D142 → D143 → D144 → D145 → D146 → **D147 close at `8323501`** SQL 主线 close 第一例 → **D150 主线暂停**(v2 类型系统 SQL libs 零受益实证)→ **D151 §F1 起首 + Phase 0/1** → **D152 sub-D 起首到 close at `6ded44d`** SQL 主线 close 第二例 → **D151 Phase 2 wrapper close at `6ded44d`** SQL 主线 close 第三例 → **D151 Phase 3 at `01c4aad`** → **D151 Phase 4 at `2eac262`** → **D151 主线 close at `b646978`** SQL 主线 close 第四例 → **D153 §F2 sub-D 起首 + Phase 0/1/2/3** → **D153 主线 close at `7ef14a7`** 编译器层 sub-D 第一例 close + 第五例 close 节点 → **D154 §F7 sub-D 起首**(本轮)— **SQL 主线 follow-up 第二例 sub-D 起首接力**
+
+### 业界对标
+
+- **JDBC 4.3 driver impl class pattern** — JDBC 4.3 §16.2 standard driver implementation class:每 SQL type 由 driver vendor 提供 production impl class(java.sql.Blob → vendor MysqlBlob / PgBlob / OracleBlob;java.sql.Clob → vendor MysqlClob / PgClob / OracleClob),vtable dispatch via interface
+- **MySQL Connector/J 8.x** — `com.mysql.cj.jdbc.MysqlxBlob/MysqlxClob/MysqlxRowId/MysqlxSQLXML/MysqlxSqlXmlReader/MysqlxSqlXmlWriter` production driver impl class:每 SQL type 完整 method override + binary protocol encode + driver-side state(connection / statement context)
+- **Postgres JDBC** — `org.postgresql.jdbc.PgBlob/PgClob/PgSQLXML/PgArray/PgRowId` 范式:每 SQL type 提供 production impl class + ResultSet stream-based access(LargeObject API for blob)
+- **Oracle JDBC** — `oracle.sql.BLOB/CLOB/NCLOB/SQLXML/ARRAY/REF/ROWID` 范式:Oracle 优先用 oracle.sql.* 而非 java.sql.* 因 Oracle 自有 type system extension
+- **JDK java.sql.* 范式** — `java.sql.Timestamp` extends `java.util.Date` + nanos field;`java.sql.Date` / `java.sql.Time` 是 thin subclass override;**SS 直翻 JDK 范式 lib/java/sql.ss interface + lib/com/mysql/ production class extension**
+
+SS 当前 lib/com/mysql/ 缺 production driver class implementations。本 D 落地 12 production driver impl class 业界对标 MySQL Connector/J 8.x + Postgres JDBC 范式直翻。
+
+### D151 §A.2 H8 + D153 §A.2 H8 实证锚
+
+D151 Phase 4 实证 H8 假设 "MysqlBinaryResultSet via writeCol stringify pattern 可直翻 ≥22 setter — `writeCol(col, "" + val)` / `writeCol(col, val.toString())`" **部分破裂** → D153 Phase 2 修复后 GREEN(`bootstrap/gen/gen_iface.ss:140` 删除 skip + `:191-197` emit unreachable allow link + `lib/com/mysql/prepared.ss:689-706` 14 stub 真 stringify 替换 + drainReader helper):
+
+- **D151 Phase 4 状态**:RED 部分(14/18)— 12 interface-typed setter + 2 stream stub setter 真 stringify 触发 SS 编译器 vtable 限制 → 降级 stub no-op fallback
+- **D153 Phase 2 状态**:GREEN — 14 stub 真 stringify 替换为 `val.toString()` / `val.getBytes(1, val.length())` / `val.getSubString(1, val.length())` / `val.getString()` / `val.getArray()` / `val.getObject()` / `val.readN(val.available())` / `drainReader(val)` 真 stringify dispatch
+- **D154 落地后状态**:bidirectional 完整闭环 — d151 integration_test 18 case stub-based dispatch(D151TestStub 48 method)替换为真 production driver class implementor + d152 sibling 测试因 production driver class 提供 implementor 而 vtable 解析 OK 不需要 D153 §F2 unreachable allow link fallback(unreachable trap 仅在用户从未注册 implementor 时触发)
+
+**根因解 = D154(本 D)production driver class impl,使 D151 §A.2 H8 假设全 GREEN + D153 §A.2 H8 修复后干净落地路径补全**。
+
+---
+
+## §2 RED 锚
+
+D154 Phase 0 是「sub-D 起首选择 + 候选锁定」决策落档,无 RED bug 直接挂载;Phase 1+ 候选锁定后对应 RED:
+
+```bash
+# RED1: lib/com/mysql/ 缺 production driver class
+ls /root/code/simplescript-dev/simple-script/lib/com/mysql/
+# 当前:connection.ss / prepared.ss / query.ss / 其他
+# 目标:新增 driver_types.ss(或多文件)— MysqlTimestamp/MysqlBlob/MysqlClob/MysqlNClob/MysqlRowId/MysqlSQLXML/MysqlSqlArray/MysqlRef + 4 stream class
+
+# RED2: d151 integration_test 用 D151TestStub stub-based dispatch
+grep -c "class StubTimestamp\|class StubDate\|class StubTime\|class StubBlob\|class StubClob\|class StubNClob\|class StubRowId\|class StubSQLXML\|class StubSqlArray\|class StubRef\|class MemoryInputStream\|class MemoryReader\|class EmptyInputStream\|class EmptyReader" /root/code/simplescript-dev/simple-script/tests/d151_resultset_update_type_extension/integration_test.ss
+# 当前:14 stub class(stub-based dispatch)
+# 目标:真 production driver class implementor 替换(部分;部分保留作 unit test 用)
+
+# RED3: d152 sibling 测试 import sql.ss 不破
+bin/ss test tests/d152_jdbc_type_class_foundation/
+# 当前 D153 §F2 修复后:7 passed/0 failed/7 total(unreachable allow link)
+# 目标 D154 后:7 passed/0 failed/7 total(production driver class 提供 implementor 不需要 unreachable trap)
+
+# RED4: bidirectional getter/setter 闭环 integration test
+# 当前:read 路径 D146/D147 已落 + write 路径 D151 setter 18 method 已落
+# 目标 D154 后:production driver class 落地 + bidirectional 闭环 integration test(read 后真 type write back 回路验证)
+```
+
+---
+
+## §3 Orchestration
+
+| Phase | 内容 | 落点 | 完成判据 |
+|---|---|---|---|
+| **Phase 0** [✓ Done at commit `<placeholder>`] | D 文档落档 + 候选锁定评估 fact 入档 + §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C + 决策行不锁定 留用户对话授权门槛触发 | D154.md docs-only ~350 行 — Status header + Depends on D153/D151/D147/D152/D025/D097/D052/D134 + Date 2026-05-04 + §核心目标 + §核心原则 13 条 + §1 Context(D153 主线 close 后 §F7 起首状态 + 累计 sub-D 链路 19 + 业界对标 JDBC 4.3 driver impl pattern + D151 §F1 line 318 / D153 §F7 line 331 锚 + D151 §A.2 H8 + D153 §A.2 H8 实证锚)+ §2 RED 锚 + §3 Orchestration Phase 0-N+ + §A.1 4 候选(C-A 一次性全 12 driver class / C-B 分批 incremental impl / C-C user-side override 已废 / C-D postpone 已废)+ §A.1.1 G1/G2 落点 + §A.2 H1-H10 隐藏假设 + §A.3 废案 + §Phase 收关锚 + §Followup + §Status 时间线 Phase 0 entry | bootstrap/lib/tools 不动(VCM §1 豁免锚成立)+ ultrathink GATE OK + d_doc_index F1=0 + simplify 跳过 docs-only 例外 |
+| **Phase 1+** Planned | Phase 0 hash 回填 + 用户对话锁定候选 + 候选范畴细化 + 路径分支 | Phase 0 hash 回填 D154.md ~N 处 + D153.md F7 1 处 + D151.md F7 1 处(待 Phase 1 grep 实测 refine)+ §A.1 决策行加锁定标 + §A.2 H2 PASS + Phase 2+ 路径明确 | 用户对话授权门槛 PASS 候选锁定 + Phase 0 hash 回填 GREEN + 候选范畴细化 + 路径分支 + d_doc_index F1=0 + ultrathink GATE OK |
+| **Phase 2+** Planned(候选锁定后展开)| 视候选锁定决定 — C-A 一次性全 12 driver class impl / C-B 分批 incremental impl / 详见 §A.1.1 G1 落点表 | 视候选 — C-A: lib/com/mysql/driver_types.ss(或多文件)新建 ~600-1500 LOC + 12 driver class 完整 method override + d151 integration_test 18 case 替换为真 implementor + d152 sibling 测试不破 + bootstrap 三阶段固定点 PASS / C-B: 分批 staged Tier 1/2/3 by SQL type 优先级 | 视候选锁定后明确 |
+| **Phase N+** Planned | D154 主线 close 收关 + 后续 SQL 主线 follow-up sub-D 起首接力(D147 §F2/F3 SELECT FOR UPDATE / multi-PK / D146 §F2/F3 holdability / metadata / D138 §F1 KeyHolder + HikariCP / D107 PostgreSQL driver)| Status header 改 Closed + §3 表 Phase N close 行 + §Phase 收关锚 entry + §Status 时间线 entry + bootstrap/lib/tools 不动 docs only | D154 主线 close 收关条件全 PASS |
+
+**Phase 间依赖**: Phase 0(本轮 docs-only 落档)→ Phase 1(用户对话授权候选锁定门槛触发,Phase 0 hash 回填)→ Phase 2+(候选锁定后展开 — 视候选 C-A/C-B 决定具体实施路径)→ **Phase N close**(D154 主线 close 收关)→ 后续 SQL 主线 follow-up sub-D 起首接力
+
+**LOC delta 估**(Phase 0 估,Phase 2+ grep 实测后精确化):
+- **C-A 一次性全 12 driver class impl**: ~600-1500 LOC(8 type class × ~50-150 LOC each + 4 stream class × ~50-100 LOC each;含 method override + 业界对标 MySQL Connector/J 8.x 范式)
+- **C-B 分批 incremental impl**: ~200-400 LOC per Phase × 3-4 Phase(Tier 1: Timestamp/Date/Time;Tier 2: Blob/Clob/NClob;Tier 3: RowId/SQLXML/SqlArray/Ref;Tier 4: 4 stream class)
+- **C-C user-side override**: 0(已废 — 违反 CLAUDE.md "编译器吸收复杂度")
+- **C-D postpone**: 0(已废 — D153 §F2 修复后 §F7 已 mature 不能 postpone)
+
+---
+
+## §A.1 决策行
+
+### C-A: 一次性全 12 production driver class impl(MySQL Connector/J 8.x 范式直翻)
+
+**起 D154 主线**:lib/com/mysql/ 新建 driver_types.ss(或多文件 driver_timestamp.ss / driver_blob.ss / driver_stream.ss 等)— 8 production type driver class(MysqlTimestamp / MysqlBlob / MysqlClob / MysqlNClob / MysqlRowId / MysqlSQLXML / MysqlSqlArray / MysqlRef)+ 4 production stream class(AsciiStream / BinaryStream / CharacterStream / NCharacterStream)= 12 driver impl class 完整方法 override 一次到位。
+
+**§字段 10 (e) 自决策评估**(C-A vs 其他):
+- **根因解决度**:**高**(完整 12 driver class 一次到位 + 业界对标 MySQL Connector/J 8.x / Postgres JDBC 范式直翻)
+- **长久 / 演化维度**:**高**(底层依赖链全先决 — D153 §F2 修复后 + D152 type class foundation 落地 + D151 setter 18 method 落地 + D147/D146 cursor 落地 全部前置依赖具备;业界对标 JDBC 4.3 driver impl pattern 直接对标;N 年返工度低 — 一次到位完整 12 class 后续仅按 JDBC spec 演化新 type 时增量)
+
+### C-B: 分批 incremental impl(Tier 1/2/3/4 staged by SQL type 优先级)
+
+**起 D154 主线**:分批 staged 落地 — Tier 1: Timestamp/Date/Time(高频 use case)/ Tier 2: Blob/Clob/NClob(LOB 类型)/ Tier 3: RowId/SQLXML/SqlArray/Ref(低频但 spec required)/ Tier 4: 4 stream class(stream-based 类型)。
+
+**§字段 10 (e) 自决策评估**(C-B vs 其他):
+- **根因解决度**:**中**(分批落地完整 12 class,但 Tier 1/2/3/4 期间 d151 integration_test 部分仍 stub-based dispatch — 中间状态混合)
+- **长久 / 演化维度**:**中**(底层依赖链全先决但分批 commit 增加 review burden + Phase 计划独立 commit 4-5 commit;业界对标 JDBC 4.3 driver impl pattern 部分对标 — Postgres JDBC 历史是分批落地的;N 年返工度中 — 完整落地后 stable)
+
+### C-C: user-side override stub class
+
+**已废**(§A.3):违反 CLAUDE.md "编译器吸收复杂度" + D153 §F2 修复后用户层 stub class 不需要 — D153 §F2 unreachable allow link 已是 fallback,用户层不需要再加 stub workaround;且违 §核心原则 1 "完整不裁剪"(D154 sub-D scope 是 production driver class impl 完整落地,不是 user-side stub workaround)。
+
+### C-D: postpone driver class impl 到下个 sub-D
+
+**已废**(§A.3):D153 §F2 修复后 §F7 已 mature(优先级 §F7 ≥ 其他 SQL 主线 followup — production driver class 落地后真 stringify dispatch 干净落地路径具备 + d151 integration_test 18 case 真 implementor 替换为 stub-based dispatch + d152 sibling 测试因 production driver class 提供 implementor 而 vtable 解析 OK);postpone 违反 CLAUDE.md §Root Cause 优先 + 第一法则 — D153 §F2 已解 surface 修复路径具备时,延迟落地 production driver class 是 workaround 性质而非根因解。
+
+### 候选评估 4 维度对比表
+
+| 维度 | **C-A 一次性全 12 driver class**(✓ 倾向)| C-B 分批 incremental impl | C-C user-side override stub | C-D postpone | 决策倾向 |
+|---|---|---|---|---|---|
+| **根因解决度** | **高**(完整 12 class 一次到位 + 业界对标 MySQL Connector/J 8.x 范式)| 中(分批 staged,中间状态混合)| 低(workaround,违 §核心原则 1 + 不需要)| 低(延迟落地,违 §Root Cause)| **C-A > C-B > C-D > C-C** |
+| **长久 / 演化:底层依赖链** | **高**(D153 §F2 + D152 + D151 + D147/D146 全前置依赖具备)| 高(全前置依赖具备 + 分批 staged)| 低(用户层 stub 不 scale)| 低(延迟违 §Root Cause)| **C-A ≥ C-B > C-D > C-C** |
+| **长久 / 演化:业界对标** | **高**(MySQL Connector/J 8.x / Postgres JDBC / Oracle JDBC 范式直翻)| 中(Postgres JDBC 历史是分批的,但当前 mature 是一次到位)| ❌(无业界范式)| ❌(JDBC 4.3 spec required)| **C-A > C-B > C-D > C-C** |
+| **长久 / 演化:N 年返工度** | **低**(一次到位完整 12 class 后续仅按 JDBC spec 演化增量)| 中(分批落地后 stable,但 Phase 间 review burden)| 高(每用户层 stub 维护 + 不 scale)| 高(延迟落地最终仍需做)| **C-A > C-B > C-D > C-C** |
+| **scope LOC delta** | ~600-1500(完整)| ~200-400 × 3-4 Phase(分批)| 0(用户教程 50)| 0(延迟到下 sub-D)| C-A 大但根因 / C-B 中分批 / C-C 0 但违 §Root Cause / C-D 0 但延迟 |
+
+**§字段 10 (e) 自决策评估**:**C-A ≥ C-B > C-D > C-C**(根因解决度 + 长久 / 演化维度);Phase 0 不锁,等用户对话明确锁定后才入 Phase 1。**用户对话锁未触发** — 留 Phase 1 用户对话授权门槛触发(类比 D151 Phase 1 锁 C-B-3 / D153 Phase 1 锁 C-A 范式延续)。
+
+### 决策行(Phase 0 不锁子候选 留用户对话授权)
+
+**用户对话锁未触发** — Phase 0 启动轮 4 候选 fact 入档 + §字段 10 (e) 自决策评估倾向 C-A,但决策行不锁定,等 Phase 1 用户对话明确锁定后才入候选范畴细化。
+
+**决策行不锁定** — 类比 D148 Phase 2 H15 / D149 Phase 2 H12 / D150 Phase 0 H3 / D151 Phase 0 / D153 Phase 0 用户对话授权门槛触发(C-A 涉及 ~600-1500 LOC production driver class impl + bootstrap 三阶段固定点风险 + d151 integration_test 替换风险,长久演化影响范围扩到 lib/com/mysql/ 全部 driver class),需用户对话锁定 C-A / C-B / C-C / C-D,Phase 0 不自决策,等用户对话明确锁定后才入 Phase 1 候选范畴细化。
+
+**类比范式**:
+- D148 Phase 2 H15:bidirectional 接管副作用清零候选 B1 / B2,用户对话锁 B1
+- D149 Phase 2 H12:架构层 refactor C2 / C3,用户对话锁 C3
+- D150 Phase 0 H3:F5 v2 总体设计 vs F2/F3/F4 单点起首,用户对话锁 — D150 主线暂停转 SQL
+- D151 Phase 0:C-B 已锁(2026-05-04),Phase 1 进一步 C-B-3 已锁
+- D153 Phase 0:4 候选 fact 入档 + 决策行不锁定,Phase 1 用户对话锁 C-A
+- **D154 Phase 0**(本轮):**4 候选 fact 入档 + 决策行不锁定**(Phase 1 用户对话授权门槛触发)
+
+---
+
+## §A.1.1 落点
+
+### G1: 用户对话授权候选锁定(Phase 1 启动条件)
+
+| 候选 | 锁定后 Phase 1+ 落点 |
+|---|---|
+| C-A 一次性全 12 driver class impl(✓ 倾向)| Phase 2+ = lib/com/mysql/ 新建 driver_types.ss(或多文件)~600-1500 LOC + 12 driver class 完整 method override + d151 integration_test 18 case stub-based dispatch 替换为真 implementor + d152 sibling 测试不破 + bootstrap 三阶段固定点 PASS;Phase 计划:Phase 2 = 8 type class 落地;Phase 3 = 4 stream class 落地 + d151 integration_test 替换 + d152 验证;Phase 4 = D154 主线 close 收关 |
+| C-B 分批 incremental impl | Phase 2 = Tier 1 Timestamp/Date/Time class(高频)~150-300 LOC;Phase 3 = Tier 2 Blob/Clob/NClob class ~150-250 LOC;Phase 4 = Tier 3 RowId/SQLXML/SqlArray/Ref class ~120-200 LOC;Phase 5 = Tier 4 4 stream class ~200-400 LOC;Phase 6 = D154 主线 close 收关 |
+| C-C user-side override | 不可行,文档 + 用户教程 |
+| C-D postpone | 不可行废,D153 §F2 修复后 §F7 已 mature |
+
+### G2: Phase 0 hash 回填 + 路径分支后子 D 文档创建
+
+- **D154 Phase 1**:Phase 0 commit hash 回填本 D 文档(D135-D153 范式延续 — 单 commit 不能引用自己 hash 下下轮回填)
+- **C-A 锁定** → Phase 2+ 一次性全 12 driver class impl + 详细 Phase 计划展开
+- **C-B 锁定** → Phase 2+ 分批 staged Tier 1/2/3/4 + 详细 Phase 计划展开
+- **C-C 锁定** → 不可行,文档 + 用户教程(不推荐)
+- **C-D 锁定** → 不可行废
+
+---
+
+## §A.2 隐藏假设
+
+| H | 假设 | 实证 / 留 Phase | 失败回退 |
+|---|---|---|---|
+| H1 | **lib/com/mysql/ 缺 production driver class 实证** — 当前仅 connection.ss / prepared.ss / query.ss 等基础 driver,缺 8 type class(MysqlTimestamp/MysqlBlob/MysqlClob/MysqlNClob/MysqlRowId/MysqlSQLXML/MysqlSqlArray/MysqlRef)+ 4 stream class(AsciiStream/BinaryStream/CharacterStream/NCharacterStream)production impl | Phase 1+ grep 实证(`ls lib/com/mysql/` + `grep -c "class Mysql.*Timestamp\|class Mysql.*Blob" lib/com/mysql/*.ss` 当前 0) | 实证错位 → 回 Phase 0 修 §1 Context |
+| H2 | C-A/C-B/C-C/C-D 用户对话锁子候选 — 用户对话明确二次锁定 | Phase 1 实证(用户对话授权门槛触发,类比 D151 Phase 1 锁 C-B-3 / D153 Phase 1 锁 C-A 范式延续) | 用户对话授权未触发 → Phase 1 阻塞 |
+| H3 | C-A 一次性全 12 driver class LOC delta ~600-1500 | Phase 2+ 实测验证(若 C-A 锁定 — driver class 落地实测 LOC) | scope > 估 → Phase 拆分细化或转 C-B 分批 |
+| H4 | C-B 分批 incremental impl LOC delta ~200-400 × 3-4 Phase | Phase 2+ 实测验证(若 C-B 锁定 — 分批 Tier 落地实测 LOC) | scope > 估 → Phase 拆分细化 |
+| H5 | C-C user-side override 不可行实证 — 违反 CLAUDE.md "编译器吸收复杂度" + D153 §F2 修复后用户层 stub 不需要 | ✓ Phase 0 实证(D153 §F2 unreachable allow link 已是 fallback,用户层不需要再加 stub workaround;违 §核心原则 1 "完整不裁剪") | C-C 唯一可行路径 → 回 Phase 0 修 §A.1 评估 |
+| H6 | bootstrap 三阶段固定点不破(D135-D153 范式延续) | Phase 2+ 实证(`./build.sh bootstrap` Stage 1 → Stage 2 → Stage 3 全跑通 + Fixed point Stage 2 = Stage 3 ~55 秒) | 三阶段固定点破 → 回 Phase 2 修自然链路 |
+| H7 | 不引入新关键字 / 新语法(继承 D147 §核心原则 13)— 复用 SS class + interface impl 标准语法机制 | Phase 2+ 实证(driver class 是 SS class + `: interfaceName` impl 标准语法,不暴露用户层新语法) | 需引入新语法 → 不选(违 CLAUDE.md §Java/TS 语法优先 + §核心原则 2) |
+| H8 | C-A/C-B 落地后 d151 integration_test 18 case stub-based dispatch 替换为真 production driver class implementor GREEN | Phase 2+ 实证(d151 integration_test 18 passed/0 failed/18 total + 14 stub class 替换为真 production class) | 真 implementor 失败 → 部分 case 走 stub fallback retain(D147 §核心原则 10) |
+| H9 | d152 sibling 测试 import sql.ss 不破(C-A/C-B 落地后 production driver class 提供 implementor 而 vtable 解析 OK 不需要 D153 §F2 unreachable allow link fallback) | Phase 2+ 实证(`bin/ss test tests/d152_jdbc_type_class_foundation/` 7 passed/0 failed) | sibling 测试破 → 回 Phase 2 修 driver class impl |
+| H10 | D135-D153 sub-D 链路 close 不破(D147 主线 6 setter / D146 cursor 7 method / D138 generated keys / D152 type class foundation / D151 setter 18 method / D153 编译器 fallthrough 全 GREEN) | Phase 2+ 实证(d141 5/5 + d142 6/6 + d143 6/6 + d144 8/8 + phase2 9/9 + phase3 18/18 + mvp 4/4 + d152 7/7 + d151 18/18 全 GREEN;d147/d146/d138 baseline 一致 — integration_test 需 mysql server graceful skip non-regression) | 各 sub-D 测试破 → 回 Phase 2 修兼容性 |
+
+---
+
+## §A.3 废案
+
+- **C-C user-side override stub class 全废**(违反 CLAUDE.md "编译器吸收复杂度" + D153 §F2 修复后用户层 stub 不需要 + 违 §核心原则 1 "完整不裁剪" — D153 §F2 unreachable allow link 已是 fallback,用户层不需要再加 stub workaround;且 D154 sub-D scope 是 production driver class impl 完整落地,不是 user-side stub workaround;仅作文档备忘不作主线候选)
+- **C-D postpone 全废**(D153 §F2 修复后 §F7 已 mature — production driver class 落地后真 stringify dispatch 干净落地路径具备 + d151 integration_test 18 case 真 implementor 替换为 stub-based dispatch + d152 sibling 测试因 production driver class 提供 implementor 而 vtable 解析 OK;postpone 违反 CLAUDE.md §Root Cause 优先 + 第一法则;延迟落地最终仍需做不是节省路径)
+- **越过用户对话授权门槛自决策 C-A/C-B 全废**(类比 D148 Phase 2 H15 / D149 Phase 2 H12 / D150 Phase 0 H3 / D151 Phase 0 / D153 Phase 0 范式 — Phase 0 §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C 但决策行不锁定,等用户对话明确锁定后才入 Phase 1)
+- **改 D025 class layout / D147/D146/D138/D152/D151 主线 / D153 主线依赖 D 文档全废**(D025 class layout 不破 + D147/D146/D138/D152/D151/D153 主线全 close 不破 — D154 仅在 lib/com/mysql/ 添加 production driver impl class,不动依赖 D 文档)
+- **引入新关键字 / 新语法全废**(CLAUDE.md §Java/TS 语法优先红线;production driver class 是 SS class + interface impl 标准语法机制)
+- **annotation handler 旁路 12 driver class 全废**(`feedback_no_derive_workaround` 红线 — 主线能力缺口不允许 @derive / annotation handler 作为替代路径)
+- **修 D151 主线 setter / D147 主线 6 setter 不动 stringify pattern 而是改 driver class impl 替代 D153 §F2 全废**(D153 §F2 编译器层根因已解 — D154 driver class impl 是 surface 补全;§F2 已修复 §F7 才有干净落地路径,不是替代关系而是依赖关系)
+
+---
+
+## Phase 收关锚
+
+### Phase 0: D 文档落档 + 候选锁定评估 fact 入档 + §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C + 决策行不锁定 留用户对话授权 [✓] Done at commit `<placeholder>`(D135-D153 范式 单 commit 不能引用自己 hash 下下轮回填)(2026-05-04)
+
+- **D154.md 文档新建** ~350 行(本 commit)— Status header + Depends on D153/D151/D147/D152/D025/D097/D052/D134 + Date 2026-05-04 + §核心目标 + §核心原则 13 条 + §1 Context(D153 主线 close 后 §F7 起首状态 + 累计 sub-D 链路 19 + 业界对标 JDBC 4.3 driver impl pattern + D151 §F1 line 318 / D153 §F7 line 331 锚 + D151 §A.2 H8 + D153 §A.2 H8 实证锚)+ §2 RED 锚 + §3 Orchestration Phase 0-N+ + §A.1 4 候选评估(C-A 一次性全 12 driver class / C-B 分批 incremental / C-C user-side override / C-D postpone)+ §A.1.1 G1/G2 落点 + §A.2 H1-H10 隐藏假设 + §A.3 废案 7 条 + §Phase 收关锚 + §Followup + §Status 时间线 Phase 0 entry
+- **D153 §Followup F7 line 331 标 D154 起首** — D153.md edit 加 "**起 D154 sub-D MySQL driver class impl at commit `<placeholder>`**(2026-05-04 D153 主线 close at `7ef14a7` 后 §F7 起首接力 — production driver impl class MysqlTimestamp / MysqlBlob / MysqlClob / MysqlNClob / MysqlRowId / MysqlSQLXML / MysqlSqlArray / MysqlRef + AsciiStream/BinaryStream/CharacterStream/NCharacterStream production class,业界对标 JDBC 4.3 driver impl pattern — MySQL Connector/J 8.x + Postgres JDBC 范式;D153 §F2 修复后 d151 integration_test 14 stub no-op 替换为真 implementor + d152 sibling 测试 import sql.ss 不破)" 标
+- **D151 §Followup F7 line 318 标 D154 起首** — D151.md edit 加 "**起 D154 sub-D MySQL driver class impl at commit `<placeholder>`**(2026-05-04 D153 §F2 编译器 fallthrough sub-D close at `7ef14a7` 后 §F7 起首接力 — production driver impl class 落地后真 stringify dispatch 干净落地路径具备,业界对标 JDBC 4.3 driver impl pattern MySQL Connector/J 8.x / Postgres JDBC 范式)" 标
+- **D153 Phase 3 commit hash `7ef14a7` 回填 D153.md 6 处** — line 3 Status header(2 字串)+ line 121 §3 表 Phase 3 行(2 字串)+ line 299 §Phase 收关锚 §Phase 3 标题(1 字串)+ line 302 §Phase 收关锚 Phase 3 entry close 改写描述(1 字串)+ line 307 §Phase 收关锚 Phase 3 entry D153 主线 close at(1 字串)+ line 337 §Status 时间线 Phase 3 entry(4 字串)= **6 行 11 字串非均匀分布 line 337 含 4 字串 + line 3/121 各含 2 字串**(用户字面「待 refine 处」实测 refine,memory `feedback_user_literal_vs_d_ssot` 同形防御 30 次落档 PSM §字段 3 与历史反差实证延续 — D148 Phase 5 字面「5 处」实测 6 / D149 Phase 0 字面「3 处」实测 4 / D149 Phase 3 字面「8 处」实测 6 行 8 字串 / D150 启动字面「6 处」实测 6 行 10 字串 / D151 启动字面「4+1 处」实测 5 行 7 字串 / D151 Phase 5 主线 close 字面「6+5 处」实测 6 行 11 字串 / D153 Phase 0 字面「N 处」实测 4 行 5 字串 / D153 Phase 1 字面「待 refine」实测 5 行 6 字串 line 304 含 2 字串 / D153 Phase 2 字面「待 refine」实测 3 行 3 字串均匀分布 / D153 Phase 3 字面「待 refine 处」实测 4 行 4 字串均匀分布 / **D154 起首字面「待 refine 处」实测 6 行 11 字串非均匀分布 line 337 含 4 字串**)
+- **driver class impl 实证 fact 入档**(§A.2 H1)— 当前 lib/com/mysql/ 缺 production driver class for 8 SQL types + 4 stream types,需新建 production impl class 完整 method override + 业界对标 MySQL Connector/J 8.x 范式直翻
+- **C-A/C-B/C-C/C-D 4 候选评估 fact 入档**(§A.1 决策行 — C-A 一次性全 12 driver class / C-B 分批 incremental impl / C-C user-side override(已废)/ C-D postpone(已废)4 候选评估表 + §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C + 决策行不锁定 留用户对话授权门槛触发)
+- **§A.2 H1-H10 加入** + **§A.3 废案 7 条**
+- **VCM §1 豁免锚成立**(Phase 0 docs-only — `git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 + 仅改 docs/3-decisions/D153-*.md hash 回填 + §F7 标 D154 起首 + docs/3-decisions/D151-*.md §F7 标 D154 起首 + 新建 docs/3-decisions/D154-*.md)
+- **simplify 跳过 docs-only 例外**(纯文档 D153/D151 §F7 标 + D154.md 新建)
+- **d_doc_index_linter F1=0 GATE OK 14 referenced Ds all live** + **ultrathink_linter PASS 3/3** + **D135-D153 范式延续**
+- **MNK §M meta-gate 强制四问全 ✓**(深度读 D153.md §核心目标 + §核心原则 13 条 + §1 Context + §A.1 决策行 C-A 锁定 + §A.1.1 G1/G2 落点 + §A.2 H1-H10 全 PASS + §A.3 废案 7 条 + §Phase 收关锚 Phase 0/1/2/3 [✓] + §Status 时间线 Phase 0/1/2/3 entry + §Followup F1-F7 + 历史 D135-D152 sub-D 链路接力范式延续 + D151 §F1 line 318 / D153 §F7 line 331 锚 + D151 §A.2 H8 实证锚 + D153 §A.2 H8 实证锚 + Phase 0 启动条件验证未漏 — D153 主线 close at `7ef14a7` 后 §F7 直接 followup 起首 + production driver class impl 实证 + C-A/C-B/C-C/C-D 4 候选 fact 入档 + 用户对话授权门槛触发 + 兑现 a-h 总览每条 file:line 锚)
+- **D154 Phase 0 commit hash 留 D154 Phase 1 启动轮回填**(D135-D153 范式 — 单 commit 不能引用自己 hash 下下轮回填)
+
+### Phase 1+: Phase 0 hash 回填 + 用户对话锁定候选 + 候选范畴细化 + 路径分支(Planned)
+
+- **D154 Phase 0 commit hash 回填**(下轮)— D154.md ~N 处 + D153.md F7 1 处 + D151.md F7 1 处(待 Phase 1 grep 实测 refine)
+- **用户对话授权候选锁定门槛触发**(类比 D148 Phase 2 H15 / D149 Phase 2 H12 / D150 Phase 0 H3 / D151 Phase 0 / D153 Phase 0 用户对话授权范式延续)
+- **候选锁定后路径明确** — C-A 一次性 / C-B 分批,详细 Phase 计划展开
+- **§A.1 决策行加锁定标** + **§A.2 H2 标 PASS**(用户对话授权门槛已触发)
+- **VCM §1 豁免锚成立**(Phase 1 docs-only)
+- **D154 Phase 1 commit hash 留 Phase 2+ 启动轮回填**
+
+---
+
+## Followup
+
+> **D154 Phase 0 落档后 — 候选锁定后展开**(2026-05-04):候选锁定后(Phase 1),后续 sub-D 起首队列由 C-A 一次性 / C-B 分批 决定;本 §Followup 表暂留 SQL 主线 followup 队列(D147 §F2/F3 / D146 §F2/F3 / D138 §F1 / D107 等)候选锁定后再扩 D154 各阶段 followup。
+
+| # | 锚 | 描述 | 启动条件 |
+|---|---|---|---|
+| F1 | D147 §F2 SELECT FOR UPDATE 行锁 + RR isolation level + InnoDB lock wait timeout | SQL standard `SELECT ... FOR UPDATE` 行锁与 cursor 正交独立 sub-D | D154 主线 close 后 |
+| F2 | D147 §F3 multi-PK / 多表 join updatable cursor | 本 D 仅最小子集(单表 SELECT 单 PK);multi-PK 复合主键 + 多表 join 留独立 sub-D | D154 主线 close 后 |
+| F3 | D146 §F2 holdability HOLD_CURSORS_OVER_COMMIT / CLOSE_CURSORS_AT_COMMIT | cursor + transaction commit 行为 | D154 主线 close 后 |
+| F4 | D146 §F3 ResultSetMetaData 完整列元数据 | getColumnTypeName / isAutoIncrement / isPrimaryKey 等 | D154 主线 close 后 |
+| F5 | D138 §F1 KeyHolder.getKey 类型扩展 + HikariCP | 自动生成主键类型 + 连接池 | D154 主线 close 后 |
+| F6 | D107 PostgreSQL driver 起首 | 跨数据库扩展新方向(D107 未首次落档) | D154 主线 close 后 |
+| F7 | bidirectional 完整闭环 integration test | D154 production driver class 落地后 read 后真 type write back 回路 integration test | D154 主线 close 后 |
+
+---
+
+## Status 时间线
+
+- 2026-05-04 Phase 0 落档 D 文档新建 + 候选锁定评估 fact 入档 + §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C + 决策行不锁定 留用户对话授权门槛触发 docs only(commit `<placeholder>` 留 D154 Phase 1 启动轮回填)— **D154 Phase 0 兑现 a-h 八项 fact 全 GREEN + D 文档新建 ~350 行 + D153 Phase 3 commit hash `7ef14a7` 回填 D153.md 6 行 11 字串非均匀分布 line 337 含 4 字串(用户字面「待 refine 处」实测 refine,memory `feedback_user_literal_vs_d_ssot` 同形防御 30 次落档)+ D151 §F7 line 318 + D153 §F7 line 331 标 D154 起首接力 + docs only VCM §1 豁免锚成立 + D135-D153 sub-D 链路 close 累计 19 sub-D + D154 SQL 主线 follow-up 第二例 sub-D 起首接力**:(a) **D153 Phase 3 commit hash `7ef14a7` 回填 D153.md 6 处**(line 3 Status header 含 2 字串 + line 121 §3 Orchestration 表 Phase 3 行含 2 字串 + line 299 §Phase 收关锚 §Phase 3 标题 + line 302 §Phase 收关锚 Phase 3 entry close 改写描述 + line 307 §Phase 收关锚 Phase 3 entry D153 主线 close at + line 337 §Status 时间线 Phase 3 entry 含 4 字串)= **6 行 11 字串非均匀分布 line 3 含 2 + line 121 含 2 + line 337 含 4**(用户字面「待 refine 处」实测 refine,memory `feedback_user_literal_vs_d_ssot` 同形防御 30 次落档 PSM §字段 3 与历史反差实证延续 — D148 Phase 5 字面「5 处」实测 6 / D149 Phase 0 字面「3 处」实测 4 / D149 Phase 3 字面「8 处」实测 6 行 8 字串 / D150 启动字面「6 处」实测 6 行 10 字串 / D151 启动字面「4+1 处」实测 5 行 7 字串 / D151 Phase 5 主线 close 字面「6+5 处」实测 6 行 11 字串 / D153 Phase 0 字面「N 处」实测 4 行 5 字串 / D153 Phase 1 字面「待 refine」实测 5 行 6 字串 line 304 含 2 字串 / D153 Phase 2 字面「待 refine」实测 3 行 3 字串均匀分布 / D153 Phase 3 字面「待 refine 处」实测 4 行 4 字串均匀分布);(b) **D154 sub-D Phase 0 起首落档** — D154.md 新建 ~350 行 docs-only(Status header + Depends on D153/D151/D147/D152/D025/D097/D052/D134 + Date 2026-05-04 + §核心目标 + §核心原则 13 条 + §1 Context + §2 RED 锚 + §3 Orchestration Phase 0-N+ + §A.1 4 候选评估 + §A.1.1 G1/G2 落点 + §A.2 H1-H10 隐藏假设 + §A.3 废案 7 条 + §Phase 收关锚 + §Followup + §Status 时间线 Phase 0 entry);(c) D153.md §F7 line 331 标 D154 起首 + D151.md §F7 line 318 标 D154 起首 + 历史 §F7 锚不破;(d) **VCM §1 豁免锚成立 docs-only**(`git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出 + 仅改 docs/3-decisions/D153-*.md hash 回填 + §F7 标 D154 起首 + docs/3-decisions/D151-*.md §F7 标 D154 起首 + 新建 docs/3-decisions/D154-*.md);simplify 跳过 docs-only 例外;d_doc_index_linter F1=0 GATE OK 14 referenced Ds all live + ultrathink GATE OK 3/3 PASS;(e) **候选评估 fact 入档**(C-A 一次性全 12 driver class impl / C-B 分批 incremental impl / C-C user-side override(已废)/ C-D postpone(已废))+ §字段 10 (e) 自决策评估 C-A ≥ C-B > C-D > C-C(根因解决度 + 长久 / 演化维度 — 业界对标 MySQL Connector/J 8.x / Postgres JDBC 范式直翻 + N 年返工度低);(f) **MNK §M meta-gate 强制四问全 ✓**(深度读 D153.md §核心目标 + §核心原则 13 条 + §1 Context + §A.1 决策行 C-A 锁定 + §A.2 H1-H10 全 PASS + §A.3 废案 + §Phase 收关锚 Phase 0/1/2/3 [✓] + §Status 时间线 Phase 0/1/2/3 entry + §Followup F1-F7 + 历史 D135-D152 sub-D 链路接力范式延续 + D151 §F1 line 318 / D153 §F7 line 331 锚 + D151 §A.2 H8 实证锚 + D153 §A.2 H8 实证锚 + D154 起首条件验证未漏);(g) **D135-D153 sub-D 链路 close 累计 19 sub-D + D154 sub-D 起首接力第二例 SQL 主线 follow-up sub-D**(D135 → D136 → D137 → D138 → D139 → D140 → D141 → D142 → D143 → D144 → D145 → D146 → **D147 close at `8323501`** SQL 主线 close 第一例 → **D150 主线暂停** → **D151 §F1 起首** → **D151 Phase 0/1** → **D152 sub-D 起首到 close at `6ded44d`** SQL 主线 close 第二例 → **D151 Phase 2 wrapper close at `6ded44d`** SQL 主线 close 第三例 → **D151 Phase 3 at `01c4aad`** → **D151 Phase 4 at `2eac262`** → **D151 主线 close at `b646978`** SQL 主线 close 第四例 → **D153 §F2 sub-D 起首到 close at `7ef14a7`** 编译器层 sub-D 第一例 close + SQL 主线 close 第五例 → **D154 §F7 sub-D 起首**(本轮)— SQL 主线 follow-up 第二例 sub-D 起首接力);(h) **D154 Phase 0 commit hash 留 D154 Phase 1 启动轮回填**(D135-D153 范式 — 单 commit 不能引用自己 hash 下下轮回填)。**新发现**:(i) **D154 = D153 主线 close 后 SQL 主线 follow-up 第二例 sub-D 起首接力**(D147/D152/D151 Phase 2 wrapper/D151 主线/D153 主线 5 个 close 节点后,D154 起首是后续 sub-D 链路接力第二例 SQL 主线 follow-up,延续 D153 §F2 编译器层 close 后 D154 SQL 主线 driver impl follow up;D153 §F2 是根因 D154 §F7 是 surface,§F2 修复后 §F7 才有干净落地路径,业界对标 H8 stringify pattern 限制根因解 + driver class impl surface 补全双轨完成);(ii) **D154 §F7 driver class impl = D135-D153 范式 SQL 主线第三个独立 sub-D 起首**(D135-D147 = SQL 主线 sub-D 第一阶段 13 sub-D / D148-D150 = ultrathink 巡检巡检 / D150 主线暂停 / D151-D152 = SQL 主线 sub-D 第二阶段 setter + type class foundation / D153 = 编译器层 sub-D 第一例 / **D154 = SQL 主线 sub-D 第三阶段 driver class impl 起首**);(iii) **业界对标 D154 §F7 driver class impl 范式**(JDBC 4.3 driver impl pattern + MySQL Connector/J 8.x `com.mysql.cj.jdbc.MysqlxBlob/MysqlxClob/MysqlxRowId/MysqlxSQLXML` + Postgres JDBC `org.postgresql.jdbc.PgBlob/PgClob/PgSQLXML` + Oracle JDBC `oracle.sql.BLOB/CLOB/NCLOB/SQLXML/ARRAY/REF/ROWID` 各成熟 JDBC driver 范式直翻);C-A 范式 = MySQL Connector/J 8.x 一次性完整 driver impl class 范式直接对标;(iv) **D151 §F1 line 318 锚 + D153 §F7 line 331 锚 + D151 §A.2 H8 + D153 §A.2 H8 实证锚**(D154 §1 Context 引用 D151.md / D153.md §A.2 H8 实证 + §F7 line 318 / 331 锚:H8 假设 "MysqlBinaryResultSet via writeCol stringify pattern 可直翻 ≥22 setter — `writeCol(col, val.toString())`" D151 Phase 4 部分破裂 → D153 Phase 2 修复后 GREEN → D154 production driver class 落地后 bidirectional 完整闭环);(v) **D135-D153 范式延续 + D154 §F7 起首接力第二例 SQL 主线 follow-up sub-D**(D135-D152 全是 SQL 主线 sub-D / D153 §F2 是首个跳出 SQL 主线进入 SS 编译器 codegen 层的 sub-D / D154 §F7 是 D153 close 后回归 SQL 主线 driver impl follow up,业界对标 JDBC 4.3 driver impl pattern + 延续 D097 reflection 根因 metrics + D025 class layout interface vtable 范式);(vi) **D153 §F2 修复后 D154 §F7 干净落地路径具备 + D154 §F7 = D151 §F1 line 318 起首接力 close**(D153 主线 close at `7ef14a7` 后 §F7 起首接力 — driver class impl sub-D 第二例 SQL 主线 follow-up,延续 D135-D152 SQL 主线 sub-D + D153 编译器层 sub-D close 范式;D154 实施 Phase 视候选锁定 — C-A 一次性 ~600-1500 LOC / C-B 分批 ~200-400 LOC × 3-4 Phase);(vii) **C-A 倾向锁定后 Phase 1+ 直接 Execute 不 Plan**(memory `feedback_execute_when_doc_locked.md` 同形 — 决策归档后 next_prompt 直接 Execute 不 Plan,D154 Phase 1 锁 C-A 后 Phase 2+ driver class impl 实施范畴明确无新 sub-decision 需用户授权,类比 D147 Phase 2 / D152 Phase 2/3/4/5 / D151 Phase 4 / D153 Phase 2 范式延续;若锁 C-B 则 Phase 计划 4-5 commit 分批落地);(viii) **D135-D153 sub-D 链路 close 完毕状态 + D154 §F7 起首接力**(D135-D152 SQL 主线 sub-D 链路 close 累计 18 sub-D + D153 编译器层 sub-D close 第一例 = 累计 19 sub-D close;D154 起首是 SQL 主线 follow-up 第二例 sub-D 起首接力 — D147/D152/D151 主线/D151 Phase 2 wrapper/D153 主线 5 个 close 节点后 D154 SQL 主线 follow-up sub-D 起首)
