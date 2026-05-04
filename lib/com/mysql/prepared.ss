@@ -46,6 +46,25 @@ import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLE
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 
+// Reader.readN chunked drain — Reader 接口无 available()(D152 io.ss),
+// 只能 chunked loop 读到 EOF(empty string)。8KiB 与 JDK BufferedReader
+// 默认 buffer 一致。D151TestStub 同形(integration_test.ss:278-290)。
+const READER_CHUNK_BYTES = 8192
+
+function drainReader(r: Reader): string {
+    let s = ""
+    let cont = 1
+    while (cont == 1) {
+        const chunk = r.readN(READER_CHUNK_BYTES)
+        if (chunk.length() == 0) {
+            cont = 0
+        } else {
+            s = s + chunk
+        }
+    }
+    return s
+}
+
 // Command bytes — MySQL Native Protocol §6.5
 const COM_STMT_PREPARE = 0x16
 const COM_STMT_EXECUTE = 0x17
@@ -677,30 +696,27 @@ class MysqlBinaryResultSet : ResultSet {
     function updateNull(col: string) { this.writeCol(col, "") }
 
     // ── D151 Phase 4 — JDBC 4.3 §15.2.5 update setter type extension ──
-    // Real stringify only for non-interface val types: BigDecimal (class —
-    // direct method dispatch) + Bytes / Object / NString (string passthrough).
-    // The 12 interface-typed setters are no-op stubs — calling val.toString()
-    // / val.getBytes() forces `@__iface_<I>_<m>` dispatch synthesis in every
-    // unit importing lib/java/sql, breaking D152 sibling tests' compile that
-    // do not declare implementors for unused type classes. Real stringify
-    // lives behind D151 §F1 (driver impl class — MysqlTimestamp / MysqlBlob)
-    // + §F2 (compiler dispatch fallthrough). Stub fallback matches D147
-    // §核心原则 10. See docs/3-decisions/D151-*.md §A.2 H8 + §Followup F7/F8.
+    // D153 §F2 codegen 修复后(gen_iface.ss 空 impls dispatch fn emit
+    // unreachable allow link),interface-typed val 的 toString / getBytes /
+    // getSubString / readN dispatch 在 sibling 编译单元无 implementor 时
+    // 也能 link 通过(运行时若 hit 则 LLVM unreachable trap)。各 setter
+    // 按 JDBC 范式 stringify 后写入 pendingUpdates,与 D151TestStub pattern
+    // 同形(tests/d151_*/integration_test.ss:257-274)。
     function updateBigDecimal(col: string, val: BigDecimal) { this.writeCol(col, val.toString()) }
-    function updateTimestamp(col: string, val: Timestamp) {}
-    function updateDate(col: string, val: Date) {}
-    function updateTime(col: string, val: Time) {}
-    function updateBlob(col: string, val: Blob) {}
-    function updateClob(col: string, val: Clob) {}
-    function updateNClob(col: string, val: NClob) {}
-    function updateRowId(col: string, val: RowId) {}
-    function updateSQLXML(col: string, val: SQLXML) {}
-    function updateArray(col: string, val: SqlArray) {}
-    function updateRef(col: string, val: Ref) {}
-    function updateAsciiStream(col: string, val: InputStream) {}
-    function updateBinaryStream(col: string, val: InputStream) {}
-    function updateCharacterStream(col: string, val: Reader) {}
-    function updateNCharacterStream(col: string, val: Reader) {}
+    function updateTimestamp(col: string, val: Timestamp) { this.writeCol(col, val.toString()) }
+    function updateDate(col: string, val: Date) { this.writeCol(col, val.toString()) }
+    function updateTime(col: string, val: Time) { this.writeCol(col, val.toString()) }
+    function updateBlob(col: string, val: Blob) { this.writeCol(col, val.getBytes(1, val.length())) }
+    function updateClob(col: string, val: Clob) { this.writeCol(col, val.getSubString(1, val.length())) }
+    function updateNClob(col: string, val: NClob) { this.writeCol(col, val.getSubString(1, val.length())) }
+    function updateRowId(col: string, val: RowId) { this.writeCol(col, val.toString()) }
+    function updateSQLXML(col: string, val: SQLXML) { this.writeCol(col, val.getString()) }
+    function updateArray(col: string, val: SqlArray) { this.writeCol(col, val.getArray()) }
+    function updateRef(col: string, val: Ref) { this.writeCol(col, val.getObject()) }
+    function updateAsciiStream(col: string, val: InputStream) { this.writeCol(col, val.readN(val.available())) }
+    function updateBinaryStream(col: string, val: InputStream) { this.writeCol(col, val.readN(val.available())) }
+    function updateCharacterStream(col: string, val: Reader) { this.writeCol(col, drainReader(val)) }
+    function updateNCharacterStream(col: string, val: Reader) { this.writeCol(col, drainReader(val)) }
     function updateBytes(col: string, val: string) { this.writeCol(col, val) }
     function updateObject(col: string, val: string) { this.writeCol(col, val) }
     function updateNString(col: string, val: string) { this.writeCol(col, val) }

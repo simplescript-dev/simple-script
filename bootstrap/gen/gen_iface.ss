@@ -137,7 +137,8 @@ function generateInterfaceDispatchers() {
         const methods = ifaceMethodsCG.getString(iface)
         if (methods == "") { continue }
         const impls = ifaceImplementors.has(iface) == 1 ? ifaceImplementors.getString(iface) : ""
-        if (impls == "") { continue }
+        // D153 §F2: 空 impls 不 skip — emit dispatch fn body 走 unreachable 允许 link
+        // (业界对标 C++ __cxa_pure_virtual / Rust unreachable!() / LLVM unreachable instruction trap)
         const mList = methods.split(",")
         for (mangledKey in mList) {
             if (mangledKey == "") { continue }
@@ -187,6 +188,13 @@ function emitIfaceDispatchFn(iface: string, methodKey: string, impls: string) {
         emitIR(`define ${retLLVM} @${dispName}(${paramStrIR}) {`)
     }
     emitIR("entry:")
+    // D153 §F2: 空 impls → emit unreachable allow link(无 implementor 不可达,运行时 trap)
+    if (impls == "") {
+        emitIR("  unreachable")
+        emitIR("}")
+        emitIR("")
+        return
+    }
     // Load class_id from TypeInfo (slot 5)
     emitIR("  %ti.ptr = getelementptr %ObjHeader, ptr %self, i32 0, i32 1")
     emitIR("  %ti = load ptr, ptr %ti.ptr")
