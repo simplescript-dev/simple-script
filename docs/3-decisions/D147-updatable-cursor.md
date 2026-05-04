@@ -215,7 +215,7 @@
 
 | # | 锚 | 描述 |
 |---|---|---|
-| F1 | updateXxx 6 setter 扩展类型(BigDecimal / Timestamp / Date / Time / Bytes / Float / Short / Byte) | 本 D 仅 6 核心类型(int / string / long / boolean / double / null);JDBC 4.3 §15.2.5 全 SQL type setter ≥18 method,扩展类型留独立 sub-D 或合入 D146 §F3 ResultSetMetaData;**起 D151 sub-D 完整 JDBC 4.3 §15.2.5 ≥18 method at commit `<placeholder>` 留下下轮回填**(2026-05-04 用户对话锁 C-B 完整 + 底层依赖链实证 ≥10 type class 缺 + C-B-1/2/3 子候选评估 fact 入档 留 Phase 1 用户授权) |
+| F1 | updateXxx 6 setter 扩展类型(BigDecimal / Timestamp / Date / Time / Bytes / Float / Short / Byte) | 本 D 仅 6 核心类型(int / string / long / boolean / double / null);JDBC 4.3 §15.2.5 全 SQL type setter ≥18 method,扩展类型留独立 sub-D 或合入 D146 §F3 ResultSetMetaData;**起 D151 sub-D 完整 JDBC 4.3 §15.2.5 ≥18 method at commit `2e94b54`**(2026-05-04 用户对话锁 C-B 完整 + 底层依赖链实证 ≥10 type class 缺 + C-B-1/2/3 子候选评估 fact 入档 留 Phase 1 用户授权) |
 | F2 | SELECT FOR UPDATE 行锁 + RR isolation level + InnoDB lock wait timeout | SQL standard `SELECT ... FOR UPDATE` 行锁与 cursor 正交独立 sub-D — RR isolation level + InnoDB Gap Lock + lock wait timeout 调优监控完整;本 D scope 限 driver-side 模拟 cursor,锁路径独立 |
 | F3 | multi-PK / 多表 join updatable cursor | 本 D Phase 3 derivePkColumn 仅最小子集(单表 SELECT 单 PK)— multi-PK 复合主键 + 多表 join updatable view 走 SHOW INDEX / INFORMATION_SCHEMA.KEY_COLUMN_USAGE 完整 PK 推导 + multi-table updatable cursor 留独立 sub-D 或合入 D146 §F3 ResultSetMetaData |
 | F4 | SQL standard `WHERE CURRENT OF cursor_name` named cursor + UPDATE/DELETE WHERE CURRENT OF | SQL standard SQL/PSM cursor name + `UPDATE table WHERE CURRENT OF cursor_name` 语法(MySQL 不支持 — 仅 stored procedure 内 DECLARE CURSOR);留独立 sub-D 或合入 D146 §F4 |
