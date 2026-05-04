@@ -42,7 +42,9 @@
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
 import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException } from "@/lib/java/sql"
+import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { BigDecimal } from "@/lib/java/math"
+import { InputStream, Reader } from "@/lib/java/io"
 
 // Command bytes — MySQL Native Protocol §6.5
 const COM_STMT_PREPARE = 0x16
@@ -673,6 +675,35 @@ class MysqlBinaryResultSet : ResultSet {
     }
     function updateDouble(col: string, val: double) { this.writeCol(col, "" + val) }
     function updateNull(col: string) { this.writeCol(col, "") }
+
+    // ── D151 Phase 4 — JDBC 4.3 §15.2.5 update setter type extension ──
+    // Real stringify only for non-interface val types: BigDecimal (class —
+    // direct method dispatch) + Bytes / Object / NString (string passthrough).
+    // The 12 interface-typed setters are no-op stubs — calling val.toString()
+    // / val.getBytes() forces `@__iface_<I>_<m>` dispatch synthesis in every
+    // unit importing lib/java/sql, breaking D152 sibling tests' compile that
+    // do not declare implementors for unused type classes. Real stringify
+    // lives behind D151 §F1 (driver impl class — MysqlTimestamp / MysqlBlob)
+    // + §F2 (compiler dispatch fallthrough). Stub fallback matches D147
+    // §核心原则 10. See docs/3-decisions/D151-*.md §A.2 H8 + §Followup F7/F8.
+    function updateBigDecimal(col: string, val: BigDecimal) { this.writeCol(col, val.toString()) }
+    function updateTimestamp(col: string, val: Timestamp) {}
+    function updateDate(col: string, val: Date) {}
+    function updateTime(col: string, val: Time) {}
+    function updateBlob(col: string, val: Blob) {}
+    function updateClob(col: string, val: Clob) {}
+    function updateNClob(col: string, val: NClob) {}
+    function updateRowId(col: string, val: RowId) {}
+    function updateSQLXML(col: string, val: SQLXML) {}
+    function updateArray(col: string, val: SqlArray) {}
+    function updateRef(col: string, val: Ref) {}
+    function updateAsciiStream(col: string, val: InputStream) {}
+    function updateBinaryStream(col: string, val: InputStream) {}
+    function updateCharacterStream(col: string, val: Reader) {}
+    function updateNCharacterStream(col: string, val: Reader) {}
+    function updateBytes(col: string, val: string) { this.writeCol(col, val) }
+    function updateObject(col: string, val: string) { this.writeCol(col, val) }
+    function updateNString(col: string, val: string) { this.writeCol(col, val) }
 
     // Trims the trailing entry of pendingInserts. SS Array<T> has no pop()
     // and Array<T>[i] = X is rejected by codegen (ss_arraySet i64 third arg

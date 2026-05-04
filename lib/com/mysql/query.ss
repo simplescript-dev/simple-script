@@ -13,7 +13,9 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ResultSet, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException } from "@/lib/java/sql"
+import { ResultSet, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { BigDecimal } from "@/lib/java/math"
+import { InputStream, Reader } from "@/lib/java/io"
 
 const COM_QUERY = 0x03
 const NULL_MARKER = 0xFB
@@ -441,6 +443,28 @@ class MysqlResultSet : ResultSet {
     function updateBoolean(col: string, val: int) {}
     function updateDouble(col: string, val: double) {}
     function updateNull(col: string) {}
+    // ── D151 Phase 4 — JDBC 4.3 §15.2.5 update setter type extension ──
+    // Text protocol (COM_QUERY 0x03) has no updatable cursor surface;
+    // simulation lives on MysqlBinaryResultSet (D147 §Phase 4). All 18
+    // typed setters are no-ops here for D025 vtable parity.
+    function updateBigDecimal(col: string, val: BigDecimal) {}
+    function updateTimestamp(col: string, val: Timestamp) {}
+    function updateDate(col: string, val: Date) {}
+    function updateTime(col: string, val: Time) {}
+    function updateBlob(col: string, val: Blob) {}
+    function updateClob(col: string, val: Clob) {}
+    function updateNClob(col: string, val: NClob) {}
+    function updateRowId(col: string, val: RowId) {}
+    function updateSQLXML(col: string, val: SQLXML) {}
+    function updateArray(col: string, val: SqlArray) {}
+    function updateRef(col: string, val: Ref) {}
+    function updateAsciiStream(col: string, val: InputStream) {}
+    function updateBinaryStream(col: string, val: InputStream) {}
+    function updateCharacterStream(col: string, val: Reader) {}
+    function updateNCharacterStream(col: string, val: Reader) {}
+    function updateBytes(col: string, val: string) {}
+    function updateObject(col: string, val: string) {}
+    function updateNString(col: string, val: string) {}
 
     function close() {
         if (this.closed != 0) { return }
@@ -536,6 +560,27 @@ class GeneratedKeyResultSet : ResultSet {
     function updateBoolean(col: string, val: int) {}
     function updateDouble(col: string, val: double) {}
     function updateNull(col: string) {}
+    // ── D151 Phase 4 — synthetic single-row ResultSet has no underlying
+    // table / PK / row state to mutate; all 18 typed setters stay no-op for
+    // D025 vtable parity.
+    function updateBigDecimal(col: string, val: BigDecimal) {}
+    function updateTimestamp(col: string, val: Timestamp) {}
+    function updateDate(col: string, val: Date) {}
+    function updateTime(col: string, val: Time) {}
+    function updateBlob(col: string, val: Blob) {}
+    function updateClob(col: string, val: Clob) {}
+    function updateNClob(col: string, val: NClob) {}
+    function updateRowId(col: string, val: RowId) {}
+    function updateSQLXML(col: string, val: SQLXML) {}
+    function updateArray(col: string, val: SqlArray) {}
+    function updateRef(col: string, val: Ref) {}
+    function updateAsciiStream(col: string, val: InputStream) {}
+    function updateBinaryStream(col: string, val: InputStream) {}
+    function updateCharacterStream(col: string, val: Reader) {}
+    function updateNCharacterStream(col: string, val: Reader) {}
+    function updateBytes(col: string, val: string) {}
+    function updateObject(col: string, val: string) {}
+    function updateNString(col: string, val: string) {}
 
     function close() {
     }

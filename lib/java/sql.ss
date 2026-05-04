@@ -73,6 +73,34 @@ interface ResultSet {
     function updateBoolean(col: string, val: int)
     function updateDouble(col: string, val: double)
     function updateNull(col: string)
+    // ── D151 Phase 4 — JDBC 4.3 §15.2.5 update setter type extension ──
+    // 18 method signatures completing the JDBC §15.2.5 update API. Type
+    // classes resolved by D152 (lib/java/{math,sql,io}.ss):
+    //   BigDecimal      — D152 Phase 2 (lib/java/math.ss)
+    //   Timestamp / Date / Time / Blob / Clob / NClob / RowId / SQLXML /
+    //   SqlArray / Ref  — D152 Phase 3 (this file's type class section)
+    //   InputStream / Reader — D152 Phase 4 (lib/java/io.ss)
+    // updateBytes / updateObject / updateNString take SS string — JDBC
+    // byte[] / Object / NString collapse onto string in this driver
+    // (Object generics-on-interface tracked in D152 §Followup).
+    function updateBigDecimal(col: string, val: BigDecimal)
+    function updateTimestamp(col: string, val: Timestamp)
+    function updateDate(col: string, val: Date)
+    function updateTime(col: string, val: Time)
+    function updateBlob(col: string, val: Blob)
+    function updateClob(col: string, val: Clob)
+    function updateNClob(col: string, val: NClob)
+    function updateRowId(col: string, val: RowId)
+    function updateSQLXML(col: string, val: SQLXML)
+    function updateArray(col: string, val: SqlArray)
+    function updateRef(col: string, val: Ref)
+    function updateAsciiStream(col: string, val: InputStream)
+    function updateBinaryStream(col: string, val: InputStream)
+    function updateCharacterStream(col: string, val: Reader)
+    function updateNCharacterStream(col: string, val: Reader)
+    function updateBytes(col: string, val: string)
+    function updateObject(col: string, val: string)
+    function updateNString(col: string, val: string)
     function close()
 }
 
