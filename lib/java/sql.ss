@@ -266,3 +266,190 @@ class SQLFeatureNotSupportedException extends SQLNonTransientException {}
 class SQLTransientConnectionException extends SQLTransientException {}
 class SQLTransactionRollbackException extends SQLTransientException {}
 class SQLTimeoutException extends SQLTransientException {}
+
+// ── JDBC 4.3 Type Class Foundation — D152 §Phase 3 ───────────
+// JDK java.sql.* type class direct mapping (interface form). Driver-side
+// concrete implementations live under lib/com/<vendor>/*.ss; user code
+// dispatches through these interfaces.
+//
+// D152 §核心目标: ≥10 type class interfaces underlie D151 setter ≥18
+// method (JDBC §15.2.5 updateXxx) signatures — without these, the setter
+// API would have to fall back to ptr / null-stub workarounds (violates
+// D151 §核心原则 1 完整不裁剪).
+//
+// Stream methods (Blob.getBinaryStream / Clob.getCharacterStream /
+// SQLXML.getBinaryStream / SQLXML.getCharacterStream) return
+// java.io.InputStream / java.io.Reader and are added in D152 §Phase 4
+// once lib/java/io.ss declares those interfaces. Phase 3 declares the
+// non-stream API surface so this file remains self-contained (no
+// forward import dependency on a file that does not yet exist).
+//
+// Naming: java.sql.Array → SqlArray. SS Array<T> is the built-in generic
+// array type — declaring `interface Array` would shadow the keyword.
+// The Sql- prefix matches the convention used by JPA driver bindings.
+//
+// See docs/3-decisions/D152-jdbc-type-class-foundation.md §Phase 3.
+
+// ── Timestamp — JDBC 4.3 §13.2.1 / java.sql.Timestamp ────────
+// Date + time + nanosecond precision. JDBC convention:
+//   getMonth() returns 1-12 (NOT 0-11 like java.util.Date)
+//   getNanos() returns 0-999999999 (sub-millisecond precision the
+//                                    millis-only getTime() cannot represent)
+// JDBC `Timestamp extends java.util.Date implements Comparable<Timestamp>`
+// — SS interfaces lack extends/implements syntax (D136 §A.5), so the
+// inherited getTime/setTime + Comparable.compareTo are restated here.
+
+interface Timestamp {
+    function getYear(): int
+    function getMonth(): int
+    function getDay(): int
+    function getHours(): int
+    function getMinutes(): int
+    function getSeconds(): int
+    function getNanos(): int
+    function setNanos(nanos: int)
+    function getTime(): int
+    function setTime(time: int)
+    function before(other: Timestamp): int
+    function after(other: Timestamp): int
+    function equals(other: Timestamp): int
+    function compareTo(other: Timestamp): int
+    function toString(): string
+}
+
+// ── Date — JDBC 4.3 §13.2.1 / java.sql.Date ──────────────────
+// Date-only column type. toString() returns "YYYY-MM-DD" per JDBC spec.
+// Same extends/implements restating as Timestamp (D136 §A.5).
+
+interface Date {
+    function getYear(): int
+    function getMonth(): int
+    function getDay(): int
+    function getTime(): int
+    function setTime(time: int)
+    function before(other: Date): int
+    function after(other: Date): int
+    function equals(other: Date): int
+    function compareTo(other: Date): int
+    function toString(): string
+}
+
+// ── Time — JDBC 4.3 §13.2.1 / java.sql.Time ──────────────────
+// Time-only column type. toString() returns "HH:MM:SS" per JDBC spec.
+
+interface Time {
+    function getHours(): int
+    function getMinutes(): int
+    function getSeconds(): int
+    function getTime(): int
+    function setTime(time: int)
+    function before(other: Time): int
+    function after(other: Time): int
+    function equals(other: Time): int
+    function compareTo(other: Time): int
+    function toString(): string
+}
+
+// ── Blob — JDBC 4.3 §13.2.2 / java.sql.Blob ──────────────────
+// Binary Large Object handle. Position is 1-based (JDBC convention).
+//   length()                      — total bytes
+//   getBytes(pos, len)            — read window
+//   setBytes(pos, bytes)          — write at pos, returns count written
+//   position(pattern, start)      — pattern search, -1 if not found
+//   truncate(len)                 — shrink Blob to len bytes
+//   free()                        — release driver resources
+// getBinaryStream() returns InputStream — added in D152 §Phase 4.
+
+interface Blob {
+    function length(): int
+    function getBytes(pos: int, len: int): string
+    function setBytes(pos: int, bytes: string): int
+    function position(pattern: string, start: int): int
+    function truncate(len: int)
+    function free()
+}
+
+// ── Clob — JDBC 4.3 §13.2.2 / java.sql.Clob ──────────────────
+// Character Large Object handle. setString returns chars written.
+// getCharacterStream() returns Reader — added in D152 §Phase 4.
+
+interface Clob {
+    function length(): int
+    function getSubString(pos: int, len: int): string
+    function setString(pos: int, str: string): int
+    function position(pattern: string, start: int): int
+    function truncate(len: int)
+    function free()
+}
+
+// ── NClob — JDBC 4.3 §13.2.2 / java.sql.NClob ────────────────
+// National-character Clob (NCHAR / NVARCHAR / NCLOB columns). JDBC spec
+// has `NClob extends Clob`; SS interfaces lack extends syntax (D136
+// §A.5), so NClob declares the same method set independently. Driver
+// impls produced from NCHAR/NVARCHAR columns dispatch through this.
+
+interface NClob {
+    function length(): int
+    function getSubString(pos: int, len: int): string
+    function setString(pos: int, str: string): int
+    function position(pattern: string, start: int): int
+    function truncate(len: int)
+    function free()
+}
+
+// ── RowId — JDBC 4.3 §13.2.3 / java.sql.RowId ────────────────
+// Driver-opaque row identifier (DB2 ROWID, Oracle ROWID, MySQL row hash).
+// Used by Statement.getRowId / setRowId for cursor row addressing —
+// alternative to PK-based positioning when PK is composite or absent.
+
+interface RowId {
+    function getBytes(): string
+    function toString(): string
+    function equals(other: RowId): int
+    function hashCode(): int
+}
+
+// ── SQLXML — JDBC 4.3 §13.2.4 / java.sql.SQLXML ──────────────
+// XML column handle (SQL/XML standard, MySQL JSON column, PostgreSQL xml,
+// SQL Server XML, Oracle XMLType). getBinaryStream / getCharacterStream
+// return InputStream / Reader — added in D152 §Phase 4.
+
+interface SQLXML {
+    function getString(): string
+    function setString(value: string)
+    function free()
+}
+
+// ── SqlArray — JDBC 4.3 §13.2.5 / java.sql.Array ─────────────
+// SQL ARRAY column handle (PostgreSQL TEXT[] / INT[], standard SQL ARRAY
+// type). Renamed from JDBC `Array` to `SqlArray` because SS Array<T> is
+// the built-in generic — declaring `interface Array` would shadow the
+// keyword.
+//
+// getBaseType() returns the JDBC Types int constant of the element type
+// (e.g. Types.INTEGER = 4, Types.VARCHAR = 12); getBaseTypeName()
+// returns the SQL type name ("INTEGER", "VARCHAR").
+//
+// getArray() returns a driver-serialized representation. JDBC spec
+// returns Object[]; SS interface return types must be concrete and
+// generics-on-interface is not yet supported (D152 §Followup tracks
+// generics-on-interface sub-D).
+
+interface SqlArray {
+    function getBaseType(): int
+    function getBaseTypeName(): string
+    function getArray(): string
+    function free()
+}
+
+// ── Ref — JDBC 4.3 §13.2.6 / java.sql.Ref ────────────────────
+// SQL REF column (SQL standard REF type, Oracle REF). Pointer to a row
+// in a typed table. getObject returns the referenced object as a
+// driver-serialized string (same generics-on-interface limitation as
+// SqlArray, D152 §Followup).
+
+interface Ref {
+    function getBaseTypeName(): string
+    function getObject(): string
+    function setObject(value: string)
+}
