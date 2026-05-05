@@ -195,3 +195,98 @@ function getMysqlConnection(url: string): MysqlConnection {
     const fd = mysqlConnect(host, port, user, pwd, db)
     return new MysqlConnection(fd, 1, 0)
 }
+
+// D156 Phase 1 — INFORMATION_SCHEMA per-call PreparedStatement helpers and
+// driver-static accessors. The MysqlDatabaseMetaData class (Phase 3) routes
+// every spec method through these so the protocol boilerplate (prepare →
+// executeQuery → row 1 col 1 → drain) lives in one place; future lazy cache
+// (D156 §F5) hooks here without touching ≥30 metadata method bodies.
+//
+// Each *String / *Int helper grabs column 1 by reflecting its name through
+// rs.getMetaData().getColumnName(1) — caller's SELECT need not alias the
+// expression, since MySQL returns the literal text ("VERSION()", "1", ...) as
+// the column name when no alias is given. Empty result set is well-defined:
+// "" for string and 0 for int (D156 §A.2 H9 — Connection close-state errors
+// are deferred to D139 §F SQLException coverage; here the well-defined empty
+// path keeps Phase 3 metadata methods tolerant of stripped-down server states).
+//
+// getServerVersionStatic walks SELECT VERSION() per-call — Phase 1 does not
+// hold serverVersion on MysqlConnection (would widen handshake.mysqlConnect's
+// return shape from int to a class). Lazy cache lands in Phase 3 alongside
+// the rest of MysqlDatabaseMetaData (D156 §A.2 H6).
+//
+// Static accessors return JDBC §11 spec literals for MySQL (Connector/J
+// range): catalog term "database" / schema term "" (single-tier model, H2)
+// / procedure term "procedure" / catalog separator "." / driver name
+// "MySQL Connector/SS" + version derived from DRIVER_VERSION_MAJOR /
+// _MINOR (SS project hard-codes, not parsed from any manifest — H6;
+// single-source so that getDriverVersionStatic / getDriverMajorVersionStatic
+// / getDriverMinorVersionStatic cannot drift apart on bumps).
+
+const DRIVER_VERSION_MAJOR = 1
+const DRIVER_VERSION_MINOR = 0
+
+function infoSchemaQuery(conn: Connection, sql: string): ResultSet {
+    const ps = conn.prepareStatement(sql)
+    return ps.executeQuery()
+}
+
+function infoSchemaQueryString(conn: Connection, sql: string): string {
+    const rs = infoSchemaQuery(conn, sql)
+    if (rs.next() == 0) {
+        rs.close()
+        return ""
+    }
+    const md = rs.getMetaData()
+    const v = rs.getString(md.getColumnName(1))
+    rs.close()
+    return v
+}
+
+function infoSchemaQueryInt(conn: Connection, sql: string): int {
+    const rs = infoSchemaQuery(conn, sql)
+    if (rs.next() == 0) {
+        rs.close()
+        return 0
+    }
+    const md = rs.getMetaData()
+    const v = rs.getInt(md.getColumnName(1))
+    rs.close()
+    return v
+}
+
+function getCatalogTermStatic(): string {
+    return "database"
+}
+
+function getSchemaTermStatic(): string {
+    return ""
+}
+
+function getProcedureTermStatic(): string {
+    return "procedure"
+}
+
+function getCatalogSeparatorStatic(): string {
+    return "."
+}
+
+function getDriverNameStatic(): string {
+    return "MySQL Connector/SS"
+}
+
+function getDriverVersionStatic(): string {
+    return `${DRIVER_VERSION_MAJOR}.${DRIVER_VERSION_MINOR}`
+}
+
+function getDriverMajorVersionStatic(): int {
+    return DRIVER_VERSION_MAJOR
+}
+
+function getDriverMinorVersionStatic(): int {
+    return DRIVER_VERSION_MINOR
+}
+
+function getServerVersionStatic(conn: Connection): string {
+    return infoSchemaQueryString(conn, "SELECT VERSION() AS v")
+}
