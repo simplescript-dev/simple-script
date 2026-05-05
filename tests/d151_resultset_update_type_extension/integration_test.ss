@@ -14,110 +14,23 @@ import { assertEqual } from "@/lib/test"
 import { ResultSet, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
+import { MysqlTimestamp, MysqlRowId, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
+import { MysqlBinaryStream, MysqlCharacterStream, MysqlNCharacterStream } from "@/lib/com/mysql/driver_streams"
+import { MysqlBlob, MysqlClob, MysqlNClob, MysqlSQLXML } from "@/lib/com/mysql/driver_lobs"
 
 // Matches JDK java.io.Reader default buffer size — chunked drain in
 // drainReader() loops until readN returns "" (EOF).
 const READER_CHUNK_BYTES = 8192
 
-// ── Stream stubs (in-memory backing string + cursor) ────────────────
-
-class MemoryInputStream : InputStream {
-    data: string
-    pos: int
-
-    function read(): int {
-        if (this.pos >= this.data.length()) { return -1 }
-        const b = this.data.charCodeAt(this.pos)
-        this.pos = this.pos + 1
-        return b
-    }
-    function readN(len: int): string {
-        const remaining = this.data.length() - this.pos
-        let take = len
-        if (len > remaining) { take = remaining }
-        const chunk = this.data.substring(this.pos, take)
-        this.pos = this.pos + take
-        return chunk
-    }
-    function skip(n: int): int { return 0 }
-    function available(): int { return this.data.length() - this.pos }
-    function close() {}
-    function mark(readlimit: int) {}
-    function reset() {}
-    function markSupported(): int { return 0 }
-}
-
-class MemoryReader : Reader {
-    text: string
-    pos: int
-
-    function read(): int {
-        if (this.pos >= this.text.length()) { return -1 }
-        const c = this.text.charCodeAt(this.pos)
-        this.pos = this.pos + 1
-        return c
-    }
-    function readN(len: int): string {
-        const remaining = this.text.length() - this.pos
-        let take = len
-        if (len > remaining) { take = remaining }
-        const chunk = this.text.substring(this.pos, take)
-        this.pos = this.pos + take
-        return chunk
-    }
-    function skip(n: int): int { return 0 }
-    function ready(): int {
-        if (this.pos < this.text.length()) { return 1 }
-        return 0
-    }
-    function close() {}
-    function mark(readlimit: int) {}
-    function reset() {}
-    function markSupported(): int { return 0 }
-}
-
-class EmptyInputStream : InputStream {
-    function read(): int { return -1 }
-    function readN(len: int): string { return "" }
-    function skip(n: int): int { return 0 }
-    function available(): int { return 0 }
-    function close() {}
-    function mark(readlimit: int) {}
-    function reset() {}
-    function markSupported(): int { return 0 }
-}
-
-class EmptyReader : Reader {
-    function read(): int { return -1 }
-    function readN(len: int): string { return "" }
-    function skip(n: int): int { return 0 }
-    function ready(): int { return 0 }
-    function close() {}
-    function mark(readlimit: int) {}
-    function reset() {}
-    function markSupported(): int { return 0 }
-}
-
-// ── Type class stubs ────────────────────────────────────────────────
-
-class StubTimestamp : Timestamp {
-    iso: string
-    function getYear(): int { return 0 }
-    function getMonth(): int { return 0 }
-    function getDay(): int { return 0 }
-    function getHours(): int { return 0 }
-    function getMinutes(): int { return 0 }
-    function getSeconds(): int { return 0 }
-    function getNanos(): int { return 0 }
-    function setNanos(nanos: int) {}
-    function getTime(): int { return 0 }
-    function setTime(time: int) {}
-    function before(other: Timestamp): int { return 0 }
-    function after(other: Timestamp): int { return 0 }
-    function equals(other: Timestamp): int { return 0 }
-    function compareTo(other: Timestamp): int { return 0 }
-    function toString(): string { return this.iso }
-}
+// D154 §F7 sub-D: production driver class implementations replace the
+// 12 D154-scoped stub classes. Stream stubs (MemoryInputStream / Reader,
+// EmptyInputStream / Reader) → MysqlBinaryStream / MysqlCharacterStream /
+// MysqlNCharacterStream (lib/com/mysql/driver_streams.ss). Type stubs
+// (StubTimestamp / StubBlob / StubClob / StubNClob / StubRowId /
+// StubSQLXML / StubSqlArray / StubRef) → Mysql* (lib/com/mysql/
+// driver_types.ss + driver_lobs.ss). StubDate / StubTime stay because
+// D154 scope excludes Date/Time (no MysqlDate / MysqlTime — D154 §核心
+// 目标 names 8 type class explicitly).
 
 class StubDate : Date {
     iso: string
@@ -145,71 +58,6 @@ class StubTime : Time {
     function equals(other: Time): int { return 0 }
     function compareTo(other: Time): int { return 0 }
     function toString(): string { return this.iso }
-}
-
-class StubBlob : Blob {
-    payload: string
-    function length(): int { return this.payload.length() }
-    function getBytes(pos: int, len: int): string { return this.payload.substring(pos - 1, len) }
-    function setBytes(pos: int, bytes: string): int { return 0 }
-    function position(pattern: string, start: int): int { return -1 }
-    function truncate(len: int) {}
-    function getBinaryStream(): InputStream { return new EmptyInputStream() }
-    function free() {}
-}
-
-class StubClob : Clob {
-    body: string
-    function length(): int { return this.body.length() }
-    function getSubString(pos: int, len: int): string { return this.body.substring(pos - 1, len) }
-    function setString(pos: int, str: string): int { return 0 }
-    function position(pattern: string, start: int): int { return -1 }
-    function truncate(len: int) {}
-    function getCharacterStream(): Reader { return new EmptyReader() }
-    function free() {}
-}
-
-class StubNClob : NClob {
-    body: string
-    function length(): int { return this.body.length() }
-    function getSubString(pos: int, len: int): string { return this.body.substring(pos - 1, len) }
-    function setString(pos: int, str: string): int { return 0 }
-    function position(pattern: string, start: int): int { return -1 }
-    function truncate(len: int) {}
-    function getCharacterStream(): Reader { return new EmptyReader() }
-    function free() {}
-}
-
-class StubRowId : RowId {
-    rid: string
-    function getBytes(): string { return this.rid }
-    function toString(): string { return this.rid }
-    function equals(other: RowId): int { return 0 }
-    function hashCode(): int { return 0 }
-}
-
-class StubSQLXML : SQLXML {
-    xml: string
-    function getString(): string { return this.xml }
-    function setString(value: string) {}
-    function getBinaryStream(): InputStream { return new EmptyInputStream() }
-    function getCharacterStream(): Reader { return new EmptyReader() }
-    function free() {}
-}
-
-class StubSqlArray : SqlArray {
-    payload: string
-    function getBaseType(): int { return 4 }
-    function getBaseTypeName(): string { return "INTEGER" }
-    function getArray(): string { return this.payload }
-    function free() {}
-}
-
-class StubRef : Ref {
-    obj: string
-    function getBaseTypeName(): string { return "OBJECT_REF" }
-    function getObject(): string { return this.obj }
-    function setObject(value: string) {}
 }
 
 // ── ResultSet stub: driver-side stringify simulator ─────────────────
@@ -303,8 +151,8 @@ function main() {
 
     test("updateTimestamp stringifies via toString JDBC literal form", () => {
         const rs = newStub()
-        rs.updateTimestamp("created_at", new StubTimestamp("2026-05-04 12:34:56"))
-        assertEqual(rs.pending.get("created_at"), "2026-05-04 12:34:56")
+        rs.updateTimestamp("created_at", new MysqlTimestamp(2026, 5, 4, 12, 34, 56, 0, 0))
+        assertEqual(rs.pending.get("created_at"), "2026-05-04 12:34:56.0")
     })
 
     test("updateDate stringifies via toString YYYY-MM-DD", () => {
@@ -321,67 +169,68 @@ function main() {
 
     test("updateBlob writes 1-based getBytes drained payload", () => {
         const rs = newStub()
-        rs.updateBlob("photo", new StubBlob("BINARYDATA"))
+        rs.updateBlob("photo", new MysqlBlob("BINARYDATA"))
         assertEqual(rs.pending.get("photo"), "BINARYDATA")
     })
 
     test("updateClob writes 1-based getSubString drained body", () => {
         const rs = newStub()
-        rs.updateClob("bio", new StubClob("Hello, World!"))
+        rs.updateClob("bio", new MysqlClob("Hello, World!"))
         assertEqual(rs.pending.get("bio"), "Hello, World!")
     })
 
     test("updateNClob writes via getSubString same shape as Clob", () => {
         const rs = newStub()
-        rs.updateNClob("note_n", new StubNClob("NCLOB-PAYLOAD"))
+        rs.updateNClob("note_n", new MysqlNClob("NCLOB-PAYLOAD"))
         assertEqual(rs.pending.get("note_n"), "NCLOB-PAYLOAD")
     })
 
     test("updateRowId stringifies via toString opaque identifier", () => {
         const rs = newStub()
-        rs.updateRowId("rid", new StubRowId("ROW-42"))
-        assertEqual(rs.pending.get("rid"), "ROW-42")
+        rs.updateRowId("rid", new MysqlRowId("ROW-42"))
+        // MysqlRowId.toString hex-encodes per JDBC convention; "ROW-42" → 0x52,0x4F,0x57,0x2D,0x34,0x32 = "524f572d3432"
+        assertEqual(rs.pending.get("rid"), "524f572d3432")
     })
 
     test("updateSQLXML writes via getString XML literal", () => {
         const rs = newStub()
-        rs.updateSQLXML("doc", new StubSQLXML("<root>x</root>"))
+        rs.updateSQLXML("doc", new MysqlSQLXML("<root>x</root>"))
         assertEqual(rs.pending.get("doc"), "<root>x</root>")
     })
 
     test("updateArray writes via getArray driver-serialized form", () => {
         const rs = newStub()
-        rs.updateArray("tags", new StubSqlArray("[1,2,3]"))
+        rs.updateArray("tags", new MysqlSqlArray(4, "INTEGER", "[1,2,3]"))
         assertEqual(rs.pending.get("tags"), "[1,2,3]")
     })
 
     test("updateRef writes via getObject driver-serialized form", () => {
         const rs = newStub()
-        rs.updateRef("ref", new StubRef("ref-target"))
+        rs.updateRef("ref", new MysqlRef("OBJECT_REF", "ref-target"))
         assertEqual(rs.pending.get("ref"), "ref-target")
     })
 
     test("updateAsciiStream drains via readN(available())", () => {
         const rs = newStub()
-        rs.updateAsciiStream("ascii_blob", new MemoryInputStream("AsciiPayload", 0))
+        rs.updateAsciiStream("ascii_blob", new MysqlBinaryStream("AsciiPayload", 0, -1))
         assertEqual(rs.pending.get("ascii_blob"), "AsciiPayload")
     })
 
     test("updateBinaryStream drains via readN(available())", () => {
         const rs = newStub()
-        rs.updateBinaryStream("bin_blob", new MemoryInputStream("BinaryPayload", 0))
+        rs.updateBinaryStream("bin_blob", new MysqlBinaryStream("BinaryPayload", 0, -1))
         assertEqual(rs.pending.get("bin_blob"), "BinaryPayload")
     })
 
     test("updateCharacterStream drains via 8KiB-chunk loop until EOF", () => {
         const rs = newStub()
-        rs.updateCharacterStream("char_clob", new MemoryReader("CharPayload", 0))
+        rs.updateCharacterStream("char_clob", new MysqlCharacterStream("CharPayload", 0, -1))
         assertEqual(rs.pending.get("char_clob"), "CharPayload")
     })
 
     test("updateNCharacterStream drains via same 8KiB loop as Reader path", () => {
         const rs = newStub()
-        rs.updateNCharacterStream("nchar_clob", new MemoryReader("NCharPayload", 0))
+        rs.updateNCharacterStream("nchar_clob", new MysqlNCharacterStream("NCharPayload", 0, -1))
         assertEqual(rs.pending.get("nchar_clob"), "NCharPayload")
     })
 
