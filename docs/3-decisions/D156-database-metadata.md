@@ -1,0 +1,156 @@
+# D156: DatabaseMetaData 完整 schema introspection
+
+**Status:** [x] Phase 0 D 文档落档 at commit `<phase0-hash>` + [ ] Phase 1 INFORMATION_SCHEMA 协议查询 helper + accessor + unit test at commit `<phase1-hash>` + [ ] Phase 2 interface DatabaseMetaData ≥30 method + Connection.getMetaData() 接口加 + 2 implementor stub at commit `<phase2-hash>` + [ ] Phase 3 MysqlDatabaseMetaData class 真实现 + INFORMATION_SCHEMA 真查询 + lazy cache + spike GREEN at commit `<phase3-hash>` + [ ] Phase 4 integration_test e2e ≥10 case docker probe-skip + absorb spike + D156 主线 close at commit `<phase4-hash>` — D155 §Followup F1 起首脱胎,D135-D155 SQL 主线范式延续。走**完整 JDBC 4.3 §11 `interface DatabaseMetaData` ≥30 method**(getCatalogs / getSchemas / getSchemas(catalog, schemaPattern) / getTables(catalog, schemaPattern, tableNamePattern, types) / getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern) / getPrimaryKeys / getImportedKeys / getExportedKeys / getCrossReference / getIndexInfo / getProcedures / getProcedureColumns / getFunctions / getFunctionColumns / getDriverName / getDriverVersion / getDriverMajorVersion / getDriverMinorVersion / getDatabaseProductName / getDatabaseProductVersion / getURL / getUserName / getJDBCMajorVersion / getJDBCMinorVersion / getCatalogTerm / getSchemaTerm / getProcedureTerm / getCatalogSeparator / supportsTransactions / supportsTransactionIsolationLevel / supportsBatchUpdates / supportsResultSetType / supportsResultSetConcurrency)+ **MysqlDatabaseMetaData class 真实现**(走 INFORMATION_SCHEMA per-call PreparedStatement + 静态返值 supportsXxx capability matrix + ResultSet 复用 D155 ResultSetMetaData 路径)+ **`Connection.getMetaData(): DatabaseMetaData` 接口加 + 2 implementor 真返/stub**(MysqlConnection 真返 / NoopConnection test mock)— 不接受次优 / workaround / 节省。
+
+## 起首脱胎
+- D155 §Followup F1(`docs/3-decisions/D155-resultset-metadata.md:146`)
+- D135-D155 SQL 主线范式延续(Phase 计划独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环 + §A.2 隐藏假设挑战)
+- Depends on:D154(MySQL driver class 主线 close — Connection / Statement / PreparedStatement / ResultSet 全实现)+ D155(ResultSetMetaData 主线 close + ColumnDef41 完整反射 + JDBC Types mapping + interface 字段 deep_clone vtable 根因修)— 本 D 续接列 metadata 拓展到 schema metadata,getCatalogs / getSchemas / getTables / getColumns 等返 ResultSet 走 D155 ResultSetMetaData 路径
+
+## 核心目标 (Goal)
+
+落地后:
+1. `lib/java/sql.ss interface DatabaseMetaData` 存在,JDBC 4.3 §11 ≥30 method 全声明
+2. `lib/java/sql.ss interface Connection` 加 `getMetaData(): DatabaseMetaData` method
+3. `lib/com/mysql/jdbc.ss class MysqlDatabaseMetaData : DatabaseMetaData` 真实现(单字段 `conn: Connection` + ≥30 method 走 INFORMATION_SCHEMA 查询或静态返值)
+4. INFORMATION_SCHEMA per-call PreparedStatement 协议查询路径(继承 D137 per-call Connection 简化范式)— `getCatalogs()` 走 `SHOW DATABASES` / `getSchemas()` 走 `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA` / `getTables()` 走 `SELECT TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES WHERE ...` / `getColumns()` 走 `INFORMATION_SCHEMA.COLUMNS` / `getPrimaryKeys()` 走 `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` + `TABLE_CONSTRAINTS` / `getImportedKeys` + `getExportedKeys` 走 `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` + `REFERENTIAL_CONSTRAINTS` / `getIndexInfo` 走 `INFORMATION_SCHEMA.STATISTICS`
+5. ≥13 supportsXxx method capability matrix 静态返值(MySQL 8.0 capability 静态已知 — supportsTransactions = 1 / supportsBatchUpdates = 1 / supportsResultSetType(TYPE_FORWARD_ONLY) = 1 / supportsResultSetType(TYPE_SCROLL_INSENSITIVE) = 0 / supportsTransactionIsolationLevel(各级别) / supportsResultSetConcurrency(CONCUR_READ_ONLY) = 1 / supportsResultSetConcurrency(CONCUR_UPDATABLE) = 1 [D147 Phase 0-5 已落地] / 等)
+6. ≥8 driver/database 静态 metadata method(getDriverName 返 "MySQL Connector/SS" / getDriverVersion 返 "1.0" / getDriverMajorVersion = 1 / getDriverMinorVersion = 0 / getDatabaseProductName 返 "MySQL" / getDatabaseProductVersion 走 `SELECT VERSION()` 或 handshake initial packet server version / getURL 返 conn 持的 URL / getUserName 返 conn 持的 user)
+7. ≥6 命名约定 method(getCatalogTerm 返 "database" / getSchemaTerm 返 "" 或 "schema" 视 MySQL catalog vs schema 双向映射策略 / getProcedureTerm 返 "procedure" / getCatalogSeparator 返 "." / getJDBCMajorVersion = 4 / getJDBCMinorVersion = 3)
+8. 2 implementor:`MysqlConnection.getMetaData()` 真返 `new MysqlDatabaseMetaData(this)` + `NoopConnection.getMetaData()` test mock(若 D154 已加 NoopConnection;否则跨 d154/d155 stub 同步加 vtable getMetaData)
+9. integration_test.ss e2e ≥10 case docker probe-skip 全形态覆盖(getCatalogs / getSchemas / getTables / getColumns / getPrimaryKeys / getImportedKeys+getExportedKeys / getIndexInfo / supportsXxx 静态 capability / getDriverName + getDatabaseProductVersion + getURL / catalog vs schema 双向映射 e2e)
+10. `./build.sh bootstrap` 三阶段固定点 stage2==stage3 + `bin/ss test tests/` baseline 全继承 + reflection_health_linter 全 14 指标无 regression + d_doc_index_linter F1 = 0 + next_prompt_ultrathink_linter PASS
+
+**RED**(本 D 文档落档前实测):
+- `ls docs/3-decisions/D156-database-metadata.md` = ENOENT(D156 不存在,起首必新建)
+- `grep -c "interface DatabaseMetaData" lib/java/sql.ss` 实测 = 0(interface 完全缺)
+- `grep -c "class MysqlDatabaseMetaData" lib/com/mysql/jdbc.ss` 实测 = 0(class 不存在)
+- `grep -cE "function getMetaData\(\): DatabaseMetaData" lib/java/sql.ss lib/com/mysql/*.ss` 实测 = 0(Connection.getMetaData() 接口缺 + MysqlConnection.getMetaData() 实现缺)
+
+## 核心原则 (Principles)
+
+1. **走完整 JDBC 4.3 §11 DatabaseMetaData spec ≥30 method**:不简化、不 stub 关键 method、不"够用就行"(用户对话锁不接次优 / workaround / 节省路径)
+2. **INFORMATION_SCHEMA per-call PreparedStatement 简化继承 D137**:MysqlDatabaseMetaData 内部对每个 ResultSet-返值 method 走 `conn.prepareStatement(sql)` 走标准 SQL 路径,不引入低层协议特例;getCatalogs / getSchemas 等可走 `SHOW DATABASES` 简化或 INFORMATION_SCHEMA 标准查询(MySQL Connector/J `DatabaseMetaData.getTables()` 范式)
+3. **supportsXxx 静态返值**:capability matrix 不走 runtime 探测,MySQL 5.7+/8.0 capability 静态已知(JDBC §11 spec 明确)— Connector/J `DatabaseMetaData.supports*()` 范式
+4. **catalog vs schema 双向语义映射**:MySQL 是 single-tier database 模型(无 catalog 层)— catalogs = databases = schemas;实现策略走 Connector/J `useCatalogs` 默认 = catalogs(getCatalogs() 返 SHOW DATABASES,getSchemas() 返空 ResultSet)— 与 PG 双层模型相反(PG 路径 §F3 暂搁)
+5. **复用 D155 ResultSetMetaData 路径**:DatabaseMetaData ≥18 method 返 ResultSet,该 ResultSet 走 PreparedStatement → MysqlResultSet → 自动 ColumnDef41 + ResultSetMetaData(D155 主线 close 已落地)— 不重新发明 ResultSet metadata 路径
+6. **MysqlDatabaseMetaData 单字段 conn 反射派生**:class 仅持 Connection ref + ≥30 method 走 conn.prepareStatement 反射查询 + 部分 method 走 conn 持的 user / URL / server version 静态返值(MySQL Connector/J 5.1+ DatabaseMetaData class 范式 — 单字段 + 反射查询)
+7. **D135-D155 SQL 主线范式延续**:Phase 计划独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环 + §A.2 隐藏假设 + §A.3 废案 + §Followup
+8. **不简化关键 method**(D147 Phase 5 7-shape integration_test 范式 + D154 §F7 12 driver class round-trip + D155 Phase 4 10 case docker probe-skip 范式延续)— integration_test e2e 必含 wire 端真值实证
+
+## A.1 主候选评估(§MNK §M §字段 10)
+
+| 候选 | 层次 | 含 | 不含 | 决策 |
+|------|------|-----|------|------|
+| **C1** | 数据层 patch | + 几个核心 method 子集(getDriverName / getDatabaseProductName / getURL / getUserName + supportsXxx ≤ 5)+ 部分静态返值,无 INFORMATION_SCHEMA 查询路径 | 无 interface DatabaseMetaData;无 Connection.getMetaData() 接口加;ORM Hibernate `Dialect` schema 推导 / Spring JPA 自动 schema 验证 / Flyway 迁移工具 全断链 | **不选** — 用户对话锁不接次优 / workaround;ORM `Dialect` 反射 schema 全断链,后续每条 ORM 主线必回头补 |
+| **C2** | **接口层 trap** | + 完整 `interface DatabaseMetaData` ≥30 method + Connection.getMetaData() 接口加 + MysqlDatabaseMetaData class 真实现 + INFORMATION_SCHEMA per-call PreparedStatement 路径 + supportsXxx 静态 capability matrix + 2 implementor 真返/stub + integration_test e2e ≥10 case | ParameterMetaData 留 §F1 / TypeInfo 留 §F2(可合本 D)/ Wrapper unwrap+isWrapperFor 留 §F3 / RowIdLifetime + 高级 method 留 §F4 / 多 driver 兼容(PG / Oracle)留 §F3 | **选** — 根因解决:JDBC §11 spec 100% + Hibernate `Dialect` / Spring JPA 自动 schema 验证 + Flyway 迁移 全 idiom 复用 + ORM 反射 idiom 标准 + 业界演化对标(MySQL Connector/J 5.1+ / Oracle JDBC schema reflection 演化路径)+ N 年返工度低 + D135-D155 SQL 主线范式延续 |
+| **C3** | 架构层 refactor | + DatabaseMetaData 完整 + ParameterMetaData + TypeInfo + Wrapper + RowId / SQLXML / Array / Struct 高级类型 metadata + SchemaCrawler 反射工具(Connection 级 schema graph traversal) | spec 100%;ORM Hibernate `Dialect` / `MetadataSources` / Spring JPA 自动 schema 验证 + Flyway 迁移 + SchemaCrawler 完整 schema 图反射 全 idiom 完整 | **不选** — scope 远超 D156 单 sub-D(LOC > 3000;DatabaseMetaData INFORMATION_SCHEMA 完整查询 ≥30 method + ParameterMetaData COM_STMT_PREPARE_OK packet 解析独立 sub-D + TypeInfo / Wrapper / RowId / SQLXML / Array / Struct 各独立 sub-D + SchemaCrawler 跨 Connection 反射工具独立 sub-D)|
+
+**决策行**:**选 C2 接口层 trap**(用户对话锁 — 不接次优 / workaround / 节省)— 因 (a) 完整 JDBC 4.3 §11 DatabaseMetaData ≥30 method + INFORMATION_SCHEMA per-call PreparedStatement 路径 + MysqlDatabaseMetaData class + supportsXxx 静态 capability 消除 ORM `Dialect` schema 反射断链根因;(b) Hibernate `Dialect` / Spring JPA 自动 schema 验证 / Flyway 数据库迁移工具 / MyBatis Generator schema 推导 标准 idiom 直接复用,无手写 INFORMATION_SCHEMA 字面 workaround;(c) **底层依赖链最深**:ResultSetMetaData(D155 主线 close)是列级 metadata,DatabaseMetaData 是 schema 级 metadata — 列级是 schema 级 getColumns() 的子集,D155 落地后 D156 自然下一步;不先 D155 直接做 D156 会破依赖链;(d) **业界演化对标**:MySQL Connector/J 5.1+ / Oracle JDBC 演化路径 — 协议层稳后 → ResultSetMetaData(列级)→ DatabaseMetaData(schema 级)。SS 协议层 D135-D147 已稳 + 列级 metadata D155 已稳,下一阶段必属 schema 级 metadata(同 Connector/J 5.1.x → 5.2.x → 8.x 演化路径);(e) **N 年返工度**:不做 → ORM Hibernate `Dialect` / Spring JPA 自动 schema 验证 / Flyway / MyBatis Generator / SchemaCrawler 全断链,后续每条 ORM 主线必回头补,返工率极高;(f) D135-D155 SQL 主线范式延续(协议层完整反射 + JDBC 接口扩 + driver 实现 + 测试覆盖 + Phase 计划独立 commit)。**为何不选 C1**:用户对话锁不接次优 / workaround / 节省路径;数据层 patch ORM `Dialect` 反射全断链。**为何不选 C3**:scope 远超 D156 单 sub-D — ParameterMetaData / TypeInfo / Wrapper / RowId / SQLXML / Array / Struct + SchemaCrawler 各留 §Followup 独立 sub-D。
+
+## A.2 隐藏假设挑战
+
+| H | 假设 | 挑战 | 实证锚 |
+|---|------|------|--------|
+| H1 | INFORMATION_SCHEMA 查询性能可接受 | MySQL 5.7+/8.0 INFORMATION_SCHEMA 是 in-memory metadata view,per-call PreparedStatement ≥10 μs ResultSet round-trip(对 ORM 启动期一次性反射可接受 — Connector/J `DatabaseMetaData.getColumns` 范式)| Phase 4 integration_test docker probe-skip e2e — getCatalogs / getTables / getColumns 真值返回 ≥10 row PASS |
+| H2 | catalog vs schema 双向语义映射(MySQL = single-tier) | MySQL 5.7+/8.0 是 single-tier database 模型,无 catalog 层 — Connector/J 默认 useCatalogs = 1(getCatalogs() = SHOW DATABASES,getSchemas() = empty ResultSet);PG 走双层 catalog/schema 模型反向(PG 路径 §F3 暂搁,memory project_no_postgres_for_now)| Phase 3 unit + Phase 4 docker e2e — getCatalogs() 返 ≥1 row(含 mysql / information_schema / 当前测试 db)+ getSchemas() 返 empty ResultSet PASS |
+| H3 | supportsXxx 静态返值跨 MySQL 5.7+/8.0 stable | JDBC §11 spec capability matrix 静态明确 — supportsTransactions / supportsBatchUpdates / supportsTransactionIsolationLevel(READ_COMMITTED+REPEATABLE_READ+SERIALIZABLE)/ supportsResultSetType(FORWARD_ONLY)等自 MySQL 5.x 起不变(Connector/J `MysqlDatabaseMetaData.supports*` 实现验证)| Phase 3 unit ≥13 supportsXxx 单 case 验证 + Phase 4 docker MySQL 8.0 实测 PASS |
+| H4 | DatabaseMetaData ≥18 method 返 ResultSet 走 D155 ResultSetMetaData 路径自动可用 | 返 ResultSet 走 conn.prepareStatement → MysqlResultSet → ColumnDef41 解析 → ResultSet.getMetaData() 自动返 MysqlResultSetMetaData(D155 主线 close 已落地)— 无需 DatabaseMetaData 重新发明 ResultSet metadata | Phase 4 integration_test e2e — getTables() 返的 ResultSet.getMetaData().getColumnCount() ≥ 4 PASS |
+| H5 | per-call PreparedStatement 不引入循环依赖 | MysqlConnection.getMetaData() 返 MysqlDatabaseMetaData(persistent ref to conn)→ MysqlDatabaseMetaData.getTables() 调 conn.prepareStatement(sql) → 同一 Connection prepareStatement 复用既有协议路径,不引入新依赖。**循环风险检查**:MysqlDatabaseMetaData 不持有 PreparedStatement(per-call open/close),不持有 ResultSet(返给调用者)— RC 路径 conn → MDBM → conn 循环已被 Connection 统一持有避免 | Phase 3 spike — MysqlConnection.getMetaData() round-trip + per-call prepareStatement 不死锁 PASS |
+| H6 | getDriverName / getDriverVersion 静态返"MySQL Connector/SS" + "1.0" | Connector/J 范式 — DatabaseMetaData 静态字面 metadata 不查 driver 包元数据。SS 项目走 hard-code 字面("MySQL Connector/SS" / "1.0" / "1" / "0")合规,不依赖外部 manifest | Phase 3 unit — getDriverName / getDriverVersion / getDriverMajorVersion / getDriverMinorVersion 静态字面 PASS |
+| H7 | getCatalogs / getSchemas / getTables / getColumns 等返 ResultSet 列结构与 JDBC §11 完整 spec 一致 | JDBC 4.3 §11 spec 明确 — getCatalogs 返 1 列(TABLE_CAT VARCHAR)/ getSchemas 返 2 列(TABLE_SCHEM, TABLE_CATALOG)/ getTables 返 10 列(TABLE_CAT, TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, REMARKS, TYPE_CAT, TYPE_SCHEM, TYPE_NAME, SELF_REFERENCING_COL_NAME, REF_GENERATION)/ getColumns 返 24 列(TABLE_CAT, TABLE_SCHEM, TABLE_NAME, COLUMN_NAME, DATA_TYPE, TYPE_NAME, COLUMN_SIZE, ...) — Connector/J `DatabaseMetaData` 实现 100% spec 对齐 | Phase 3 INFORMATION_SCHEMA 查询 SQL 列别名严格对齐 spec 列名 + Phase 4 docker e2e ResultSet.getMetaData().getColumnName() 列名实测 PASS |
+| H8 | keys/indexes 推导走 INFORMATION_SCHEMA.KEY_COLUMN_USAGE / TABLE_CONSTRAINTS / REFERENTIAL_CONSTRAINTS / STATISTICS 标准路径 | MySQL 5.7+/8.0 INFORMATION_SCHEMA 完整支持 KEY_COLUMN_USAGE(主键+外键 cols 顺序)+ TABLE_CONSTRAINTS(constraint 类型)+ REFERENTIAL_CONSTRAINTS(外键 ON DELETE/UPDATE 规则)+ STATISTICS(索引)— Connector/J `DatabaseMetaData.getPrimaryKeys / getImportedKeys / getExportedKeys / getIndexInfo` 范式 | Phase 4 integration_test e2e — 含 PK + FK + INDEX seed 表,getPrimaryKeys / getImportedKeys / getIndexInfo 返值列结构 + 行数 PASS |
+| H9 | DatabaseMetaData 在 Connection close 后行为(disallowed) | JDBC 4.3 §11 spec — DatabaseMetaData 持 Connection ref,Connection close 后 metadata method 调用 throws SQLException。SS 实现策略:不显式校验 close 状态(per-call prepareStatement 自然 fail),与 D147 cursor close 后行为对称 | Phase 4 integration_test 不强制 close 后行为(未来 D139 §F SQLException 全链 推到 ORM error handling 时再覆盖)|
+
+## A.3 废案
+
+- **C1 数据层 patch**(用户对话锁不接次优;ORM Hibernate `Dialect` / Spring JPA 自动 schema 验证 / Flyway 迁移工具 全断链)
+- **C3 架构层 refactor + ParameterMetaData + TypeInfo + Wrapper + RowId / SQLXML / Array / Struct 高级类型 + SchemaCrawler**(scope 远超 D156 单 sub-D — 各独立 sub-D 留 §Followup F1-F4)
+- **简化 DatabaseMetaData ≤10 method 子集**(用户对话锁不接节省;ORM `Dialect` 反射 idiom 必依赖完整 ≥30 method)
+- **Connector/J 5.1.x 兼容模式**(SS 项目无 5.1 vs 8.x 演化压力,直接 8.x INFORMATION_SCHEMA 范式 — Connector/J 5.1.x 模式仅为兼容 MySQL 4.x SHOW 命令,5.7+/8.0 INFORMATION_SCHEMA 主路径)
+- **PostgreSQL pg_catalog 路径**(SQL standard;但 D156 范畴限 MySQL — PG driver 暂时不兼容,2026-05-05 用户对话锁,详 memory `project_no_postgres_for_now.md`)
+- **MysqlDatabaseMetaData 维护额外状态**(违反 H5 + Connector/J 范式 — class 仅持 Connection ref,per-call 反射查询不缓存)— 唯一例外是 lazy cache `getDatabaseProductVersion`(handshake initial packet 已返 server version,可 conn 持有不重复查询)
+- **DriverManager 全 driver 反射 metadata 聚合**(scope 远超 — 跨 driver 反射工具留 §F3 多 driver 兼容)
+
+## Phase commit hash 总览
+
+| Phase | 内容 | Commit |
+|-------|------|--------|
+| 0 | D 文档落档(§核心目标 + §核心原则 + §A.1-A.3 + §Phase 收关锚 Phase 0-4 + §Followup F1-F5)+ D155 Phase 4 hash 回填 | `<phase0-hash>` |
+| 1 | INFORMATION_SCHEMA 协议查询 helper(infoSchemaQuery / infoSchemaQueryRows accessor)+ 4-7 cross-module helper + ≥20 case unit test | `<phase1-hash>` |
+| 2 | interface DatabaseMetaData ≥30 method + Connection.getMetaData() 接口加 + 2 implementor stub + class NoopDatabaseMetaData(无字段 stateless stub)+ ≥10 case spike GREEN | `<phase2-hash>` |
+| 3 | MysqlDatabaseMetaData class 真实现(单字段 conn + ≥30 method 反射派生 + INFORMATION_SCHEMA 真查询 + supportsXxx 静态 + lazy cache getDatabaseProductVersion + getDriver* 静态)+ ≥15 case spike GREEN | `<phase3-hash>` |
+| 4 | integration_test e2e ≥10 case docker probe-skip(H1-H9 wire 端全实证)+ absorb spike(删 phase2_spike + phase3_spike,保留 phase1_unit_test)+ Phase 0-3 hash 回填 + D156 主线 close 锚 | `<phase4-hash>` |
+
+## Phase 收关锚
+
+### Phase 0: D 文档落档 [x] Done at commit `<phase0-hash>`
+
+- 落地 `docs/3-decisions/D156-database-metadata.md`(本文件)— §核心目标 + §核心原则 + §A.1 候选评估 + §A.2 隐藏假设 H1-H9 + §A.3 废案 + §Phase 收关锚 Phase 0-4 + §Followup F1-F5 + §Status 时间线
+- 落地 `.claude/next_prompt.md`(下轮 D156 Phase 1 起首)
+- D155 Phase 4 hash `87bb544` 回填 D155.md 6 处(Status header line 3 Phase 4 entry + Status header line 3 主线 close 锚 + §Phase 收关锚 §Phase 4 mark Done at commit + Status 时间线 Phase 4 entry + §Phase commit hash 总览表 + §Phase 3 收关锚内文 "由 Phase 4 commit `87bb544` 回填" + §Phase 4 收关锚内文 "Phase 4 hash 已由 D156 Phase 0 回填" 元描述校准)
+- bootstrap/ + lib/ + tools/ + tests/ diff = 0
+- baseline:d_doc_index_linter F1 = 0(D146/D147/D154/D155 全实存)+ next_prompt_ultrathink_linter PASS(下轮含 ultrathink 关键字)+ 14 reflection 指标全继承 D155 主线 close baseline(本 Phase 不动 bootstrap/)
+
+### Phase 1: INFORMATION_SCHEMA 协议查询 helper + cross-module accessor + unit test [ ] Pending at commit `<phase1-hash>`
+
+- `lib/com/mysql/jdbc.ss` 加 INFORMATION_SCHEMA 协议查询 helper(infoSchemaQuery: per-call prepareStatement → executeQuery → 返 ResultSet / infoSchemaQueryString: 单值 string 返 / infoSchemaQueryInt: 单值 int 返 — D137 per-call Connection 简化范式 + D147 Phase 3 sql_template 范式)
+- 4-7 cross-module accessor(getServerVersion: handshake initial packet server version 持有 / getCatalogTermStatic: "database" / getSchemaTermStatic: "" / getProcedureTermStatic: "procedure" / 等)
+- `tests/d156_database_metadata/phase1_info_schema_unit_test.ss` ≥20 case 单元 test(infoSchemaQuery 协议 round-trip docker probe-skip / Catalog Term 静态字面 / Server Version 解析 / 等)
+- §A.2 H1 部分实证(INFORMATION_SCHEMA 查询性能可接受 — Phase 1 byte-level + Phase 4 wire 双重)
+- VCM 六验全 PASS:§1 工程(`./build.sh bootstrap` 三阶段固定点 stage2==stage3 GREEN + `bin/ss test tests/` 净 +1 passed)+ §2 行为(`grep -c "function infoSchemaQuery" lib/com/mysql/jdbc.ss` ≥1)+ §3 反向(撤回 helper → unit test 全 RED)+ §4 边界(Catalog Term + Server Version + 静态字面)+ §5 路线(D137 per-call + D147 sql_template 范式)+ §6 根因(file:line 锚)
+- baseline 同 Phase 0
+- Phase 1 hash `<phase1-hash>` 在 Phase 2 commit 内回填 3 处(Status header line 3 + §Phase 收关锚 §Phase 1 mark Done at commit + Status 时间线 Phase 1 entry)
+
+### Phase 2: interface DatabaseMetaData ≥30 method + Connection.getMetaData() 接口加 + 2 implementor stub + spike GREEN [ ] Pending at commit `<phase2-hash>`
+
+- `lib/java/sql.ss` 加 `interface DatabaseMetaData` ≥30 method(JDBC 4.3 §11 完整子集;Wrapper unwrap / isWrapperFor + RowIdLifetime + 高级 method 留 §F4)
+- `lib/java/sql.ss interface Connection` 加 `getMetaData(): DatabaseMetaData`
+- 静态返值 JDBC 常量(JDBC_MAJOR_VERSION = 4 / JDBC_MINOR_VERSION = 3 / 等若干 capability 常量)
+- 2 implementor stub:`MysqlConnection.getMetaData()` stub(jdbc.ss,1-line body `return new NoopDatabaseMetaData()`)+ NoopDatabaseMetaData class(无字段 stateless stub,≥30 method 各返 stub 默认值:string → "" / int → 0 / boolean(SS int) → 0 / ResultSet → null 或 NoopResultSet test mock)
+- 全 lib/ + tests/ stub 同步加 vtable getMetaData(D025 vtable 强制全 method,新增 Connection.getMetaData() 后已有 stub 必同步 — d154/d155 Connection 各 stub 加 1-line)
+- `tests/d156_database_metadata/phase2_spike_test.ss` ≥10 case spike GREEN(NoopDatabaseMetaData ≥30 method dispatch 验证 / JDBC 常量值 / DatabaseMetaData 接口变量 dispatch / supportsXxx 默认值 / getDriverName 默认 ""(stub))
+- §A.2 H4 部分实证(本 Phase 接口层 — 2 lib implementor 全返 NoopDatabaseMetaData,Phase 3 替换 `new MysqlDatabaseMetaData(this)` 时共享 conn 路径)
+- VCM 六验全 PASS
+- Phase 2 hash `<phase2-hash>` 在 Phase 3 commit 内回填 3 处
+
+### Phase 3: MysqlDatabaseMetaData class 真实现 + INFORMATION_SCHEMA 真查询 + supportsXxx 静态 + lazy cache + spike GREEN [ ] Pending at commit `<phase3-hash>`
+
+- `lib/com/mysql/jdbc.ss` 加 `class MysqlDatabaseMetaData : DatabaseMetaData`(单字段 `conn: Connection` + lazy cache `cachedDatabaseProductVersion: string` + `cachedVersionInited: int`)
+- ≥30 method 真实现:
+  - **Driver 静态** ≥4 method:`getDriverName` 返 "MySQL Connector/SS" / `getDriverVersion` 返 "1.0" / `getDriverMajorVersion` 返 1 / `getDriverMinorVersion` 返 0
+  - **Database 静态 + lazy** ≥4 method:`getDatabaseProductName` 返 "MySQL" / `getDatabaseProductVersion` 走 `SELECT VERSION()` lazy cache / `getURL` 返 conn 持的 URL / `getUserName` 返 conn 持的 user
+  - **JDBC 静态** ≥2 method:`getJDBCMajorVersion` 返 4 / `getJDBCMinorVersion` 返 3
+  - **命名约定** ≥4 method:`getCatalogTerm` 返 "database" / `getSchemaTerm` 返 "" / `getProcedureTerm` 返 "procedure" / `getCatalogSeparator` 返 "."
+  - **supportsXxx capability** ≥13 method 静态(supportsTransactions / supportsBatchUpdates / supportsTransactionIsolationLevel(各级别) / supportsResultSetType / supportsResultSetConcurrency / supportsAlterTableWithAddColumn / supportsAlterTableWithDropColumn / supportsColumnAliasing / supportsConvert / supportsCorrelatedSubqueries / 等)
+  - **INFORMATION_SCHEMA 反射查询** ≥10 method 走 conn.prepareStatement:`getCatalogs` 走 `SHOW DATABASES` 或 `SELECT SCHEMA_NAME AS TABLE_CAT FROM INFORMATION_SCHEMA.SCHEMATA` / `getSchemas` 返空 ResultSet 或 INFORMATION_SCHEMA.SCHEMATA(MySQL 视 catalog vs schema 双向映射策略 — H2)/ `getTables(catalog, schemaPattern, tableNamePattern, types)` 走 `INFORMATION_SCHEMA.TABLES` / `getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern)` 走 `INFORMATION_SCHEMA.COLUMNS` / `getPrimaryKeys` 走 `INFORMATION_SCHEMA.KEY_COLUMN_USAGE + TABLE_CONSTRAINTS` / `getImportedKeys` + `getExportedKeys` 走 `INFORMATION_SCHEMA.KEY_COLUMN_USAGE + REFERENTIAL_CONSTRAINTS` / `getCrossReference` 走双表 join / `getIndexInfo` 走 `INFORMATION_SCHEMA.STATISTICS` / `getProcedures` 走 `INFORMATION_SCHEMA.ROUTINES` / `getFunctions` 走 `INFORMATION_SCHEMA.ROUTINES`
+- 2 implementor 真返:`MysqlConnection.getMetaData()` 返 `new MysqlDatabaseMetaData(this)`(jdbc.ss)+ NoopDatabaseMetaData 仍保留作 lazy cache sentinel + phase2_spike test mock 锚
+- 2 implementor 同步加 lazy cache 字段(metaDataCache: DatabaseMetaData 接口类型 + metaDataInited: int)+ 若干处构造点末尾追加默认值
+- `tests/d156_database_metadata/phase3_spike_test.ss` ≥15 case 纯本地全 GREEN(MysqlDatabaseMetaData class 字段 / Driver 静态 4 method / Database 静态 + lazy 4 method / JDBC + 命名约定 6 method / supportsXxx ≥13 / INFORMATION_SCHEMA 查询 mock / lazy cache 同实例多次 getMetaData 同 reference / DatabaseMetaData interface vtable dispatch / catalog vs schema 双向映射 H2 静态 stub)
+- §A.2 H3+H4+H5+H6+H7+H8 部分实证(class 真实现 + 2 implementor 真返侧落地,wire 端 docker 实证留 Phase 4)
+- VCM 六验全 PASS
+- Phase 3 hash `<phase3-hash>` 在 Phase 4 commit 内回填 4 处
+
+### Phase 4: integration_test e2e ≥10 case docker probe-skip + absorb spike + D156 主线 close [ ] Pending at commit `<phase4-hash>`
+
+- `tests/d156_database_metadata/integration_test.ss` ≥10 case docker probe-skip e2e(Probe 失败 println + return 离线零阻塞;在线 docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait 后全 PASS;recreateTable + dropTable helper 用 `integration_d156` 表隔离 D134/D136/D138/D139/D146/D147/D151/D154/D155 parallel batch — table 字段 + PK + FK seed 完整 ER 关系)
+- ≥10 case 含:Case 1 getCatalogs 返 ≥1 row(SHOW DATABASES 含 mysql / information_schema / 当前 db)/ Case 2 getSchemas 返 empty ResultSet(MySQL single-tier 模型,H2 实证)/ Case 3 getTables 返 ≥1 row 含 integration_d156 表 / Case 4 getColumns 返 列结构 + 完整 24 列 spec 对齐(H7 实证)/ Case 5 getPrimaryKeys 返 PK 列(H8 实证)/ Case 6 getImportedKeys + getExportedKeys 返 FK(H8 实证 — seed 含双表 FK)/ Case 7 getIndexInfo 返 INDEX(H8 实证)/ Case 8 supportsTransactions + supportsBatchUpdates + supportsResultSetType 等 ≥5 supportsXxx 静态 PASS(H3 实证)/ Case 9 getDriverName + getDriverVersion + getDatabaseProductVersion(SELECT VERSION()) + getURL + getUserName(H6 实证)/ Case 10 getTables() 返的 ResultSet.getMetaData().getColumnCount() ≥ 4 + 列名 spec 对齐(H4 实证 — 复用 D155 ResultSetMetaData 路径)
+- absorb 删 ≤2 文件:tests/d156_database_metadata/phase2_spike_test.ss(stub stage,被 phase3_spike + integration_test 全覆盖)+ tests/d156_database_metadata/phase3_spike_test.ss(pure-local reflection,被 integration_test wire 真值版本全覆盖);保留 tests/d156_database_metadata/phase1_info_schema_unit_test.ss(byte-level / 静态字面 docker e2e 无法替代)
+- **§A.2 H1-H9 全实证锚收关**:H1 wire INFORMATION_SCHEMA 查询性能 / H2 catalog vs schema 双向映射 e2e / H3 supportsXxx 跨 MySQL 8.0 stable / H4 ResultSet.getMetaData() 复用 D155 路径 / H5 per-call 不死锁 / H6 driver 静态字面 / H7 ResultSet 列结构 spec 对齐 / H8 keys/indexes INFORMATION_SCHEMA 标准路径 / H9 Connection close 后 metadata(留未来覆盖)
+- D156 主线 close 锚:Status header `[x] Phase 0-4 + [x] D156 主线 close at commit \`<phase4-hash>\``
+- VCM 六验全 PASS
+- Phase 4 hash `<phase4-hash>` placeholder 待下轮 D156 后续 sub-D(F1 ParameterMetaData / F2 TypeInfo / F3 多 driver / F4 Wrapper / F5 高级 method)起首 commit 时回填 4 处 — D147 §Phase 5 close 范式延续 + D155 §Phase 4 close 范式延续
+
+## Followup
+
+| F | 内容 | 范围 |
+|---|------|------|
+| F1 | ParameterMetaData PreparedStatement 参数侧 metadata — getParameterCount / getParameterType / getParameterTypeName / getParameterMode / getParameterClassName / isNullable / isSigned | COM_STMT_PREPARE_OK packet ParameterDef 解析(同 D155 ColumnDef41 范式);Spring `JdbcTemplate.update` 反射参数类型推导依赖;留独立 sub-D(可合 D156 后续若 ColumnDef41 范式可直接复用)|
+| F2 | TypeInfo Connection 级 SQL 类型反射 — getTypeInfo() 返 ResultSet 18 列 spec(TYPE_NAME, DATA_TYPE, PRECISION, LITERAL_PREFIX, LITERAL_SUFFIX, ...) | Connection 级所有 SQL 类型枚举(JDBC 4.3 §11.7)— 可合本 D 若 Phase 3 容量富余;否则独立 sub-D |
+| F3 | 多 driver 兼容(PostgreSQL pg_catalog 路径 / Oracle ALL_TABLES + USER_TABLES 路径)| memory `project_no_postgres_for_now.md` 锁 PG 暂搁;Oracle 路径需 OCI driver class — 独立 sub-D 远期 |
+| F4 | Wrapper.unwrap / isWrapperFor + RowIdLifetime + 高级 method(getSQLStateType / getMaxXxx capacity ≥20 method) | JDBC 4.3 §11 完整 ≥150 method,本 D 落 ≥30 — Wrapper interface 2 method + RowIdLifetime + Max capacity 20 method 留独立 sub-D 或合 D154 §F4 类型类扩展 |
+| F5 | DatabaseMetaData lazy cache 完整化 — Phase 3 仅 cache getDatabaseProductVersion,扩展到 cache getCatalogs / getSchemas / getTables 等 ResultSet 返值 | 性能优化 — ORM 启动期一次性反射场景已可接受 per-call,长期运行场景 cache invalidation 策略需要 schema change detection(独立 sub-D)|
+
+## Status 时间线
+
+- 2026-05-05 Phase 0 D 文档落档(commit `<phase0-hash>`)— D155 §Followup F1 起首脱胎,D135-D155 SQL 主线范式延续(C2 接口层 trap 候选 — 用户对话锁不接次优 / workaround / 节省路径);设计走 (a) INFORMATION_SCHEMA 协议查询 helper + cross-module accessor(b) interface DatabaseMetaData ≥30 method + Connection.getMetaData() 接口加(c) MysqlDatabaseMetaData class 真实现(单字段 conn + ≥30 method 反射派生 + INFORMATION_SCHEMA 真查询 + supportsXxx ≥13 静态 + getDriver/Database/JDBC/Term ≥10 静态 + lazy cache getDatabaseProductVersion)(d) 2 implementor 真返/stub(MysqlConnection 真返 / NoopDatabaseMetaData test mock)(e) ≥10 case integration_test e2e 全形态;**§A.2 H1-H9 假设挑战 — H1 INFORMATION_SCHEMA 查询性能 / H2 catalog vs schema 双向映射 / H3 supportsXxx 跨 MySQL 5.7+/8.0 stable / H4 返 ResultSet 走 D155 ResultSetMetaData 路径自动可用 / H5 per-call PreparedStatement 不死锁 / H6 driver 静态字面 / H7 ResultSet 列结构 JDBC §11 spec 100% 对齐 / H8 keys/indexes INFORMATION_SCHEMA 标准路径 / H9 Connection close 后 metadata 未来覆盖**;**§A.3 废案 — C1 数据层 patch / C3 架构层 refactor + ParameterMetaData + TypeInfo + Wrapper + RowId/SQLXML/Array/Struct + SchemaCrawler / 简化 ≤10 method 子集 / Connector/J 5.1.x 兼容模式 / PostgreSQL pg_catalog 路径 (PG 暂不兼容 — memory project_no_postgres_for_now.md) / MysqlDatabaseMetaData 维护额外状态(违反 H5 + Connector/J 范式)**;**Followup F1-F5 锚明确 — F1 ParameterMetaData / F2 TypeInfo / F3 多 driver(PG/Oracle) / F4 Wrapper + RowIdLifetime + 高级 method / F5 DatabaseMetaData lazy cache 完整化**;**D155 Phase 4 hash 回填**:`87bb544` 写入 D155.md 6 处(Status header line 3 Phase 4 entry + Status header line 3 主线 close 锚 + §Phase 收关锚 §Phase 4 mark Done at commit + Status 时间线 Phase 4 entry + §Phase commit hash 总览表 Phase 4 行 + §Phase 3 收关锚内文 "由 Phase 4 commit 回填 5 处" + §Phase 4 收关锚内文 "Phase 4 hash 已由 D156 Phase 0 回填" 元描述校准)— D147 §Phase 5 close → D154 §Phase 0 跨 D 起首回填范式延续;**VCM 六验全 PASS** — §1 工程豁免(本 Phase 仅 docs/ + .claude/next_prompt.md,bootstrap/ + lib/ + tools/ + tests/ diff = 0)+ §2 行为(D156 doc Phase 0 章节 grep PASS + D155 Phase 4 hash 回填 grep PASS)+ §3 反向(撤回 D156 → docs/3-decisions/D156-database-metadata.md 不存,D155 §F1 sub-D 起首未落档;撤回 D155 hash 回填 → 6 处 placeholder 仍 unresolved)+ §4 边界(§Followup F1-F5 全锚 + §A.2 H1-H9 全锚 + Depends on D154/D155 全实存)+ §5 路线(D135-D155 SQL 主线范式延续)+ §6 根因(file:line 锚 = D155 §Followup F1 line 146 起首脱胎 + 本 D156 §核心目标 + §A.1 C2 决策行 + §Phase 收关锚 Phase 0 mark Done + D155 6 处 hash 回填);**baseline**:d_doc_index_linter F1 = 0 PASS(D156 加入未破 referenced Ds — D146/D147/D154/D155 全实存,15 referenced Ds all live)+ next_prompt_ultrathink_linter PASS(下轮提示词含 ultrathink 关键字)+ 14 reflection 指标全继承 D155 Phase 4 close baseline(本 Phase 不动 bootstrap/);**编译器零改动**(本 Phase 纯 docs/);**等下轮 Phase 1 INFORMATION_SCHEMA 协议查询 helper + cross-module accessor + ≥20 case unit test**
