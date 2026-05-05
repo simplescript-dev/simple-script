@@ -9,10 +9,11 @@
 // to confirm interface-level vtable resolution.
 
 import { assertEqual } from "@/lib/test"
-import { Timestamp, RowId, SqlArray, Ref } from "@/lib/java/sql"
+import { Timestamp, RowId, SqlArray, Ref, Blob, Clob, NClob, SQLXML } from "@/lib/java/sql"
 import { InputStream, Reader } from "@/lib/java/io"
 import { MysqlRowId, MysqlTimestamp, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
 import { MysqlAsciiStream, MysqlBinaryStream, MysqlCharacterStream, MysqlNCharacterStream } from "@/lib/com/mysql/driver_streams"
+import { MysqlBlob, MysqlClob, MysqlNClob, MysqlSQLXML } from "@/lib/com/mysql/driver_lobs"
 
 function main() {
     test("MysqlRowId getBytes returns stored bytes", () => {
@@ -331,5 +332,155 @@ function main() {
     test("MysqlNCharacterStream markSupported returns 1", () => {
         const s = new MysqlNCharacterStream("abc", 0, -1)
         assertEqual(s.markSupported(), 1)
+    })
+
+    // ── MysqlBlob tests ────────────────────────────────────────
+
+    test("MysqlBlob length returns payload byte count", () => {
+        const b = new MysqlBlob("hello")
+        assertEqual(b.length(), 5)
+    })
+
+    test("MysqlBlob getBytes 1-based pos + len truncation", () => {
+        const b = new MysqlBlob("ABCDEF")
+        assertEqual(b.getBytes(1, 3), "ABC")
+        assertEqual(b.getBytes(4, 10), "DEF")
+        assertEqual(b.getBytes(7, 5), "")
+    })
+
+    test("MysqlBlob setBytes overwrites at 1-based pos", () => {
+        const b = new MysqlBlob("ABCDEF")
+        const wrote = b.setBytes(2, "xy")
+        assertEqual(wrote, 2)
+        assertEqual(b.getBytes(1, 6), "AxyDEF")
+    })
+
+    test("MysqlBlob position finds pattern returning 1-based index", () => {
+        const b = new MysqlBlob("hello world")
+        assertEqual(b.position("world", 1), 7)
+        assertEqual(b.position("xyz", 1), -1)
+    })
+
+    test("MysqlBlob truncate shrinks payload", () => {
+        const b = new MysqlBlob("ABCDEF")
+        b.truncate(3)
+        assertEqual(b.length(), 3)
+        assertEqual(b.getBytes(1, 5), "ABC")
+    })
+
+    test("MysqlBlob getBinaryStream returns real InputStream impl", () => {
+        const b = new MysqlBlob("XY")
+        const stream = b.getBinaryStream()
+        assertEqual(stream.read(), 88)
+        assertEqual(stream.read(), 89)
+        assertEqual(stream.read(), -1)
+    })
+
+    test("MysqlBlob via Blob interface dispatch", () => {
+        const blob: Blob = new MysqlBlob("data")
+        assertEqual(blob.length(), 4)
+        assertEqual(blob.getBytes(1, 4), "data")
+    })
+
+    // ── MysqlClob tests ────────────────────────────────────────
+
+    test("MysqlClob length + getSubString", () => {
+        const c = new MysqlClob("hello world")
+        assertEqual(c.length(), 11)
+        assertEqual(c.getSubString(1, 5), "hello")
+        assertEqual(c.getSubString(7, 5), "world")
+    })
+
+    test("MysqlClob setString overwrites", () => {
+        const c = new MysqlClob("abcdef")
+        c.setString(2, "XY")
+        assertEqual(c.getSubString(1, 6), "aXYdef")
+    })
+
+    test("MysqlClob position", () => {
+        const c = new MysqlClob("foo bar baz")
+        assertEqual(c.position("bar", 1), 5)
+    })
+
+    test("MysqlClob truncate", () => {
+        const c = new MysqlClob("longstring")
+        c.truncate(4)
+        assertEqual(c.length(), 4)
+        assertEqual(c.getSubString(1, 10), "long")
+    })
+
+    test("MysqlClob getCharacterStream returns real Reader impl", () => {
+        const c = new MysqlClob("Hi")
+        const r = c.getCharacterStream()
+        assertEqual(r.read(), 72)
+        assertEqual(r.read(), 105)
+        assertEqual(r.read(), -1)
+    })
+
+    test("MysqlClob via Clob interface dispatch", () => {
+        const clob: Clob = new MysqlClob("text")
+        assertEqual(clob.length(), 4)
+        assertEqual(clob.getSubString(1, 4), "text")
+    })
+
+    // ── MysqlNClob tests ───────────────────────────────────────
+
+    test("MysqlNClob via NClob interface dispatch", () => {
+        const nc: NClob = new MysqlNClob("ntext")
+        assertEqual(nc.length(), 5)
+        assertEqual(nc.getSubString(1, 5), "ntext")
+    })
+
+    test("MysqlNClob getCharacterStream returns Reader", () => {
+        const nc = new MysqlNClob("AB")
+        const r = nc.getCharacterStream()
+        assertEqual(r.read(), 65)
+        assertEqual(r.read(), 66)
+    })
+
+    test("MysqlNClob setString + truncate", () => {
+        const nc = new MysqlNClob("hello")
+        nc.setString(1, "WORLD")
+        assertEqual(nc.getSubString(1, 5), "WORLD")
+        nc.truncate(3)
+        assertEqual(nc.length(), 3)
+    })
+
+    // ── MysqlSQLXML tests ──────────────────────────────────────
+
+    test("MysqlSQLXML getString returns stored payload", () => {
+        const x = new MysqlSQLXML("<root>hello</root>")
+        assertEqual(x.getString(), "<root>hello</root>")
+    })
+
+    test("MysqlSQLXML setString mutates payload", () => {
+        const x = new MysqlSQLXML("")
+        x.setString("<a/>")
+        assertEqual(x.getString(), "<a/>")
+    })
+
+    test("MysqlSQLXML getBinaryStream returns InputStream", () => {
+        const x = new MysqlSQLXML("AB")
+        const stream = x.getBinaryStream()
+        assertEqual(stream.read(), 65)
+        assertEqual(stream.read(), 66)
+    })
+
+    test("MysqlSQLXML getCharacterStream returns Reader", () => {
+        const x = new MysqlSQLXML("AB")
+        const r = x.getCharacterStream()
+        assertEqual(r.read(), 65)
+        assertEqual(r.read(), 66)
+    })
+
+    test("MysqlSQLXML free clears payload", () => {
+        const x = new MysqlSQLXML("data")
+        x.free()
+        assertEqual(x.getString(), "")
+    })
+
+    test("MysqlSQLXML via SQLXML interface dispatch", () => {
+        const xml: SQLXML = new MysqlSQLXML("<x/>")
+        assertEqual(xml.getString(), "<x/>")
     })
 }
