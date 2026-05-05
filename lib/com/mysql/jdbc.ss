@@ -17,7 +17,7 @@
 // socket fd (D134 Phase 5 NAMESPACE COLLISION decision: handshake.ss owns auth
 // protocol only, driver-layer Connection state lives here in jdbc.ss).
 
-import { Connection, Statement, PreparedStatement, ResultSet } from "@/lib/java/sql"
+import { Connection, Statement, PreparedStatement, ResultSet, DatabaseMetaData } from "@/lib/java/sql"
 import { writePacket } from "@/lib/com/mysql/wire"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
 import { sendQuery, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, readQueryResultSet, MysqlResultSet, GeneratedKeyResultSet, NoopResultSetMetaData } from "@/lib/com/mysql/query"
@@ -100,6 +100,13 @@ class MysqlConnection : Connection {
 
     function isClosed(): int {
         return this.closed
+    }
+
+    // D156 Phase 2 — stub via NoopDatabaseMetaData. Phase 3 returns
+    // `new MysqlDatabaseMetaData(this)` sharing the conn ref; per-call
+    // prepareStatement on the same Connection avoids cycles (§A.2 H5).
+    function getMetaData(): DatabaseMetaData {
+        return new NoopDatabaseMetaData()
     }
 }
 
@@ -289,4 +296,49 @@ function getDriverMinorVersionStatic(): int {
 
 function getServerVersionStatic(conn: Connection): string {
     return infoSchemaQueryString(conn, "SELECT VERSION() AS v")
+}
+
+// ── D156 §Phase 2 — NoopDatabaseMetaData stub ───────────────
+// Stateless DatabaseMetaData fallback for Phase 2 (Phase 3 swaps in
+// MysqlDatabaseMetaData real reflection). emptyResultSetStub reuses
+// GeneratedKeyResultSet with firstAccessed=1 (pre-positioned past end)
+// so the empty stub still walks the D155 ResultSetMetaData path (§A.2 H4).
+function emptyResultSetStub(): ResultSet {
+    return new GeneratedKeyResultSet(0, 1, new NoopResultSetMetaData(), 0)
+}
+
+class NoopDatabaseMetaData : DatabaseMetaData {
+    function getCatalogs(): ResultSet { return emptyResultSetStub() }
+    function getSchemas(): ResultSet { return emptyResultSetStub() }
+    function getSchemas(catalog: string, schemaPattern: string): ResultSet { return emptyResultSetStub() }
+    function getTables(catalog: string, schemaPattern: string, tableNamePattern: string, types: string): ResultSet { return emptyResultSetStub() }
+    function getColumns(catalog: string, schemaPattern: string, tableNamePattern: string, columnNamePattern: string): ResultSet { return emptyResultSetStub() }
+    function getPrimaryKeys(catalog: string, schema: string, table: string): ResultSet { return emptyResultSetStub() }
+    function getImportedKeys(catalog: string, schema: string, table: string): ResultSet { return emptyResultSetStub() }
+    function getExportedKeys(catalog: string, schema: string, table: string): ResultSet { return emptyResultSetStub() }
+    function getCrossReference(parentCatalog: string, parentSchema: string, parentTable: string, foreignCatalog: string, foreignSchema: string, foreignTable: string): ResultSet { return emptyResultSetStub() }
+    function getIndexInfo(catalog: string, schema: string, table: string, unique: int, approximate: int): ResultSet { return emptyResultSetStub() }
+    function getProcedures(catalog: string, schemaPattern: string, procedureNamePattern: string): ResultSet { return emptyResultSetStub() }
+    function getProcedureColumns(catalog: string, schemaPattern: string, procedureNamePattern: string, columnNamePattern: string): ResultSet { return emptyResultSetStub() }
+    function getFunctions(catalog: string, schemaPattern: string, functionNamePattern: string): ResultSet { return emptyResultSetStub() }
+    function getFunctionColumns(catalog: string, schemaPattern: string, functionNamePattern: string, columnNamePattern: string): ResultSet { return emptyResultSetStub() }
+    function getDriverName(): string { return "" }
+    function getDriverVersion(): string { return "" }
+    function getDriverMajorVersion(): int { return 0 }
+    function getDriverMinorVersion(): int { return 0 }
+    function getDatabaseProductName(): string { return "" }
+    function getDatabaseProductVersion(): string { return "" }
+    function getURL(): string { return "" }
+    function getUserName(): string { return "" }
+    function getJDBCMajorVersion(): int { return 0 }
+    function getJDBCMinorVersion(): int { return 0 }
+    function getCatalogTerm(): string { return "" }
+    function getSchemaTerm(): string { return "" }
+    function getProcedureTerm(): string { return "" }
+    function getCatalogSeparator(): string { return "" }
+    function supportsTransactions(): int { return 0 }
+    function supportsBatchUpdates(): int { return 0 }
+    function supportsTransactionIsolationLevel(level: int): int { return 0 }
+    function supportsResultSetType(type: int): int { return 0 }
+    function supportsResultSetConcurrency(type: int, concurrency: int): int { return 0 }
 }

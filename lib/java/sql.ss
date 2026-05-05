@@ -334,6 +334,17 @@ interface Connection {
     function rollback()
     function close()
     function isClosed(): int
+    // ── D156 §Phase 2 — JDBC 4.3 §11 schema-level metadata reflection ─────
+    // DatabaseMetaData supplies driver / database / schema / catalog / table /
+    // column / key / index reflection used by ORM idioms (Hibernate `Dialect`
+    // schema discovery, Spring JPA auto-validation, Flyway / Liquibase
+    // migration, MyBatis Generator). The driver routes the call through
+    // INFORMATION_SCHEMA per-call PreparedStatement (D156 Phase 1 helper) +
+    // supportsXxx capability matrix + driver-static literals. Phase 2 stubs
+    // return a NoopDatabaseMetaData fallback (lib/com/mysql/jdbc.ss); Phase 3
+    // wires MysqlDatabaseMetaData reflection + 13 supportsXxx + lazy cache
+    // getDatabaseProductVersion (D156 §A.2 H1-H8 wire-end e2e Phase 4).
+    function getMetaData(): DatabaseMetaData
 }
 
 // ── DriverManager ────────────────────────────────────────────
@@ -588,3 +599,58 @@ interface Ref {
     function getObject(): string
     function setObject(value: string)
 }
+
+// ── DatabaseMetaData — D156 §Phase 2 / JDBC 4.3 §11 ──────────
+// Schema-level metadata for Hibernate Dialect / Spring JPA / Flyway /
+// MyBatis Generator. ResultSet-returning methods route through D156 Phase 1
+// INFORMATION_SCHEMA helper; the ResultSet walks the D155 ResultSetMetaData
+// reflection path (no separate column-metadata layer).
+// catalog vs schema (§A.2 H2): MySQL single-tier — getCatalogs = SHOW
+// DATABASES, getSchemas empty; PG double-tier reverse留 §Followup F3.
+// Wrapper / RowIdLifetime / getMaxXxx / 40+ supportsXxx 留 §Followup F4.
+interface DatabaseMetaData {
+    function getCatalogs(): ResultSet
+    function getSchemas(): ResultSet
+    function getSchemas(catalog: string, schemaPattern: string): ResultSet
+    function getTables(catalog: string, schemaPattern: string, tableNamePattern: string, types: string): ResultSet
+    function getColumns(catalog: string, schemaPattern: string, tableNamePattern: string, columnNamePattern: string): ResultSet
+    function getPrimaryKeys(catalog: string, schema: string, table: string): ResultSet
+    function getImportedKeys(catalog: string, schema: string, table: string): ResultSet
+    function getExportedKeys(catalog: string, schema: string, table: string): ResultSet
+    function getCrossReference(parentCatalog: string, parentSchema: string, parentTable: string, foreignCatalog: string, foreignSchema: string, foreignTable: string): ResultSet
+    function getIndexInfo(catalog: string, schema: string, table: string, unique: int, approximate: int): ResultSet
+    function getProcedures(catalog: string, schemaPattern: string, procedureNamePattern: string): ResultSet
+    function getProcedureColumns(catalog: string, schemaPattern: string, procedureNamePattern: string, columnNamePattern: string): ResultSet
+    function getFunctions(catalog: string, schemaPattern: string, functionNamePattern: string): ResultSet
+    function getFunctionColumns(catalog: string, schemaPattern: string, functionNamePattern: string, columnNamePattern: string): ResultSet
+    function getDriverName(): string
+    function getDriverVersion(): string
+    function getDriverMajorVersion(): int
+    function getDriverMinorVersion(): int
+    function getDatabaseProductName(): string
+    function getDatabaseProductVersion(): string
+    function getURL(): string
+    function getUserName(): string
+    function getJDBCMajorVersion(): int
+    function getJDBCMinorVersion(): int
+    function getCatalogTerm(): string
+    function getSchemaTerm(): string
+    function getProcedureTerm(): string
+    function getCatalogSeparator(): string
+    function supportsTransactions(): int
+    function supportsBatchUpdates(): int
+    function supportsTransactionIsolationLevel(level: int): int
+    function supportsResultSetType(type: int): int
+    function supportsResultSetConcurrency(type: int, concurrency: int): int
+}
+
+// ── JDBC 4.3 §11 / java.sql.Connection — D156 §Phase 2 constants ─────
+// Standard JDBC integer literals. TRANSACTION_REPEATABLE_READ = 4 (not 3
+// — JDK gap). Connection.setTransactionIsolation 留 D156 §Followup F4.
+const JDBC_MAJOR_VERSION = 4
+const JDBC_MINOR_VERSION = 3
+const TRANSACTION_NONE = 0
+const TRANSACTION_READ_UNCOMMITTED = 1
+const TRANSACTION_READ_COMMITTED = 2
+const TRANSACTION_REPEATABLE_READ = 4
+const TRANSACTION_SERIALIZABLE = 8
