@@ -17,7 +17,7 @@
 // socket fd (D134 Phase 5 NAMESPACE COLLISION decision: handshake.ss owns auth
 // protocol only, driver-layer Connection state lives here in jdbc.ss).
 
-import { Connection, Statement, PreparedStatement, ResultSet, DatabaseMetaData } from "@/lib/java/sql"
+import { Connection, Statement, PreparedStatement, ResultSet, DatabaseMetaData, JDBC_MAJOR_VERSION, JDBC_MINOR_VERSION, TRANSACTION_READ_UNCOMMITTED, TRANSACTION_READ_COMMITTED, TRANSACTION_REPEATABLE_READ, TRANSACTION_SERIALIZABLE, TYPE_FORWARD_ONLY, TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
 import { writePacket } from "@/lib/com/mysql/wire"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
 import { sendQuery, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, readQueryResultSet, MysqlResultSet, GeneratedKeyResultSet, NoopResultSetMetaData } from "@/lib/com/mysql/query"
@@ -32,6 +32,16 @@ class MysqlConnection : Connection {
     fd: int
     autoCommit: int
     closed: int
+    // D156 §Phase 3 — driver identity for DatabaseMetaData. Password
+    // intentionally not held (JDBC parity + SS memory hygiene).
+    url: string
+    user: string
+    // D156 §Phase 3 — lazy DatabaseMetaData cache. NoopDatabaseMetaData
+    // sentinel until first getMetaData() call. Interface-typed field is
+    // safe via D155 Phase 3 codegen fix (bootstrap/gen/gen_type_ops.ss
+    // isInterfaceType branch — TypeInfo.deep_clone_fn vtable dispatch).
+    metaDataCache: DatabaseMetaData
+    metaDataInited: int
 
     function createStatement(): Statement {
         return new MysqlStatement(this.fd, 0)
@@ -91,22 +101,35 @@ class MysqlConnection : Connection {
 
     // COM_QUIT is a single 0x01 byte payload, seqId reset to 0. The server
     // closes the socket after receiving it; we close our end too.
+    //
+    // D156 Phase 3 — break MysqlConnection ↔ MysqlDatabaseMetaData RC cycle.
+    // MysqlDatabaseMetaData.conn back-points here; under Perceus RC the
+    // pair would leak if the cache outlives the explicit close. Replacing
+    // the cache with a stateless NoopDatabaseMetaData lets the previous
+    // reflection wrapper (and its conn back-ref) drop. Implicit drop
+    // without close() still leaks — full cycle detection 留 SS GC sub-D
+    // (D156 §F6).
     function close() {
         if (this.closed != 0) { return }
         writePacket(this.fd, 0, fromCharCode(COM_QUIT), 1)
         tcpClose(this.fd)
         this.closed = 1
+        this.metaDataCache = new NoopDatabaseMetaData()
+        this.metaDataInited = 0
     }
 
     function isClosed(): int {
         return this.closed
     }
 
-    // D156 Phase 2 — stub via NoopDatabaseMetaData. Phase 3 returns
-    // `new MysqlDatabaseMetaData(this)` sharing the conn ref; per-call
-    // prepareStatement on the same Connection avoids cycles (§A.2 H5).
+    // D156 Phase 3 — lazy MysqlDatabaseMetaData (§A.2 H5). Single instance
+    // per Connection per JDBC §11 implicit contract.
     function getMetaData(): DatabaseMetaData {
-        return new NoopDatabaseMetaData()
+        if (this.metaDataInited == 0) {
+            this.metaDataCache = new MysqlDatabaseMetaData(this, "", 0)
+            this.metaDataInited = 1
+        }
+        return this.metaDataCache
     }
 }
 
@@ -200,7 +223,7 @@ function getMysqlConnection(url: string): MysqlConnection {
     }
 
     const fd = mysqlConnect(host, port, user, pwd, db)
-    return new MysqlConnection(fd, 1, 0)
+    return new MysqlConnection(fd, 1, 0, url, user, new NoopDatabaseMetaData(), 0)
 }
 
 // D156 Phase 1 — INFORMATION_SCHEMA per-call PreparedStatement helpers and
@@ -341,4 +364,178 @@ class NoopDatabaseMetaData : DatabaseMetaData {
     function supportsTransactionIsolationLevel(level: int): int { return 0 }
     function supportsResultSetType(type: int): int { return 0 }
     function supportsResultSetConcurrency(type: int, concurrency: int): int { return 0 }
+}
+
+// ── D156 §Phase 3 — MysqlDatabaseMetaData (real reflection) ──────────
+// conn typed as concrete MysqlConnection (not Connection interface) —
+// getURL / getUserName / lazy getDatabaseProductVersion need driver-
+// specific state. Mirrors D155 MysqlResultSetMetaData.colMetadata
+// concrete-typed field.
+// Lazy cache only on getDatabaseProductVersion (SELECT VERSION() round-
+// trip); other ResultSet-returning methods stay per-call — schema may
+// evolve between calls and JDBC §11 does not require result identity
+// (§F5 future cache).
+// catalog vs schema (§A.2 H2): MySQL single-tier — getCatalogs walks
+// SCHEMATA, getSchemas empty. PG two-tier reversal stays §F3.
+class MysqlDatabaseMetaData : DatabaseMetaData {
+    conn: MysqlConnection
+    cachedDatabaseProductVersion: string
+    cachedVersionInited: int
+
+    // ── Driver static — Phase 1 helper delegation (single-source on bumps) ─
+    function getDriverName(): string { return getDriverNameStatic() }
+    function getDriverVersion(): string { return getDriverVersionStatic() }
+    function getDriverMajorVersion(): int { return getDriverMajorVersionStatic() }
+    function getDriverMinorVersion(): int { return getDriverMinorVersionStatic() }
+
+    // ── Database identity — URL/user direct, version lazy SELECT VERSION() ─
+    function getDatabaseProductName(): string { return "MySQL" }
+    function getDatabaseProductVersion(): string {
+        if (this.cachedVersionInited == 0) {
+            this.cachedDatabaseProductVersion = getServerVersionStatic(this.conn)
+            this.cachedVersionInited = 1
+        }
+        return this.cachedDatabaseProductVersion
+    }
+    function getURL(): string { return this.conn.url }
+    function getUserName(): string { return this.conn.user }
+
+    // ── JDBC version constants ──
+    function getJDBCMajorVersion(): int { return JDBC_MAJOR_VERSION }
+    function getJDBCMinorVersion(): int { return JDBC_MINOR_VERSION }
+
+    // ── Naming convention — single-tier MySQL (§A.2 H2) ──
+    function getCatalogTerm(): string { return getCatalogTermStatic() }
+    function getSchemaTerm(): string { return getSchemaTermStatic() }
+    function getProcedureTerm(): string { return getProcedureTermStatic() }
+    function getCatalogSeparator(): string { return getCatalogSeparatorStatic() }
+
+    // ── Capability matrix — JDBC §11 / Connector/J 5.1+ static values ──
+    function supportsTransactions(): int { return 1 }
+    function supportsBatchUpdates(): int { return 1 }
+    function supportsTransactionIsolationLevel(level: int): int {
+        if (level == TRANSACTION_READ_UNCOMMITTED) { return 1 }
+        if (level == TRANSACTION_READ_COMMITTED) { return 1 }
+        if (level == TRANSACTION_REPEATABLE_READ) { return 1 }
+        if (level == TRANSACTION_SERIALIZABLE) { return 1 }
+        return 0
+    }
+    // SCROLL_INSENSITIVE via D146 §A.2 H5 in-memory cache fallback (MySQL
+    // 5.7+ has no server scrollable cursor); SCROLL_SENSITIVE never.
+    function supportsResultSetType(type: int): int {
+        if (type == TYPE_FORWARD_ONLY) { return 1 }
+        if (type == TYPE_SCROLL_INSENSITIVE) { return 1 }
+        return 0
+    }
+    // CONCUR_UPDATABLE + FORWARD_ONLY only (D147 simulated cursor).
+    function supportsResultSetConcurrency(type: int, concurrency: int): int {
+        if (concurrency == CONCUR_READ_ONLY) {
+            if (type == TYPE_FORWARD_ONLY) { return 1 }
+            if (type == TYPE_SCROLL_INSENSITIVE) { return 1 }
+            return 0
+        }
+        if (concurrency == CONCUR_UPDATABLE) {
+            if (type == TYPE_FORWARD_ONLY) { return 1 }
+            return 0
+        }
+        return 0
+    }
+
+    // ── INFORMATION_SCHEMA reflection — per-call PreparedStatement ──────
+    // Column aliases match JDBC §11 spec column names verbatim so the
+    // returned ResultSet's getColumnName(N) lands on the spec contract
+    // (§A.2 H7); LIKE pattern "" defaults to "%" (Connector/J idiom).
+    function getCatalogs(): ResultSet {
+        return infoSchemaQuery(this.conn, "SELECT SCHEMA_NAME AS TABLE_CAT FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY SCHEMA_NAME")
+    }
+    // Single-tier MySQL — getCatalogs walks SCHEMATA, getSchemas empty.
+    function getSchemas(): ResultSet { return emptyResultSetStub() }
+    function getSchemas(catalog: string, schemaPattern: string): ResultSet { return emptyResultSetStub() }
+    function getTables(catalog: string, schemaPattern: string, tableNamePattern: string, types: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let pat = tableNamePattern
+        if (pat == "") { pat = "%" }
+        const sql = `SELECT TABLE_SCHEMA AS TABLE_CAT, NULL AS TABLE_SCHEM, TABLE_NAME, TABLE_TYPE, TABLE_COMMENT AS REMARKS, NULL AS TYPE_CAT, NULL AS TYPE_SCHEM, NULL AS TYPE_NAME, NULL AS SELF_REFERENCING_COL_NAME, NULL AS REF_GENERATION FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA LIKE '${cat}' AND TABLE_NAME LIKE '${pat}' ORDER BY TABLE_SCHEMA, TABLE_NAME`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getColumns(catalog: string, schemaPattern: string, tableNamePattern: string, columnNamePattern: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let tab = tableNamePattern
+        if (tab == "") { tab = "%" }
+        let col = columnNamePattern
+        if (col == "") { col = "%" }
+        const sql = `SELECT TABLE_SCHEMA AS TABLE_CAT, NULL AS TABLE_SCHEM, TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE AS TYPE_NAME, CHARACTER_MAXIMUM_LENGTH AS COLUMN_SIZE, NULL AS BUFFER_LENGTH, NUMERIC_PRECISION AS DECIMAL_DIGITS, NUMERIC_SCALE AS NUM_PREC_RADIX, IS_NULLABLE AS NULLABLE, COLUMN_COMMENT AS REMARKS, COLUMN_DEFAULT AS COLUMN_DEF, NULL AS SQL_DATA_TYPE, NULL AS SQL_DATETIME_SUB, CHARACTER_OCTET_LENGTH AS CHAR_OCTET_LENGTH, ORDINAL_POSITION, IS_NULLABLE AS IS_NULLABLE_YN, NULL AS SCOPE_CATALOG, NULL AS SCOPE_SCHEMA, NULL AS SCOPE_TABLE, NULL AS SOURCE_DATA_TYPE, EXTRA AS IS_AUTOINCREMENT, NULL AS IS_GENERATEDCOLUMN FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA LIKE '${cat}' AND TABLE_NAME LIKE '${tab}' AND COLUMN_NAME LIKE '${col}' ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getPrimaryKeys(catalog: string, schema: string, table: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let tab = table
+        if (tab == "") { tab = "%" }
+        const sql = `SELECT k.TABLE_SCHEMA AS TABLE_CAT, NULL AS TABLE_SCHEM, k.TABLE_NAME, k.COLUMN_NAME, k.ORDINAL_POSITION AS KEY_SEQ, k.CONSTRAINT_NAME AS PK_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS t ON k.CONSTRAINT_NAME = t.CONSTRAINT_NAME AND k.TABLE_SCHEMA = t.TABLE_SCHEMA AND k.TABLE_NAME = t.TABLE_NAME WHERE t.CONSTRAINT_TYPE = 'PRIMARY KEY' AND k.TABLE_SCHEMA LIKE '${cat}' AND k.TABLE_NAME LIKE '${tab}' ORDER BY k.ORDINAL_POSITION`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getImportedKeys(catalog: string, schema: string, table: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let tab = table
+        if (tab == "") { tab = "%" }
+        const sql = `SELECT k.REFERENCED_TABLE_SCHEMA AS PKTABLE_CAT, NULL AS PKTABLE_SCHEM, k.REFERENCED_TABLE_NAME AS PKTABLE_NAME, k.REFERENCED_COLUMN_NAME AS PKCOLUMN_NAME, k.TABLE_SCHEMA AS FKTABLE_CAT, NULL AS FKTABLE_SCHEM, k.TABLE_NAME AS FKTABLE_NAME, k.COLUMN_NAME AS FKCOLUMN_NAME, k.ORDINAL_POSITION AS KEY_SEQ, NULL AS UPDATE_RULE, NULL AS DELETE_RULE, k.CONSTRAINT_NAME AS FK_NAME, k.REFERENCED_TABLE_NAME AS PK_NAME, NULL AS DEFERRABILITY FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k WHERE k.REFERENCED_TABLE_NAME IS NOT NULL AND k.TABLE_SCHEMA LIKE '${cat}' AND k.TABLE_NAME LIKE '${tab}' ORDER BY k.ORDINAL_POSITION`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getExportedKeys(catalog: string, schema: string, table: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let tab = table
+        if (tab == "") { tab = "%" }
+        const sql = `SELECT k.REFERENCED_TABLE_SCHEMA AS PKTABLE_CAT, NULL AS PKTABLE_SCHEM, k.REFERENCED_TABLE_NAME AS PKTABLE_NAME, k.REFERENCED_COLUMN_NAME AS PKCOLUMN_NAME, k.TABLE_SCHEMA AS FKTABLE_CAT, NULL AS FKTABLE_SCHEM, k.TABLE_NAME AS FKTABLE_NAME, k.COLUMN_NAME AS FKCOLUMN_NAME, k.ORDINAL_POSITION AS KEY_SEQ, NULL AS UPDATE_RULE, NULL AS DELETE_RULE, k.CONSTRAINT_NAME AS FK_NAME, k.REFERENCED_TABLE_NAME AS PK_NAME, NULL AS DEFERRABILITY FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k WHERE k.REFERENCED_TABLE_NAME IS NOT NULL AND k.REFERENCED_TABLE_SCHEMA LIKE '${cat}' AND k.REFERENCED_TABLE_NAME LIKE '${tab}' ORDER BY k.ORDINAL_POSITION`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getCrossReference(parentCatalog: string, parentSchema: string, parentTable: string, foreignCatalog: string, foreignSchema: string, foreignTable: string): ResultSet {
+        let pCat = parentCatalog
+        if (pCat == "") { pCat = "%" }
+        let pTab = parentTable
+        if (pTab == "") { pTab = "%" }
+        let fCat = foreignCatalog
+        if (fCat == "") { fCat = "%" }
+        let fTab = foreignTable
+        if (fTab == "") { fTab = "%" }
+        const sql = `SELECT k.REFERENCED_TABLE_SCHEMA AS PKTABLE_CAT, NULL AS PKTABLE_SCHEM, k.REFERENCED_TABLE_NAME AS PKTABLE_NAME, k.REFERENCED_COLUMN_NAME AS PKCOLUMN_NAME, k.TABLE_SCHEMA AS FKTABLE_CAT, NULL AS FKTABLE_SCHEM, k.TABLE_NAME AS FKTABLE_NAME, k.COLUMN_NAME AS FKCOLUMN_NAME, k.ORDINAL_POSITION AS KEY_SEQ, NULL AS UPDATE_RULE, NULL AS DELETE_RULE, k.CONSTRAINT_NAME AS FK_NAME, k.REFERENCED_TABLE_NAME AS PK_NAME, NULL AS DEFERRABILITY FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k WHERE k.REFERENCED_TABLE_SCHEMA LIKE '${pCat}' AND k.REFERENCED_TABLE_NAME LIKE '${pTab}' AND k.TABLE_SCHEMA LIKE '${fCat}' AND k.TABLE_NAME LIKE '${fTab}' ORDER BY k.ORDINAL_POSITION`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getIndexInfo(catalog: string, schema: string, table: string, unique: int, approximate: int): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let tab = table
+        if (tab == "") { tab = "%" }
+        let uniqueFilter = ""
+        if (unique == 1) { uniqueFilter = " AND NON_UNIQUE = 0" }
+        const sql = `SELECT TABLE_SCHEMA AS TABLE_CAT, NULL AS TABLE_SCHEM, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA AS INDEX_QUALIFIER, INDEX_NAME, NULL AS TYPE, SEQ_IN_INDEX AS ORDINAL_POSITION, COLUMN_NAME, COLLATION AS ASC_OR_DESC, CARDINALITY, NULL AS PAGES, NULL AS FILTER_CONDITION FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA LIKE '${cat}' AND TABLE_NAME LIKE '${tab}'${uniqueFilter} ORDER BY NON_UNIQUE, INDEX_NAME, SEQ_IN_INDEX`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getProcedures(catalog: string, schemaPattern: string, procedureNamePattern: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let pat = procedureNamePattern
+        if (pat == "") { pat = "%" }
+        const sql = `SELECT ROUTINE_SCHEMA AS PROCEDURE_CAT, NULL AS PROCEDURE_SCHEM, ROUTINE_NAME AS PROCEDURE_NAME, NULL AS RESERVED1, NULL AS RESERVED2, NULL AS RESERVED3, ROUTINE_COMMENT AS REMARKS, NULL AS PROCEDURE_TYPE, ROUTINE_NAME AS SPECIFIC_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA LIKE '${cat}' AND ROUTINE_NAME LIKE '${pat}' ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    // PARAMETERS join (full JDBC §11 spec column alignment) 留 Phase 4.
+    function getProcedureColumns(catalog: string, schemaPattern: string, procedureNamePattern: string, columnNamePattern: string): ResultSet {
+        return emptyResultSetStub()
+    }
+    function getFunctions(catalog: string, schemaPattern: string, functionNamePattern: string): ResultSet {
+        let cat = catalog
+        if (cat == "") { cat = "%" }
+        let pat = functionNamePattern
+        if (pat == "") { pat = "%" }
+        const sql = `SELECT ROUTINE_SCHEMA AS FUNCTION_CAT, NULL AS FUNCTION_SCHEM, ROUTINE_NAME AS FUNCTION_NAME, ROUTINE_COMMENT AS REMARKS, NULL AS FUNCTION_TYPE, ROUTINE_NAME AS SPECIFIC_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA LIKE '${cat}' AND ROUTINE_NAME LIKE '${pat}' ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME`
+        return infoSchemaQuery(this.conn, sql)
+    }
+    function getFunctionColumns(catalog: string, schemaPattern: string, functionNamePattern: string, columnNamePattern: string): ResultSet {
+        return emptyResultSetStub()
+    }
 }
