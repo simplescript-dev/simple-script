@@ -555,7 +555,7 @@ bin/ss test tests/d152_jdbc_type_class_foundation/
 | F4 | D146 §F3 ResultSetMetaData 完整列元数据 | getColumnTypeName / isAutoIncrement / isPrimaryKey 等 | D154 主线 close 后 |
 | F5 | D138 §F1 KeyHolder.getKey 类型扩展 + HikariCP | 自动生成主键类型 + 连接池 | D154 主线 close 后 |
 | F6 | D107 PostgreSQL driver 起首 | 跨数据库扩展新方向(D107 未首次落档) | D154 主线 close 后 |
-| F7 | bidirectional 完整闭环 integration test | D154 production driver class 落地后 read 后真 type write back 回路 integration test | D154 主线 close 后 |
+| F7 [✓ Done at commit `<F7-close-hash>`](2026-05-05) | bidirectional 完整闭环 integration test | D154 production driver class 落地后 read 后真 type write back 回路 integration test — **tests/d154_bidirectional_closure/integration_test.ss 218 LOC + 12 driver class round-trip 12/12 PASS**(D135-D154 范式 单 commit 不能引用自己 hash 下下轮回填) | D154 主线 close 后 ✓ |
 
 ---
 
