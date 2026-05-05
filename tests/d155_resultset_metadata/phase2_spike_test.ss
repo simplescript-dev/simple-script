@@ -77,14 +77,17 @@ function main() {
         assertEqual(m.isWritable(1), 0)
     })
 
-    // Case 7 — GeneratedKeyResultSet.getMetaData() implementor stub dispatches
-    // to NoopResultSetMetaData (Phase 2 fallback). Phase 3 swaps this for
-    // a hard-coded 1-col GENERATED_KEY BIGINT MysqlResultSetMetaData (§A.2 H5).
-    test("GeneratedKeyResultSet.getMetaData stub dispatch (D155 Phase 2)", () => {
-        const ks = new GeneratedKeyResultSet(42, 0)
+    // Case 7 — GeneratedKeyResultSet.getMetaData() — D155 Phase 3 replaced
+    // the Phase 2 NoopResultSetMetaData stub fallback with a hard-coded
+    // 1-col GENERATED_KEY BIGINT MysqlResultSetMetaData (§A.2 H5). The
+    // synthetic ColumnDef carries NOT_NULL_FLAG + AUTO_INCREMENT_FLAG +
+    // PRI_KEY_FLAG + UNSIGNED_FLAG, so isNullable returns columnNoNulls.
+    test("GeneratedKeyResultSet.getMetaData synthetic 1-col (D155 Phase 3)", () => {
+        const ks = new GeneratedKeyResultSet(42, 0, new NoopResultSetMetaData(), 0)
         const md: ResultSetMetaData = ks.getMetaData()
-        assertEqual(md.getColumnCount(), 0)
-        assertEqual(md.isNullable(1), columnNullableUnknown)
+        assertEqual(md.getColumnCount(), 1)
+        assertEqual(md.getColumnName(1), "GENERATED_KEY")
+        assertEqual(md.isNullable(1), columnNoNulls)
     })
 
     // Case 8 — vtable dispatch through ResultSetMetaData interface variable

@@ -41,7 +41,7 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData } from "@/lib/com/mysql/query"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG } from "@/lib/com/mysql/query"
 import { PreparedStatement, ResultSet, ResultSetMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
@@ -478,6 +478,13 @@ class MysqlBinaryResultSet : ResultSet {
     pkColumn: string
     inInsertMode: int
     rowState: int
+    // ── D155 §Phase 3 — lazy MysqlResultSetMetaData cache ──────
+    // Same idiom as MysqlResultSet (lib/com/mysql/query.ss) — binary
+    // protocol shares the ColumnDef41 packet path with text protocol
+    // (D155 §A.2 H6). Interface-typed field is safe — codegen routes
+    // deep_clone through TypeInfo vtable (gen_type_ops.ss isInterfaceType).
+    metaDataCache: ResultSetMetaData
+    metaDataInited: int
 
     function next(): int {
         if (this.closed != 0) { return 0 }
@@ -934,10 +941,19 @@ class MysqlBinaryResultSet : ResultSet {
         return 1
     }
 
-    // D155 Phase 2 stub — Phase 3 replaces with `new MysqlResultSetMetaData(
-    // this.colMetadata)` real reflection. Binary protocol shares the same
-    // ColumnDef41 packet path as text protocol (D155 §A.2 H6).
-    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
+    // D155 Phase 3 — real metadata reflection. Binary protocol shares
+    // the same ColumnDef41 packet path as text protocol (D155 §A.2 H6),
+    // so a MysqlResultSetMetaData wrapping this.colMetadata reflects
+    // every JDBC §15.4 column attribute. Lazy-cached on first call so
+    // ORM reflection loops do not re-allocate (D155 simplify efficiency
+    // agent Phase 2 prearranged issue).
+    function getMetaData(): ResultSetMetaData {
+        if (this.metaDataInited == 0) {
+            this.metaDataCache = new MysqlResultSetMetaData(this.colMetadata)
+            this.metaDataInited = 1
+        }
+        return this.metaDataCache
+    }
 
     // close() — D146 Phase 3 dual-mode drain. Cursor protocol (useCursor=1) is
     // request-response synchronous (each COM_STMT_FETCH returns rows + EOF
@@ -987,7 +1003,7 @@ function readQueryResultSetBinary(fd: int): MysqlBinaryResultSet {
     let cached: Array<Array<string>> = []
     let pu: Map<string, string> = new Map()
     let pi: Array<Map<string, string>> = []
-    const rs = new MysqlBinaryResultSet(fd, 0, cols, row, 0, 0, 0, 0, 0, 0, TYPE_FORWARD_ONLY, cached, 0, pu, pi, "", "", 0, ROW_STATE_CLEAN)
+    const rs = new MysqlBinaryResultSet(fd, 0, cols, row, 0, 0, 0, 0, 0, 0, TYPE_FORWARD_ONLY, cached, 0, pu, pi, "", "", 0, ROW_STATE_CLEAN, new NoopResultSetMetaData(), 0)
     const headerPkt = readPacket(fd)
     const header = parseResultSetHeader(headerPkt.payload, headerPkt.payloadLen)
     if (header <= 0) {
@@ -1034,12 +1050,11 @@ function readQueryResultSetBinary(fd: int): MysqlBinaryResultSet {
 // here — MySQL identifier escape (backtick) belongs in the driver layer that
 // owns identifier sanitization, not the SQL template.
 
-// PRI_KEY_FLAG — MySQL Native Protocol §6.6 column definition packet flags
-// i16 LE bit 1 (0x0002). Set by the server when the column is part of the
-// table's PRIMARY KEY. derivePkColumn uses this to discover the PK column
-// from the SELECT result's column metadata without a separate SHOW INDEX
-// FROM table round-trip. D147 §A.2 H2.
-const PRI_KEY_FLAG = 0x0002
+// PRI_KEY_FLAG migrated to lib/com/mysql/query.ss (D155 Phase 3 — 13-bit
+// MySQL flag集中协议常量). prepared.ss imports it through the existing
+// query.ss import statement; derivePkColumn below dispatches against the
+// imported constant. Original D147 §A.2 H2 PRI_KEY_FLAG semantics — bit
+// 1 (0x0002) of the ColumnDefinition41 flags i16 LE — preserved verbatim.
 
 // Builds `UPDATE <table> SET col1=?, col2=? WHERE <pkCol>=?` for the
 // driver-side updateRow path. Empty dirtyCols produces the syntactically
@@ -1330,7 +1345,7 @@ class MysqlPreparedStatement : PreparedStatement {
     // executeUpdate. Wraps lastInsertId as single-row, single-column
     // "GENERATED_KEY" — same shape as MysqlStatement.getGeneratedKeys.
     function getGeneratedKeys(): ResultSet {
-        return new GeneratedKeyResultSet(this.lastInsertId, 0)
+        return new GeneratedKeyResultSet(this.lastInsertId, 0, new NoopResultSetMetaData(), 0)
     }
 
     function getLastInsertId(): int {

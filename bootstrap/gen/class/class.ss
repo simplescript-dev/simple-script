@@ -118,6 +118,15 @@ function isUserClass(typeName: string): int {
     return 0
 }
 
+// Returns 1 if typeName is an interface (declared with `interface X { ... }`),
+// 0 if it's a concrete class. Used by codegen to dispatch deep_clone /
+// shallow_clone through the obj's TypeInfo vtable for interface-typed fields
+// (no static `ss_deep_clone_<Iface>` exists — only concrete classes have one).
+function isInterfaceType(typeName: string): int {
+    if (ifaceMethodsCG.has(typeName) == 1 && classFields.has(typeName) == 0) { return 1 }
+    return 0
+}
+
 // Emit retain call for the appropriate RC system
 function emitRetainForType(reg: string, ssType: string) {
     if (isUserClass(ssType) == 1) {

@@ -166,6 +166,46 @@ const columnNoNulls = 0
 const columnNullable = 1
 const columnNullableUnknown = 2
 
+// ── JDBC 4.3 §13.1 / java.sql.Types — D155 Phase 3 SQL type code mapping ─────
+// java.sql.Types int constants used by ResultSetMetaData.getColumnType /
+// PreparedStatement.setObject(idx, val, sqlType) / CallableStatement.
+// registerOutParameter. Values match the JDK java.sql.Types literal
+// (e.g. Types.VARCHAR = 12) so the wire-side mysqlTypeToJdbcType
+// mapping (lib/com/mysql/query.ss) hits the same int code an upstream
+// JDBC consumer (Hibernate / MyBatis / Spring) would dispatch on.
+//
+// Naming carries a JDBC_TYPE_ prefix because the bare names (BIT / TINYINT
+// / VARCHAR / ...) overlap with potential reserved-word territory + the
+// MySQL `mysqlType` byte constants (0x00 DECIMAL ... 0xFF GEOMETRY) that
+// the query.ss mapping table dispatches on. The prefix keeps the JDBC view
+// distinct from the protocol-byte view.
+//
+// Subset coverage = the ≥13 codes the MySQL driver actually returns
+// (JDBC §13.1 lists ≥30 — ARRAY / STRUCT / REF / DATALINK / SQLXML left
+// to D155 §Followup F4 + driver-side D152 type class extension).
+const JDBC_TYPE_BIT = -7
+const JDBC_TYPE_TINYINT = -6
+const JDBC_TYPE_BIGINT = -5
+const JDBC_TYPE_LONGVARBINARY = -4
+const JDBC_TYPE_VARBINARY = -3
+const JDBC_TYPE_BINARY = -2
+const JDBC_TYPE_CHAR = 1
+const JDBC_TYPE_NUMERIC = 2
+const JDBC_TYPE_DECIMAL = 3
+const JDBC_TYPE_INTEGER = 4
+const JDBC_TYPE_SMALLINT = 5
+const JDBC_TYPE_FLOAT = 6
+const JDBC_TYPE_REAL = 7
+const JDBC_TYPE_DOUBLE = 8
+const JDBC_TYPE_VARCHAR = 12
+const JDBC_TYPE_DATE = 91
+const JDBC_TYPE_TIME = 92
+const JDBC_TYPE_TIMESTAMP = 93
+const JDBC_TYPE_LONGVARCHAR = -1
+const JDBC_TYPE_NULL = 0
+const JDBC_TYPE_BLOB = 2004
+const JDBC_TYPE_CLOB = 2005
+
 // ── JDBC 4.3 §15 ResultSet — D146 §Phase 2 Cursor / Concurrency constants ───
 // Mirror java.sql.ResultSet.TYPE_FORWARD_ONLY / TYPE_SCROLL_INSENSITIVE /
 // TYPE_SCROLL_SENSITIVE 3 cursor types + CONCUR_READ_ONLY 1 concurrency mode.

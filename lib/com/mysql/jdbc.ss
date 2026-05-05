@@ -20,7 +20,7 @@
 import { Connection, Statement, PreparedStatement, ResultSet } from "@/lib/java/sql"
 import { writePacket } from "@/lib/com/mysql/wire"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
-import { sendQuery, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, readQueryResultSet, MysqlResultSet, GeneratedKeyResultSet } from "@/lib/com/mysql/query"
+import { sendQuery, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, readQueryResultSet, MysqlResultSet, GeneratedKeyResultSet, NoopResultSetMetaData } from "@/lib/com/mysql/query"
 import { doPrepare } from "@/lib/com/mysql/prepared"
 import { URL, URL_parse } from "@/lib/url"
 
@@ -144,7 +144,7 @@ class MysqlStatement : Statement {
     // standard). Multi-row INSERT VALUES (...),(...) returns the first id only;
     // subsequent ids are first + 1, first + 2, ... by MySQL protocol contract.
     function getGeneratedKeys(): ResultSet {
-        return new GeneratedKeyResultSet(this.lastInsertId, 0)
+        return new GeneratedKeyResultSet(this.lastInsertId, 0, new NoopResultSetMetaData(), 0)
     }
 
     function getLastInsertId(): int {

@@ -342,9 +342,29 @@ function emitClassDeepCloneFn(className: string, fieldStr: string, hasVtable: in
                     const doneL = `dc.done.${idx}`
                     emitIR(`  br i1 ${nullR}, label %${doneL}, label %${cloneL}`)
                     emitIR(`${cloneL}:`)
-                    const clonedR = nextReg()
-                    emitIR(`  ${clonedR} = call ptr @ss_deep_clone_${ft}(ptr ${valR})`)
-                    emitIR(`  store ptr ${clonedR}, ptr ${dstR}, align 8`)
+                    if (isInterfaceType(ft) == 1) {
+                        // Interface-typed field: deep_clone target depends on the
+                        // dynamic class of the runtime object. No static
+                        // ss_deep_clone_<Iface> exists (only concrete classes
+                        // have one), so dispatch through the obj header's
+                        // TypeInfo.deep_clone_fn slot — same vtable indirection
+                        // ss_release uses for drop_fn (gen_runtime.ss:545).
+                        const tiPtrR = nextReg()
+                        emitIR(`  ${tiPtrR} = getelementptr %ObjHeader, ptr ${valR}, i32 0, i32 1`)
+                        const tiR = nextReg()
+                        emitIR(`  ${tiR} = load ptr, ptr ${tiPtrR}, align 8`)
+                        const dcFnPtrR = nextReg()
+                        emitIR(`  ${dcFnPtrR} = getelementptr %TypeInfo, ptr ${tiR}, i32 0, i32 1`)
+                        const dcFnR = nextReg()
+                        emitIR(`  ${dcFnR} = load ptr, ptr ${dcFnPtrR}, align 8`)
+                        const clonedR = nextReg()
+                        emitIR(`  ${clonedR} = call ptr ${dcFnR}(ptr ${valR})`)
+                        emitIR(`  store ptr ${clonedR}, ptr ${dstR}, align 8`)
+                    } else {
+                        const clonedR = nextReg()
+                        emitIR(`  ${clonedR} = call ptr @ss_deep_clone_${ft}(ptr ${valR})`)
+                        emitIR(`  store ptr ${clonedR}, ptr ${dstR}, align 8`)
+                    }
                     emitIR(`  br label %${doneL}`)
                     emitIR(`${doneL}:`)
                 } else {

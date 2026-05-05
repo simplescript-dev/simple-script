@@ -8,7 +8,7 @@
 // direct GEP+load and bypasses ss_string_concat strlen truncation.
 
 import { assertEqual, assertTrue } from "@/lib/test"
-import { parseResultSetHeader, parseColumnDef, parseRow, isEofPacket, parseOkPacket, ColumnDef, MysqlResultSet, RESULT_SET_HEADER_OK } from "@/lib/com/mysql/query"
+import { parseResultSetHeader, parseColumnDef, parseRow, isEofPacket, parseOkPacket, ColumnDef, MysqlResultSet, NoopResultSetMetaData, RESULT_SET_HEADER_OK } from "@/lib/com/mysql/query"
 import { SQLException } from "@/lib/java/sql"
 
 function main() {
@@ -117,7 +117,7 @@ function main() {
         let row: Array<string> = []
         row = row.push("42")
         row = row.push("Alice")
-        const rs = new MysqlResultSet(-1, 2, cols, row, 0, 1)
+        const rs = new MysqlResultSet(-1, 2, cols, row, 0, 1, new NoopResultSetMetaData(), 0)
         assertEqual(rs.fd, -1)
         assertEqual(rs.colCount, 2)
         assertEqual(rs.closed, 0)
@@ -134,22 +134,22 @@ function main() {
         cols = cols.push(new ColumnDef("flag", 1, 1, 63, "", 0, "", "", "", "", 0))
         let row1: Array<string> = []
         row1 = row1.push("1")
-        const rs1 = new MysqlResultSet(-1, 1, cols, row1, 0, 1)
+        const rs1 = new MysqlResultSet(-1, 1, cols, row1, 0, 1, new NoopResultSetMetaData(), 0)
         assertEqual(rs1.getBoolean("flag"), 1)
 
         let row2: Array<string> = []
         row2 = row2.push("true")
-        const rs2 = new MysqlResultSet(-1, 1, cols, row2, 0, 1)
+        const rs2 = new MysqlResultSet(-1, 1, cols, row2, 0, 1, new NoopResultSetMetaData(), 0)
         assertEqual(rs2.getBoolean("flag"), 1)
 
         let row3: Array<string> = []
         row3 = row3.push("0")
-        const rs3 = new MysqlResultSet(-1, 1, cols, row3, 0, 1)
+        const rs3 = new MysqlResultSet(-1, 1, cols, row3, 0, 1, new NoopResultSetMetaData(), 0)
         assertEqual(rs3.getBoolean("flag"), 0)
 
         let row4: Array<string> = []
         row4 = row4.push("false")
-        const rs4 = new MysqlResultSet(-1, 1, cols, row4, 0, 1)
+        const rs4 = new MysqlResultSet(-1, 1, cols, row4, 0, 1, new NoopResultSetMetaData(), 0)
         assertEqual(rs4.getBoolean("flag"), 0)
     })
 

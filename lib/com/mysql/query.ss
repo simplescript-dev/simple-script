@@ -13,7 +13,7 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ResultSet, ResultSetMetaData, columnNoNulls, columnNullable, columnNullableUnknown, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { ResultSet, ResultSetMetaData, columnNoNulls, columnNullable, columnNullableUnknown, JDBC_TYPE_BIT, JDBC_TYPE_TINYINT, JDBC_TYPE_BIGINT, JDBC_TYPE_LONGVARBINARY, JDBC_TYPE_VARBINARY, JDBC_TYPE_CHAR, JDBC_TYPE_DECIMAL, JDBC_TYPE_INTEGER, JDBC_TYPE_SMALLINT, JDBC_TYPE_FLOAT, JDBC_TYPE_DOUBLE, JDBC_TYPE_VARCHAR, JDBC_TYPE_DATE, JDBC_TYPE_TIME, JDBC_TYPE_TIMESTAMP, JDBC_TYPE_NULL, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 
@@ -366,6 +366,272 @@ function columnDefDecimals(col: ColumnDef): int {
     return col.decimals
 }
 
+// ── D155 §Phase 3 — MySQL flag bits (集中协议常量) ──────────
+// MySQL Native Protocol §6.6 column definition packet flags i16 LE
+// (column.flags field of ColumnDefinition41). Each bit encodes a
+// per-column attribute (NOT NULL / PRIMARY KEY / AUTO_INCREMENT / ...).
+// MysqlResultSetMetaData.isNullable / isAutoIncrement / isSigned /
+// isCaseSensitive derive directly from these bits without a SHOW INDEX
+// / INFORMATION_SCHEMA round-trip. derivePkColumn (lib/com/mysql/
+// prepared.ss D147 Phase 4) discovers the PK column the same way.
+//
+// Connector/J range bits 0x0001-0x8000 stable across MySQL 5.0 -> 8.0 +
+// MariaDB (D155 §A.2 H2). PRI_KEY_FLAG was originally added in D147 Phase
+// 3 (lib/com/mysql/prepared.ss); D155 Phase 3 collects all 13 bits in
+// the protocol-layer module so prepared.ss can drop its duplicate
+// definition and import from here.
+const NOT_NULL_FLAG = 0x0001
+const PRI_KEY_FLAG = 0x0002
+const UNIQUE_KEY_FLAG = 0x0004
+const MULTIPLE_KEY_FLAG = 0x0008
+const BLOB_FLAG = 0x0010
+const UNSIGNED_FLAG = 0x0020
+const ZEROFILL_FLAG = 0x0040
+const BINARY_FLAG = 0x0080
+const ENUM_FLAG = 0x0100
+const AUTO_INCREMENT_FLAG = 0x0200
+const TIMESTAMP_FLAG = 0x0400
+const SET_FLAG = 0x0800
+const NUM_FLAG = 0x8000
+
+// ── D155 §Phase 3 — MySQL colType byte → JDBC type mapping ──
+// MySQL Native Protocol §11.6 column type field (ColumnDefinition41
+// column_type, 1 byte). Maps each protocol byte to the JDBC §13.1
+// java.sql.Types int code MysqlResultSetMetaData.getColumnType returns.
+// Static if-cascade mapping table (D155 §核心原则 4) — no runtime
+// case dispatch. Connector/J `MysqlType` byte→type table stable
+// across MySQL 5.x -> 8.0 (D155 §A.2 H3 unique mapping).
+//
+// MYSQL_TYPE_xxx byte constants (Connector/J `MysqlDefs` source):
+//   0x00 DECIMAL     0x01 TINY        0x02 SHORT      0x03 LONG
+//   0x04 FLOAT       0x05 DOUBLE      0x06 NULL       0x07 TIMESTAMP
+//   0x08 LONGLONG    0x09 INT24       0x0A DATE       0x0B TIME
+//   0x0C DATETIME    0x0D YEAR        0x0F VARCHAR    0x10 BIT
+//   0xF6 NEWDECIMAL  0xF7 ENUM        0xF8 SET
+//   0xF9 TINY_BLOB   0xFA MEDIUM_BLOB 0xFB LONG_BLOB  0xFC BLOB
+//   0xFD VAR_STRING  0xFE STRING      0xFF GEOMETRY
+function mysqlTypeToJdbcType(mysqlType: int): int {
+    if (mysqlType == 0x00) { return JDBC_TYPE_DECIMAL }
+    if (mysqlType == 0x01) { return JDBC_TYPE_TINYINT }
+    if (mysqlType == 0x02) { return JDBC_TYPE_SMALLINT }
+    if (mysqlType == 0x03) { return JDBC_TYPE_INTEGER }
+    if (mysqlType == 0x04) { return JDBC_TYPE_FLOAT }
+    if (mysqlType == 0x05) { return JDBC_TYPE_DOUBLE }
+    if (mysqlType == 0x06) { return JDBC_TYPE_NULL }
+    if (mysqlType == 0x07) { return JDBC_TYPE_TIMESTAMP }
+    if (mysqlType == 0x08) { return JDBC_TYPE_BIGINT }
+    if (mysqlType == 0x09) { return JDBC_TYPE_INTEGER }
+    if (mysqlType == 0x0A) { return JDBC_TYPE_DATE }
+    if (mysqlType == 0x0B) { return JDBC_TYPE_TIME }
+    if (mysqlType == 0x0C) { return JDBC_TYPE_TIMESTAMP }
+    if (mysqlType == 0x0D) { return JDBC_TYPE_DATE }
+    if (mysqlType == 0x0F) { return JDBC_TYPE_VARCHAR }
+    if (mysqlType == 0x10) { return JDBC_TYPE_BIT }
+    if (mysqlType == 0xF6) { return JDBC_TYPE_DECIMAL }
+    if (mysqlType == 0xF7) { return JDBC_TYPE_CHAR }
+    if (mysqlType == 0xF8) { return JDBC_TYPE_CHAR }
+    if (mysqlType == 0xF9) { return JDBC_TYPE_LONGVARBINARY }
+    if (mysqlType == 0xFA) { return JDBC_TYPE_LONGVARBINARY }
+    if (mysqlType == 0xFB) { return JDBC_TYPE_LONGVARBINARY }
+    if (mysqlType == 0xFC) { return JDBC_TYPE_LONGVARBINARY }
+    if (mysqlType == 0xFD) { return JDBC_TYPE_VARCHAR }
+    if (mysqlType == 0xFE) { return JDBC_TYPE_CHAR }
+    if (mysqlType == 0xFF) { return JDBC_TYPE_VARBINARY }
+    return JDBC_TYPE_VARCHAR
+}
+
+// SQL type name string returned by ResultSetMetaData.getColumnTypeName.
+// Matches MySQL Connector/J `MysqlType.getName()` strings — these
+// surface in DDL statements (e.g. "VARCHAR" / "DECIMAL"), so callers
+// running `metadata.getColumnTypeName(c)` see the exact MySQL keyword
+// they would write in CREATE TABLE.
+function mysqlTypeName(mysqlType: int): string {
+    if (mysqlType == 0x00) { return "DECIMAL" }
+    if (mysqlType == 0x01) { return "TINYINT" }
+    if (mysqlType == 0x02) { return "SMALLINT" }
+    if (mysqlType == 0x03) { return "INT" }
+    if (mysqlType == 0x04) { return "FLOAT" }
+    if (mysqlType == 0x05) { return "DOUBLE" }
+    if (mysqlType == 0x06) { return "NULL" }
+    if (mysqlType == 0x07) { return "TIMESTAMP" }
+    if (mysqlType == 0x08) { return "BIGINT" }
+    if (mysqlType == 0x09) { return "MEDIUMINT" }
+    if (mysqlType == 0x0A) { return "DATE" }
+    if (mysqlType == 0x0B) { return "TIME" }
+    if (mysqlType == 0x0C) { return "DATETIME" }
+    if (mysqlType == 0x0D) { return "YEAR" }
+    if (mysqlType == 0x0F) { return "VARCHAR" }
+    if (mysqlType == 0x10) { return "BIT" }
+    if (mysqlType == 0xF6) { return "DECIMAL" }
+    if (mysqlType == 0xF7) { return "ENUM" }
+    if (mysqlType == 0xF8) { return "SET" }
+    if (mysqlType == 0xF9) { return "TINYBLOB" }
+    if (mysqlType == 0xFA) { return "MEDIUMBLOB" }
+    if (mysqlType == 0xFB) { return "LONGBLOB" }
+    if (mysqlType == 0xFC) { return "BLOB" }
+    if (mysqlType == 0xFD) { return "VARCHAR" }
+    if (mysqlType == 0xFE) { return "CHAR" }
+    if (mysqlType == 0xFF) { return "GEOMETRY" }
+    return "UNKNOWN"
+}
+
+// Java class name returned by ResultSetMetaData.getColumnClassName.
+// Matches MySQL Connector/J `MysqlType.getClassName()` Java FQN —
+// reflection-based ORM (Hibernate `BeanPropertyRowMapper`) reads this
+// to pick the field setter. SS lacks `java.lang.Long` / `BigDecimal`
+// real classes, but the FQN string is preserved verbatim so a
+// downstream JVM bridge (or SS reflection consumer) can dispatch
+// against the same class names a JDK driver would publish.
+function mysqlTypeToJavaClassName(mysqlType: int): string {
+    if (mysqlType == 0x00) { return "java.math.BigDecimal" }
+    if (mysqlType == 0x01) { return "java.lang.Integer" }
+    if (mysqlType == 0x02) { return "java.lang.Integer" }
+    if (mysqlType == 0x03) { return "java.lang.Integer" }
+    if (mysqlType == 0x04) { return "java.lang.Float" }
+    if (mysqlType == 0x05) { return "java.lang.Double" }
+    if (mysqlType == 0x06) { return "java.lang.Object" }
+    if (mysqlType == 0x07) { return "java.sql.Timestamp" }
+    if (mysqlType == 0x08) { return "java.lang.Long" }
+    if (mysqlType == 0x09) { return "java.lang.Integer" }
+    if (mysqlType == 0x0A) { return "java.sql.Date" }
+    if (mysqlType == 0x0B) { return "java.sql.Time" }
+    if (mysqlType == 0x0C) { return "java.sql.Timestamp" }
+    if (mysqlType == 0x0D) { return "java.sql.Date" }
+    if (mysqlType == 0x0F) { return "java.lang.String" }
+    if (mysqlType == 0x10) { return "java.lang.Boolean" }
+    if (mysqlType == 0xF6) { return "java.math.BigDecimal" }
+    if (mysqlType == 0xF7) { return "java.lang.String" }
+    if (mysqlType == 0xF8) { return "java.lang.String" }
+    if (mysqlType == 0xF9) { return "[B" }
+    if (mysqlType == 0xFA) { return "[B" }
+    if (mysqlType == 0xFB) { return "[B" }
+    if (mysqlType == 0xFC) { return "[B" }
+    if (mysqlType == 0xFD) { return "java.lang.String" }
+    if (mysqlType == 0xFE) { return "java.lang.String" }
+    if (mysqlType == 0xFF) { return "[B" }
+    return "java.lang.Object"
+}
+
+// ResultSetMetaData.isCaseSensitive(col) — charset-aware. MySQL charset
+// IDs 33 (utf8_general_ci) / 8 (latin1_swedish_ci) / 45 (utf8mb4_general_
+// ci) are case-insensitive collations; everything else (incl. _bin / _cs
+// variants) is case-sensitive. BLOB / GEOMETRY are always binary →
+// always case-sensitive (case is a meaningless concept for raw bytes).
+// Numeric / date / null types are case-irrelevant — return 0.
+function mysqlTypeIsCaseSensitive(mysqlType: int, charset: int): int {
+    if (mysqlType == 0xF9) { return 1 }
+    if (mysqlType == 0xFA) { return 1 }
+    if (mysqlType == 0xFB) { return 1 }
+    if (mysqlType == 0xFC) { return 1 }
+    if (mysqlType == 0xFF) { return 1 }
+    if (mysqlType == 0xFD || mysqlType == 0xFE || mysqlType == 0x0F || mysqlType == 0xF7 || mysqlType == 0xF8) {
+        if (charset == 33) { return 0 }
+        if (charset == 8) { return 0 }
+        if (charset == 45) { return 0 }
+        return 1
+    }
+    return 0
+}
+
+// ── D155 §Phase 3 — MysqlResultSetMetaData real reflection ──
+// Single-field class wrapping the Array<ColumnDef> the driver already
+// parsed off the wire (parseColumnDef at construction time). All ≥21
+// method dispatch derive their value from colMetadata[col-1] — no
+// extra state, no INFORMATION_SCHEMA round-trip (D155 §A.2 H4 —
+// Connector/J 5.1+ MysqlResultSetMetaData range model: column
+// descriptor reflection only).
+//
+// `col` parameter is 1-based per JDBC §15.4 spec (col=1 is the first
+// column; getColumnCount returns the count). Out-of-range col values
+// (col < 1 or col > colMetadata.length()) are not validated here; the
+// SS driver follows the JDBC contract that callers respect the
+// 1..getColumnCount range. Real Connector/J throws SQLException on
+// out-of-range — left to D155 §Followup F4 alongside Wrapper.unwrap.
+class MysqlResultSetMetaData : ResultSetMetaData {
+    colMetadata: Array<ColumnDef>
+
+    function getColumnCount(): int {
+        return this.colMetadata.length()
+    }
+
+    function getColumnName(col: int): string {
+        return columnDefName(this.colMetadata[col - 1])
+    }
+
+    function getColumnLabel(col: int): string {
+        return columnDefName(this.colMetadata[col - 1])
+    }
+
+    function getColumnType(col: int): int {
+        return mysqlTypeToJdbcType(columnDefColType(this.colMetadata[col - 1]))
+    }
+
+    function getColumnTypeName(col: int): string {
+        return mysqlTypeName(columnDefColType(this.colMetadata[col - 1]))
+    }
+
+    function getColumnDisplaySize(col: int): int {
+        return columnDefMaxColumnLength(this.colMetadata[col - 1])
+    }
+
+    function getColumnClassName(col: int): string {
+        return mysqlTypeToJavaClassName(columnDefColType(this.colMetadata[col - 1]))
+    }
+
+    function getCatalogName(col: int): string {
+        return columnDefCatalog(this.colMetadata[col - 1])
+    }
+
+    function getSchemaName(col: int): string {
+        return columnDefSchema(this.colMetadata[col - 1])
+    }
+
+    function getTableName(col: int): string {
+        return columnDefTable(this.colMetadata[col - 1])
+    }
+
+    function isNullable(col: int): int {
+        const f = columnDefFlags(this.colMetadata[col - 1])
+        if ((f & NOT_NULL_FLAG) != 0) { return columnNoNulls }
+        return columnNullable
+    }
+
+    function isAutoIncrement(col: int): int {
+        const f = columnDefFlags(this.colMetadata[col - 1])
+        if ((f & AUTO_INCREMENT_FLAG) != 0) { return 1 }
+        return 0
+    }
+
+    function isCaseSensitive(col: int): int {
+        const colDef = this.colMetadata[col - 1]
+        return mysqlTypeIsCaseSensitive(columnDefColType(colDef), columnDefCharset(colDef))
+    }
+
+    function isCurrency(col: int): int { return 0 }
+
+    function isDefinitelyWritable(col: int): int { return 1 }
+
+    function isReadOnly(col: int): int { return 0 }
+
+    function isSearchable(col: int): int { return 1 }
+
+    function isSigned(col: int): int {
+        const f = columnDefFlags(this.colMetadata[col - 1])
+        if ((f & UNSIGNED_FLAG) != 0) { return 0 }
+        return 1
+    }
+
+    function isWritable(col: int): int { return 1 }
+
+    function getPrecision(col: int): int {
+        return columnDefMaxColumnLength(this.colMetadata[col - 1])
+    }
+
+    function getScale(col: int): int {
+        return columnDefDecimals(this.colMetadata[col - 1])
+    }
+}
+
 // ── D155 §Phase 2 — NoopResultSetMetaData stub ──────────────
 // Phase 2 stub class shared by 3 lib implementor (MysqlResultSet /
 // MysqlBinaryResultSet / GeneratedKeyResultSet) — every method returns
@@ -452,6 +718,18 @@ class MysqlResultSet : ResultSet {
     currentRow: Array<string>
     closed: int
     hasMoreRows: int
+    // ── D155 §Phase 3 — lazy MysqlResultSetMetaData cache ──────
+    // metaDataCache holds a NoopResultSetMetaData sentinel until first
+    // getMetaData() call replaces it with the real reflection wrapper.
+    // metaDataInited flips 0 → 1 on the first call so subsequent calls
+    // return the same instance — the JDBC §15.4 contract permits
+    // ResultSetMetaData to outlive the ResultSet (D155 §A.2 H7), so a
+    // per-ResultSet single instance is safe. Interface-typed field is
+    // safe now that codegen routes deep_clone through the obj's
+    // TypeInfo.deep_clone_fn slot (D018 vtable) — see
+    // bootstrap/gen/gen_type_ops.ss isInterfaceType branch.
+    metaDataCache: ResultSetMetaData
+    metaDataInited: int
 
     function next(): int {
         if (this.closed != 0 || this.hasMoreRows == 0) { return 0 }
@@ -563,10 +841,19 @@ class MysqlResultSet : ResultSet {
     function updateObject(col: string, val: string) {}
     function updateNString(col: string, val: string) {}
 
-    // D155 Phase 2 stub — Phase 3 replaces with `new MysqlResultSetMetaData(
-    // this.colMetadata)` real reflection (text protocol shares the same
-    // ColumnDef41 path as binary protocol — D155 §A.2 H6).
-    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
+    // D155 Phase 3 — real metadata reflection. text protocol shares
+    // the same ColumnDef41 packet path as binary protocol (D155 §A.2 H6),
+    // so a MysqlResultSetMetaData wrapping this.colMetadata reflects
+    // every JDBC §15.4 column attribute callers ask for. Lazy-cached on
+    // first call (metaDataInited 0 → 1) so subsequent ORM reflection
+    // loops do not re-allocate.
+    function getMetaData(): ResultSetMetaData {
+        if (this.metaDataInited == 0) {
+            this.metaDataCache = new MysqlResultSetMetaData(this.colMetadata)
+            this.metaDataInited = 1
+        }
+        return this.metaDataCache
+    }
 
     function close() {
         if (this.closed != 0) { return }
@@ -599,6 +886,14 @@ class MysqlResultSet : ResultSet {
 class GeneratedKeyResultSet : ResultSet {
     key: int
     firstAccessed: int
+    // ── D155 §Phase 3 — lazy synthetic 1-col metadata cache ─────
+    // GeneratedKeyResultSet has no ColumnDef41 packet from the wire
+    // (the synthetic ResultSet wraps OkPacket.lastInsertId, not a
+    // SELECT response — D138 Phase 2). H5 specifies a hard-coded
+    // single-column GENERATED_KEY BIGINT shape per JDBC §13.6.4 spec.
+    // Same lazy cache + interface field idiom as MysqlResultSet.
+    metaDataCache: ResultSetMetaData
+    metaDataInited: int
 
     function next(): int {
         if (this.firstAccessed != 0) { return 0 }
@@ -684,11 +979,24 @@ class GeneratedKeyResultSet : ResultSet {
     function updateObject(col: string, val: string) {}
     function updateNString(col: string, val: string) {}
 
-    // D155 Phase 2 stub — synthetic single-row ResultSet only ever exposes
-    // lastInsertId, so Phase 3 keeps a hard-coded 1-col GENERATED_KEY
-    // BIGINT shape (§A.2 H5). For now Phase 2 returns the shared
-    // NoopResultSetMetaData fallback alongside the other implementors.
-    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
+    // D155 Phase 3 — synthetic single-row ResultSet exposes lastInsertId
+    // through a hard-coded 1-col GENERATED_KEY BIGINT shape (§A.2 H5
+    // implementation). MySQL Connector/J publishes Statement.
+    // getGeneratedKeys() ResultSet under the exact column name
+    // "GENERATED_KEY" with java.sql.Types.BIGINT regardless of the
+    // underlying schema — the AUTO_INCREMENT_FLAG + NOT_NULL_FLAG +
+    // PRI_KEY_FLAG + UNSIGNED_FLAG bits encode the auto-generated
+    // primary-key semantics (lastInsertId is unsigned BIGINT in MySQL).
+    function getMetaData(): ResultSetMetaData {
+        if (this.metaDataInited == 0) {
+            let cd: Array<ColumnDef> = []
+            const flags = AUTO_INCREMENT_FLAG | NOT_NULL_FLAG | PRI_KEY_FLAG | UNSIGNED_FLAG
+            cd = cd.push(new ColumnDef("GENERATED_KEY", 0x08, 20, 63, "", flags, "", "", "", "", 0))
+            this.metaDataCache = new MysqlResultSetMetaData(cd)
+            this.metaDataInited = 1
+        }
+        return this.metaDataCache
+    }
 
     function close() {
     }
@@ -709,7 +1017,7 @@ class GeneratedKeyResultSet : ResultSet {
 function readQueryResultSet(fd: int): MysqlResultSet {
     let cols: Array<ColumnDef> = []
     let row: Array<string> = []
-    const rs = new MysqlResultSet(fd, 0, cols, row, 0, 0)
+    const rs = new MysqlResultSet(fd, 0, cols, row, 0, 0, new NoopResultSetMetaData(), 0)
     const header = readResultSetHeader(fd)
     if (header <= 0) {
         rs.colCount = header
