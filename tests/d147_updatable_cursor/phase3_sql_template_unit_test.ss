@@ -31,12 +31,12 @@ import { buildUpdateRowSql, buildDeleteRowSql, buildInsertRowSql, buildRefreshRo
 
 // PK column constructor — name + flags PRI_KEY_FLAG bit set.
 function pkCol(name: string, orgTable: string): ColumnDef {
-    return new ColumnDef(name, 3, 11, 33, orgTable, PRI_KEY_FLAG)
+    return new ColumnDef(name, 3, 11, 33, orgTable, PRI_KEY_FLAG, "", "", "", "", 0)
 }
 
 // Plain (non-PK) column constructor — flags = 0.
 function plainCol(name: string, orgTable: string): ColumnDef {
-    return new ColumnDef(name, 3, 11, 33, orgTable, 0)
+    return new ColumnDef(name, 3, 11, 33, orgTable, 0, "", "", "", "", 0)
 }
 
 function main() {

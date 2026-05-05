@@ -24,14 +24,17 @@ const OK_HEADER = 0x00
 const EOF_HEADER = 0xFE
 const RESULT_SET_HEADER_OK = -2
 
-// Column definition (text protocol). Minimal field set — driver-relevant
-// metadata only. D147 Phase 3 promoted org_table + flags from "skip" to
-// "keep": driver-side updatable cursor needs the original (non-aliased)
-// table name for buildUpdateRowSql / buildDeleteRowSql / buildInsertRowSql
-// / buildRefreshRowSql WHERE pk=? clauses, and the flags i16 LE bit 1
-// (PRI_KEY_FLAG 0x0002) to discover the PK column without a SHOW INDEX
-// round-trip (D147 §A.2 H2). Catalog / schema / table (alias) / org_name
-// remain skipped — irrelevant to UPDATE / DELETE / INSERT generation.
+// Column definition (text protocol). Full ColumnDefinition41 field set.
+// D134 Phase 4 kept name + colType + columnLen + charset; D147 Phase 3
+// promoted org_table + flags from "skip" to "keep" so the driver-side
+// updatable cursor can reach the original table name for UPDATE / DELETE
+// / INSERT WHERE pk=? clauses + the PRI_KEY_FLAG bit (D147 §A.2 H2).
+// D155 Phase 1 promotes the remaining catalog / schema / table (alias)
+// / org_name + decimals — JDBC 4.3 §15.4 ResultSetMetaData getCatalogName
+// / getSchemaName / getTableName / getColumnTypeName / getPrecision /
+// getScale / getColumnDisplaySize derive directly off these fields, so a
+// faithful reflection of MySQL Native Protocol §6.6 ColumnDefinition41 is
+// the prerequisite for the metadata interface (D155 §核心目标).
 class ColumnDef {
     name: string
     colType: int
@@ -39,6 +42,11 @@ class ColumnDef {
     charset: int
     orgTable: string
     flags: int
+    catalog: string
+    schema: string
+    table: string
+    orgName: string
+    decimals: int
 }
 
 // Sends a COM_QUERY packet (cmd 0x03 + sql bytes) with seqId reset to 0.
@@ -231,35 +239,42 @@ function skipLengthEncodedString(payload: string, offset: int): int {
 }
 
 // Parses a Column Definition (ColumnDefinition41) packet payload. Layout:
-//   lenenc str: catalog       (skip)
-//   lenenc str: schema        (skip)
-//   lenenc str: table         (skip — alias)
+//   lenenc str: catalog       (KEEP — D155 Phase 1; JDBC §15.4 getCatalogName)
+//   lenenc str: schema        (KEEP — D155 Phase 1; JDBC §15.4 getSchemaName)
+//   lenenc str: table         (KEEP — D155 Phase 1; JDBC §15.4 getTableName
+//                              alias used by the SELECT — distinct from
+//                              org_table which carries the storage table)
 //   lenenc str: org_table     (KEEP — D147 Phase 3 driver-side updatable cursor
 //                              needs the original table name for UPDATE / DELETE
-//                              / INSERT WHERE pk=? generation; alias `table`
-//                              would point at the SELECT alias not the storage
-//                              table)
+//                              / INSERT WHERE pk=? generation)
 //   lenenc str: name          (KEEP — column alias used by getString)
-//   lenenc str: org_name      (skip)
+//   lenenc str: org_name      (KEEP — D155 Phase 1; storage column name behind
+//                              the SELECT alias, for reflective ORM mapping)
 //   1 byte:    filler 0x0c    (constant length tag for the 12-byte metadata block)
-//   2 byte LE: character set
-//   4 byte LE: column length
-//   1 byte:    column type
+//   2 byte LE: character set  (KEEP — D134 Phase 4)
+//   4 byte LE: column length  (KEEP — JDBC §15.4 getColumnDisplaySize / getPrecision
+//                              derives off this; surfaced as
+//                              columnDefMaxColumnLength accessor)
+//   1 byte:    column type    (KEEP)
 //   2 byte LE: flags          (KEEP — D147 Phase 3 bit 1 = PRI_KEY_FLAG 0x0002
 //                              identifies the primary-key column without a
 //                              SHOW INDEX FROM table round-trip; D147 §A.2 H2)
-//   1 byte:    decimals       (skip)
-//   2 byte:    reserved 0x0000(skip)
+//   1 byte:    decimals       (KEEP — D155 Phase 1; JDBC §15.4 getScale)
+//   2 byte:    reserved 0x0000(skip — implicit; payload tail is ignored)
 function parseColumnDef(payload: string): ColumnDef {
-    const col = new ColumnDef("", 0, 0, 0, "", 0)
+    const col = new ColumnDef("", 0, 0, 0, "", 0, "", "", "", "", 0)
     let off = 0
+    col.catalog = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
+    col.schema = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
+    col.table = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
     col.orgTable = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
     col.name = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
+    col.orgName = readLengthEncodedString(payload, off)
     off = skipLengthEncodedString(payload, off)
     off = off + 1
     col.charset = byteToInt(payload, off, 2)
@@ -269,6 +284,8 @@ function parseColumnDef(payload: string): ColumnDef {
     col.colType = charCodeAt(payload, off)
     off = off + 1
     col.flags = byteToInt(payload, off, 2)
+    off = off + 2
+    col.decimals = charCodeAt(payload, off)
     return col
 }
 
@@ -305,6 +322,48 @@ function columnDefOrgTable(col: ColumnDef): string {
 
 function columnDefFlags(col: ColumnDef): int {
     return col.flags
+}
+
+// D155 Phase 1 — JDBC ResultSetMetaData ≥21 method 反射派生 accessor.
+// Same indirect-access constraint columnDefName / columnDefColType /
+// columnDefOrgTable / columnDefFlags document — prepared.ss IR + the
+// future MysqlResultSetMetaData class IR are concatenated before query.ss
+// declares %ColumnDef, so direct GEP forward-references the type and llc
+// rejects 'base element of getelementptr must be sized'. Routing the GEP
+// through a function defined here keeps the access inside the owning module.
+//
+// columnDefMaxColumnLength surfaces the JDBC §15.4 spec name (the field that
+// drives ResultSetMetaData.getColumnDisplaySize / getPrecision) while the
+// underlying ColumnDef field keeps its MySQL Native Protocol name `columnLen`
+// (the wire-spec calls it `column_length`). Same protocol→API split D147
+// Phase 3 codified for columnDefName / col.name — the storage layer keeps
+// the protocol name, the cross-module accessor exposes the JDBC view.
+function columnDefCatalog(col: ColumnDef): string {
+    return col.catalog
+}
+
+function columnDefSchema(col: ColumnDef): string {
+    return col.schema
+}
+
+function columnDefTable(col: ColumnDef): string {
+    return col.table
+}
+
+function columnDefOrgName(col: ColumnDef): string {
+    return col.orgName
+}
+
+function columnDefCharset(col: ColumnDef): int {
+    return col.charset
+}
+
+function columnDefMaxColumnLength(col: ColumnDef): int {
+    return col.columnLen
+}
+
+function columnDefDecimals(col: ColumnDef): int {
+    return col.decimals
 }
 
 // Legacy EOF marker: 0xFE header + payload length < 9 bytes.
