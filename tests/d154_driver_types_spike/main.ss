@@ -9,8 +9,8 @@
 // to confirm interface-level vtable resolution.
 
 import { assertEqual } from "@/lib/test"
-import { Timestamp, RowId } from "@/lib/java/sql"
-import { MysqlRowId, MysqlTimestamp } from "@/lib/com/mysql/driver_types"
+import { Timestamp, RowId, SqlArray, Ref } from "@/lib/java/sql"
+import { MysqlRowId, MysqlTimestamp, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
 
 function main() {
     test("MysqlRowId getBytes returns stored bytes", () => {
@@ -184,5 +184,59 @@ function main() {
         assertEqual(ts.getYear(), 2026)
         assertEqual(ts.getTime(), 1746362445000)
         assertEqual(ts.toString(), "2026-05-04 12:30:45.0")
+    })
+
+    // ── MysqlSqlArray tests ────────────────────────────────────
+
+    test("MysqlSqlArray getBaseType returns stored int", () => {
+        const arr = new MysqlSqlArray(4, "INTEGER", "[1,2,3]")
+        assertEqual(arr.getBaseType(), 4)
+    })
+
+    test("MysqlSqlArray getBaseTypeName returns stored name", () => {
+        const arr = new MysqlSqlArray(12, "VARCHAR", "[\"a\",\"b\"]")
+        assertEqual(arr.getBaseTypeName(), "VARCHAR")
+    })
+
+    test("MysqlSqlArray getArray returns serialized payload", () => {
+        const arr = new MysqlSqlArray(4, "INTEGER", "[10,20,30]")
+        assertEqual(arr.getArray(), "[10,20,30]")
+    })
+
+    test("MysqlSqlArray free clears payload", () => {
+        const arr = new MysqlSqlArray(4, "INTEGER", "[1,2]")
+        arr.free()
+        assertEqual(arr.getArray(), "")
+    })
+
+    test("MysqlSqlArray via SqlArray interface dispatch", () => {
+        const arr: SqlArray = new MysqlSqlArray(4, "INTEGER", "[7,8,9]")
+        assertEqual(arr.getBaseType(), 4)
+        assertEqual(arr.getBaseTypeName(), "INTEGER")
+        assertEqual(arr.getArray(), "[7,8,9]")
+    })
+
+    // ── MysqlRef tests ─────────────────────────────────────────
+
+    test("MysqlRef getBaseTypeName returns stored name", () => {
+        const ref = new MysqlRef("PERSON_T", "<row-pointer>")
+        assertEqual(ref.getBaseTypeName(), "PERSON_T")
+    })
+
+    test("MysqlRef getObject returns stored payload", () => {
+        const ref = new MysqlRef("PERSON_T", "<row-pointer>")
+        assertEqual(ref.getObject(), "<row-pointer>")
+    })
+
+    test("MysqlRef setObject mutates payload", () => {
+        const ref = new MysqlRef("PERSON_T", "")
+        ref.setObject("<new-pointer>")
+        assertEqual(ref.getObject(), "<new-pointer>")
+    })
+
+    test("MysqlRef via Ref interface dispatch", () => {
+        const ref: Ref = new MysqlRef("ORDER_T", "<row-pointer>")
+        assertEqual(ref.getBaseTypeName(), "ORDER_T")
+        assertEqual(ref.getObject(), "<row-pointer>")
     })
 }

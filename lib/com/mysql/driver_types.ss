@@ -12,7 +12,7 @@
 // MysqlNClob/MysqlSQLXML/MysqlSqlArray/MysqlRef + 4 stream classes
 // (AsciiStream/BinaryStream/CharacterStream/NCharacterStream).
 
-import { Timestamp, RowId } from "@/lib/java/sql"
+import { Timestamp, RowId, SqlArray, Ref } from "@/lib/java/sql"
 
 // ── MysqlTimestamp — implements java.sql.Timestamp ─────────────
 // Driver-side wrapper for TIMESTAMP / DATETIME column values from the
@@ -134,6 +134,48 @@ class MysqlRowId : RowId {
         }
         return h
     }
+}
+
+// ── MysqlSqlArray — implements java.sql.SqlArray ───────────────
+// Driver wrapper for SQL ARRAY column values. MySQL has no native ARRAY
+// type but JSON arrays / driver-side parsing surfaces here for schema
+// portability with Postgres TEXT[] / INT[]. JDBC 4.3 §13.2.5 / Postgres
+// JDBC `PgArray` direct port.
+//
+// `baseType` is a JDBC Types int constant (e.g., Types.INTEGER = 4,
+// Types.VARCHAR = 12) describing the element type; `baseTypeName` is
+// the SQL type name ("INTEGER", "VARCHAR"). `payload` holds the
+// driver-serialized array contents (JSON-array-shaped string for MySQL,
+// driver decides interchange format).
+
+class MysqlSqlArray : SqlArray {
+    baseType: int
+    baseTypeName: string
+    payload: string
+
+    function getBaseType(): int { return this.baseType }
+    function getBaseTypeName(): string { return this.baseTypeName }
+    function getArray(): string { return this.payload }
+
+    function free() {
+        this.payload = ""
+    }
+}
+
+// ── MysqlRef — implements java.sql.Ref ─────────────────────────
+// Driver wrapper for SQL REF column values. SQL REF is a typed
+// pointer to a row in a typed table (SQL standard, Oracle REF). MySQL
+// has no native REF type; this class handles the driver-side façade
+// when porting Oracle / Postgres schemas. JDBC 4.3 §13.2.6 / Oracle
+// JDBC `oracle.sql.REF` direct port.
+
+class MysqlRef : Ref {
+    baseTypeName: string
+    payload: string
+
+    function getBaseTypeName(): string { return this.baseTypeName }
+    function getObject(): string { return this.payload }
+    function setObject(value: string) { this.payload = value }
 }
 
 function hexChar(n: int): string {
