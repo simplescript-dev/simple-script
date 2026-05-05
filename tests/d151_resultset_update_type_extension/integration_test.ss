@@ -11,7 +11,8 @@
 // See docs/3-decisions/D151-resultset-update-type-extension.md §Phase 4.
 
 import { assertEqual } from "@/lib/test"
-import { ResultSet, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { ResultSet, ResultSetMetaData, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { NoopResultSetMetaData } from "@/lib/com/mysql/query"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 import { MysqlTimestamp, MysqlRowId, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
@@ -120,6 +121,7 @@ class D151TestStub : ResultSet {
     function updateBytes(col: string, val: string) { this.writeCol(col, val) }
     function updateObject(col: string, val: string) { this.writeCol(col, val) }
     function updateNString(col: string, val: string) { this.writeCol(col, val) }
+    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
     function close() {}
 }
 

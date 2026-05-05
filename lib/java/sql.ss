@@ -101,8 +101,70 @@ interface ResultSet {
     function updateBytes(col: string, val: string)
     function updateObject(col: string, val: string)
     function updateNString(col: string, val: string)
+    // ── D155 Phase 2 — JDBC 4.3 §15.4 column metadata reflection ────────
+    // ResultSetMetaData supplies column count + per-column name / type /
+    // nullability / signedness / precision / scale used by ORM-style
+    // reflection mappers (Hibernate `BeanPropertyRowMapper`, MyBatis
+    // `ResultMap`, Spring `JdbcTemplate.queryForList`). The driver routes
+    // the call through ColumnDef41 packet metadata (lib/com/mysql/query.ss
+    // ColumnDef, D155 Phase 1 完整字段). Phase 2 stubs return a
+    // NoopResultSetMetaData fallback; Phase 3 wires MysqlResultSetMetaData
+    // reflection + 13-bit MySQL flag + JDBC Types mapping.
+    function getMetaData(): ResultSetMetaData
     function close()
 }
+
+// ── ResultSetMetaData — D155 §Phase 2 / JDBC 4.3 §15.4 ───────
+// Column metadata reflection for ResultSet. ≥21 method covers Hibernate
+// `BeanPropertyRowMapper` / MyBatis `ResultMap` / Spring
+// `JdbcTemplate.queryForList` reflection-based column mapping idioms.
+// MySQL Native Protocol §6.6 ColumnDefinition41 packet supplies the
+// underlying column descriptors via lib/com/mysql/query.ss ColumnDef
+// (D147 Phase 3 + D155 Phase 1 累积 11 字段).
+//
+// Phase 2 (this Phase) declares the interface + 3 implementor stubs that
+// return a NoopResultSetMetaData fallback. Phase 3 wires the real
+// MysqlResultSetMetaData reflection + 13-bit MySQL flag + JDBC Types
+// mapping; Phase 4 covers integration_test e2e.
+//
+// JDBC 4.3 §15.4 covers ≥24 method including Wrapper.unwrap /
+// isWrapperFor + RowIdLifetime — those 3 留 §Followup F4. Boolean
+// returns use SS int (0 / 1) per the same convention as
+// ResultSet.getBoolean / rowUpdated / rowDeleted (interface boolean
+// type unification 留 D154 §Followup outside D155 scope).
+//
+// isNullable(col) returns columnNoNulls = 0 / columnNullable = 1 /
+// columnNullableUnknown = 2 (JDBC 4.3 §15.4 enum-as-int constants;
+// declared below the interface block).
+
+interface ResultSetMetaData {
+    function getColumnCount(): int
+    function getColumnName(col: int): string
+    function getColumnLabel(col: int): string
+    function getColumnType(col: int): int
+    function getColumnTypeName(col: int): string
+    function getColumnDisplaySize(col: int): int
+    function getColumnClassName(col: int): string
+    function getCatalogName(col: int): string
+    function getSchemaName(col: int): string
+    function getTableName(col: int): string
+    function isNullable(col: int): int
+    function isAutoIncrement(col: int): int
+    function isCaseSensitive(col: int): int
+    function isCurrency(col: int): int
+    function isDefinitelyWritable(col: int): int
+    function isReadOnly(col: int): int
+    function isSearchable(col: int): int
+    function isSigned(col: int): int
+    function isWritable(col: int): int
+    function getPrecision(col: int): int
+    function getScale(col: int): int
+}
+
+// JDBC 4.3 §15.4 ResultSetMetaData.isNullable(int) return values.
+const columnNoNulls = 0
+const columnNullable = 1
+const columnNullableUnknown = 2
 
 // ── JDBC 4.3 §15 ResultSet — D146 §Phase 2 Cursor / Concurrency constants ───
 // Mirror java.sql.ResultSet.TYPE_FORWARD_ONLY / TYPE_SCROLL_INSENSITIVE /

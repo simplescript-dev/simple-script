@@ -16,7 +16,8 @@
 // See docs/3-decisions/D154-mysql-driver-class-impl.md §Followup F7.
 
 import { test, assertEqual } from "@/lib/test"
-import { ResultSet, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { ResultSet, ResultSetMetaData, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { NoopResultSetMetaData } from "@/lib/com/mysql/query"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 import { MysqlTimestamp, MysqlRowId, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
@@ -97,6 +98,7 @@ class BidirectionalStub : ResultSet {
     function updateBytes(col: string, val: string) {}
     function updateObject(col: string, val: string) {}
     function updateNString(col: string, val: string) {}
+    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
     function close() {}
 }
 

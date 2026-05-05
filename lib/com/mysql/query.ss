@@ -13,7 +13,7 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ResultSet, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { ResultSet, ResultSetMetaData, columnNoNulls, columnNullable, columnNullableUnknown, SQLException, SQLNonTransientConnectionException, SQLIntegrityConstraintViolationException, SQLSyntaxErrorException, SQLDataException, SQLFeatureNotSupportedException, SQLTransactionRollbackException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 
@@ -366,6 +366,44 @@ function columnDefDecimals(col: ColumnDef): int {
     return col.decimals
 }
 
+// ── D155 §Phase 2 — NoopResultSetMetaData stub ──────────────
+// Phase 2 stub class shared by 3 lib implementor (MysqlResultSet /
+// MysqlBinaryResultSet / GeneratedKeyResultSet) — every method returns
+// the JDBC ResultSetMetaData zero / empty value so callers obtain a
+// non-null reference that walks the ≥21-method vtable cleanly. Phase 3
+// replaces 3 implementor returns with `new MysqlResultSetMetaData(
+// colMetadata)` real reflection (D155 §Phase 收关锚 §Phase 3 line
+// 101-109); GeneratedKeyResultSet keeps a 1-col GENERATED_KEY BIGINT
+// stub via H5 (synthetic ResultSet only ever exposes lastInsertId).
+//
+// The stub also serves as the test-side mock under
+// tests/d155_resultset_metadata/phase2_spike_test.ss — instantiated
+// directly to verify ≥21 method are reachable through the vtable
+// without a live MySQL socket.
+class NoopResultSetMetaData : ResultSetMetaData {
+    function getColumnCount(): int { return 0 }
+    function getColumnName(col: int): string { return "" }
+    function getColumnLabel(col: int): string { return "" }
+    function getColumnType(col: int): int { return 0 }
+    function getColumnTypeName(col: int): string { return "" }
+    function getColumnDisplaySize(col: int): int { return 0 }
+    function getColumnClassName(col: int): string { return "" }
+    function getCatalogName(col: int): string { return "" }
+    function getSchemaName(col: int): string { return "" }
+    function getTableName(col: int): string { return "" }
+    function isNullable(col: int): int { return columnNullableUnknown }
+    function isAutoIncrement(col: int): int { return 0 }
+    function isCaseSensitive(col: int): int { return 0 }
+    function isCurrency(col: int): int { return 0 }
+    function isDefinitelyWritable(col: int): int { return 0 }
+    function isReadOnly(col: int): int { return 1 }
+    function isSearchable(col: int): int { return 0 }
+    function isSigned(col: int): int { return 0 }
+    function isWritable(col: int): int { return 0 }
+    function getPrecision(col: int): int { return 0 }
+    function getScale(col: int): int { return 0 }
+}
+
 // Legacy EOF marker: 0xFE header + payload length < 9 bytes.
 // Distinguishes from a row whose first column happens to start with 0xFE
 // length-encoded prefix (which would imply an 8-byte length following — a
@@ -525,6 +563,11 @@ class MysqlResultSet : ResultSet {
     function updateObject(col: string, val: string) {}
     function updateNString(col: string, val: string) {}
 
+    // D155 Phase 2 stub — Phase 3 replaces with `new MysqlResultSetMetaData(
+    // this.colMetadata)` real reflection (text protocol shares the same
+    // ColumnDef41 path as binary protocol — D155 §A.2 H6).
+    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
+
     function close() {
         if (this.closed != 0) { return }
         while (this.hasMoreRows != 0) {
@@ -640,6 +683,12 @@ class GeneratedKeyResultSet : ResultSet {
     function updateBytes(col: string, val: string) {}
     function updateObject(col: string, val: string) {}
     function updateNString(col: string, val: string) {}
+
+    // D155 Phase 2 stub — synthetic single-row ResultSet only ever exposes
+    // lastInsertId, so Phase 3 keeps a hard-coded 1-col GENERATED_KEY
+    // BIGINT shape (§A.2 H5). For now Phase 2 returns the shared
+    // NoopResultSetMetaData fallback alongside the other implementors.
+    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
 
     function close() {
     }

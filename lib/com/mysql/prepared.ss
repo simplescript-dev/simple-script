@@ -41,8 +41,8 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData } from "@/lib/com/mysql/query"
+import { PreparedStatement, ResultSet, ResultSetMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 
@@ -933,6 +933,11 @@ class MysqlBinaryResultSet : ResultSet {
         this.currentRow = savedRow
         return 1
     }
+
+    // D155 Phase 2 stub — Phase 3 replaces with `new MysqlResultSetMetaData(
+    // this.colMetadata)` real reflection. Binary protocol shares the same
+    // ColumnDef41 packet path as text protocol (D155 §A.2 H6).
+    function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
 
     // close() — D146 Phase 3 dual-mode drain. Cursor protocol (useCursor=1) is
     // request-response synchronous (each COM_STMT_FETCH returns rows + EOF
