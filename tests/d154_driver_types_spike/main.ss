@@ -10,7 +10,9 @@
 
 import { assertEqual } from "@/lib/test"
 import { Timestamp, RowId, SqlArray, Ref } from "@/lib/java/sql"
+import { InputStream, Reader } from "@/lib/java/io"
 import { MysqlRowId, MysqlTimestamp, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
+import { MysqlAsciiStream, MysqlBinaryStream, MysqlCharacterStream, MysqlNCharacterStream } from "@/lib/com/mysql/driver_streams"
 
 function main() {
     test("MysqlRowId getBytes returns stored bytes", () => {
@@ -238,5 +240,96 @@ function main() {
         const ref: Ref = new MysqlRef("ORDER_T", "<row-pointer>")
         assertEqual(ref.getBaseTypeName(), "ORDER_T")
         assertEqual(ref.getObject(), "<row-pointer>")
+    })
+
+    // ── MysqlAsciiStream tests ─────────────────────────────────
+
+    test("MysqlAsciiStream read sequential bytes then EOF", () => {
+        const s = new MysqlAsciiStream("ABC", 0, -1)
+        assertEqual(s.read(), 65)
+        assertEqual(s.read(), 66)
+        assertEqual(s.read(), 67)
+        assertEqual(s.read(), -1)
+    })
+
+    test("MysqlAsciiStream readN truncates at EOF", () => {
+        const s = new MysqlAsciiStream("hello", 0, -1)
+        assertEqual(s.readN(3), "hel")
+        assertEqual(s.readN(10), "lo")
+        assertEqual(s.readN(5), "")
+    })
+
+    test("MysqlAsciiStream skip advances pos and available shrinks", () => {
+        const s = new MysqlAsciiStream("12345678", 0, -1)
+        assertEqual(s.available(), 8)
+        assertEqual(s.skip(3), 3)
+        assertEqual(s.available(), 5)
+    })
+
+    test("MysqlAsciiStream mark + reset rewinds pos", () => {
+        const s = new MysqlAsciiStream("ABC", 0, -1)
+        s.read()
+        s.mark(0)
+        s.read()
+        s.reset()
+        assertEqual(s.read(), 66)
+    })
+
+    test("MysqlAsciiStream via InputStream interface dispatch", () => {
+        const stream: InputStream = new MysqlAsciiStream("XY", 0, -1)
+        assertEqual(stream.read(), 88)
+        assertEqual(stream.read(), 89)
+        assertEqual(stream.read(), -1)
+    })
+
+    // ── MysqlBinaryStream tests ────────────────────────────────
+
+    test("MysqlBinaryStream via InputStream interface dispatch", () => {
+        const stream: InputStream = new MysqlBinaryStream("xy", 0, -1)
+        assertEqual(stream.read(), 120)
+        assertEqual(stream.read(), 121)
+        assertEqual(stream.read(), -1)
+    })
+
+    test("MysqlBinaryStream markSupported returns 1", () => {
+        const s = new MysqlBinaryStream("abc", 0, -1)
+        assertEqual(s.markSupported(), 1)
+    })
+
+    // ── MysqlCharacterStream tests ─────────────────────────────
+
+    test("MysqlCharacterStream read + ready transitions on EOF", () => {
+        const s = new MysqlCharacterStream("Hi", 0, -1)
+        assertEqual(s.ready(), 1)
+        assertEqual(s.read(), 72)
+        assertEqual(s.read(), 105)
+        assertEqual(s.ready(), 0)
+        assertEqual(s.read(), -1)
+    })
+
+    test("MysqlCharacterStream close zeroes payload", () => {
+        const s = new MysqlCharacterStream("hello", 0, -1)
+        assertEqual(s.readN(2), "he")
+        s.close()
+        assertEqual(s.read(), -1)
+    })
+
+    test("MysqlCharacterStream via Reader interface dispatch", () => {
+        const r: Reader = new MysqlCharacterStream("AB", 0, -1)
+        assertEqual(r.read(), 65)
+        assertEqual(r.read(), 66)
+    })
+
+    // ── MysqlNCharacterStream tests ────────────────────────────
+
+    test("MysqlNCharacterStream via Reader interface dispatch", () => {
+        const r: Reader = new MysqlNCharacterStream("xy", 0, -1)
+        assertEqual(r.read(), 120)
+        assertEqual(r.read(), 121)
+    })
+
+    test("MysqlNCharacterStream markSupported returns 1", () => {
+        const s = new MysqlNCharacterStream("abc", 0, -1)
+        assertEqual(s.markSupported(), 1)
     })
 }
