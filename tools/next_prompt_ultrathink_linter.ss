@@ -4,10 +4,14 @@
 //   bin/ss run tools/next_prompt_ultrathink_linter.ss
 //   bin/ss run tools/next_prompt_ultrathink_linter.ss /tmp/fake_prompt.md
 //
-// 三检查:
+// 四检查:
 //   C1: 目标文件存在
 //   C2: 非空(trim 后长度 > 0)
 //   C3: 内容含关键字 "ultrathink"(小写 exact)
+//   C4: 标题(第一行 #)不得声明 "docs only" / "docs-only"
+//       — 防止 self-recursive next_prompt 陷入 docs-only 空转循环
+//       — 用户对话实证 D154 Phase 0-17 18 轮 zero LOC code 历史教训
+//       — 真正的 docs-only 工作必须由用户手写 prompt,不走 self-recursive 接力
 //
 // 任一 FAIL → exit 1。默认目标 = .claude/next_prompt.md。
 //
@@ -45,13 +49,29 @@ function main() {
         println("  C3 PASS: keyword 'ultrathink' present")
     }
 
+    let firstNewline = content.indexOf("\n")
+    let firstLine = content
+    if (firstNewline >= 0) {
+        firstLine = content.substring(0, firstNewline)
+    }
+    let firstLineLower = firstLine.toLowerCase()
+    let c4Hit = 0
+    if (firstLineLower.indexOf("docs only") >= 0) { c4Hit = 1 }
+    if (firstLineLower.indexOf("docs-only") >= 0) { c4Hit = 1 }
+    if (c4Hit == 1) {
+        println("  C4 FAIL: title declares 'docs only' / 'docs-only' — self-recursive next_prompt must point to code change tasks, not docs-only spin (see D154 Phase 0-17 18-round zero-LOC history)")
+        fails = fails + 1
+    } else {
+        println("  C4 PASS: title does not declare docs-only")
+    }
+
     println("")
     println("=======================================")
     if (fails > 0) {
         println(`FAIL: ${fails}`)
-        println("GATE BLOCKED — missing / empty / non-ultrathink payload means the next round will run without deep reasoning")
+        println("GATE BLOCKED — payload missing / empty / non-ultrathink / declares docs-only spin")
         exit(1)
     }
-    println("PASS: 3/3")
-    println("GATE OK — next round will be invoked with ultrathink")
+    println("PASS: 4/4")
+    println("GATE OK — next round will be invoked with ultrathink and points to code change tasks")
 }
