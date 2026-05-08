@@ -117,4 +117,4 @@ cd /tmp && /<absolute>/bin/ss build /tmp/x.ss -o /tmp/y && /tmp/y
 
 | Phase | Date | Commit | 内容 |
 |---|---|---|---|
-| 收关 | 2026-05-08 | `<commit-hash>` | bug options.md GATE 产出 + D158 文档落档 + tools/gen_prelude_embed.ss + bootstrap/parse/prelude_embed.ss(auto-gen)+ bootstrap/parse/repo_paths.ss + main.ss prelude/mimalloc 加载切换 + bootstrap 三阶段固定点 PASS + /tmp e2e PASS(prelude + mimalloc 双根因)+ van-cli 下游验收 PASS + reflection_health F1 GATE PASS(main.ss 628<630)+ d_doc_index GATE PASS + tests baseline 完全一致(301/14/315)|
+| 收关 | 2026-05-08 | `928f8c3` | bug options.md GATE 产出 + D158 文档落档 + tools/gen_prelude_embed.ss + bootstrap/parse/prelude_embed.ss(auto-gen)+ bootstrap/parse/repo_paths.ss + main.ss prelude/mimalloc 加载切换 + bootstrap 三阶段固定点 PASS + /tmp e2e PASS(prelude + mimalloc 双根因)+ van-cli 下游验收 PASS + reflection_health F1 GATE PASS(main.ss 628<630)+ d_doc_index GATE PASS + tests baseline 完全一致(301/14/315)|
