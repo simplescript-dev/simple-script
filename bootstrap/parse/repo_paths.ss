@@ -38,6 +38,15 @@ function findRepoRoot(): string {
     return cachedRepoRoot
 }
 
+// stdlib root (== repo root). For SS-repo-internal imports this equals the
+// project root so existing @/lib/X imports stay equivalent; external projects
+// reach the installed stdlib instead of their own non-existent lib/.
+function resolveStdlibRoot(fallback: string): string {
+    const root = findRepoRoot()
+    if (root != "") { return root }
+    return fallback
+}
+
 function resolveRepoFile(relPath: string): string {
     if (fileExists(relPath) == 1) { return relPath }
     const upPath = `../${relPath}`

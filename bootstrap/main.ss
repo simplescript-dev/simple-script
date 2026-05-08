@@ -4,7 +4,7 @@
 import { tokenize } from "./lexer/lexer"
 import { parse, initParser } from "./parse/parser"
 import { ssPreludeContent } from "./parse/prelude_embed"
-import { resolveRepoFile } from "./parse/repo_paths"
+import { resolveRepoFile, resolveStdlibRoot } from "./parse/repo_paths"
 import { check } from "./checker/checker"
 import { generateToFile, initCodegen } from "./gen/codegen"
 import { initFuncRegistry } from "./gen/gen_registry"
@@ -208,7 +208,7 @@ function resolveInner(filePath: string): string {
             if (importPath != "") {
                 let fullPath = ""
                 if (importPath.startsWith("@/") == 1) {
-                    fullPath = projectRoot + "/" + importPath.substring(2, importPath.length() - 2)
+                    fullPath = resolveStdlibRoot(projectRoot) + "/" + importPath.substring(2, importPath.length() - 2)
                 } else if (importPath.startsWith("./") == 1 || importPath.startsWith("../") == 1) {
                     fullPath = baseDir + importPath
                 } else {
