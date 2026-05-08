@@ -93,4 +93,4 @@ ss build x.ss -o y && ./y   # 输出 a/b
 
 | Phase | Date | Commit | 内容 |
 |---|---|---|---|
-| 收关 | 2026-05-08 | `<commit-hash>` | bug options.md GATE 产出 + D159 文档落档 + bootstrap/parse/repo_paths.ss 加 resolveStdlibRoot helper + main.ss line 211 改用 resolveStdlibRoot + bootstrap 三阶段固定点 PASS + 外部 stdlib_test e2e PASS + 下游 van-cli `Path.join` / `Path.dirname` + init demo-app e2e PASS + reflection_health F1 GATE PASS(main.ss 628 == bv DRIFT 0)+ d_doc_index GATE PASS + tests baseline 完全一致(301/14/315)|
+| 收关 | 2026-05-08 | `ed985f6` | bug options.md GATE 产出 + D159 文档落档 + bootstrap/parse/repo_paths.ss 加 resolveStdlibRoot helper + main.ss line 211 改用 resolveStdlibRoot + bootstrap 三阶段固定点 PASS + 外部 stdlib_test e2e PASS + 下游 van-cli `Path.join` / `Path.dirname` + init demo-app e2e PASS + reflection_health F1 GATE PASS(main.ss 628 == bv DRIFT 0)+ d_doc_index GATE PASS + tests baseline 完全一致(301/14/315)|
