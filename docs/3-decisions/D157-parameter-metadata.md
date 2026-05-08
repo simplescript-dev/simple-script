@@ -1,6 +1,6 @@
 # D157: ParameterMetaData PreparedStatement 参数侧 metadata
 
-**Status:** [x] Phase 0 D 文档落档 at commit `<phase0-hash>` — D156 §Followup F1 起首脱胎,D135-D156 SQL 主线范式延续。走**完整 JDBC 4.3 §10.2 `interface ParameterMetaData` ≥7 method**(getParameterCount / getParameterType / getParameterTypeName / getParameterClassName / getParameterMode / isNullable / isSigned)+ **MysqlParameterMetaData class 真实现**(单字段 `paramMetadata: Array<ColumnDef>` + ≥7 method 反射派生 + 复用 D155 mysqlTypeToJdbcType / mysqlTypeName / mysqlTypeToJavaClassName / 13 bit flag 解析路径)+ **`PreparedStatement.getParameterMetaData(): ParameterMetaData` 接口加 + 1 implementor 真返**(MysqlPreparedStatement 真返,paramDefs 字段已 lib/com/mysql/prepared.ss:160 构造点存在,无需新协议解析)— 不接受次优 / workaround / 节省。
+**Status:** [x] Phase 0 D 文档落档 at commit `b202cb6` — D156 §Followup F1 起首脱胎,D135-D156 SQL 主线范式延续。走**完整 JDBC 4.3 §10.2 `interface ParameterMetaData` ≥7 method**(getParameterCount / getParameterType / getParameterTypeName / getParameterClassName / getParameterMode / isNullable / isSigned)+ **MysqlParameterMetaData class 真实现**(单字段 `paramMetadata: Array<ColumnDef>` + ≥7 method 反射派生 + 复用 D155 mysqlTypeToJdbcType / mysqlTypeName / mysqlTypeToJavaClassName / 13 bit flag 解析路径)+ **`PreparedStatement.getParameterMetaData(): ParameterMetaData` 接口加 + 1 implementor 真返**(MysqlPreparedStatement 真返,paramDefs 字段已 lib/com/mysql/prepared.ss:160 构造点存在,无需新协议解析)— 不接受次优 / workaround / 节省。
 
 ## 起首脱胎
 - D156 §Followup F1(`docs/3-decisions/D156-database-metadata.md:148`)
@@ -83,14 +83,14 @@
 
 | Phase | 内容 | Commit |
 |-------|------|--------|
-| 0 | D 文档落档(§核心目标 + §核心原则 + §A.1-A.3 + §Phase 收关锚 Phase 0-3 + §Followup F1-F4)+ D156 Phase 4 hash 回填 | `<phase0-hash>` |
+| 0 | D 文档落档(§核心目标 + §核心原则 + §A.1-A.3 + §Phase 收关锚 Phase 0-3 + §Followup F1-F4)+ D156 Phase 4 hash 回填 | `b202cb6` |
 | 1 | interface ParameterMetaData ≥7 method + PreparedStatement.getParameterMetaData() 接口加 + 1 implementor stub + class NoopParameterMetaData(无字段 stateless stub)+ ≥10 case spike GREEN | `<phase1-hash>` |
 | 2 | MysqlParameterMetaData class 真实现(单字段 paramMetadata + ≥7 method 反射派生 + 复用 D155 mysqlTypeToJdbcType + mysqlTypeName + mysqlTypeToJavaClassName + isSigned UNSIGNED_FLAG)+ MysqlPreparedStatement.getParameterMetaData() 真返 + ≥12 case spike GREEN | `<phase2-hash>` |
 | 3 | integration_test e2e ≥7 case docker probe-skip(H1-H5 wire 端全实证)+ absorb spike(删 phase1_spike + phase2_spike,可保留 ≤1 unit test)+ Phase 0-2 hash 回填 + D157 主线 close 锚 | `<phase3-hash>` |
 
 ## Phase 收关锚
 
-### Phase 0: D 文档落档 [x] Done at commit `<phase0-hash>`
+### Phase 0: D 文档落档 [x] Done at commit `b202cb6`
 
 - 落地 `docs/3-decisions/D157-parameter-metadata.md`(本文件)— §核心目标 + §核心原则 + §A.1 候选评估 + §A.2 隐藏假设 H1-H5 + §A.3 废案 + §Phase 收关锚 Phase 0-3 + §Followup F1-F4 + §Status 时间线
 - 落地 `.claude/next_prompt.md`(下轮 D157 Phase 1 起首)
@@ -147,4 +147,4 @@
 
 ## Status 时间线
 
-- 2026-05-05 Phase 0 D 文档落档(commit `<phase0-hash>`)— **新建 docs/3-decisions/D157-parameter-metadata.md**(≥150 行 — §核心目标 + §核心原则 + §A.1 候选评估 + §A.2 隐藏假设 H1-H5 + §A.3 废案 + §Phase 收关锚 Phase 0-3 + §Followup F1-F5 + §Status 时间线)+ **D156 Phase 4 hash `72e5e0c` 即时回填 D156.md 实际语义位 ≥5 处**(Status header line 3 ×2[Phase 4 entry + 主线 close 锚] + §Phase commit hash 总览段表 Phase 4 行 + §Phase 收关锚 §Phase 4 mark Done at commit + §Phase 收关锚 §Phase 4 内 D156 主线 close 锚引用 + §Phase 收关锚 §Phase 4 元描述行校准[原 "留 placeholder 待下轮回填" → "已由 D157 Phase 0 回填"]+ Status 时间线 Phase 4 entry — D147 §Phase 5 close → D154 §Phase 0 跨 D 起首回填范式延续 + D155 §Phase 4 close → D156 §Phase 0 跨 D 起首回填范式延续);**RED 实测**:ls D157 = ENOENT / grep -c "interface ParameterMetaData" lib/java/sql.ss = 0 / grep -rc "class MysqlParameterMetaData" lib/com/mysql/ = 0 / grep -cE "function getParameterMetaData\(\): ParameterMetaData" lib/java/sql.ss = 0 / grep -c "<phase4-hash>" docs/3-decisions/D156-database-metadata.md = 6(待回填);**GREEN**:D157.md 落档 ≥150 行 + D156 hash 回填全位 0 placeholder + .claude/next_prompt.md 含 ultrathink 关键字;**baseline**:bootstrap/ + lib/ + tools/ + tests/ diff = 0(本 Phase 纯 docs/ + .claude/next_prompt.md)+ d_doc_index_linter F1 = 0 PASS(D147/D154/D155/D156 全实存,加入 D157 实存)+ next_prompt_ultrathink_linter PASS(下轮含 ultrathink 关键字)+ 14 reflection 指标全继承 D156 主线 close baseline(本 Phase 不动 bootstrap/);**simplify 跳过**(纯文档改动,§After Done §1 例外);**等下轮 Phase 1 interface ParameterMetaData ≥7 method + PreparedStatement.getParameterMetaData() 接口加 + NoopParameterMetaData stub class + MysqlPreparedStatement.getParameterMetaData() 1-line stub + ≥10 case spike GREEN**
+- 2026-05-05 Phase 0 D 文档落档(commit `b202cb6`)— **新建 docs/3-decisions/D157-parameter-metadata.md**(≥150 行 — §核心目标 + §核心原则 + §A.1 候选评估 + §A.2 隐藏假设 H1-H5 + §A.3 废案 + §Phase 收关锚 Phase 0-3 + §Followup F1-F5 + §Status 时间线)+ **D156 Phase 4 hash `72e5e0c` 即时回填 D156.md 实际语义位 ≥5 处**(Status header line 3 ×2[Phase 4 entry + 主线 close 锚] + §Phase commit hash 总览段表 Phase 4 行 + §Phase 收关锚 §Phase 4 mark Done at commit + §Phase 收关锚 §Phase 4 内 D156 主线 close 锚引用 + §Phase 收关锚 §Phase 4 元描述行校准[原 "留 placeholder 待下轮回填" → "已由 D157 Phase 0 回填"]+ Status 时间线 Phase 4 entry — D147 §Phase 5 close → D154 §Phase 0 跨 D 起首回填范式延续 + D155 §Phase 4 close → D156 §Phase 0 跨 D 起首回填范式延续);**RED 实测**:ls D157 = ENOENT / grep -c "interface ParameterMetaData" lib/java/sql.ss = 0 / grep -rc "class MysqlParameterMetaData" lib/com/mysql/ = 0 / grep -cE "function getParameterMetaData\(\): ParameterMetaData" lib/java/sql.ss = 0 / grep -c "<phase4-hash>" docs/3-decisions/D156-database-metadata.md = 6(待回填);**GREEN**:D157.md 落档 ≥150 行 + D156 hash 回填全位 0 placeholder + .claude/next_prompt.md 含 ultrathink 关键字;**baseline**:bootstrap/ + lib/ + tools/ + tests/ diff = 0(本 Phase 纯 docs/ + .claude/next_prompt.md)+ d_doc_index_linter F1 = 0 PASS(D147/D154/D155/D156 全实存,加入 D157 实存)+ next_prompt_ultrathink_linter PASS(下轮含 ultrathink 关键字)+ 14 reflection 指标全继承 D156 主线 close baseline(本 Phase 不动 bootstrap/);**simplify 跳过**(纯文档改动,§After Done §1 例外);**等下轮 Phase 1 interface ParameterMetaData ≥7 method + PreparedStatement.getParameterMetaData() 接口加 + NoopParameterMetaData stub class + MysqlPreparedStatement.getParameterMetaData() 1-line stub + ≥10 case spike GREEN**

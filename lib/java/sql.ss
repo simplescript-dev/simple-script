@@ -307,6 +307,10 @@ interface PreparedStatement {
     function executeUpdate(): int
     function getGeneratedKeys(): ResultSet
     function getLastInsertId(): int
+    // D157 §Phase 1 — JDBC 4.3 §10.2 parameter-level metadata reflection
+    // for ORM idioms (Spring JdbcTemplate.update setter pre-eval, Hibernate
+    // BasicBinder, MyBatis TypeHandler). Phase 2 wires MysqlParameterMetaData.
+    function getParameterMetaData(): ParameterMetaData
     function close()
 }
 
@@ -654,3 +658,29 @@ const TRANSACTION_READ_UNCOMMITTED = 1
 const TRANSACTION_READ_COMMITTED = 2
 const TRANSACTION_REPEATABLE_READ = 4
 const TRANSACTION_SERIALIZABLE = 8
+
+// ── ParameterMetaData — D157 §Phase 1 / JDBC 4.3 §10.2 ──────────
+// Parameter-level metadata for ORM reflection. ParameterDef = ColumnDef41
+// 同结构 (MySQL Native Protocol §15.7.7), readParamDef 已用 parseColumnDef
+// (lib/com/mysql/prepared.ss:169-179). Wrapper.unwrap / getPrecision /
+// getScale 留 §Followup F3.
+interface ParameterMetaData {
+    function getParameterCount(): int
+    function getParameterType(idx: int): int
+    function getParameterTypeName(idx: int): string
+    function getParameterClassName(idx: int): string
+    function getParameterMode(idx: int): int
+    function isNullable(idx: int): int
+    function isSigned(idx: int): int
+}
+
+// ── JDBC 4.3 §10.2 / java.sql.ParameterMetaData — D157 §Phase 1 constants ─
+// Static literals. parameterModeOut = 4 (not 3 — spec gap). MySQL prepare
+// returns parameterModeIn only; CallableStatement OUT/INOUT 留 §F2.
+const parameterModeIn = 1
+const parameterModeInOut = 2
+const parameterModeOut = 4
+const parameterModeUnknown = 0
+const parameterNullable = 1
+const parameterNoNulls = 0
+const parameterNullableUnknown = 2

@@ -42,7 +42,7 @@
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
 import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, ResultSetMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { PreparedStatement, ResultSet, ResultSetMetaData, ParameterMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 
@@ -1169,6 +1169,18 @@ function deriveTableName(colMetadata: Array<ColumnDef>): string {
     return columnDefOrgTable(colMetadata[0])
 }
 
+// NoopParameterMetaData — D157 §Phase 1 stateless stub (7 method 默认值).
+// Phase 2 替换为 new MysqlParameterMetaData(paramDefs) 真实现.
+class NoopParameterMetaData : ParameterMetaData {
+    function getParameterCount(): int { return 0 }
+    function getParameterType(idx: int): int { return 0 }
+    function getParameterTypeName(idx: int): string { return "" }
+    function getParameterClassName(idx: int): string { return "" }
+    function getParameterMode(idx: int): int { return parameterModeUnknown }
+    function isNullable(idx: int): int { return parameterNullableUnknown }
+    function isSigned(idx: int): int { return 0 }
+}
+
 // MysqlPreparedStatement — four parallel param-binding arrays indexed by
 // idx-1 (JDBC idx is 1-based; SS array is 0-based):
 //   - paramTypes: MYSQL_TYPE_xxx code
@@ -1350,6 +1362,11 @@ class MysqlPreparedStatement : PreparedStatement {
 
     function getLastInsertId(): int {
         return this.lastInsertId
+    }
+
+    // D157 §Phase 1 stub — Phase 2 替换为 new MysqlParameterMetaData(this.paramDefs).
+    function getParameterMetaData(): ParameterMetaData {
+        return new NoopParameterMetaData()
     }
 
     // Sends COM_STMT_CLOSE; server returns no packet, so no read. Idempotent.
