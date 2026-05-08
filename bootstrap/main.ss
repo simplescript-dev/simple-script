@@ -3,6 +3,8 @@
 
 import { tokenize } from "./lexer/lexer"
 import { parse, initParser } from "./parse/parser"
+import { ssPreludeContent } from "./parse/prelude_embed"
+import { resolveRepoFile } from "./parse/repo_paths"
 import { check } from "./checker/checker"
 import { generateToFile, initCodegen } from "./gen/codegen"
 import { initFuncRegistry } from "./gen/gen_registry"
@@ -578,7 +580,13 @@ function cmdClean() {
 function compile(inputFile: string, outputFile: string, release: int, emitIr: int) {
     const userSource = resolveImports(inputFile)
     if (userSource == "") { println(`error: cannot read ${inputFile}`); exit(1) }
-    const prelude = readFile(findPrelude())
+    // prelude is embedded into ss binary via prelude_embed.ss (auto-gen from prelude.ss).
+    // Fallback to file read only for cold-start when embed is empty (should never hit).
+    let prelude = ssPreludeContent()
+    if (prelude == "") {
+        const preludePath = resolveRepoFile("bootstrap/parse/prelude.ss")
+        if (preludePath != "") { prelude = readFile(preludePath) }
+    }
     const source = prelude + "\n" + userSource
     // Count prelude lines for error reporting offset
     let preludeLines = 0
@@ -606,9 +614,7 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
 
     let linkFlags = "-static"
     if (release == 1) { linkFlags = "-static -O2 -s" }
-    let mimallocObj = ""
-    if (fileExists("vendor/mimalloc.o") == 1) { mimallocObj = "vendor/mimalloc.o" }
-    if (fileExists("../vendor/mimalloc.o") == 1) { mimallocObj = "../vendor/mimalloc.o" }
+    const mimallocObj = resolveRepoFile("vendor/mimalloc.o")
     let rtObj = ""
     if (useRuntimeCache == 1) { rtObj = runtimeCacheObj }
     if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} -o ${outputFile} -lm`) != 0) {
@@ -620,8 +626,3 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     println("compiled: " + outputFile)
 }
 
-function findPrelude(): string {
-    if (fileExists("bootstrap/parse/prelude.ss") == 1) { return "bootstrap/parse/prelude.ss" }
-    if (fileExists("../bootstrap/parse/prelude.ss") == 1) { return "../bootstrap/parse/prelude.ss" }
-    return ""
-}
