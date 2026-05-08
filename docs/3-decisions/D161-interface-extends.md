@@ -1,0 +1,159 @@
+# D161: interface extends 编译器层支持
+
+**Status:** [x] Phase 0 D 文档落档 at commit `<phase0-hash>` + [ ] Phase 1 parser parseInterfaceDecl 加 EXTENDS 子句解析 + INTERFACE_DECL 节点 nSetS2 父接口名 slot + 单元测试 ≥5 case at commit `<phase1-hash>` + [ ] Phase 2 ifaceParents Map(class.ss 同 classParents 位置)+ registerInterface walk parent chain merge methodNames / ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars + spike ≥6 case at commit `<phase2-hash>` + [ ] Phase 3 NClob extends Clob 样本回退 + d025 vtable 强制全 method 验证 + bin/ss test tests/ baseline 全继承 + integration verify at commit `<phase3-hash>` + [ ] Phase 4 D161 主线 close + D160 §Followup F7 interface extends 编译器路径已落地起首 D160 Phase 1 重启锚 at commit `<phase4-hash>` + [ ] D161 主线 close at commit `<phase4-hash>` — D160 Phase 1 hold(Phase 0 commit `55ffe1b` 已落档,Phase 1 因 SS 不支持 interface extends 触发 standalone restate 5 处 workaround 第 6 次,触发 CLAUDE.md "Root Cause 优先 — 同一个 workaround 出现第二次必须停下修根因" 第一法则,本 D 起首脱胎 → D161 编译器层根因落地后回头 D160 Phase 1 真 `interface CallableStatement extends PreparedStatement` 形态 21 own method 自动继承 13 PreparedStatement,而非 standalone restate 34 method)。
+
+## 起首脱胎
+- D160 Phase 1 hold(`docs/3-decisions/D160-callable-statement-out-inout.md` line 3 `<phase1-hash>` placeholder 待 D161 主线 close 后 D160 Phase 1 真 extends 形态落地回填)
+- 5 处既有 standalone restate workaround:
+  1. `lib/java/sql.ss:280-315` PreparedStatement standalone(应 extends Statement,JDBC §16 spec — D136 §A.5 retcon 因当时 SS 不支持 interface extends 改 standalone)
+  2. `lib/java/sql.ss:447-463` Timestamp standalone(应 extends java.util.Date)
+  3. `lib/java/sql.ss:469-480` Date standalone
+  4. `lib/java/sql.ss:485-495` Time standalone(后两者 SS 无 java.util.Date interface 无法 extends,本 D 不强制回退)
+  5. `lib/java/sql.ss:538-546` NClob standalone(应 extends Clob,JDBC §13.2.2 spec — 本 D Phase 3 happy path 回退验证锚)
+- 即将第 6 处 D160 CallableStatement extends PreparedStatement(34 standalone restate vs 21 own method 形态分歧 — 触发 CLAUDE.md 第一法则"同一个 workaround 出现第二次必须停下修根因")
+- D135-D157 / D160 SQL 主线范式延续(Phase 计划独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环)
+
+## 核心目标 (Goal)
+
+落地后:
+1. `bootstrap/parse/parser.ss parseInterfaceDecl()` 支持 `interface A extends B { ... }` 语法 — 解析 EXTENDS 子句 + 父接口名,存 INTERFACE_DECL 节点 nSetS2 slot(同 CLASS_DECL nSetS2 存 extendsName 范式 — `bootstrap/parse/parser.ss:531`)
+2. `bootstrap/gen/class/class.ss` 加 `ifaceParents` 全局 Map(`"NClob" -> "Clob"`,同 `classParents` line 23 范式)+ initIfaceParents 初始化(同 line 68 `classParents = Map()` 范式)
+3. `bootstrap/gen/gen_iface.ss registerInterface(id)` walk parent chain — 在 `ifaceMethodsCG.set(name, methodNames)` 之前,若 ifaceParents.has(name)==1 则递归 merge parent ifaceMethodsCG 的 method 集合至当前 methodNames(去重 — 同名 method override 走子接口签名,父接口同名 method 不重复 emit)+ 同步 merge ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars 父接口入口至 `${childName}.${mangledKey}` key
+4. 既有 `checkInterfaceImpl` (`bootstrap/checker/check_class.ss`) **不需改**:已用 ifaceMethodsCG 的合并方法集合做 D025 vtable 强制全 method 验证,父接口 method 自然成为子接口实现 class 的强制实现项(同 classParents 已工作的范式)
+5. NClob extends Clob 1 处样本回退(`lib/java/sql.ss:538-546`)— interface NClob extends Clob 删 7 method standalone restate(length / getSubString / setString / position / truncate / getCharacterStream / free)— 自动继承 Clob 7 method;NClob 实现 class(若有,本仓暂无)无需重新实现 Clob method
+6. ≥5 case parser 单元测试(parseInterfaceDecl EXTENDS slot)+ ≥6 case codegen spike(ifaceParents Map + registerInterface walk parent chain merge / 父子签名同名 override / 父子参数 sig 不同自然分隔 / 父接口 method 子接口实现 class 强制 D025 vtable check / 多层 extends chain A extends B extends C method 集合三层全 merge / NClob extends Clob method 集合自动 7 method 继承)
+7. `./build.sh bootstrap` 三阶段固定点 stage2==stage3 + `bin/ss test tests/` baseline 全继承(本 D 不破任何既有测试)+ reflection_health_linter 14 指标无 regression + d_doc_index_linter F1 = 0 + next_prompt_ultrathink_linter PASS
+8. D161 主线 close 后 D160 §Followup F7(本 D 落档时同步加入 D160.md §Followup F7)起首 D160 Phase 1 重启锚 — D160 Phase 1 真 `interface CallableStatement extends PreparedStatement` 21 own method 形态(自动继承 13 PreparedStatement method),而非 standalone restate 34 method
+
+**RED**(本 D 文档落档前实测):
+- `ls docs/3-decisions/D161-interface-extends.md` = ENOENT(D161 不存在,起首必新建)
+- `grep -c "EXTENDS\|extendsName" bootstrap/parse/parser.ss` 实测 ≥3(class extends 已支持,interface extends 未实现)
+- `grep -nE "function parseInterfaceDecl" bootstrap/parse/parser.ss` 实测 = `545:function parseInterfaceDecl(): int {`(line 545-576 完全无 extends 解析)
+- `grep -c "ifaceParents\|interfaceParent" bootstrap/` 实测 = 0(不存在 ifaceParents Map)
+- `grep -c "<phase0-hash>" docs/3-decisions/D160-callable-statement-out-inout.md` 实测 ≥4(D160 Phase 0 hash placeholder 待本 D Phase 0 commit 回填)
+- `grep -c "extends Clob\|extends Statement\|extends PreparedStatement" lib/java/sql.ss` 实测 = 0(5 处 standalone restate workaround 全在,无 1 处真 extends)
+
+## 核心原则 (Principles)
+
+1. **walk parent chain 与 classParents 同形**:`ifaceParents` Map 与 `classParents` 同位置(`bootstrap/gen/class/class.ss:23`)+ 同初始化(line 68 `classParents = Map()`)+ walk parent 逻辑同 class extends method 查找范式(checkClass 已实现的链式 walk)— 不引入新机制,复用既有。
+2. **registerInterface 时 merge,不在 dispatch 时 walk**:在 interface 注册阶段把 parent method 集合一次性 merge 入子接口 ifaceMethodsCG entry — 后续 dispatch / D025 vtable check / pickIfaceDispatcherKey / paramSig 反查全部走 merged 集合,不需要 dispatch 阶段每次 walk parent chain(性能 + 正确性同 class 已工作的范式)。
+3. **不引入新关键字**:`extends` 关键字已在 lexer 支持(class extends 已 work),parser 复用既有 token 不加 new keyword。
+4. **不强制回退既有 standalone interface**:本 D 只新加能力,不要求所有 standalone restate 必须回退到 extends 形态 — Timestamp/Date/Time(SS 无 java.util.Date interface 无法回退)+ PreparedStatement(extends Statement 与 JDBC overload 形态有 signature 冲突 + D136 §A.5 retcon 历史决策,留 D161 §F1 评估)留远期独立 sub-D 决断。**仅 NClob extends Clob 作 happy path 回退验证锚**(SS 已有 Clob interface,可 1 处样本验证 ifaceParents merge + D025 vtable 强制全 method 通路)。
+5. **method override 走子接口签名**:子接口 redeclare 同名同 paramSig method,以子接口 IFACE_METHOD 节点为准(子接口 ifaceMethodRets / ifaceMethodPars 覆盖父接口 entry)— 同 class extends 子类同名 method override 父类范式。
+6. **method overload 自然分隔**:父子接口同名 method 不同 paramSig(arity / 参数类型不同)走 ifaceMethodsCG mangled key 范式(`${mName}_${paramSig}`),自然作两条独立 entry 不冲突 — 同 D138 Phase 1.5 method overload by arity 已工作的范式。
+7. **多层 extends chain 递归 merge**:`A extends B extends C` 链 — registerInterface(A) 时 walk parent A → B → C 全部 merge,递归实现而非单层(同 class 多层 extends 范式 — `bootstrap/gen/class/class.ss` classParents walk 逻辑已支持)。
+8. **D135-D160 sub-D 范式延续**:Phase 计划独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环 + §A.2 隐藏假设 + §A.3 废案 + §Followup;Phase 0 D 文档落档 + D160 Phase 0 hash 跨 D 起首回填(D147 §Phase 5 close → D154 §Phase 0 / D155 §Phase 4 close → D156 §Phase 0 / D156 §Phase 4 close → D157 §Phase 0 / D157 §Phase 3 close → D160 §Phase 0 / D160 §Phase 0 → D161 §Phase 0 跨 D 起首回填范式延续)。
+9. **bootstrap fixed-point safe**:本 D 改动 bootstrap/parse/ + bootstrap/gen/ — 必跑 `./build.sh bootstrap` 三阶段固定点验证 stage2==stage3,不允许引入 self-bootstrap 不收敛(seed→stage1→stage2→stage3 比对 bit-identical)。
+
+## A.1 主候选评估(§MNK §M §字段 10)
+
+| 候选 | 层次 | 含 | 不含 | 决策 |
+|------|------|-----|------|------|
+| **C1** | 数据层 patch | + 仅 D160 case 局部解决 — D160 standalone restate 34 method + 不动编译器(违反 "Root Cause 优先" 第一法则)+ 既有 5 处 restate 不变 | 后续每条新 sub-D interface 加 extends 关系全部继续 standalone restate(NClob → Clob / RowSet → ResultSet / 等)+ N 年返工率近 100% | **不选** — CLAUDE.md "同一个 workaround 出现第二次必须停下修根因" 第一法则明确触发(已发生 5 次 ≫ 2 次门槛),用户对话锁不接次优 / workaround / 节省 |
+| **C2** | **接口层 trap(根因)** | + parser parseInterfaceDecl 加 EXTENDS 子句解析 + ifaceParents Map + registerInterface walk parent chain merge methodNames / ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars + NClob extends Clob 1 处 happy path 样本回退验证锚 + D161 主线 close 后 D160 Phase 1 重启真 extends 形态 | 既有 4 处 standalone restate 不强制回退(PreparedStatement extends Statement 留 §F1 评估 / Timestamp/Date/Time 无 java.util.Date interface 无法 extends 自动 N/A);多层 extends 链 method conflict resolution 边界形态(同名同 sig 父子 redeclare → 子赢)+ 多层 chain D025 vtable check 完整传递 — 本 D Phase 2 / Phase 3 全 spike 锚 | **选** — 根因解决:CLAUDE.md "Root Cause 优先" 第一法则 + Java/TS 语法优先(interface extends 是 Java + TypeScript 双方核心特性)+ 业界演化对标(JDBC `Statement → PreparedStatement → CallableStatement` extends 链 + RowSet → ResultSet 主线)+ N 年返工率最低(后续 sub-D 自然走 extends)+ scope 中等(~80-150 LOC + 测试)+ D135-D160 SQL 主线范式延续 |
+| **C3** | 架构层 refactor | + interface extends 全集 + 既有 5 处 standalone restate 全部回退(PreparedStatement extends Statement + Timestamp/Date/Time extends java.util.Date sub-D 起首 + NClob extends Clob)+ interface 多继承 `interface A extends B, C` 支持(Java/TS spec)+ implements 多接口 `class X : A, B, C`(D025 已支持)+ Wrapper.unwrap / isWrapperFor 跨 D 通用 generics-on-interface | spec 100% interface 形态完整;5 处 restate 全部回退;PreparedStatement extends Statement signature 冲突解决(0-arg vs sql-arg overload 形态收敛)| **不选** — scope 远超 D161 单 sub-D(LOC > 800;5 处 restate 回退 4 处需独立评估 — Timestamp 等无父无法回退,PreparedStatement extends Statement 与 JDBC overload 形态冲突需 D136 §A.5 retcon 反退评估;multi-extends 留 §Followup F2 独立 sub-D)|
+
+**决策行**:**选 C2 接口层 trap(根因)** — 因 (a) CLAUDE.md "Root Cause 优先" 第一法则 + "同一个 workaround 出现第二次必须停下修根因"(已 5 次 ≫ 2 次门槛);(b) Java/TS 语法优先(interface extends 是 Java + TypeScript 双方核心特性,完全在项目"新语法必须在 TS/Java 中有直接对应物"规则范围内);(c) **底层依赖链最深**:D161 是编译器能力(协议层),D160 / 未来 sub-D 是上层应用(JDBC 接口形态)— 按 CLAUDE.md "底层依赖链(候选 A 是否依赖未落地的更基础候选 B?若依赖,B 必先于 A 起首,**禁先做上层补底层**)",D161 必先于 D160 Phase 1 重启;(d) **业界演化对标**:JDBC `Statement → PreparedStatement → CallableStatement` extends 链是 spec 主线,SS 不支持必拖累后续每条 sub-D — 业界 Java + TypeScript + Kotlin + Scala + C# 全都支持 interface extends(SS 主张 Java/TS 优先,extends 是必需基础);(e) **N 年返工度**:不做 → 每条 sub-D interface 加 extends 关系全部 standalone restate,RowSet → ResultSet / BatchUpdateException → SQLException / ParameterMetaData → ResultSetMetaData(后两者实际无 extends 关系,但仍代表演化模式)等返工率近 100%;(f) scope 中等可控(~80-150 LOC + 测试,Phase 1-3 三 commit 切片 + Phase 4 close,不破现有 5 处 standalone restate);(g) D135-D160 sub-D 范式延续(D 文档骨架 + Phase 计划独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环)。**为何不选 C1**:CLAUDE.md 第一法则明确触发(restate 已 5 次 ≫ 2 次),用户对话锁不接次优 / workaround / 节省。**为何不选 C3**:scope 远超 D161 单 sub-D — Timestamp/Date/Time / PreparedStatement extends Statement 评估 / multi-extends `interface A extends B, C` 各留 §Followup 独立 sub-D。
+
+## A.2 隐藏假设挑战
+
+| H | 假设 | 挑战 | 实证锚 |
+|---|------|------|--------|
+| H1 | parseInterfaceDecl 加 EXTENDS 子句解析与 parseClassDecl extends 解析同形 | parseClassDecl(parser.ss:417-543)在 line 427-431 解析 `let extendsName = ""` + 若 curKind() == "EXTENDS" 则 parseTypeAnn() 拿父名 + line 531 nSetS2(id, extendsName) 存父名;parseInterfaceDecl 完全可复用此 pattern,在 pExpect("INTERFACE") + pExpectIdent() name 之后加同款 EXTENDS 解析 + nSetS2(id, parentName)。**风险**:interface 多继承 `interface A extends B, C` 与 class 单继承不一致 — Java/TS spec interface 支持多继承(逗号分隔多父名),class 仅单继承。本 D 仅落单继承(同 class extends 范式),多继承留 §F2 独立 sub-D。 | Phase 1 spike — `interface NClob extends Clob { ... }` 解析后 nGetS2(id) == "Clob" 单元测试 + 单继承 5 case parser node validation |
+| H2 | ifaceParents Map walk + registerInterface 时一次性 merge — 同 classParents 范式可行 | classParents 已工作的范式(class.ss line 23)是子类 method 查找时 walk parent chain(D025 vtable 派发 + classMethodHasName check),非 register-time merge。但 ifaceMethodsCG 是子接口 mangled method names CSV(用于 dispatch + checkInterfaceImpl D025 vtable 强制全 method 验证)— 选择 register-time merge(把 parent method 一次性合入子接口 entry)避免 dispatch 阶段每次 walk parent chain 性能开销 + 同 ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars 反查 key 范式天然兼容(merged key 直接命中)。**风险**:order dependency — registerInterface(child) 必须在 registerInterface(parent) 之后跑(否则 parent ifaceMethodsCG 还没建立),需要 ct_driver.ss / codegen.ss INTERFACE_DECL 注册顺序保证 parent-first(自然由源码 import 顺序保证 — Clob 在 NClob 之前定义在 lib/java/sql.ss,resolveInner 全局 collect 时按声明顺序处理) | Phase 2 spike Case 1 — `interface A extends B { ... }` 注册顺序 B-first 后 ifaceMethodsCG.getString("A") 含 B 的全部 method;Case 2 — A extends B extends C 多层 chain 注册顺序 C-B-A 后 A entry 含 C+B+A 全集 |
+| H3 | 子接口 redeclare 同名同 sig method override 父接口签名 | 子接口 IFACE_METHOD 节点显式声明同名同 paramSig method 时,registerInterface walk parent chain merge 必须以子接口 entry 为准(覆盖 parent ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars)— 同 class 子类 method override 父类范式。**风险**:若子接口同名 method 改了 paramSig(arity / 类型不同),按 D138 Phase 1.5 mangled key 范式(`${mName}_${paramSig}`),父子两个 entry 自然作独立 ifaceMethodsCG 列表项 — 不冲突。 | Phase 2 spike Case 3 — `interface Child extends Parent { function foo(): int }` Parent 同名同签 method 后 ifaceMethodsCG 子接口 entry 'foo' 出现一次(去重),ifaceMethodRets 走子接口签名;Case 4 — Child redeclare foo 不同 sig(`function foo(x: int): int`)后 ifaceMethodsCG 子接口 entry 含 'foo' + 'foo_i' 两个 mangled key |
+| H4 | NClob extends Clob 1 处样本回退 happy path — implementor class 自动获得 Clob method 强制实现项 | 当前 lib/ 中 NClob 无 implementor class(0 处 `class.*: NClob` 实例);本 D Phase 3 NClob extends Clob 回退是 interface 形态变更不需 class 同步。**风险**:若未来 NClob 有 implementor class,需自动同时实现 Clob 7 method + NClob own 0 method(NClob standalone 当前 7 method 全等同 Clob,回退后 NClob own = 0 — 完全等价 Clob 别名,language ABI 角度无信息损失;若未来 NClob 加 own method 自然属 NClob entry)。 | Phase 3 spike — NClob extends Clob 回退后 ifaceMethodsCG.getString("NClob") 含 Clob 7 method;同时 placeholder implementor class 测试(tests/d161_interface_extends/phase3_nclob_test.ss 含 `class TestNClob : NClob { Clob 7 method 全实现 }` 验证 D025 vtable 强制全 method 通路 + bin/ss test 全继承 baseline) |
+| H5 | bootstrap fixed-point 自举安全 — 编译器层改动不破 stage2 == stage3 比对 | 本 D 改动 bootstrap/parse/parser.ss + bootstrap/gen/class/class.ss + bootstrap/gen/gen_iface.ss — 三处编译器源码改动必触发 self-bootstrap 行为变化,seed→stage1→stage2→stage3 必须比对 bit-identical 通过。**风险**:registerInterface 顺序依赖(H2)若 self-bootstrap 阶段编译器自身 import 顺序与 stage1 不同,可能导致 ifaceMethodsCG entry 内容差异 — 但本仓 bootstrap/ 既有 interface(InternPool / Token / etc)无 extends 关系,本 D 改动不影响 self-bootstrap 路径(仅 lib/ + tests/ 用户层使用)。 | Phase 2 / Phase 3 收关锚必跑 `./build.sh bootstrap` 全 60s+ 三阶段固定点验证,stage2 与 stage3 二进制 bit-identical 才允许进入 commit |
+
+## A.3 废案
+
+- **C1 数据层 patch**(用户对话锁不接次优 / workaround / 节省;CLAUDE.md "同一个 workaround 出现第二次必须停下修根因" 第一法则明确触发,已 5 次 ≫ 2 次)
+- **C3 架构层 refactor + 5 处 standalone restate 全部回退 + multi-extends `interface A extends B, C` + Wrapper.unwrap generics-on-interface**(scope 远超 — Timestamp/Date/Time 无 java.util.Date interface 无法 extends 各留 §F1 评估;PreparedStatement extends Statement 与 JDBC executeQuery overload 形态冲突 + D136 §A.5 retcon 历史决策反退需独立 sub-D 评估;multi-extends 跨 lib 影响留 §F2;generics-on-interface 跨 D 通用留 D154 §F4 / D155 §F4 / D157 §F3 主导)
+- **dispatch 时 walk parent chain(非 register-time merge)**(违反 §核心原则 2 — register-time merge 性能 + 正确性同 ifaceMethodsCG / ifaceMethodSigs 反查 key 范式天然兼容;dispatch 时 walk 每条 dispatch 调用都要遍历 parent chain,O(depth × dispatch_count) 性能差,且 D025 vtable check 也要二次 walk)
+- **interface 多继承 `interface A extends B, C` 同 Java/TS spec**(scope 远超 — class 单继承范式延续即可,多继承父接口 method 集合 merge 时同名 conflict resolution 复杂度高,留 §F2 独立 sub-D)
+- **强制回退所有既有 standalone restate**(违反 §核心原则 4 — 仅新加能力,不要求所有 restate 必回退;Timestamp/Date/Time 无 java.util.Date interface 无法 extends 自动 N/A;PreparedStatement extends Statement 留 §F1 独立评估)
+- **interface 不允许 extends class**(Java/TS spec class 与 interface 是不同种类,interface 仅 extends interface;不允许混合 — 本 D 落地时若解析到 `interface A extends ClassName` 应在 checker 层报错,但当前 SS 类型系统不强制 — 留 §F3 type system 强化 sub-D)
+- **lazy override 检查 — 子接口同名 method override 父接口时报 warning**(违反 §核心原则 5 子接口签名优先 — 子接口显式 redeclare 同名同 sig method 是合法 spec 行为,JDBC 4.3 spec 多处使用;不应报 warning;若签名冲突 H3 已说明走 mangled key 自然分隔)
+- **registerInterface walk parent chain 时去重逻辑放在 dispatch 层**(违反 §核心原则 2 + H2 实证锚 — 去重在 register-time methodNames 累积时做,确保 ifaceMethodsCG entry 直接是合并后的去重集合)
+- **D161 与 D160 Phase 1 同 commit 落地**(scope 失控;D161 是编译器层根因 + D160 Phase 1 是应用层 ≥30 method 接口加,二者分开切片;D161 主线 close 后 D160 §F7 重启锚自动起首 D160 Phase 1 真 extends 形态 commit)
+- **不验证 D025 vtable 强制全 method 通路完整传递**(违反 §核心目标 4 + Phase 3 spike Case 4 必含 — 子接口 implementor class 必须被强制实现父接口 method 集合,否则 D025 vtable check fail;Phase 3 必含 happy-path + sad-path negative test 锚)
+
+## Phase commit hash 总览
+
+| Phase | 内容 | Commit |
+|-------|------|--------|
+| 0 | D 文档落档(§核心目标 + §核心原则 + §A.1-A.3 + §Phase 收关锚 Phase 0-4 + §Followup F1-F4)+ D160 Phase 0 hash 跨 D 起首回填 | `<phase0-hash>` |
+| 1 | parser parseInterfaceDecl 加 EXTENDS 子句解析 + INTERFACE_DECL 节点 nSetS2 父接口名 slot + 单元测试 ≥5 case parser node validation(`interface A extends B {}` AST 节点 nGetS2 == "B")| `<phase1-hash>` |
+| 2 | bootstrap/gen/class/class.ss ifaceParents Map 加 + registerInterface walk parent chain merge methodNames / ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars + spike ≥6 case(单层 extends / 多层 chain 三层全 merge / 同名 sig override / 同名 sig 不同 paramSig 自然分隔 / D025 vtable check 强制全 method 通路 / NClob extends Clob method 集合自动 7 method 继承)| `<phase2-hash>` |
+| 3 | NClob extends Clob 1 处样本回退(`lib/java/sql.ss:538-546` 删 7 method standalone restate)+ d025 vtable 强制全 method 验证 + bin/ss test tests/ baseline 全继承 + integration verify(本 D 不引入新 wire / docker case,纯本地编译器 + lib/ 改动)| `<phase3-hash>` |
+| 4 | D161 主线 close + D160 §Followup F7 起首 D160 Phase 1 重启锚(D161 编译器路径已落地,D160 Phase 1 真 `interface CallableStatement extends PreparedStatement` 21 own method 形态)+ Status header `[x] Phase 0-4 + [x] D161 主线 close at commit \`<phase4-hash>\`` | `<phase4-hash>` |
+
+## Phase 收关锚
+
+### Phase 0: D 文档落档 [x] Done at commit `<phase0-hash>`
+
+- 落地 `docs/3-decisions/D161-interface-extends.md`(本文件)— §核心目标 + §核心原则 + §A.1 候选评估 + §A.2 隐藏假设 H1-H5 + §A.3 废案 + §Phase 收关锚 Phase 0-4 + §Followup F1-F4 + §Status 时间线
+- 落地 `.claude/next_prompt.md`(下轮 D161 Phase 1 起首 — parser parseInterfaceDecl 加 EXTENDS 子句解析 + INTERFACE_DECL 节点 nSetS2 父接口名 slot + 单元测试 ≥5 case parser node validation,scope ≤300 行 bootstrap/parse/parser.ss + tests/d161_interface_extends/phase1_parser_unit_test.ss)
+- payload 走 §M PSM 九问 B 档(sub-D 中段 Phase 1 parser 解析层),next_prompt_ultrathink_linter C1-C4 全 PASS(file exists + non-empty + ultrathink keyword + 标题不声明 docs-only)
+- D160 Phase 0 hash `55ffe1b` 即时回填 D160.md 实际语义位 4 处(line 3 Phase 0 entry + line 82 §Phase commit hash 总览段表 Phase 0 行 + line 89 §Phase 收关锚 §Phase 0 mark Done at commit + line 150 Status 时间线 Phase 0 entry — D147 §Phase 5 close → D154 §Phase 0 / D155 §Phase 4 close → D156 §Phase 0 / D156 §Phase 4 close → D157 §Phase 0 / D157 §Phase 3 close → D160 §Phase 0 / D160 §Phase 0 → D161 §Phase 0 跨 D 起首回填范式延续)
+- bootstrap/ + lib/ + tools/ + tests/ diff = 0(本 Phase 纯 docs/ + .claude/next_prompt.md)
+- baseline:d_doc_index_linter F1 = 0(D147/D154/D155/D156/D157/D160 全实存,D161 加入未破)+ next_prompt_ultrathink_linter PASS(下轮含 ultrathink 关键字)+ 14 reflection 指标全继承 D160 Phase 0 baseline(本 Phase 不动 bootstrap/)
+- §A.2 H1-H5 假设挑战全实证锚明确:H1 parser EXTENDS 解析与 class extends 同形(Phase 1 spike)/ H2 register-time merge + parent-first 顺序(Phase 2 spike)/ H3 子接口签名 override(Phase 2 spike Case 3-4)/ H4 NClob extends Clob happy path 回退验证(Phase 3 spike)/ H5 bootstrap fixed-point 自举安全(Phase 2/3 收关锚必跑 ./build.sh bootstrap)
+- §A.3 废案 完整锁定(C1 数据层 patch + C3 架构层 refactor + dispatch 时 walk parent + multi-extends + 强制回退所有 restate + interface extends class + lazy override warning + register-time 不去重 + 与 D160 Phase 1 同 commit + 不验证 D025 vtable 共 9 项)
+
+### Phase 1: parser parseInterfaceDecl 加 EXTENDS 子句解析 + 单元测试 ≥5 case [ ] Pending at commit `<phase1-hash>`
+
+- `bootstrap/parse/parser.ss parseInterfaceDecl()`(line 545-576)在 `pExpect("INTERFACE") + pExpectIdent() name` 之后加 `let parentName = "" if (curKind() == "EXTENDS") { pAdvance(); parentName = parseTypeAnn() }` + 末尾 `nSetS2(id, parentName)` 存父名(同 parseClassDecl line 427-431 + line 531 nSetS2(id, extendsName) 范式)
+- 节点 INTERFACE_DECL slot 公约更新:nSetS1(name) + nSetS2(parentName 或 "") + nSetList(methods)
+- `tests/d161_interface_extends/phase1_parser_unit_test.ss` ≥5 case 全 GREEN:Case 1 `interface A {}` 无 extends 节点 nGetS2 == ""(向后兼容)/ Case 2 `interface A extends B {}` 节点 nGetS2 == "B"(单继承)/ Case 3 `interface A extends B { function foo(): int }` 节点 methods 列表含 foo + nGetS2 == "B" / Case 4 `interface A extends B extends C` parser 报 syntax error(单继承,多继承留 §F2)/ Case 5 解析后立即 `class X : A` parse 通过(parser 不验证 implementation 完整性,checker 阶段验证 — D025 / checkInterfaceImpl 在 Phase 2/3)
+- §A.2 H1 部分实证(本 Phase parser 层落地)
+- VCM 六验全 PASS — `./build.sh bootstrap` 三阶段固定点 stage2==stage3 GREEN(parser 改动必走 self-bootstrap 验证,H5 实证)+ bin/ss test tests/ baseline 全继承 + d_doc_index_linter F1 = 0 + reflection_health_linter no regression
+- 静态变量复用既有 parser pattern:pExpect / pExpectIdent / parseTypeAnn / nSetS2 全部 reuse,不引入新 helper
+
+### Phase 2: ifaceParents Map + registerInterface walk parent chain merge + spike ≥6 case [ ] Pending at commit `<phase2-hash>`
+
+- `bootstrap/gen/class/class.ss` 加 `let ifaceParents = ""` 全局 Map 声明(line 23-24 classParents 后)+ initIfaceParents 初始化 `ifaceParents = Map()`(line 68-69 classParents 初始化后)— 同 classParents 范式
+- `bootstrap/gen/gen_iface.ss registerInterface(id)` 在 line 17 之后(进入 method walk 前)加 walk parent chain 逻辑:
+  ```
+  const parentName = nGetS2(id)
+  if (parentName != "") {
+      ifaceParents.set(name, parentName)
+      // walk parent chain merge methodNames + sigs/rets/pars 入 child entry
+      const parentMethods = ifaceMethodsCG.has(parentName) == 1 ? ifaceMethodsCG.getString(parentName) : ""
+      for parent method in parentMethods {
+          if !alreadyInChild { merge into methodNames + 同步 ifaceMethodSigs / ifaceMethodRets / ifaceMethodPars 父接口 entry 拷贝至 ${name}.${mangledKey} }
+      }
+  }
+  ```
+- `tests/d161_interface_extends/phase2_codegen_spike_test.ss` ≥6 case 全 GREEN:Case 1 单层 extends `interface A extends B` 注册后 ifaceMethodsCG.getString("A") 含 B 的全部 method / Case 2 多层 chain `A extends B extends C` 三层全 merge / Case 3 子接口 redeclare 同名同 sig method override 父接口签名 / Case 4 子接口 redeclare 同名 method 但不同 paramSig 自然分隔(`${mName}_${paramSig}` mangled key)/ Case 5 D025 vtable check 强制全 method 通路 — `class X : ChildIface` 必须实现父接口 method 集合,否则 checker fail / Case 6 NClob extends Clob method 集合自动 7 method 继承(为 Phase 3 NClob 回退预演)
+- §A.2 H2 + H3 + H5 实证(本 Phase 编译器核心逻辑落地)
+- VCM 六验全 PASS — `./build.sh bootstrap` 三阶段固定点 stage2==stage3 GREEN(class.ss + gen_iface.ss 改动必触发 self-bootstrap 行为变化验证,H5 实证)
+- order dependency:Phase 2 落地后必验证 ct_driver.ss / codegen.ss INTERFACE_DECL 注册顺序 parent-first 自然由源码 import 顺序保证(NClob 在 lib/java/sql.ss 中 declared 在 Clob 之后,parent-first 自然成立)
+
+### Phase 3: NClob extends Clob 样本回退 + d025 vtable 验证 + bin/ss test baseline + integration verify [ ] Pending at commit `<phase3-hash>`
+
+- `lib/java/sql.ss:538-546` interface NClob 改 standalone → `interface NClob extends Clob {}`(删 7 method standalone restate — length / getSubString / setString / position / truncate / getCharacterStream / free,自动继承 Clob 7 method)
+- `tests/d161_interface_extends/phase3_nclob_test.ss` ≥4 case 全 GREEN:Case 1 ifaceMethodsCG.getString("NClob") 含 Clob 7 method(parser 解析后 register 阶段自动)/ Case 2 placeholder implementor `class TestNClob : NClob { Clob 7 method 全实现 }` D025 vtable check pass(强制全 method 通路验证)/ Case 3 negative test — `class BrokenNClob : NClob { 缺 truncate }` 期望 checker fail with "must implement truncate" 错误(D025 vtable check 强制锚)/ Case 4 多态 dispatch — let nclob: NClob = new TestNClob(); nclob.length() vtable 派发到 TestNClob.length() 通过
+- §A.2 H4 + H5 实证(本 Phase NClob 回退 happy path + bootstrap fixed-point 自举安全 + tests/ baseline 全继承)
+- bin/ss test tests/ baseline 全继承(本 D 不引入新 wire / docker case,纯本地编译器 + lib/ 改动 — 仅新增 tests/d161_interface_extends/ 子目录 ≥3 文件)
+- VCM 六验全 PASS — `./build.sh bootstrap` 三阶段固定点 stage2==stage3 GREEN + bin/ss test tests/ ALL pass + d_doc_index_linter F1 = 0 + reflection_health_linter no regression
+
+### Phase 4: D161 主线 close + D160 Phase 1 重启锚 [ ] Pending at commit `<phase4-hash>`
+
+- D161 主线 close 锚:Status header `[x] Phase 0-4 + [x] D161 主线 close at commit \`<phase4-hash>\``
+- D160 §Followup F7 起首 D160 Phase 1 重启锚:在 D160.md §Followup 表加 F7 row — "interface extends 编译器路径已落地(D161 主线 close at commit `<phase4-hash>`)→ D160 Phase 1 重启路径:`interface CallableStatement extends PreparedStatement` 21 own method 形态(自动继承 13 PreparedStatement method,而非 standalone restate 34 method)+ MysqlConnection.prepareCall stub + NoopCallableStatement stub class + ≥10 case spike GREEN — 重启 commit `<D160-phase1-hash>` 待 D160 Phase 1 完成后回填 D161.md Status / Phase 4 / Phase commit hash 总览 ≥3 处"
+- 跨 D 起首回填范式延续:本 D 主线 close 后的 Phase 4 hash 留下轮 sub-D 起首跨 D 回填(D147 §Phase 5 close → D154 §Phase 0 / D155 §Phase 4 close → D156 §Phase 0 / D156 §Phase 4 close → D157 §Phase 0 / D157 §Phase 3 close → D160 §Phase 0 / D160 §Phase 0 → D161 §Phase 0 / D161 §Phase 4 close → D160 Phase 1 重启 范式延续)
+- VCM 六验全 PASS
+
+## Followup
+
+| F | 内容 | 范围 |
+|---|------|------|
+| F1 | PreparedStatement extends Statement / Timestamp/Date/Time extends java.util.Date 4 处 standalone restate 评估回退 | D136 §A.5 retcon 反退评估(PreparedStatement extends Statement 与 JDBC executeQuery overload 形态冲突 — `executeQuery(): ResultSet` PS-only vs `executeQuery(sql: string): ResultSet` Statement-only,SS overload by arity 已支持但需评估;Timestamp/Date/Time 需先起首 java.util.Date interface 子 sub-D)— 独立 sub-D |
+| F2 | interface 多继承 `interface A extends B, C` 同 Java/TS spec | 父接口 method 集合 merge 时同名 conflict resolution 复杂度高 — 独立 sub-D 远期 |
+| F3 | type system 强化 — interface 不允许 extends class checker 报错 | 当前 SS 类型系统不强制 — 落地后增加 checker 校验 — 独立 sub-D 远期 |
+| F4 | RowSet extends ResultSet sub-D 起首 + BatchUpdateException → SQLException sub-D 起首 | 利用本 D 落地后的 interface extends 能力 — 独立 sub-D 远期 |
+
+## Status 时间线
+
+- 2026-05-09 Phase 0 D 文档落档(commit `<phase0-hash>`)— **新建 docs/3-decisions/D161-interface-extends.md**(≥150 行 — §核心目标 + §核心原则 + §A.1 候选评估 + §A.2 隐藏假设 H1-H5 + §A.3 废案 + §Phase 收关锚 Phase 0-4 + §Followup F1-F4 + §Status 时间线)+ **D160 Phase 0 hash `55ffe1b` 即时回填 D160.md 实际语义位 4 处**(line 3 Phase 0 entry + line 82 §Phase commit hash 总览段表 Phase 0 行 + line 89 §Phase 收关锚 §Phase 0 mark Done at commit + line 150 Status 时间线 Phase 0 entry — D147 §Phase 5 close → D154 §Phase 0 / D155 §Phase 4 close → D156 §Phase 0 / D156 §Phase 4 close → D157 §Phase 0 / D157 §Phase 3 close → D160 §Phase 0 跨 D 起首回填范式延续);**RED 实测**:ls D161 = ENOENT / grep -c "EXTENDS\|extendsName" parser.ss ≥3(class extends 已支持) / grep -nE "function parseInterfaceDecl" parser.ss = 545(line 545-576 完全无 extends 解析) / grep -c "ifaceParents\|interfaceParent" bootstrap/ = 0 / grep -c "<phase0-hash>" D160.md ≥4(待回填) / grep -c "extends Clob\|extends Statement\|extends PreparedStatement" lib/java/sql.ss = 0(5 处 standalone restate 全在);**GREEN**:D161.md 落档 ≥150 行 + D160 hash 回填全位 0 placeholder + .claude/next_prompt.md 含 ultrathink 关键字;**baseline**:bootstrap/ + lib/ + tools/ + tests/ diff = 0(本 Phase 纯 docs/ + .claude/next_prompt.md)+ d_doc_index_linter F1 = 0 PASS(D147/D154/D155/D156/D157/D160 全实存,加入 D161 实存)+ next_prompt_ultrathink_linter PASS(下轮含 ultrathink 关键字)+ 14 reflection 指标全继承 D160 Phase 0 baseline(本 Phase 不动 bootstrap/);**simplify 跳过**(纯文档改动,§After Done §1 例外);**等下轮 Phase 1 parser parseInterfaceDecl 加 EXTENDS 子句解析 + INTERFACE_DECL 节点 nSetS2 父接口名 slot + 单元测试 ≥5 case parser node validation**
