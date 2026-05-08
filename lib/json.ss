@@ -270,7 +270,15 @@ function jnAsDouble(node: int): double {
 
 function jnAsString(node: int): string {
     if (node <= 0) { return "" }
-    return jnStr.getString(`${node}`)
+    const t = jnType.getString(`${node}`)
+    if (t == "string") { return jnStr.getString(`${node}`) }
+    if (t == "number") { return jnInt.getString(`${node}`) }
+    if (t == "bool") {
+        if (jnInt.getString(`${node}`) == "1") { return "true" }
+        return "false"
+    }
+    // null / object / array — caller should use stringify for object/array.
+    return ""
 }
 
 function jnAsBool(node: int): int {
