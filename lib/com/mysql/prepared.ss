@@ -41,8 +41,8 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, ResultSetMetaData, ParameterMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref } from "@/lib/java/sql"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG, UNSIGNED_FLAG, mysqlTypeToJdbcType, mysqlTypeName, mysqlTypeToJavaClassName } from "@/lib/com/mysql/query"
+import { PreparedStatement, ResultSet, ResultSetMetaData, ParameterMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref, parameterModeIn, parameterNullableUnknown } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
 
@@ -1170,7 +1170,9 @@ function deriveTableName(colMetadata: Array<ColumnDef>): string {
 }
 
 // NoopParameterMetaData — D157 §Phase 1 stateless stub (7 method 默认值).
-// Phase 2 替换为 new MysqlParameterMetaData(paramDefs) 真实现.
+// 保留作 stub-driven test mock 锚 (D157 §Phase 2 §A.3 / D025 vtable 强制全 method).
+// Phase 2 真实现 MysqlParameterMetaData 平行存在 — 走 prepare 路径的真返;
+// 测试 / NoopXxx 系生态走 stub 路径.
 class NoopParameterMetaData : ParameterMetaData {
     function getParameterCount(): int { return 0 }
     function getParameterType(idx: int): int { return 0 }
@@ -1179,6 +1181,62 @@ class NoopParameterMetaData : ParameterMetaData {
     function getParameterMode(idx: int): int { return parameterModeUnknown }
     function isNullable(idx: int): int { return parameterNullableUnknown }
     function isSigned(idx: int): int { return 0 }
+}
+
+// MysqlParameterMetaData — D157 §Phase 2 real reflection. Single-field
+// class wrapping the Array<ColumnDef> the driver already buffered off
+// COM_STMT_PREPARE_OK ParameterDef block (readParamDef at prepared.ss:169
+// — parseColumnDef shared with ColumnDef41 path, MySQL Native Protocol
+// §15.7.7 same struct as ColumnDef41 §6.6).
+//
+// 7 method 反射派生 — getParameterType / getParameterTypeName /
+// getParameterClassName 复用 D155 mysqlTypeToJdbcType / mysqlTypeName /
+// mysqlTypeToJavaClassName (query.ss:413/448/485 单参形态;colType byte
+// 已含 binary 0xF9-0xFC/0xFF → "[B" / text 0x0F/0xFD/0xFE → String 区分,
+// charset bit 不需二次 dispatch — D157 §A.2 H3 校准与 D155 §F5 ResultSet-
+// MetaData.getColumnClassName 同形).
+//
+// getParameterMode → parameterModeIn (MySQL prepare 不支持 OUT/INOUT,
+// CallableStatement 路径留 §F2). isNullable → parameterNullableUnknown
+// (prepare 阶段 server 不解析 SQL placeholder NOT NULL 约束,§A.2 H5).
+// isSigned → UNSIGNED_FLAG bit 5 反向 (query.ss:620 MysqlResultSetMetaData
+// .isSigned 同形 — flags & 0x0020 != 0 → 0 unsigned, == 0 → 1 signed).
+//
+// Class 仅持 paramMetadata: Array<ColumnDef> snapshot — 不持 Mysql-
+// PreparedStatement ref (§核心原则 8): close 后 ParameterMetaData 仍可
+// 访问 (§A.2 H4), 无 D156 §F6 RC cycle 风险 (Connector/J value snapshot 同形).
+class MysqlParameterMetaData : ParameterMetaData {
+    paramMetadata: Array<ColumnDef>
+
+    function getParameterCount(): int {
+        return this.paramMetadata.length()
+    }
+
+    function getParameterType(idx: int): int {
+        return mysqlTypeToJdbcType(columnDefColType(this.paramMetadata[idx - 1]))
+    }
+
+    function getParameterTypeName(idx: int): string {
+        return mysqlTypeName(columnDefColType(this.paramMetadata[idx - 1]))
+    }
+
+    function getParameterClassName(idx: int): string {
+        return mysqlTypeToJavaClassName(columnDefColType(this.paramMetadata[idx - 1]))
+    }
+
+    function getParameterMode(idx: int): int {
+        return parameterModeIn
+    }
+
+    function isNullable(idx: int): int {
+        return parameterNullableUnknown
+    }
+
+    function isSigned(idx: int): int {
+        const f = columnDefFlags(this.paramMetadata[idx - 1])
+        if ((f & UNSIGNED_FLAG) != 0) { return 0 }
+        return 1
+    }
 }
 
 // MysqlPreparedStatement — four parallel param-binding arrays indexed by
@@ -1364,9 +1422,8 @@ class MysqlPreparedStatement : PreparedStatement {
         return this.lastInsertId
     }
 
-    // D157 §Phase 1 stub — Phase 2 替换为 new MysqlParameterMetaData(this.paramDefs).
     function getParameterMetaData(): ParameterMetaData {
-        return new NoopParameterMetaData()
+        return new MysqlParameterMetaData(this.paramDefs)
     }
 
     // Sends COM_STMT_CLOSE; server returns no packet, so no read. Idempotent.
