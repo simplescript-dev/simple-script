@@ -545,6 +545,12 @@ function parseClassDecl(): int {
 function parseInterfaceDecl(): int {
     pExpect("INTERFACE")
     const name = pExpectIdent()
+    // multi-extends `interface A extends B extends C` rejected at pExpect("LBRACE") below
+    let extendsName = ""
+    if (curKind() == "EXTENDS") {
+        pAdvance()
+        extendsName = parseTypeAnn()
+    }
     skipNL()
     pExpect("LBRACE")
     skipNL()
@@ -571,6 +577,7 @@ function parseInterfaceDecl(): int {
     pExpect("RBRACE")
     const id = newNode("INTERFACE_DECL")
     nSetS1(id, name)
+    nSetS2(id, extendsName)
     nSetList(id, methods)
     return id
 }

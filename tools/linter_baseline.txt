@@ -24,6 +24,7 @@
 # bump-group-progress M1=5642 M2=82498 M3a=12909 M4=3295 M5=1839 N2=412490 N3=568360 F1:bootstrap/gen/methods/gen_methods.ss=703 F1:bootstrap/gen/gen_calls.ss=728 trail=D148#压回-Phase5-helper-调用全删 date=2026-05-03
 # bump-group-progress M1=5639 M2=82462 M3a=12905 M4=3293 M5=1838 N2=412310 N3=567988 F1:bootstrap/gen/methods/gen_methods.ss=698 trail=D148#压回-Phase5-simplify-cmcArgIdx-class_method-注释 date=2026-05-03
 # bump-group-progress M1=5562 M2=81839 M3a=12844 M4=3242 M5=1835 M7b=702 N2=409195 N3=564672 F1:bootstrap/gen/gen_types.ss=885 trail=D148#压回-Phase6-helper-主体物理删-11 date=2026-05-03
+# bump F1:bootstrap/parse/parser.ss 870→877 trail=D161#扩容申报-Phase-1-EXTENDS-parser date=2026-04-22
 M1=5562:5750
 M2=81839:83300
 M3a=12844:13050
@@ -39,7 +40,7 @@ N3=564672:575500
 N4=350:350
 N5=0:0
 F1:bootstrap/main.ss=627:630
-F1:bootstrap/parse/parser.ss=870:870
+F1:bootstrap/parse/parser.ss=870:877
 F1:bootstrap/parse/parse_stmts.ss=617:617
 F1:bootstrap/gen/methods/gen_methods.ss=698:730
 F1:bootstrap/gen/gen_calls.ss=728:740
