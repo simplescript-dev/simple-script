@@ -102,8 +102,11 @@ function parseEquality(): int {
 
 function parseComparison(): int {
     let left = parseAdditive()
-    while (curKind() == "LT" || curKind() == "GT" || curKind() == "LE" || curKind() == "GE" || curKind() == "INSTANCEOF" || curKind() == "AS") {
-        const op = curKind()
+    // `as` 是 contextual keyword(lexer 永远 emit IDENT,见 lexer/lexer.ss `keywordKind`):
+    // 此处通过 `curKind()=="IDENT" && curValue()=="as"` 在 type cast 中缀位识别。
+    while (curKind() == "LT" || curKind() == "GT" || curKind() == "LE" || curKind() == "GE" || curKind() == "INSTANCEOF" || (curKind() == "IDENT" && curValue() == "as")) {
+        let op = curKind()
+        if (curValue() == "as") { op = "AS" }
         pAdvance()
         const right = parseAdditive()
         const id = newNode("BINARY")

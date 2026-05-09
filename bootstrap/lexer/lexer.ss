@@ -455,7 +455,9 @@ function keywordKind(text: string): string {
     if (text == "catch") { return "CATCH" }
     if (text == "throw") { return "THROW" }
     if (text == "import") { return "IMPORT" }
-    if (text == "from") { return "FROM" }
+    // `from` 是 contextual keyword,只在 `import { ... } from STRING` 处特殊识别
+    // (见 parse/parser.ss `parseImport`),其他位置当普通 IDENT 处理,
+    // 允许作参数名 / 局部变量名 / 类字段名(与 TS / JS 语义一致)。
     if (text == "in") { return "IN" }
     if (text == "int") { return "INT_TYPE" }
     if (text == "double") { return "DOUBLE_TYPE" }
@@ -469,7 +471,10 @@ function keywordKind(text: string): string {
     if (text == "abstract") { return "ABSTRACT" }
     if (text == "finally") { return "FINALLY" }
     if (text == "instanceof") { return "INSTANCEOF" }
-    if (text == "as") { return "AS" }
+    // `as` 是 contextual keyword,只在 type cast 中缀位 (`expr as Type`,见 parse/parse_exprs.ss
+    // `parseComparison`) 与 import alias (`import { Foo as Bar }`,见 parse/parser.ss `parseImport`)
+    // 两处特殊识别,其他位置当普通 IDENT 处理(允许作参数名 / 局部变量名 / 类字段名,
+    // 与 TS / JS contextual keyword 语义一致)。
     if (text == "comptime") { return "COMPTIME" }
     return "IDENT"
 }

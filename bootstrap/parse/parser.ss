@@ -636,7 +636,12 @@ function parseImport(): int {
         if (curKind() == "COMMA") { pAdvance() }
     }
     pExpect("RBRACE")
-    pExpect("FROM")
+    // `from` contextual keyword(见 D166 / lexer keywordKind 注释)— import 位 IDENT 检查
+    if (curKind() != "IDENT" || curValue() != "from") {
+        println(`parse error at line ${curLineNum()}: expected 'from', found ${curKind()} '${curValue()}'`)
+        exit(1)
+    }
+    pAdvance()
     const path = curValue()
     pAdvance()
     expectNLOrRB()
