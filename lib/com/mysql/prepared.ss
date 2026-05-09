@@ -1689,6 +1689,28 @@ class MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement 
             i = i + 1
         }
 
+        // D165 Phase 2 — INOUT IN-inject: server has no native COM_STMT_EXECUTE
+        // bind for OUT/INOUT slots (the rewritten SQL drops them to @out_<i>
+        // session vars), so the IN half of an INOUT slot reaches the CALL only
+        // if we pre-set @out_<i> to its bound value. Without this, server CALL
+        // p(@out_<i>) sees @out_<i> = NULL and any RHS arithmetic collapses to
+        // NULL — drained `col_<i>` text is "" → getInt = 0. Connector/J 5.x/8.x
+        // emits the same multi-statement `SET @out_<i> := <v>` prefix.
+        // setInt / setLong / setBoolean only (MYSQL_TYPE_LONG / LONGLONG —
+        // paramValues already a decimal string); VAR_STRING / DOUBLE / NULL
+        // stay on the @out_<i> default-NULL fallback (留 §F6).
+        i = 0
+        while (i < n) {
+            if (dirs[i] == parameterModeInOut && this.paramNullBits[i] == 0) {
+                const paramType = this.paramTypes[i]
+                if (paramType == MYSQL_TYPE_LONG || paramType == MYSQL_TYPE_LONGLONG) {
+                    sendQuery(this.fd, `SET @out_${i + 1} := ${this.paramValues[i]}`)
+                    readUpdateResultPacket(this.fd)
+                }
+            }
+            i = i + 1
+        }
+
         sendComStmtPrepare(this.fd, rewritten)
         const ok = readPrepareOk(this.fd)
         readParamDef(this.fd, ok.numParams)
