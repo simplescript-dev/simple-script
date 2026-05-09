@@ -247,6 +247,7 @@ function resolveObjClass(nodeId: int): string {
             }
             const fType = classFieldTypes.getString(`${objClass}.${nGetS1(nodeId)}`)
             if (fType != "" && classFields.has(fType) == 1) { return fType }
+            if (fType != "" && ifaceMethodsCG.has(fType) == 1) { return fType }
         }
         return ""
     }
