@@ -1,0 +1,22 @@
+// D161 Phase 3 negative test doc-anchor — D025 vtable check 强制全 method 通路
+// 验证。lib/java/sql.ss NClob extends Clob {} 回退后 ifaceMethodsCG[NClob] entry
+// 自动继承 Clob 7 method,implementor class 必须实现父接口 method 集合。
+//
+// 验证(commit-time shell):
+//   bin/ss build tests/d161_interface_extends/_negative_phase3_d025.ss.txt -o /tmp/_d161_p3_neg \
+//     2>&1 | grep -F "missing method 'length' required by interface 'NClob'"
+//   echo "exit=$?"
+//   # 期望 stderr 含上述错误 + 进程 exit=1(checker D025 vtable check Phase 2 walk
+//   # parent merge 后强制 implementor class 必须实现父接口 method 集合)
+//
+// 本文件 .ss.txt 后缀避免 bin/ss test tests/ 自动编译/运行(只编译 .ss 文件)。
+
+import { NClob } from "@/lib/java/sql"
+
+class BrokenNClobD161 : NClob {
+    payload: string
+}
+
+function main() {
+    const b = new BrokenNClobD161()
+}

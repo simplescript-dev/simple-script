@@ -530,19 +530,12 @@ interface Clob {
 }
 
 // ── NClob — JDBC 4.3 §13.2.2 / java.sql.NClob ────────────────
-// National-character Clob (NCHAR / NVARCHAR / NCLOB columns). JDBC spec
-// has `NClob extends Clob`; SS interfaces lack extends syntax (D136
-// §A.5), so NClob declares the same method set independently. Driver
-// impls produced from NCHAR/NVARCHAR columns dispatch through this.
+// National-character Clob (NCHAR / NVARCHAR / NCLOB columns). Inherits
+// Clob's 7 methods via `extends Clob`; driver impls (MysqlNClob) are
+// also Clob implementors so `let c: Clob = new MysqlNClob(...)` upcast
+// dispatches correctly through the parent vtable.
 
-interface NClob {
-    function length(): int
-    function getSubString(pos: int, len: int): string
-    function setString(pos: int, str: string): int
-    function position(pattern: string, start: int): int
-    function truncate(len: int)
-    function getCharacterStream(): Reader
-    function free()
+interface NClob extends Clob {
 }
 
 // ── RowId — JDBC 4.3 §13.2.3 / java.sql.RowId ────────────────
