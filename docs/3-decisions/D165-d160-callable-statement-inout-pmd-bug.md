@@ -1,0 +1,152 @@
+# D165: lib/com/mysql/prepared.ss MysqlCallableStatement INOUT IN-inject 缺失 + PMD paramDirections 反射 corruption 双根因
+
+**Status:** [/] Phase 0 D 文档落档 + 起首脱胎自 D164 §Phase 3 wire 真值反射重启 PARTIAL GREEN(6/8 PASS,Case 3 INOUT got 0 expected 15 + Case 5 三态 mode got 262147 expected 4 双 fail 揭露独立 root cause #3) at commit `<phase0-hash>` + [ ] Phase 1 minimum repro 隔离 spike — root cause 3a INOUT path + root cause 3b PMD reflection 分别隔离 + LLVM IR inspect 真根因 at commit `<phase1-hash>` + [ ] Phase 2 修法 wire 落地(可能 lib/com/mysql/prepared.ss execute() INOUT IN-inject + 可能 bootstrap/gen child class own Array<int> field codegen 双修法) + 三阶段固定点 stage2==stage3 PASS at commit `<phase2-hash>` + [ ] Phase 3 D160 §Phase 4 wire 真值反射重启 + D163 §Phase 3 重启 — 在线 docker compose MySQL 8.0 healthy 后 bin/ss test tests/d160_callable_statement/ 8 case 全 GREEN(Case 1 H1 / Case 2 OUT INTEGER 真值=20 H4 / Case 3 INOUT 真值=15 H4 / Case 4 multi OUT H4 / Case 5 三态 mode H3 / Case 6 getString H4 / Case 7 getDouble H4 / Case 8 wasNull SQL NULL) at commit `<phase3-hash>` + [ ] Phase 4 D165 主线 close + D164 §F10 + D163 §F5 + D160 §F9 锚回填 at commit `<phase4-hash>` — D164 §Phase 3 §A.2 H5 假设破裂起首脱胎(D164 §Phase 2 PIR liveness 修法成功消除 use-after-free segfault + d164_spike 4 case 全 GREEN + /tmp/d160_t18.ss exit=0 + 在线 docker 8 case 6 PASS 0 segfault,但 Case 3 + Case 5 仍 fail 实证 D164 修法之外的独立 root cause #3)。修 SS 应用层 lib/com/mysql/prepared.ss MysqlCallableStatement INOUT IN-inject + 应用层或编译器层 PMD paramDirections 反射 corruption 双根因 — 不接受次优 / workaround / 节省路径(用户对话锁)。
+
+## 起首脱胎
+- D164 §Phase 3(`docs/3-decisions/D164-pir-liveness-helper-fn-loop-class-method-drop.md` Phase 3 §收关锚) — D164 §Phase 2 PIR liveness 修法 wire 落地 commit `26d656c` 后 D160 §Phase 4 wire 真值反射重启实测 8 case 6/2 PASS/FAIL — 无 segfault(D164 修法成功消除 use-after-free)+ /tmp/d160_t18.ss exit=0 + d164_spike 4 case 全 GREEN,但 Case 3 INOUT got 0 expected 15 + Case 5 三态 mode got 262147 expected 4 揭露 D160 wire path 残留独立 root cause #3
+- D164 §A.2 H5 假设(D164 §Phase 2 修法 wire 落地后 D160 §Phase 4 wire 真值反射重启 8 case 全 GREEN)实测后**部分破裂** — segfault 维度 GREEN(D164 PIR liveness 修法成功),但 wire 真值反射数据正确性维度 RED(2 fail)→ 独立 root cause #3
+- 用户对话锁"最根的根因去解决"(2026-05-09)— 实测发现 wire path 数据正确性 bug 不在 D164 PIR liveness scope 内,起首独立编译器/应用层 sub-D 修双根因
+- D135-D164 主线范式延续(Phase 计划 + Status 收关 + hash 回填 + next_prompt 自闭环 + §A.2 隐藏假设 + §A.3 废案 + §Followup)
+- Depends on:D164 主线 close(PIR liveness 修法 wire 落地 commit `26d656c`)— D165 修 wire path INOUT + PMD corruption,不破坏 D164 修法
+
+## 核心目标 (Goal)
+
+落地后:
+1. **root cause 3a 修法**:`lib/com/mysql/prepared.ss MysqlCallableStatement.execute()` INOUT IN-inject 路径补齐 — 在 COM_STMT_PREPARE 之前发 `SET @out_<i> := <IN value>` 通过 COM_QUERY 多语句 inject INOUT idx 的 IN 值到 server session var,后续 CALL `@out_<i>` 占位时 server 看到的是真 IN 值而非 NULL
+2. **root cause 3b 修法**:`MysqlParameterMetaData getParameterMode(idx)` 反射 paramDirections 真值不再 corruption(从 262147 → 4)— 修法目标待 §Phase 1 spike 隔离后锁定(可能 lib/com/mysql/prepared.ss MysqlCallableStatement.getParameterMetaData / MysqlParameterMetaData class 应用层 bug,可能 bootstrap/gen 编译器层 child class own Array<int> field codegen / RC bug,或者两者联动)
+3. `./build.sh bootstrap` 三阶段固定点 stage2==stage3 bit-identical PASS(若 Phase 2 修法触及 bootstrap/gen)
+4. `bin/ss test tests/d160_callable_statement/` 8 case 全 GREEN — Case 1 H1 wire ✓ + Case 2 OUT INTEGER 真值=20 H4 ✓ + **Case 3 INOUT 真值=15 H4(本 D 主修)** + Case 4 multi OUT H4 ✓ + **Case 5 三态 mode H3(本 D 主修)** + Case 6 getString H4 ✓ + Case 7 getDouble H4 ✓ + Case 8 wasNull SQL NULL ✓
+5. /tmp/d160_t18.ss + 各 d164_spike 等历史 spike 全继承 GREEN(D164 修法不破 + D165 修法不破)
+6. baseline 全继承 + reflection_health_linter no regression GATE PASS + d_doc_index_linter F1 = 0(D147/D154/D155/D156/D157/D160/D161/D162/D163/D164/D165 全实存)+ next_prompt_ultrathink_linter PASS
+
+**RED**(本 D 文档落档前 D164 §Phase 3 实测):
+- `bin/ss test tests/d160_callable_statement/` 在线 docker MySQL 8.0 healthy 后 6/2 PASS/FAIL — Case 3 INOUT setInt(1,5) + register(1,INT) + execute + getInt(1) expected 15 got 0 / Case 5 setInt(1,4) + register(2,INT) + setInt(3,100) + register(3,INT) + pmd.getParameterMode(2) expected 4 got 262147(0x40003 — 非随机 garbage,structured corruption)
+- /tmp/d165_min_pmd.ss 简单 alias-write + cross-class reflection spike GREEN(`Holder { arr } + alias inner = h.arr + inner[1] = 4 + Reflector reads share = 4`)— PMD bug 触发条件比简单 share 复杂
+- /tmp/d165_min_pmd2.ss extends + 多 own Array<int> field 形态 GREEN(`Child extends Parent { dirs } + setOut + Reflector { dirs }` 全过)— PMD bug 触发条件需要 iface impl 或更复杂结构
+- /tmp/d165_min_pmd3.ss extends + iface impl + 多 parent Array field + child own Array<int> + PMD class 同 18-arg 形态 GREEN — 仍未复现 corruption,真实 MysqlCallableStatement 形态(extends MysqlPreparedStatement : CallableStatement + 18 字段 + iface getParameterMetaData override + Array<ColumnDef> paramDefs)某额外维度触发,留 §Phase 1 真 spike 隔离
+
+## 核心原则 (Principles)
+
+1. **Root Cause 第一法则 + 不接 workaround / 节省路径**:用户对话锁 — 修 wire path INOUT IN-inject + PMD reflection 真根因,**不**接受 inline patch 绕过(如不通过 const 字段记录 INOUT 值;不在 PMD 内多复制一次 paramDirections 来 hide corruption)
+2. **D164 PIR liveness 修法不动**:D164 §Phase 2 修法 wire 落地 commit `26d656c` 已成功消除 segfault,本 D 修法 must compatible 不破 D164 修法 — 跑 d164_spike 4 case 全 GREEN 守护
+3. **业界对标**:JDBC Connector/J 5.x / 8.x 处理 INOUT 的标准做法 — `SET @out_<idx> := <IN value>` 在 `CALL p(?, @out_<idx>)` 之前(via COM_QUERY 多语句 + MULTI_STATEMENTS capability,或 explicit COM_QUERY before COM_STMT_PREPARE)— SS 必同等支持
+4. **bootstrap 三阶段固定点必走**(若 Phase 2 修法触及 bootstrap/gen):任何 bootstrap/gen 修改必走 ./build.sh bootstrap 三阶段 stage2==stage3 bit-identical 验证(D135-D164 编译器主线范式延续)
+5. **D135-D164 主线范式延续**:Phase 计划独立 commit + Status 收关 + hash 回填 + next_prompt 自闭环 + §A.2 隐藏假设 + §A.3 废案 + §Followup
+6. **D160 §Phase 4 + D163 §Phase 3 重启**:本 D 主线 close 后 D160 §Phase 4 + D163 §Phase 3 同时启动,8 case docker e2e 全 GREEN 是 H4 实证锚收关条件 — 跨 D 起首回填范式延续(D165 close → D160 §Phase 4 + D163 §Phase 3 重启)
+7. **N 年返工度**:不修 → 后续每条 sub-D 用 INOUT stored proc / extends + iface impl + own Array<int> reflection 形态(常见 ORM driver / wrapper class / adapter class)全部 wire 真值假阳 → 必修
+8. **不接受双根因合并到同 commit 修法**:即使 root cause 3a + 3b 在同一文件 / 同一 wire path,Phase 2 修法仍可能拆 2 commit(应用层 + 可能编译器层),按 D135-D164 范式按 root cause 切片,不按文件 / scope 合并
+9. **依赖链不破**:D162 §F7 vtable + non-0-arg overload child class bug 修法 + D163 §Phase 2 ifaceMethodsCG.has 守护修法 + D164 §Phase 2 PIR liveness 双修法 + 本 D 修法 四者正交并存,各修各根因,任一回退都破依赖链;Phase 2 修法后 D162/D163/D164 spike 重跑 GREEN 守护
+10. **同源 corner case 系列延续**:D162 §F7 vtable + non-0-arg overload child class bug + D163 §Phase 2 MEMBER_ACCESS ifaceMethodsCG.has 守护 + D164 §Phase 2 PIR liveness 双修法 + 本 D 修法 — 全部 child class extends + iface impl 形态下 codegen / RC / liveness 各 corner case 修法系列同源延续(若 root cause 3b 是编译器层)
+
+## A.1 主候选评估(§MNK §M §字段 10)
+
+| 候选 | 层次 | 含 | 不含 | 决策 |
+|------|------|-----|------|------|
+| **C1** | workaround:driver 改 const-field 记录 INOUT IN 值 + PMD 内多复制 paramDirections | + 暂时绕过 SS 真 wire path INOUT IN-inject 缺失 + PMD reflection corruption,改用 const 字段或多复制 paramDirections 模拟正确反射 | wire path INOUT bug + PMD corruption 真根因不修,后续每条 sub-D 用 INOUT / PMD reflection 形态全断链 | **不选** — 用户对话锁不接 workaround;违反 ROOT CAUSE 第一法则 |
+| **C2** | **应用层 wire path 修法 + 可能编译器层 codegen 修法 双根因** | + 修 lib/com/mysql/prepared.ss MysqlCallableStatement.execute() INOUT IN-inject + 修 PMD reflection corruption(应用层或编译器层,Phase 1 spike 隔离后锁定)+ bootstrap 三阶段固定点(若触及 bootstrap/gen)+ minimum repro spike GREEN + D160 §Phase 4 wire 真值反射重启 8 case docker e2e 全 GREEN | 高级类型(generic over CallableStatement / 多接口 INOUT)留 §F / 多 driver compatibility 留 §F | **选** — 根因解决:N 年返工度极高 + 业界对标 JDBC Connector/J 标准 + 与 D162/D163/D164 修法系列同源延续 + 不破依赖链 |
+| **C3** | 架构层 refactor:SS 类系统 + iface vtable + RC retain + PIR liveness 完整体系审查 | + 全面审视 SS class field GEP / vtable / RC retain / PIR liveness 体系 + 多 corner case(嵌套继承 / generic class / interface multi-impl / 多 own Array<int> field reflection)全覆盖 | scope 远超 D165 单 sub-D — 跨 D162 / D163 / D164 / D018 等所有 vtable / class 字段 / liveness sub-D 联动 | **不选** — scope 远超 + N 年路径,本 D 仅修当前 corner case 不动整体类系统 |
+
+**决策行**:**选 C2 应用层 + 可能编译器层 双根因修法**(用户对话锁 — 不接次优 / workaround / 节省)— 因 (a) Root Cause 第一法则下应用层 wire path bug + 编译器 corner case bug 必修;(b) 业界对标 JDBC 4.3 §13.x INOUT 标准模式 + JDBC ParameterMetaData 真值反射,SS 必同等支持;(c) D162/D163/D164 修法系列延续(child class extends + iface impl 形态 corner case 同源 covered scope 自然延伸);(d) D160 §Phase 4 + D163 §Phase 3 重启依赖此修;(e) **N 年返工度极高** — 后续每条用 INOUT stored proc / PMD reflection / child class own Array reflection 模式的 sub-D(常见 ORM helper / wrapper class / adapter class / stdlib helper)全部 wire 真值假阳;(f) scope 中等可控(应用层 +5~+15 LOC + 编译器层若有 +1~+30 LOC + Phase 0-4 切片);(g) D135-D164 主线范式延续。
+
+## A.2 隐藏假设挑战
+
+| H | 假设 | 挑战 | 实证锚 |
+|---|------|------|--------|
+| H1 | INOUT 真根因 = lib/com/mysql/prepared.ss MysqlCallableStatement.execute() 漏调 IN-inject 应用层简单 wire path bug | execute() line 1659-1709 实测路径只调 rewriteCallSqlPlaceholders(SQL `?` → `@out_<i>`)未调 injectOutVarSetters(prefix `SET @out_<i> = NULL; `,但 hardcode NULL 不是 IN 值 — 且未在 execute() 内调用),致 INOUT 的 IN 值 paramValues[idx-1] 无处 bind(server statement num_params=0,binary execute 不发送)+ server 内 @out_<i> session var 初始 NULL → CALL p(@out_<i>) 内 SET p1 = p1 * 3 → NULL * 3 = NULL → @out_<i> = NULL → drain getString(col_<i>) = "" → getInt = 0 | Phase 1 spike 显式构造 minimum repro `INOUT setInt(1, 5) + register(1, INT) + execute + getInt(1)` 单 case 验证;LLVM IR inspect execute() generated IR 看 inject 路径是否 emit COM_QUERY `SET @out_1 := 5`;Phase 2 修法 wire 落地后 8 case Case 3 GREEN(getInt(1)=15)|
+| H2 | PMD corruption 真根因 = 编译器层 child class own Array<int> field codegen / RC bug — 同源 D163 §F5 corner case 但作用于 plain Array<int> 而非 iface-typed field | MysqlParameterMetaData(extends nothing : ParameterMetaData)2 own field paramMetadata: Array<ColumnDef> + paramDirections: Array<int>。new MysqlParameterMetaData(this.paramDefs, this.paramDirections) 构造时,Array<int> field 可能走 deep_clone 或 share-by-reference 不一致路径,致 PMD 拿到 corruption 副本。原 cs.paramDirections[1] = 4 写入正确(实证:cs 内部 alias write paramDirections[idx-1] = parameterModeOut),但 PMD.paramDirections[1] 反射 read 出 262147(0x40003)| Phase 1 spike 显式构造 PMD-form minimum repro `class Child extends MyParent : Iface { ownArr: Array<int> } + cs.getParameterMetaData() + pmd.read[idx]` 验证 corruption 出现条件;LLVM IR inspect PMD constructor + getParameterMode IR 看 GEP offset / RC 路径;若 corruption RED 复现,跑 D162/D163 修法相邻 codegen path 看是否同源 corner case |
+| H3 | PMD corruption 真根因 = 18-arg constructor positional arg 偏移 bug — buildCallableStatement 18 个 args 顺序中某个 arg 错位致 paramDirections field 拿到错误数据 | MysqlCallableStatement = parent 14 fields + child 4 own = 18 fields 总;buildCallableStatement(fd, stmtId, numParams, paramDefs, paramTypes, paramValues, paramDoubles, paramNullBits, columnDefs, 0, 0, 0, 0, 0, paramDirections, emptyCallableOutRow(), 0, sql) 18 个 positional args。SS 编译器对 18-arg constructor 是否有 GEP offset 错位 / param-passing bug 待验证 | Phase 1 spike 显式构造 18-field class minimum repro 验证 GEP offset / arg-passing 正确;LLVM IR inspect constructor IR 看每个 field 写入 offset 是否对齐 |
+| H4 | PMD corruption 与 INOUT bug 联动 — 共享 paramDirections lifecycle(Phase 1 spike 修了 INOUT 后 PMD corruption 一并消失)| 实测 INOUT bug + PMD bug 同 Case 5 内联(setInt+register+register 后 pmd.getParameterMode 反射)— 可能 INOUT IN-inject 的修法影响 paramDirections lifecycle 间接修了 PMD reflection。但理论上不应,因 INOUT 路径修在 execute() 不动 paramDirections | Phase 1 spike 隔离测试:(a) 仅修 INOUT bug 不修 PMD,看 Case 5 是否仍 fail;(b) 仅修 PMD bug 不修 INOUT,看 Case 3 是否仍 fail。两者独立或联动决定 Phase 2 修法切片(1 commit 双修 vs 2 commit 分修)|
+| H5 | D164 §Phase 2 PIR liveness 修法在 PMD reflection 路径某 corner case 引入 regression — d164_spike 4 case 不覆盖 PMD reflection | d164 spike 4 case 仅覆盖 helper fn + while loop + class.method 模式,不含 PMD reflection 路径(extends + iface impl + own Array<int> field + new PMD(this.array) cross-class 反射)。可能 D164 §Phase 2 pir_lower.ss 修法在 PMD constructor 调用路径误标 last-use 致 paramDirections 在 PMD 构造前/后 ss_drop | Phase 1 spike 验证:(a) 用 D164 §Phase 2 之前的 bootstrap binary 重跑 8 case,看 Case 5 是否同样 fail(若是 → D164 修法不引入 regression,bug 在更早就存在);(b) LLVM IR inspect PMD constructor 调用前后是否有 ss_drop_<Class> on paramDirections;(c) 若是 D164 regression,加 PMD reflection 形态到 d164 spike 然后 Phase 2 增量修法 |
+| H6 | bootstrap 三阶段固定点 stage2==stage3 bit-identical 在 Phase 2 修法后 PASS | 若 Phase 2 修法触及 bootstrap/gen,需 self-bootstrap 不破。stage1 用 stage0 编译,stage2 用 stage1 编译,stage3 用 stage2 编译,stage2==stage3 bit-identical | Phase 2 修法后 ./build.sh bootstrap 三阶段固定点 PASS;Phase 3 后 bootstrap 仍稳 |
+| H7 | Phase 2 修法对 reflection scope 14 指标无 regression — 尤其 F1 `lib/com/mysql/prepared.ss` LOC 增量(若应用层 +5~+15 LOC)+ F1 `bootstrap/gen/...` LOC 增量(若编译器层 +1~+30 LOC)| Phase 2 修法估 +5~+45 LOC 对 F1 budget 影响小;若超 budget_max 需 `bump` / `bump-group` 申报扩容(D097 §扩容协议)| Phase 2 修法后跑 reflection_health_linter no regression GATE,任一物理指标 > budget_max 阻断 commit |
+| H8 | bin/ss test tests/ baseline 不退化 — D165 修法后 8 case 全 GREEN + 历史 spike 全 GREEN(d164/d163/d162/d161/d147/d155/d156/d157 等)+ NoopCallableStatement 路径仍 stub | D165 修法不破 NoopCallableStatement stub return new NoopCallableStatement;不破 D162 §F7 vtable 修法 + D163 §Phase 2 ifaceMethodsCG.has 修法 + D164 §Phase 2 PIR liveness 修法 | Phase 2 修法后 bin/ss test tests/ 净 +1~+2 PASS(d160 integration_test file 级 1 fail → 1 pass;原本离线 probe-skip PASS → 在线 docker 8 case 全 GREEN)|
+
+## A.3 废案
+
+- **C1 driver 改 workaround**(用户对话锁不接 workaround / 节省路径;违反 ROOT CAUSE 第一法则)
+- **C3 架构层 refactor**(scope 远超 D165 单 sub-D)
+- **改 D160 paramDirections 字段类型从 Array<int> 改为 Array<int> snapshot copy / Map<int,int>**(workaround;违反 SS 类型系统多态范式)
+- **改 PMD getParameterMode 多调 一次 deepClone(paramDirections)**(workaround + 性能退化 + memory pressure)
+- **改 D160 outRow 字段类型从 ResultSet 接口改为 MysqlResultSet 具体类型**(workaround;违反 interface 类型多态 + 与 D163 §Phase 2 修法不一致)
+- **临时跳过 D160 §F9 等远期处理**(用户对话锁 docker 在线验证 wire 真值是核心目标)
+- **临时回退 D162 §F7 / D163 §Phase 2 / D164 §Phase 2 修法**(回退已 wire 落地的根因修法 — 违反 ROOT CAUSE 第一法则 + 破依赖链 + scope 失控)
+- **改 D160 outRow 字段名 / 移到父类 MysqlPreparedStatement**(workaround + 跨 D 范畴破坏 + 仍需 codegen / wire path 修法 root cause)
+- **强制 SS 标记 INOUT 字段为 unsafe / volatile**(SS 类型系统不支持 + 反 user-friendly 范式)
+- **D165 与 D164 §Phase 4 close + D163 §Phase 3 重启 + D160 §Phase 4 重启 同 commit 落地**(scope 失控 — D165 是修 wire + 可能编译器 root cause + D164/D163/D160 是应用层 wire 验证,二者分开切片 — D165 主线 close → D164 §F10 + D163 §F5 + D160 §F9 锚回填 → D163 §Phase 3 重启 → D160 §Phase 4 重启 跨 D 起首回填范式延续)
+
+## Phase commit hash 总览
+
+| Phase | 内容 | Commit |
+|-------|------|--------|
+| 0 | D 文档落档(§核心目标 + §核心原则 P1-P10 + §A.1-A.3 + §Phase 收关锚 Phase 0-4 + §Followup F1-F? + §Status 时间线)+ 跨 D 起首回填 D164 §Phase 2 hash `26d656c` + D164 §Phase 3 PARTIAL hash `<phase0-hash>` 至 D165.md ≥3 处 | `<phase0-hash>` |
+| 1 | minimum repro `tests/d165_callable_statement_inout_pmd_bug/phase1_repro_spike_test.ss` 多 case RED-as-spike(分别隔离 root cause 3a INOUT path + root cause 3b PMD reflection)+ LLVM IR inspect 双根因 isolate(执行路径 IR + PMD constructor IR)+ Phase 2 修法 target file:line + LOC 估算 + 跨 D 起首回填 D165 §Phase 0 hash | `<phase1-hash>` |
+| 2 | 修法 wire 落地(可能 lib/com/mysql/prepared.ss execute() INOUT IN-inject + 可能 bootstrap/gen child class own Array<int> field codegen / RC 修法 双修)+ ./build.sh bootstrap 三阶段固定点 PASS(若 Phase 2 修法触及 bootstrap/gen)+ Phase 1 spike 重跑全 GREEN + reflection_health_linter no regression(M1-M7+N1-N5 + F1)+ bin/ss test tests/ 净不退化 + 跨 D 起首回填 D165 §Phase 1 hash | `<phase2-hash>` |
+| 3 | D160 §Phase 4 wire 真值反射重启 + D163 §Phase 3 重启 — `docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait` MySQL 8.0 healthy 后 `bin/ss test tests/d160_callable_statement/` 8 case 全 GREEN(Case 1 H1 + Case 2 OUT INTEGER 真值=20 H4 + Case 3 INOUT 真值=15 H4 + Case 4 multi OUT H4 + Case 5 三态 mode H3 + Case 6 getString H4 + Case 7 getDouble H4 + Case 8 wasNull SQL NULL)+ 跨 D 起首回填 D165 §Phase 2 hash | `<phase3-hash>` |
+| 4 | D165 主线 close + D164 §F10 重启锚回填 + D163 §F5 重启锚回填 + D160 §F9 重启锚回填 + D163 主线 close + D160 主线 close 锚链一并清理(由 D163 §Phase 4 + D160 §Phase 4 close commit 处理,本 D 仅锚回填) | `<phase4-hash>` |
+
+## Phase 收关锚
+
+### Phase 0: D 文档落档 [/] In progress at commit `<phase0-hash>`
+
+- 落地 `docs/3-decisions/D165-d160-callable-statement-inout-pmd-bug.md`(本文件)— ≥150 行 — §核心目标 + §核心原则 P1-P10 + §A.1 候选评估 + §A.2 隐藏假设 H1-H8 + §A.3 废案 + §Phase 收关锚 Phase 0-4 + §Followup F1-F? + §Status 时间线
+- 落地 `.claude/next_prompt.md`(下轮 D165 §Phase 1 起首 — minimum repro spike 移植 + 多 case RED-as-spike(分别隔离 INOUT + PMD)+ LLVM IR inspect 真根因)— 含 ultrathink 关键字 + 不写 docs-only 字面(防 self-recursive spin / next_prompt_ultrathink_linter C4 守护)
+- **跨 D 起首回填 D164 §Phase 2 hash `26d656c`(D164 PIR liveness 修法 wire 落地)+ D164 §Phase 3 PARTIAL hash `<phase0-hash>`(D164 主线锚 GREEN + D165 起首脱胎)至 D165.md ≥3 处实际语义位**(Status header / §起首脱胎 / §Phase commit hash 总览段表 Phase 0 行 / Status 时间线 起首脱胎 entry)
+- bootstrap/ + lib/ + tools/ + tests/ diff = 0(本 Phase 纯 docs/ + .claude/next_prompt.md)
+- baseline:`d_doc_index_linter` F1 = 0 PASS(D147/D154/D155/D156/D157/D160/D161/D162/D163/D164/D165 全实存,加入 D165 实存)+ `next_prompt_ultrathink_linter` PASS(下轮 D165 §Phase 1 起首含 ultrathink + 不 docs-only)+ 14 reflection 指标全继承 D164 §Phase 2 baseline(本 Phase 不动 bootstrap/ → reflection scope 不触)+ `bin/ss test tests/` 全继承 306/16/322
+
+### Phase 1: minimum repro 隔离 spike(多 case RED-as-spike — 分别隔离 INOUT path + PMD reflection)+ LLVM IR inspect 双根因 isolate [ ] Pending at commit `<phase1-hash>`
+
+- 落地 `tests/d165_callable_statement_inout_pmd_bug/phase1_repro_spike_test.ss` 多 case RED-as-spike — Case A INOUT path simple repro `cs.setInt(1,5) + cs.registerOutParameter(1,INT) + cs.executeUpdate + cs.getInt(1)` expected 15 / Case B PMD reflection simple repro `cs.setInt(1,4) + cs.registerOutParameter(2,INT) + cs.setInt(3,100) + cs.registerOutParameter(3,INT) + pmd.getParameterMode(2)` expected parameterModeOut=4 / Case C 双 bug 联动 / 多形态 spike(extends + iface impl + 多 own Array<int> field + 18-arg constructor 形态)
+- LLVM IR inspect:`bin/ss build phase1_repro_spike_test.ss --emit-ir -o /tmp/d165_spike` 显示 — execute() generated IR 看 INOUT IN 值是否 inject 到 COM_QUERY `SET @out_<i> := <IN value>`;PMD constructor + getParameterMode IR 看 paramDirections GEP offset / RC retain / share-by-ref 路径
+- **真根因 file:line + 修法 target 双修**(锁定 Phase 2 target):
+  - **root cause 3a (INOUT path)** — 修法 target = lib/com/mysql/prepared.ss MysqlCallableStatement.execute() line 1659-1709 内加 INOUT IN-inject 路径(在 sendComStmtPrepare 之前发 COM_QUERY `SET @out_<i> := <IN value>` 多语句 inject INOUT idx 的 IN 值到 server session var,后续 CALL `@out_<i>` 占位时 server 看到的是真 IN 值;LOC 估 +5~+15)
+  - **root cause 3b (PMD reflection)** — 修法 target = 待 Phase 1 spike 隔离后锁定;若是应用层 bug,可能 lib/com/mysql/prepared.ss MysqlCallableStatement.getParameterMetaData / MysqlParameterMetaData getter 实现修法(LOC 估 +1~+10);若是编译器层 bug,可能 bootstrap/gen child class own Array<int> field codegen / RC 修法(LOC 估 +1~+30,与 D162 §F7 / D163 §Phase 2 修法系列同源)
+- **守护**:`./build.sh bootstrap` 三阶段固定点 stage2==stage3(若 Phase 2 修法触及 bootstrap/gen)+ Phase 1 spike 重跑全 GREEN + d164 spike 4 case + d163 spike 3 case + d162 spike 等历史 spike 全 GREEN 守护 + reflection_health_linter no regression GATE PASS + bin/ss test tests/ 净不退化
+- 跨 D 起首回填 D165 §Phase 0 hash `<phase0-hash>` 至 D165.md ≥4 处实际语义位
+- bootstrap/ 不动(本 Phase 仅 tests/ + 诊断)+ baseline 全继承 + d_doc_index_linter F1=0 + 14 reflection 指标全继承 + next_prompt_ultrathink_linter PASS
+
+### Phase 2: 修法 wire 落地(应用层 + 可能编译器层 双修法)+ 三阶段固定点 PASS(若触及 bootstrap/gen)+ Phase 1 spike 全 GREEN [ ] Pending at commit `<phase2-hash>`
+
+- **PRIMARY 修法 wire 落地**(分根因切片):
+  - root cause 3a 修法:lib/com/mysql/prepared.ss MysqlCallableStatement.execute() 加 INOUT IN-inject(在 sendComStmtPrepare 之前 COM_QUERY 多语句 SET @out_<i> := <IN value>)— LOC 估 +5~+15
+  - root cause 3b 修法:Phase 1 spike 隔离后锁定(应用层或编译器层),LOC 估 +1~+30
+- `./build.sh bootstrap` 三阶段固定点 stage2==stage3 bit-identical PASS(若 Phase 2 触及 bootstrap/gen)
+- reflection_health_linter GATE PASS — no regressions(M1-M7+N1-N5 全继承 + F1 budget 评估)
+- Phase 1 spike 重跑全 GREEN + d164 spike 4 case + d163 spike 3 case + d162 spike + 其他 spike 全 GREEN 守护
+- bin/ss test tests/ 净不退化
+- d_doc_index_linter F1=0 PASS(D147/D154/D155/D156/D157/D160/D161/D162/D163/D164/D165 全实存)+ next_prompt_ultrathink_linter PASS
+- simplify 必走(若 Phase 2 修法 LOC > 0 业务代码 — 4 agent 评估 reuse / quality / efficiency / readability,readability veto 优先)
+- 跨 D 起首回填 D165 §Phase 1 hash 至 D165.md ≥4 处
+
+### Phase 3: D160 §Phase 4 wire 真值反射重启 + D163 §Phase 3 重启 — 在线 docker 8 case 全 GREEN [ ] Pending at commit `<phase3-hash>`
+
+- D160.md Status header 改 `[/] Phase 4 ... at commit \`<phase3-hash>\`` 重启 + D160 主线 close 一并清理(由 D160 §Phase 4 close commit 处理)
+- D163.md Status header 改 `[/] Phase 3 hold ... at commit \`29a7487\` + [x] Phase 3 重启 ... at commit \`<phase3-hash>\``
+- 在线 `docker compose -f tests/d134_mysql/docker-compose.yml up -d --wait` MySQL 8.0 healthy 后 `bin/ss test tests/d160_callable_statement/` 8 case 全 GREEN(Case 1 H1 + Case 2 OUT INTEGER 真值=20 H4 + Case 3 INOUT 真值=15 H4 + Case 4 multi OUT H4 + Case 5 三态 mode H3 + Case 6 getString H4 + Case 7 getDouble H4 + Case 8 wasNull SQL NULL)
+- /tmp/d160_t18.ss 实测 exit=0(D164 修法守护)+ d164/d163/d162/d161 等历史 spike 全 GREEN 守护
+- 跨 D 起首回填 D165 §Phase 2 hash 至 D163.md(§Phase 3 重启锚 / Status header / §Followup F5 row 末尾上下文)+ D160.md(§F9 row 末尾上下文 / §Phase 4 §收关锚 / Status 时间线 D165 close + D163 §Phase 3 重启 + D160 §Phase 4 重启 entry)+ D164.md(§F10 row 末尾上下文)
+
+### Phase 4: D165 主线 close + D164 §F10 + D163 §F5 + D160 §F9 重启锚回填 [ ] Pending at commit `<phase4-hash>`
+
+- D165 主线 close 锚:Status header `[x] Phase 0-4 + [x] D165 主线 close at commit \`<phase4-hash>\``
+- D164 §Followup F10 row 末尾上下文更新 `commit \`<phase4-hash>\` D165 主线 close → D164 §Phase 4 close GREEN`
+- D163 §Followup F5 row 末尾上下文更新 `commit \`<phase4-hash>\` D165 主线 close → D163 §Phase 3 重启 GREEN`
+- D160 §Followup F9 row 末尾上下文更新 `commit \`<phase4-hash>\` D165 主线 close → D160 §Phase 4 wire 真值反射重启 GREEN`
+- D163 §Phase 3 重启 + D163 主线 close + D160 §Phase 4 + D160 主线 close 一并清理(由 D163 §Phase 4 / D160 §Phase 4 close commit 处理,本 D 仅锚回填)
+- 跨 D 起首回填范式延续:本 D 主线 close 后 Phase 4 hash 留 D163 §Phase 4 close + D160 §Phase 4 close commit 起首跨 D 回填(D162 §Phase 4 close → D160 §Phase 3 / D163 close → D160 §Phase 4 同形)
+
+## Followup
+
+| F | 内容 | 范围 |
+|---|------|------|
+| F1 | INOUT IN-inject 多语句 path 与 server MULTI_STATEMENTS capability 兼容性(connect 时 capability 是否 set,COM_QUERY 多语句 vs 单语句)| 跨 driver 通用 wire path 主题 — 本 D 仅修当前 INOUT 路径,完整 multi-statement capability 体系审查留独立 sub-D 远期 |
+| F2 | PMD reflection corruption 真根因 isolate spike(简单 repro GREEN,真实 MysqlCallableStatement 形态某额外维度触发,Phase 1 spike 待隔离锁定)| 应用层或编译器层 — 本 D Phase 1 spike scope,Phase 2 修法 target 锁定后修 |
+| F3 | 跨 codegen / RC / PIR 三层根因诊断(若 Phase 1 spike 隔离不出来,需 LLVM IR + bytecode + PIR dump 全栈 trace)| 编译器主题 — 本 D Phase 1-2 scope,若隔离失败留 §F 远期 |
+| F4 | D164 §Phase 2 PIR liveness 修法兼容性守护(D165 修法不破 d164 spike + 历史 d164/d163/d162 等 spike GREEN)| 守护 — Phase 2 修法后跑 d164 spike 4 case + d163 spike 3 case + d162 spike 等全 GREEN,任一 RED 立即停止修法 |
+| F5 | 18-arg constructor positional arg 偏移 / GEP offset 完整性审查(MysqlCallableStatement parent 14 + own 4 = 18 字段全验证 — extends + iface impl 形态下 GEP offset 是否对齐)| 跨 D 通用 codegen 主题 — 本 D 仅修当前 corner case,完整体系审查留独立 sub-D 远期 |
+| F6 | INOUT 多类型支持(setLong / setString / setDouble + register OUT 的不同 SQL 类型)— 本 D Phase 1-3 主修 setInt + JDBC_TYPE_INTEGER 路径,扩展类型留独立 sub-D | 多类型扩展 — 留远期 sub-D |
+| F7 | wire path multi-statement permission(server-side MULTI_STATEMENTS 1 capability 协商)+ COM_QUERY 多语句 SQL 注入风险(server-side prepared statement vs client-side multi-statement)| 跨 driver 通用 wire path 主题 — 留远期 sub-D |
+
+## Status 时间线
+
+- 2026-05-09 **D165 起首脱胎 + Phase 0 D 文档落档**(commit `<phase0-hash>`)— **新建 docs/3-decisions/D165-d160-callable-statement-inout-pmd-bug.md** ≥150 行(§核心目标 + §核心原则 P1-P10 + §A.1 候选评估 + §A.2 隐藏假设 H1-H8 + §A.3 废案 + §Phase 收关锚 Phase 0-4 + §Followup F1-F7 + §Status 时间线)+ **跨 D 起首回填 D164 §Phase 2 hash `26d656c`(D164 PIR liveness 修法 wire 落地)+ D164 §Phase 3 PARTIAL hash `<phase0-hash>`(D164 主线锚 GREEN + D165 起首脱胎)至 D165.md ≥3 处实际语义位**(Status header line 3 / §起首脱胎 / §Phase commit hash 总览段表 Phase 0 行 / Status 时间线 起首脱胎 entry 本 entry)— D164 §A.2 H5 假设破裂起首脱胎,根因优先(用户对话锁"最根的根因去解决");**RED 实测**:`bin/ss test tests/d160_callable_statement/` 在线 docker MySQL 8.0 healthy 后 6/2 PASS/FAIL — Case 1 H1 wire ✓ / Case 2 OUT INTEGER 真值=20 H4 ✓ / Case 3 INOUT setInt(1,5) + register(1,INT) + executeUpdate + getInt(1) **expected 15 got 0** ❌ / Case 4 multi OUT H4 ✓ / Case 5 setInt(1,4) + register(2,INT) + setInt(3,100) + register(3,INT) + pmd.getParameterMode(2) **expected 4 got 262147(0x40003 — 非 garbage,structured corruption)**❌ / Case 6 getString OUT VARCHAR ✓ / Case 7 getDouble OUT DOUBLE ✓ / Case 8 wasNull SQL NULL ✓;**简单 repro 探索**:/tmp/d165_min_pmd.ss(Holder + alias write + Reflector cross-class read)GREEN / /tmp/d165_min_pmd2.ss(extends + 多 own Array<int> field + alias write)GREEN / /tmp/d165_min_pmd3.ss(extends + iface impl + 多 parent Array field + child own Array<int> + PMD class 18-arg 形态)GREEN — PMD bug 触发条件比简单 cross-class share 更复杂,真实 MysqlCallableStatement 形态某额外维度触发,留 §Phase 1 真 spike 隔离;**INOUT bug 诊断**:lib/com/mysql/prepared.ss MysqlCallableStatement.execute() line 1659-1709 实测路径 — 调 rewriteCallSqlPlaceholders(? → @out_<i>)+ 过滤 OUT-only paramTypes/Values + sendComStmtPrepare(rewritten 0 placeholders SQL)+ sendComStmtExecute(filtered inTypes/Values)— 但 server prepared statement num_params=0 不接受 binary bind,且 @out_<i> 初始 NULL → CALL p1 = NULL * 3 = NULL → drain getString = "" → getInt = 0;**修法目标 sub-D 起首脱胎**:`docs/3-decisions/D165-d160-callable-statement-inout-pmd-bug.md`(应用层 + 可能编译器层 双根因修法 — root cause 3a INOUT IN-inject + root cause 3b PMD reflection corruption);4 Phase 计划(Phase 0 D 文档落档 + Phase 1 minimum repro 隔离 spike + LLVM IR inspect 真根因 + Phase 2 修法 wire 落地 + 三阶段固定点(若触及 bootstrap/gen)+ Phase 3 D160 §Phase 4 重启 + D163 §Phase 3 重启 8 case 全 GREEN + Phase 4 D165 主线 close + 跨 D 锚回填);**回退动作**:D164.md Status header 改 Phase 3 [/] PARTIAL GREEN at commit `<phase0-hash>`(D164 主线 PIR liveness scope 锚 GREEN — segfault 消除 + d164 spike 4 case 全 GREEN + /tmp/d160_t18.ss exit=0,但 D160 wire 8 case 中 2 fail 是独立 root cause #3 需 D165 修);D164 §A.2 H5 假设破裂记录(从"D164 修法后 D160 §Phase 4 即 GREEN" 修为"D164 修法消除 segfault + 主线锚 GREEN,但 D160 wire 残留独立 root cause #3");D164 加新 §Followup F10 row(D165 起首脱胎锚);D163.md Status header 不动(仍 hold 等 D165 close);D160.md §F9 row 末尾上下文更新 + Status 时间线加 D164 §Phase 3 PARTIAL + D165 起首脱胎 entry;**跨 D 起首回填**:D164 §Phase 2 hash `26d656c` 至 D164.md(Status header / §Phase commit hash 总览段表 Phase 2 行 / §Phase 2 §收关锚 / Status 时间线 Phase 2 entry / §Phase 3 §收关锚 / §Phase 3 §收关锚 内 D165 起首脱胎说明)+ D163.md(§Followup F5 row 末尾上下文)+ D160.md(§F9 row 末尾上下文 + Status 时间线);**baseline**:bootstrap/ + lib/ + tools/ + tests/ diff = 0(本 Phase 纯 docs/ + .claude/next_prompt.md)+ d_doc_index_linter F1 = 0 PASS(D147/D154/D155/D156/D157/D160/D161/D162/D163/D164/D165 全实存,加入 D165 实存)+ reflection_health_linter no regression GATE PASS(本 Phase 0 不动 bootstrap/ → reflection scope 不触 → 14 reflection 指标全继承 D164 §Phase 2 baseline)+ next_prompt_ultrathink_linter PASS(下轮 D165 §Phase 1 起首含 ultrathink + 不写 docs-only)+ docker down 后 bin/ss test tests/ 全继承 306/16/322(d160 integration_test file 离线 probe-skip PASS,在线时 file 1 fail 不算入 baseline);**simplify 跳过**(纯文档 hold turn,§After Done §1 例外 — 同 D164 §Phase 0 / D163 §Phase 0/1/3-hold / D162 §Phase 0/1 / D161 §Phase 0/4 / D160 §Phase 0 / D157 §Phase 0 / D156 §Phase 0 / D154 §Phase 0 / D155 §Phase 0 docs-only 范式延续);**§N §6 file:line 锚**:docs/3-decisions/D165-d160-callable-statement-inout-pmd-bug.md(本 D 落档 ≥150 行)+ docs/3-decisions/D164-pir-liveness-helper-fn-loop-class-method-drop.md(§Phase 2 hash `26d656c` + §Phase 3 PARTIAL §收关锚 + §A.2 H5 假设破裂 + §F10 D165 起首脱胎锚 + Status 时间线 D164 §Phase 3 entry)+ docs/3-decisions/D163-class-extends-iface-typed-field-write.md(§Followup F5 row 末尾上下文)+ docs/3-decisions/D160-callable-statement-out-inout.md(§F9 row 末尾上下文 + Status 时间线 D164 §Phase 3 + D165 起首脱胎 entry)+ .claude/next_prompt.md(下轮 D165 §Phase 1 起首 ultrathink + 不写 docs-only)+ /tmp/d165_min_pmd.ss + /tmp/d165_min_pmd2.ss + /tmp/d165_min_pmd3.ss 三 spike 探索文件(GREEN — PMD bug 触发条件待 §Phase 1 真 spike 隔离)+ tests/d160_callable_statement/integration_test.ss line 109-119(Case 3 INOUT)+ line 139-155(Case 5 三态)+ lib/com/mysql/prepared.ss:1659-1709(execute() INOUT IN-inject 缺失 root cause 3a 锚)+ lib/com/mysql/prepared.ss:1786-1788(getParameterMetaData PMD 反射构造 root cause 3b 锚);**等下轮 D165 §Phase 1** — minimum repro spike 移植 + 多 case RED-as-spike(分别隔离 root cause 3a INOUT path + root cause 3b PMD reflection)+ LLVM IR inspect execute() generated IR + PMD constructor + getParameterMode IR 双根因 isolate + Phase 2 修法 target file:line + LOC 估算 + 跨 D 起首回填 D165 §Phase 0 hash 至 D165.md ≥4 处
