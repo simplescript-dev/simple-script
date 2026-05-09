@@ -40,22 +40,29 @@ function pirLowerStmt(id: int, buf: string): string {
         if (nGetI3(id) > 0) { buf = pirLowerBlock(nGetI3(id), buf) }
         return buf
     }
+    // bug A fix (D164): for each loop kind, after lowering body, re-emit body's expr USEs
+    // tagged with the loop's overall stmt id, so the reverse-scan first-hit lands on the
+    // loop stmt (in PIR list order) rather than inside the body — drop scheduled to
+    // loop.after block instead of loop body.
     if (kind == "FOR") {
         buf = pirEmitExprUses(nGetI2(id), id, buf)
-        return pirLowerBlock(nGetI4(id), buf)
+        buf = pirLowerBlock(nGetI4(id), buf)
+        return pirEmitBlockUsesAtStmt(nGetI4(id), id, buf)
     }
     if (kind == "FOR_IN" || kind == "FOR_OF") {
         buf = pirEmitExprUses(nGetI1(id), id, buf)
-        return pirLowerBlock(nGetI2(id), buf)
+        buf = pirLowerBlock(nGetI2(id), buf)
+        return pirEmitBlockUsesAtStmt(nGetI2(id), id, buf)
     }
     if (kind == "WHILE") {
         buf = pirEmitExprUses(nGetI1(id), id, buf)
-        return pirLowerBlock(nGetI2(id), buf)
+        buf = pirLowerBlock(nGetI2(id), buf)
+        return pirEmitBlockUsesAtStmt(nGetI2(id), id, buf)
     }
     if (kind == "DO_WHILE") {
         buf = pirLowerBlock(nGetI1(id), buf)
         buf = pirEmitExprUses(nGetI2(id), id, buf)
-        return buf
+        return pirEmitBlockUsesAtStmt(nGetI1(id), id, buf)
     }
     if (kind == "DESTRUCTURE_ARRAY" || kind == "DESTRUCTURE_OBJECT") {
         buf = pirEmitExprUses(nGetI1(id), id, buf)
@@ -137,7 +144,9 @@ function pirLowerVarDecl(id: int, buf: string): string {
 function pirLowerAssign(id: int, buf: string): string {
     const name = nGetS1(id)
     const ssType = pirGetType(name)
-    if (pirIsClass(ssType) == 0) { return buf }
+    // bug B fix (D164): scan RHS for class var USE before LHS-non-class early return,
+    // otherwise reverse scan finds no use → fallback to defStmt → drop emits at entry block.
+    if (pirIsClass(ssType) == 0) { return pirEmitExprUses(nGetI1(id), id, buf) }
 
     // Reassign: RC_DEC old value
     const decPir = newPir("RC_DEC")
@@ -281,4 +290,67 @@ function pirCollectUsesArgs(argList: string) {
         const aId = parseInt(a)
         if (aId > 0) { pirCollectUsesRec(aId) }
     }
+}
+
+// bug A fix (D164): re-emit USEs from every stmt inside `blockId` but tagged with
+// `stmtIdOverride` (loop's overall stmt id), so reverse-scan first-hit lands on the
+// loop stmt rather than a body-internal stmt. Recurses into nested loops/IF.
+// Mirrors pirLowerStmt dispatch (VAR_DECL/ASSIGN/MEMBER_ASSIGN/EXPR_STMT/RETURN/
+// IF/WHILE/DO_WHILE/FOR/FOR_IN/FOR_OF/DESTRUCTURE_*) — kinds without class-var
+// expr USEs (BREAK/CONTINUE/THROW/SWITCH not yet emitted by pirLowerStmt) are skipped.
+function pirEmitBlockUsesAtStmt(blockId: int, stmtIdOverride: int, buf: string): string {
+    if (blockId <= 0) { return buf }
+    const sl = nGetList(blockId)
+    if (sl == "") { return buf }
+    const parts = sl.split(",")
+    for (p in parts) {
+        const sid = parseInt(p)
+        if (sid <= 0) { continue }
+        const k = nGetKind(sid)
+        if (k == "VAR_DECL") {
+            const initId = nGetI1(sid)
+            if (initId > 0) { buf = pirEmitExprUses(initId, stmtIdOverride, buf) }
+            continue
+        }
+        if (k == "ASSIGN" || k == "MEMBER_ASSIGN" || k == "EXPR_STMT") {
+            buf = pirEmitExprUses(nGetI1(sid), stmtIdOverride, buf)
+            continue
+        }
+        if (k == "RETURN") {
+            const v = nGetI1(sid)
+            if (v > 0) { buf = pirEmitExprUses(v, stmtIdOverride, buf) }
+            continue
+        }
+        if (k == "DESTRUCTURE_ARRAY" || k == "DESTRUCTURE_OBJECT") {
+            buf = pirEmitExprUses(nGetI1(sid), stmtIdOverride, buf)
+            continue
+        }
+        if (k == "IF") {
+            buf = pirEmitExprUses(nGetI1(sid), stmtIdOverride, buf)
+            buf = pirEmitBlockUsesAtStmt(nGetI2(sid), stmtIdOverride, buf)
+            if (nGetI3(sid) > 0) { buf = pirEmitBlockUsesAtStmt(nGetI3(sid), stmtIdOverride, buf) }
+            continue
+        }
+        if (k == "WHILE") {
+            buf = pirEmitExprUses(nGetI1(sid), stmtIdOverride, buf)
+            buf = pirEmitBlockUsesAtStmt(nGetI2(sid), stmtIdOverride, buf)
+            continue
+        }
+        if (k == "DO_WHILE") {
+            buf = pirEmitBlockUsesAtStmt(nGetI1(sid), stmtIdOverride, buf)
+            buf = pirEmitExprUses(nGetI2(sid), stmtIdOverride, buf)
+            continue
+        }
+        if (k == "FOR") {
+            buf = pirEmitExprUses(nGetI2(sid), stmtIdOverride, buf)
+            buf = pirEmitBlockUsesAtStmt(nGetI4(sid), stmtIdOverride, buf)
+            continue
+        }
+        if (k == "FOR_IN" || k == "FOR_OF") {
+            buf = pirEmitExprUses(nGetI1(sid), stmtIdOverride, buf)
+            buf = pirEmitBlockUsesAtStmt(nGetI2(sid), stmtIdOverride, buf)
+            continue
+        }
+    }
+    return buf
 }
