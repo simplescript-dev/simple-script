@@ -41,7 +41,7 @@
 
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
-import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG, UNSIGNED_FLAG, mysqlTypeToJdbcType, mysqlTypeName, mysqlTypeToJavaClassName } from "@/lib/com/mysql/query"
+import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG, UNSIGNED_FLAG, mysqlTypeToJdbcType, mysqlTypeName, mysqlTypeToJavaClassName, sendQuery, readQueryResultSet } from "@/lib/com/mysql/query"
 import { PreparedStatement, CallableStatement, ResultSet, ResultSetMetaData, ParameterMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref, parameterModeIn, parameterModeInOut, parameterModeOut, parameterModeUnknown, parameterNullableUnknown } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
@@ -1568,6 +1568,32 @@ function appendOutVarSelectors(sql: string, paramDirections: Array<int>): string
     return `${sql}${suffix}`
 }
 
+// Builds a standalone `SELECT @out_<i> AS col_<i>, ...` over OUT/INOUT
+// session vars — sent on the same fd via COM_QUERY 0x03 after the binary
+// COM_STMT_EXECUTE that ran the user-rewritten CALL. No-OUT case returns
+// "" and the wire driver skips the drain step.
+function buildOutSelectSql(paramDirections: Array<int>): string {
+    let result = "SELECT "
+    let count = 0
+    let i = 0
+    const n = paramDirections.length()
+    while (i < n) {
+        const dir = paramDirections[i]
+        if (dir == parameterModeOut || dir == parameterModeInOut) {
+            const idx = i + 1
+            if (count == 0) {
+                result = `${result}@out_${idx} AS col_${idx}`
+            } else {
+                result = `${result}, @out_${idx} AS col_${idx}`
+            }
+            count = count + 1
+        }
+        i = i + 1
+    }
+    if (count == 0) { return "" }
+    return result
+}
+
 // MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement.
 // 13 PreparedStatement methods are inherited from the parent class via
 // D162 §Phase 2 walk-classParents check (no re-declaration); 21 own
@@ -1586,12 +1612,13 @@ class MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement 
     paramDirections: Array<int>
     outRow: ResultSet
     lastWasNull: int
+    originalSql: string
 
     // Single-arity registerOutParameter — flips paramDirections[idx-1]
     // to OUT (fresh) or INOUT (parent's setXxx already wrote paramTypes
     // non-zero). The two-arity overload delegates here; scale is
     // recorded via the spec-matching scale signature but not yet wired
-    // into the binary protocol bind (留 D160 §Phase 3).
+    // into the binary protocol bind (留 D160 §F 远期).
     //
     // `this.X[i] = v` is parser-rejected (parent class bindParam helper
     // documents the same workaround); alias the field into a local
@@ -1612,24 +1639,143 @@ class MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement 
 
     function wasNull(): int { return this.lastWasNull }
 
-    // 18 typed OUT getters — Phase 3 default returns mirror NoopCallable-
-    // Statement; real wire path reads from outRow.getXxx at D160 §Phase 3.
-    function getString(idx: int): string { return "" }
-    function getBoolean(idx: int): int { return 0 }
-    function getByte(idx: int): int { return 0 }
-    function getShort(idx: int): int { return 0 }
-    function getInt(idx: int): int { return 0 }
-    function getLong(idx: int): int { return 0 }
-    function getFloat(idx: int): double { return 0.0 }
-    function getDouble(idx: int): double { return 0.0 }
+    // D160 §Phase 3 wire path:
+    //   1. rewrite the original SQL — `?` at OUT/INOUT slots → `@out_<idx>`
+    //      session variables, IN/INOUT positions retain `?`;
+    //   2. filter the parent-supplied paramTypes/Values/Doubles/NullBits
+    //      arrays to drop OUT-only positions (server now only binds the
+    //      narrowed set of `?` slots in the rewritten SQL);
+    //   3. re-prepare the rewritten SQL so server allocates a new
+    //      statement_id whose num_params matches the filtered binds;
+    //   4. binary execute against the new statement_id, drain OK packet
+    //      (procedure body without SELECT — multi-RS body remains §F8);
+    //   5. close the throw-away prepared stmt (server frees the slot);
+    //   6. COM_QUERY (text protocol) `SELECT @out_<i> AS col_<i>, ...`
+    //      — drains OUT/INOUT user vars into a 1-row text ResultSet
+    //      that subsequent typed getters reflect via `col_<idx>` lookup.
+    //
+    // No-OUT path falls through to the parent binary execute (parity
+    // with MysqlPreparedStatement).
+    function execute(): int {
+        const dirs = this.paramDirections
+        const n = dirs.length()
+        let outCount = 0
+        let i = 0
+        while (i < n) {
+            const d = dirs[i]
+            if (d == parameterModeOut || d == parameterModeInOut) { outCount = outCount + 1 }
+            i = i + 1
+        }
+        if (outCount == 0) {
+            sendComStmtExecute(this.fd, this.statementId, this.paramTypes, this.paramValues, this.paramDoubles, this.paramNullBits, CURSOR_TYPE_NO_CURSOR)
+            readUpdateResultPacket(this.fd)
+            return 1
+        }
+
+        const rewritten = rewriteCallSqlPlaceholders(this.originalSql, dirs)
+
+        let inTypes: Array<int> = []
+        let inValues: Array<string> = []
+        let inDoubles: Array<double> = []
+        let inNullBits: Array<int> = []
+        i = 0
+        while (i < n) {
+            if (dirs[i] != parameterModeOut) {
+                inTypes = inTypes.push(this.paramTypes[i])
+                inValues = inValues.push(this.paramValues[i])
+                inDoubles = inDoubles.push(this.paramDoubles[i])
+                inNullBits = inNullBits.push(this.paramNullBits[i])
+            }
+            i = i + 1
+        }
+
+        sendComStmtPrepare(this.fd, rewritten)
+        const ok = readPrepareOk(this.fd)
+        readParamDef(this.fd, ok.numParams)
+        readColumnDefList(this.fd, ok.numColumns)
+        sendComStmtExecute(this.fd, ok.statementId, inTypes, inValues, inDoubles, inNullBits, CURSOR_TYPE_NO_CURSOR)
+        readUpdateResultPacket(this.fd)
+        sendComStmtClose(this.fd, ok.statementId)
+
+        // outCount >= 1 is guaranteed by the early-return above, so
+        // buildOutSelectSql returns a non-empty `SELECT @out_<i>` and
+        // readQueryResultSet always sees at least one column.
+        const selectSql = buildOutSelectSql(dirs)
+        sendQuery(this.fd, selectSql)
+        const rs = readQueryResultSet(this.fd)
+        rs.next()
+        this.outRow = rs
+        return 1
+    }
+
+    function executeQuery(): ResultSet {
+        this.execute()
+        return this.outRow
+    }
+
+    function executeUpdate(): int {
+        this.execute()
+        return 0
+    }
+
+    // Typed OUT getters — reflect outRow via `col_<idx>` after execute
+    // wrote the trailing SELECT 1-row ResultSet. lastWasNull is sticky:
+    // empty-string read on the text-protocol getString path means SQL
+    // NULL (text protocol encodes NULL as 0xFB length prefix → MysqlResultSet
+    // returns ""); typed callers see 0 / 0.0 default and wasNull()==1.
+    // Numeric / boolean getters share the parseInt/parseDouble path of
+    // MysqlResultSet (text protocol getInt/getDouble already do the same).
+    // Non-numeric stubs (BigDecimal / Date / Time / Timestamp / Reader /
+    // bytes) preserve NoopCallableStatement defaults — JDBC §13.x expanded
+    // type surface stays at D160 §F3 sub-D scope.
+    function getInt(idx: int): int {
+        const v = this.outRow.getString(`col_${idx}`)
+        if (v == "") { this.lastWasNull = 1; return 0 }
+        this.lastWasNull = 0
+        return parseInt(v)
+    }
+
+    function getString(idx: int): string {
+        const v = this.outRow.getString(`col_${idx}`)
+        if (v == "") { this.lastWasNull = 1; return "" }
+        this.lastWasNull = 0
+        return v
+    }
+
+    function getDouble(idx: int): double {
+        const v = this.outRow.getString(`col_${idx}`)
+        if (v == "") { this.lastWasNull = 1; return 0.0 }
+        this.lastWasNull = 0
+        return parseDouble(v)
+    }
+
+    function getBoolean(idx: int): int {
+        const v = this.outRow.getString(`col_${idx}`)
+        if (v == "") { this.lastWasNull = 1; return 0 }
+        this.lastWasNull = 0
+        // MySQL BIT/BOOLEAN over text protocol returns "1"/"0" (or
+        // sometimes "true"/"false" for legacy columns); any other text
+        // (including "0" / "false" / numeric strings != 1) maps to 0
+        // per JDBC §13 spec — wasNull stamps 0 because the value is
+        // present, not NULL.
+        if (v == "1") { return 1 }
+        if (v == "true") { return 1 }
+        return 0
+    }
+
+    function getLong(idx: int): int { return this.getInt(idx) }
+    function getByte(idx: int): int { return this.getInt(idx) }
+    function getShort(idx: int): int { return this.getInt(idx) }
+    function getFloat(idx: int): double { return this.getDouble(idx) }
+
     function getBigDecimal(idx: int): BigDecimal { return new BigDecimal(0, 0) }
     function getBytes(idx: int): string { return "" }
     function getDate(idx: int): Date { return new NoopDate() }
     function getTime(idx: int): Time { return new NoopTime() }
     function getTimestamp(idx: int): Timestamp { return new MysqlTimestamp(1970, 1, 1, 0, 0, 0, 0, 0) }
-    function getObject(idx: int): string { return "" }
-    function getObject(idx: int, classType: string): string { return "" }
-    function getNString(idx: int): string { return "" }
+    function getObject(idx: int): string { return this.getString(idx) }
+    function getObject(idx: int, classType: string): string { return this.getString(idx) }
+    function getNString(idx: int): string { return this.getString(idx) }
     function getCharacterStream(idx: int): Reader { return new MysqlCharacterStream("", 0, 0) }
     function getNCharacterStream(idx: int): Reader { return new MysqlCharacterStream("", 0, 0) }
 
@@ -1643,10 +1789,12 @@ class MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement 
 
 // Unit-testable factory split from doPrepareCall — keeps the wire
 // half (sendComStmtPrepare → readPrepareOk → readParamDef →
-// readColumnDefList) separate from the field-tabulation half so Phase 3
-// spike can construct an MysqlCallableStatement without a live socket
-// (pass fd=0 + stmtId=0 + empty paramDefs/columnDefs).
-function buildCallableStatement(fd: int, stmtId: int, numParams: int, paramDefs: Array<ColumnDef>, columnDefs: Array<ColumnDef>): MysqlCallableStatement {
+// readColumnDefList) separate from the field-tabulation half. The
+// `sql` arg is the original CALL text the connection prepared on, kept
+// in originalSql for execute() to re-prepare under the OUT-rewritten
+// form (CALL p(?, ?) → CALL p(?, @out_2) with the OUT slot filtered
+// out of the binary bind).
+function buildCallableStatement(fd: int, stmtId: int, numParams: int, paramDefs: Array<ColumnDef>, columnDefs: Array<ColumnDef>, sql: string): MysqlCallableStatement {
     let paramTypes: Array<int> = []
     let paramValues: Array<string> = []
     let paramDoubles: Array<double> = []
@@ -1678,7 +1826,8 @@ function buildCallableStatement(fd: int, stmtId: int, numParams: int, paramDefs:
         0, // concurrency — parent default (CONCUR_READ_ONLY)
         paramDirections,
         emptyCallableOutRow(),
-        0  // lastWasNull — child default; D160 §Phase 3 wire path stamps after each getXxx
+        0,  // lastWasNull — child default; execute() stamps after each getXxx
+        sql // originalSql — execute() rewrites OUT positions before re-prepare
     )
 }
 
@@ -1693,5 +1842,5 @@ function doPrepareCall(fd: int, sql: string): MysqlCallableStatement {
     const ok = readPrepareOk(fd)
     const paramDefs = readParamDef(fd, ok.numParams)
     const columnDefs = readColumnDefList(fd, ok.numColumns)
-    return buildCallableStatement(fd, ok.statementId, ok.numParams, paramDefs, columnDefs)
+    return buildCallableStatement(fd, ok.statementId, ok.numParams, paramDefs, columnDefs, sql)
 }
