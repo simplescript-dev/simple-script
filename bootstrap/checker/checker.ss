@@ -445,7 +445,25 @@ function check(rootId: int): int {
             if (sk == "INTERFACE_DECL") {
                 const ifName = nGetS1(s)
                 // D138 Phase 1.5: arity-aware mangle 同 codegen ifaceMethodsCG 公约;check_class.ss:87 contains 比对自动跟着
-                ifaceMethods.set(ifName, mangleMethodList(nGetList(s), 0))
+                let merged = mangleMethodList(nGetList(s), 0)
+                // D161 Phase 2: walk parent chain merge — 父接口已注册 mangled CSV union 入 child
+                // entry,dedupe(子接口 redeclare 走 override)。父接口 declared 在 child 之前,Pass 1
+                // 顺序天然 parent-first;codegen 端 gen_iface.ss registerInterface 同形 merge。
+                const extendsName = nGetS2(s)
+                if (extendsName != "" && ifaceMethods.has(extendsName) == 1) {
+                    const parentMethods = ifaceMethods.getString(extendsName)
+                    if (parentMethods != "") {
+                        let wrapped = `,${merged},`
+                        const psParent = parentMethods.split(",")
+                        for (pmKey in psParent) {
+                            if (pmKey == "") { continue }
+                            if (wrapped.contains(`,${pmKey},`) == 1) { continue }
+                            merged = listAppendStr(merged, pmKey)
+                            wrapped = `,${merged},`
+                        }
+                    }
+                }
+                ifaceMethods.set(ifName, merged)
                 defineVar(ifName, "interface", 0)
             }
         }

@@ -9,50 +9,124 @@
 let ifaceMethodSigs = new Map()
 
 // Register interface declaration: store method names, return types, param info.
-// D138 Phase 1.5: 双 pass — Pass 1 统计 mName 出现次数,Pass 2 对 overload mName 加 paramSig
-// suffix(`${mName}_${paramSig}`)落 mangled methodNames entry;单 arity 走 plain backward compat。
+// D138 Phase 1.5: arity 双 pass — Pass 1 统计 mName 出现次数,Pass 2 对 overload mName 加
+// paramSig suffix(`${mName}_${paramSig}`)落 mangled methodNames entry;单 arity 走 plain。
+// D161 Phase 2: 加 Pass 3 merge parent — 跨父子边界 mName 计数,父接口 method 重新按 cross-count
+// mangle 后并入 child entry(子接口 redeclare 同 mangledKey 走 override 父被跳过;不同 paramSig
+// 自然分隔为两条独立 entry — `bar`(parent 0-arg)+ `bar_i`(child 1-arg))。
 function registerInterface(id: int) {
     const name = nGetS1(id)
     const ml = nGetList(id)
-    if (ml == "") { ifaceMethodsCG.set(name, ""); return }
-    const parts = ml.split(",")
+    const extendsName = nGetS2(id)
+    if (extendsName != "") { ifaceParents.set(name, extendsName) }
+
+    // Pass 1: cross-count mNames in own + parent (recover plainMName from parent's mangled key
+    // via stored ifaceMethodSigs paramSig suffix)
     let mNameCount = new Map()
-    for (p in parts) {
-        const mId = parseInt(p)
-        if (mId <= 0) { continue }
-        const mName = nGetS1(mId)
-        const cur = mNameCount.has(mName) == 1 ? parseInt(mNameCount.getString(mName)) : 0
-        mNameCount.set(mName, `${cur + 1}`)
+    if (ml != "") {
+        const ownPartsCnt = ml.split(",")
+        for (p in ownPartsCnt) {
+            const mId = parseInt(p)
+            if (mId <= 0) { continue }
+            const mName = nGetS1(mId)
+            const cur = mNameCount.has(mName) == 1 ? parseInt(mNameCount.getString(mName)) : 0
+            mNameCount.set(mName, `${cur + 1}`)
+        }
     }
-    let methodNames = ""
-    for (p in parts) {
-        const mId = parseInt(p)
-        if (mId <= 0) { continue }
-        const mName = nGetS1(mId)
-        const isOverload = parseInt(mNameCount.getString(mName)) >= 2 ? 1 : 0
-        const paramList = nGetList(mId)
-        const pSig = isOverload == 1 ? paramSig(paramList) : ""
-        const mangledKey = pSig != "" ? `${mName}_${pSig}` : mName
-        methodNames = listAppendStr(methodNames, mangledKey)
-        ifaceMethodSigs.set(`${name}.${mangledKey}`, pSig)
-        const mRet = nGetS2(mId)
-        ifaceMethodRets.set(`${name}.${mangledKey}`, mRet != "" ? mRet : "void")
-        // Store param info as "name:type,name:type,..."
-        let paramStr = ""
-        if (paramList != "") {
-            const pps = paramList.split(",")
-            for (pp in pps) {
-                const ppId = parseInt(pp)
-                if (ppId > 0 && nGetKind(ppId) == "PARAM") {
-                    const pn = nGetS1(ppId)
-                    const pt = nGetS2(ppId)
-                    paramStr = listAppendStr(paramStr, `${pn}:${pt != "" ? pt : "int"}`)
-                }
+    if (extendsName != "" && ifaceMethodsCG.has(extendsName) == 1) {
+        const parentMethodsCnt = ifaceMethodsCG.getString(extendsName)
+        if (parentMethodsCnt != "") {
+            const psCnt = parentMethodsCnt.split(",")
+            for (pmKey in psCnt) {
+                if (pmKey == "") { continue }
+                const parentPSig = ifaceMethodSigs.has(`${extendsName}.${pmKey}`) == 1 ? ifaceMethodSigs.getString(`${extendsName}.${pmKey}`) : ""
+                const plainMName = parentPSig != "" ? pmKey.substring(0, pmKey.length() - parentPSig.length() - 1) : pmKey
+                const cur = mNameCount.has(plainMName) == 1 ? parseInt(mNameCount.getString(plainMName)) : 0
+                mNameCount.set(plainMName, `${cur + 1}`)
             }
         }
-        ifaceMethodPars.set(`${name}.${mangledKey}`, paramStr)
     }
+
+    // Pass 2: register own methods with cross-counted overload flag
+    let methodNames = ""
+    if (ml != "") {
+        const ownParts = ml.split(",")
+        for (p in ownParts) {
+            const mId = parseInt(p)
+            if (mId <= 0) { continue }
+            const mName = nGetS1(mId)
+            const isOverload = parseInt(mNameCount.getString(mName)) >= 2 ? 1 : 0
+            const paramList = nGetList(mId)
+            const pSig = isOverload == 1 ? paramSig(paramList) : ""
+            const mangledKey = pSig != "" ? `${mName}_${pSig}` : mName
+            methodNames = listAppendStr(methodNames, mangledKey)
+            ifaceMethodSigs.set(`${name}.${mangledKey}`, pSig)
+            const mRet = nGetS2(mId)
+            ifaceMethodRets.set(`${name}.${mangledKey}`, mRet != "" ? mRet : "void")
+            // Store param info as "name:type,name:type,..."
+            let paramStr = ""
+            if (paramList != "") {
+                const pps = paramList.split(",")
+                for (pp in pps) {
+                    const ppId = parseInt(pp)
+                    if (ppId > 0 && nGetKind(ppId) == "PARAM") {
+                        const pn = nGetS1(ppId)
+                        const pt = nGetS2(ppId)
+                        paramStr = listAppendStr(paramStr, `${pn}:${pt != "" ? pt : "int"}`)
+                    }
+                }
+            }
+            ifaceMethodPars.set(`${name}.${mangledKey}`, paramStr)
+        }
+    }
+
+    // Pass 3 (D161 walk parent chain merge): re-mangle parent's methods by cross-count + copy
+    // sigs/rets/pars 入 child entry;子接口已声明同 mangledKey 走 override(skip 父)。
+    if (extendsName != "" && ifaceMethodsCG.has(extendsName) == 1) {
+        const parentMethods = ifaceMethodsCG.getString(extendsName)
+        if (parentMethods != "") {
+            let wrapped = `,${methodNames},`
+            const ps = parentMethods.split(",")
+            for (pmKey in ps) {
+                if (pmKey == "") { continue }
+                const parentPSig = ifaceMethodSigs.has(`${extendsName}.${pmKey}`) == 1 ? ifaceMethodSigs.getString(`${extendsName}.${pmKey}`) : ""
+                const plainMName = parentPSig != "" ? pmKey.substring(0, pmKey.length() - parentPSig.length() - 1) : pmKey
+                const isOverload = parseInt(mNameCount.getString(plainMName)) >= 2 ? 1 : 0
+                const parentPars = ifaceMethodPars.has(`${extendsName}.${pmKey}`) == 1 ? ifaceMethodPars.getString(`${extendsName}.${pmKey}`) : ""
+                const truePSig = paramSigFromPars(parentPars)
+                const newPSig = isOverload == 1 ? truePSig : ""
+                const newMangledKey = newPSig != "" ? `${plainMName}_${newPSig}` : plainMName
+                if (wrapped.contains(`,${newMangledKey},`) == 1) { continue }
+                methodNames = listAppendStr(methodNames, newMangledKey)
+                wrapped = `,${methodNames},`
+                ifaceMethodSigs.set(`${name}.${newMangledKey}`, newPSig)
+                const parentRet = ifaceMethodRets.has(`${extendsName}.${pmKey}`) == 1 ? ifaceMethodRets.getString(`${extendsName}.${pmKey}`) : "void"
+                ifaceMethodRets.set(`${name}.${newMangledKey}`, parentRet)
+                ifaceMethodPars.set(`${name}.${newMangledKey}`, parentPars)
+            }
+        }
+    }
+
     ifaceMethodsCG.set(name, methodNames)
+}
+
+// D161: recompute paramSig from stored pars CSV("name:type,name:type") for parent method
+// re-mangling at extends merge — 父接口 method 用 `${plainMName}` plain 入 ifaceMethodSigs(无
+// within-parent overload),merge 入 child 时若 cross-count 触发 overload 需要拿真实 paramSig。
+// 与 paramSig(gen_types.ss:834)走 typeSig 同公约,确保 mangle key 与 own-pass 一致。
+function paramSigFromPars(pars: string): string {
+    if (pars == "") { return "" }
+    let sig = ""
+    const parts = pars.split(",")
+    for (p in parts) {
+        if (p == "") { continue }
+        const colonIdx = p.indexOf(":")
+        if (colonIdx < 0) { continue }
+        const pType = p.substring(colonIdx + 1, p.length() - colonIdx - 1)
+        if (sig != "") { sig = `${sig}_` }
+        sig = `${sig}${typeSig(pType)}`
+    }
+    return sig
 }
 
 // D138 Phase 1.5: argsSig 反查 mangled candidate;methods 列表里命中 → 取 mangled dispatcher

@@ -183,14 +183,27 @@ function registerClass(id: int) {
     classNodeIds.set(name, `${id}`)
     classIds.set(name, `${nextClassId}`)
     nextClassId = nextClassId + 1
-    // Track interface implementations
+    // Track interface implementations — D161 Phase 2: 走 ifaceParents 链注册到所有祖先接口,
+    // 父接口 dispatcher switch 含 implementor 让 parent type upcast `let p: Parent = new Impl()`
+    // 走 vtable 派发命中(否则 generateInterfaceDispatchers 父接口 switch 无 case 落 __default 返 0)。
+    // visited 守 self-loop / cycle(`interface A extends A` 编程错误防 while 永不退出 hang)。
     const implList = nGetS3(id)
     if (implList != "") {
         const implParts = implList.split(",")
         for (iface in implParts) {
             if (iface == "") { continue }
-            const prev = ifaceImplementors.has(iface) == 1 ? ifaceImplementors.getString(iface) : ""
-            ifaceImplementors.set(iface, listAppendStr(prev, name))
+            let visited = new Map()
+            let curIface = iface
+            while (curIface != "") {
+                if (visited.has(curIface) == 1) { break }
+                visited.set(curIface, "1")
+                const prev = ifaceImplementors.has(curIface) == 1 ? ifaceImplementors.getString(curIface) : ""
+                const wrappedPrev = `,${prev},`
+                if (wrappedPrev.contains(`,${name},`) == 0) {
+                    ifaceImplementors.set(curIface, listAppendStr(prev, name))
+                }
+                curIface = ifaceParents.has(curIface) == 1 ? ifaceParents.getString(curIface) : ""
+            }
         }
     }
 }

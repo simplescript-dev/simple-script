@@ -21,6 +21,7 @@ let classFieldNullable = "" // "ClassName.field" -> "1" (if field declared as T?
 let classMethods = ""    // "ClassName" -> "method1,method2,..."
 let objClasses = ""      // "varName" -> "ClassName"
 let classParents = ""    // "ClassName" -> "ParentClassName"
+let ifaceParents = ""    // "ChildIfaceName" -> "ParentIfaceName" (D161 interface extends)
 let classConstFields = "" // "ClassName.field" -> "1" (if field is const)
 let classNeedsVtable = "" // "ClassName" -> "1" (if class has vtable)
 let classVtableSlots = "" // "ClassName" -> "method1,method2,..." (ordered vtable slots)
@@ -66,6 +67,7 @@ function initClassState() {
     classMethods = Map()
     objClasses = Map()
     classParents = Map()
+    ifaceParents = Map()
     classConstFields = Map()
     classNeedsVtable = Map()
     classVtableSlots = Map()

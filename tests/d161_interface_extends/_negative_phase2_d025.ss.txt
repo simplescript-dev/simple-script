@@ -1,0 +1,25 @@
+// D161 Phase 2 negative test doc-anchor — D025 vtable check 强制全 method 通路验证。
+// Phase 2 walk parent chain merge 后,ChildD 的 ifaceMethods entry 必含 pd(parent) + cd(child)
+// 双 method;BrokenChildD 仅实 cd 缺 pd → bin/ss build 必 fail 含 "missing method 'pd'"。
+//
+// 验证(commit-time shell):
+//   bin/ss build tests/d161_interface_extends/_negative_phase2_d025.ss.txt -o /tmp/_d161_neg \
+//     2>&1 | grep -F "missing method 'pd' required by interface 'ChildD161Neg'"
+//   echo "exit=$?"
+//   # 期望 stderr 含上述错误 + 进程 exit=1(checker D025 vtable check 强制 parent method 实现)
+//
+// 本文件 .ss.txt 后缀避免 bin/ss test tests/ 自动编译/运行(只编译 .ss 文件)。
+
+interface ParentD161Neg {
+    function pd(): int
+}
+interface ChildD161Neg extends ParentD161Neg {
+    function cd(): int
+}
+class BrokenChildD161 : ChildD161Neg {
+    function cd(): int { return 1 }
+}
+
+function main() {
+    const b = new BrokenChildD161()
+}

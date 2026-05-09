@@ -46,10 +46,9 @@ class ImplChildC : ChildC {
     function fooC(): int { return 42 }
 }
 
-// Case 4 — 父子接口各 own method,Phase 1 codegen 仅要求子接口 own method 实现
-// (验证 Phase 1 nSetS2 已落但 Phase 2 walk parent chain merge 尚未启动 — 否则
-// ImplChildD 会被 D025 vtable 强制实现 parentDMethod 编译失败)。Phase 2 落地后此 case
-// 转 phase2_codegen_spike_test.ss 验证 parentDMethod 自动继承 + ImplChildD 必须实现父子两 method。
+// Case 4 — 父子接口各 own method,Phase 2 walk parent chain merge 强制 ImplChildD
+// 同时实现父子两 method(D025 vtable 通路);本 case 在 Phase 2 后由 nSetS2 落 slot
+// 单一验证转为 walk-parent-merge 强制实现验证。
 interface ParentD {
     function parentDMethod(): int
 }
@@ -57,6 +56,7 @@ interface ChildD extends ParentD {
     function childDMethod(): int
 }
 class ImplChildD : ChildD {
+    function parentDMethod(): int { return 5 }
     function childDMethod(): int { return 7 }
 }
 
@@ -88,8 +88,9 @@ function main() {
         assertEqual(impl.fooC(), 42)
     })
 
-    test("Case 4: Phase 1 codegen only requires child own method — parent merge is Phase 2 (validates nSetS2 落 slot 但未触发 walk parent chain merge)", () => {
+    test("Case 4: Phase 2 walk parent chain merge — ImplChildD must implement parent + child methods (D025 vtable enforced via merged ifaceMethods)", () => {
         const impl = new ImplChildD()
+        assertEqual(impl.parentDMethod(), 5)
         assertEqual(impl.childDMethod(), 7)
     })
 
