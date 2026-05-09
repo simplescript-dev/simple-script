@@ -85,6 +85,15 @@ function buildVtableForClass(cls: string) {
         const methods = allMethods.split(",")
         for (m in methods) {
             if (m == "") { continue }
+            const baseName = `${cls}_${m}`
+            // D162 §Phase 3 — overloaded methods with no 0-arg variant emit
+            // only mangled `@baseName_paramSig` fns; the vtable references
+            // plain `@baseName` which would never resolve. Skip the slot —
+            // gen_methods.ss:233 static dispatch via pickClassMethodKey
+            // handles these (caller-side mangled-symbol resolution).
+            if (isOverloaded(baseName) == 1 && classMethodHasPlainFn.has(baseName) == 0) {
+                continue
+            }
             // Check if already in slots
             let found = 0
             if (slots != "") {
@@ -100,7 +109,7 @@ function buildVtableForClass(cls: string) {
             if (abstractMethodsCG.has(`${cls}.${m}`) == 1) {
                 classVtableImpl.set(`${cls}.${m}`, "null")
             } else {
-                classVtableImpl.set(`${cls}.${m}`, `${cls}_${m}`)
+                classVtableImpl.set(`${cls}.${m}`, baseName)
             }
         }
     }

@@ -26,6 +26,12 @@ let classConstFields = "" // "ClassName.field" -> "1" (if field is const)
 let classNeedsVtable = "" // "ClassName" -> "1" (if class has vtable)
 let classVtableSlots = "" // "ClassName" -> "method1,method2,..." (ordered vtable slots)
 let classVtableImpl = ""  // "ClassName.method" -> "ImplClassName_method" (actual func)
+// D162 §Phase 3 — track plain-name `@${cls}_${m}` fn emission. Set when any
+// overload has empty paramSig (0-arg variant) or method is non-overloaded.
+// buildVtableForClass skips overloaded methods that lack a plain fn (no 0-arg
+// variant) so the vtable doesn't reference a never-emitted plain symbol —
+// dispatch falls back to static call via pickClassMethodKey for those.
+let classMethodHasPlainFn = "" // "ClassName_method" -> "1" (if plain fn `@ClassName_method` actually emits)
 let classDtorTags = ""    // "ClassName" -> "tag" (tag >= 10 for classes with ptr fields)
 let dtorNextTag = 10      // next available class dtor tag
 let currentClassName = ""
@@ -72,6 +78,7 @@ function initClassState() {
     classNeedsVtable = Map()
     classVtableSlots = Map()
     classVtableImpl = Map()
+    classMethodHasPlainFn = Map()
     classDtorTags = Map()
     dtorNextTag = 10
     currentClassName = ""

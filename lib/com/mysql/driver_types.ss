@@ -12,7 +12,7 @@
 // MysqlNClob/MysqlSQLXML/MysqlSqlArray/MysqlRef + 4 stream classes
 // (AsciiStream/BinaryStream/CharacterStream/NCharacterStream).
 
-import { Timestamp, RowId, SqlArray, Ref } from "@/lib/java/sql"
+import { Timestamp, RowId, SqlArray, Ref, Date, Time } from "@/lib/java/sql"
 
 // ── MysqlTimestamp — implements java.sql.Timestamp ─────────────
 // Driver-side wrapper for TIMESTAMP / DATETIME column values from the
@@ -176,6 +176,44 @@ class MysqlRef : Ref {
     function getBaseTypeName(): string { return this.baseTypeName }
     function getObject(): string { return this.payload }
     function setObject(value: string) { this.payload = value }
+}
+
+// ── NoopDate / NoopTime — D160 §Phase 1 minimal Date/Time stubs ──
+// Driver-side concrete impls of java.sql.Date / java.sql.Time are not
+// yet wired (only MysqlTimestamp covers TIMESTAMP / DATETIME). These
+// minimal stubs (epoch 1970-01-01 / 00:00:00) give CallableStatement.
+// getDate / getTime concrete returns under D025 vtable enforcement.
+//
+// D162 §Phase 3 placement note: lifted out of jdbc.ss into
+// driver_types.ss so MysqlCallableStatement (in prepared.ss) can
+// `new NoopDate()` / `new NoopTime()` without forcing prepared.ss to
+// import jdbc.ss (which would invert the existing
+// jdbc.ss → prepared.ss import direction and create a cycle).
+
+class NoopDate : Date {
+    function getYear(): int { return 1970 }
+    function getMonth(): int { return 1 }
+    function getDay(): int { return 1 }
+    function getTime(): int { return 0 }
+    function setTime(time: int) {}
+    function before(other: Date): int { return 0 }
+    function after(other: Date): int { return 0 }
+    function equals(other: Date): int { return 0 }
+    function compareTo(other: Date): int { return 0 }
+    function toString(): string { return "1970-01-01" }
+}
+
+class NoopTime : Time {
+    function getHours(): int { return 0 }
+    function getMinutes(): int { return 0 }
+    function getSeconds(): int { return 0 }
+    function getTime(): int { return 0 }
+    function setTime(time: int) {}
+    function before(other: Time): int { return 0 }
+    function after(other: Time): int { return 0 }
+    function equals(other: Time): int { return 0 }
+    function compareTo(other: Time): int { return 0 }
+    function toString(): string { return "00:00:00" }
 }
 
 function hexChar(n: int): string {

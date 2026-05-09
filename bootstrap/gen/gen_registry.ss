@@ -61,6 +61,11 @@ function registerClassMethodRetType(className: string, methodId: int, retType: s
     }
     funcParamCount.set(baseName, `${pCount}`)
     if (mSig != "") { funcRetTypes.set(`${baseName}_${mSig}`, retType) }
+    // D162 §Phase 3 — empty paramSig means a plain-name fn `@baseName` emits
+    // (class_method.ss:59-65 gates: non-overloaded OR isOverloaded + mSig==""
+    // both fall through to plain). Track once; later overload registrations
+    // never clear (Map.has check below guarantees first-set-wins semantics).
+    if (mSig == "") { classMethodHasPlainFn.set(baseName, "1") }
     trackOverload(baseName)
 }
 

@@ -210,9 +210,19 @@ function emitClassMethodCall(className: string, method: string, objVal: string, 
             si = si + 1
         }
         if (slotIdx >= 0) {
-            // Load vtable ptr from object (offset 2: after rc and TypeInfo)
+            // Load vtable ptr from object (offset 2: after rc and TypeInfo).
+            // D162 §Phase 3 — raw `ptr` GEP avoids forward-referencing the
+            // class struct type when the caller class (e.g., MysqlBinaryResult-
+            // Set referencing a MysqlPreparedStatement field) is emitted
+            // before the callee class struct def. Same byte offset as
+            // `getelementptr %${className}, ptr, i32 0, i32 2` because the
+            // class header is `{ i32 rc, ptr typeinfo, ptr vtable, ... }`
+            // under x86_64 ABI: i32 rc (4B) + 4B align padding + ptr typeinfo
+            // (8B) + ptr vtable (8B) → vtable at offset 16 = sizeof(ptr)*2.
+            // §F9 future polish: regress to named struct GEP if SS codegen
+            // is reordered to emit all class struct defs before any method body.
             const vtGepR = nextReg()
-            emitIR(`  ${vtGepR} = getelementptr %${className}, ptr ${objVal}, i32 0, i32 2`)
+            emitIR(`  ${vtGepR} = getelementptr ptr, ptr ${objVal}, i32 2`)
             const vtPtrR = nextReg()
             emitIR(`  ${vtPtrR} = load ptr, ptr ${vtGepR}, align 8`)
             // Load function ptr from vtable slot

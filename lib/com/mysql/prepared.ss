@@ -42,9 +42,11 @@
 import { byteToInt, readLengthEncodedInt, lengthEncodedIntSize, readLengthEncodedString } from "@/lib/binary"
 import { readPacket, writePacket, MysqlPacket } from "@/lib/com/mysql/wire"
 import { ColumnDef, parseColumnDef, MysqlResultSet, parseResultSetHeader, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, GeneratedKeyResultSet, columnDefColType, columnDefName, columnDefOrgTable, columnDefFlags, isEofPacket, CURSOR_TYPE_READ_ONLY, CURSOR_TYPE_FOR_UPDATE, SERVER_STATUS_LAST_ROW_SENT, writeStmtFetchPacket, eofStatusFlags, NoopResultSetMetaData, MysqlResultSetMetaData, PRI_KEY_FLAG, UNSIGNED_FLAG, mysqlTypeToJdbcType, mysqlTypeName, mysqlTypeToJavaClassName } from "@/lib/com/mysql/query"
-import { PreparedStatement, ResultSet, ResultSetMetaData, ParameterMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref, parameterModeIn, parameterNullableUnknown } from "@/lib/java/sql"
+import { PreparedStatement, CallableStatement, ResultSet, ResultSetMetaData, ParameterMetaData, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE, SQLException, SQLFeatureNotSupportedException, Timestamp, Date, Time, Blob, Clob, NClob, RowId, SQLXML, SqlArray, Ref, parameterModeIn, parameterModeInOut, parameterModeOut, parameterModeUnknown, parameterNullableUnknown } from "@/lib/java/sql"
 import { BigDecimal } from "@/lib/java/math"
 import { InputStream, Reader } from "@/lib/java/io"
+import { NoopDate, NoopTime, MysqlTimestamp } from "@/lib/com/mysql/driver_types"
+import { MysqlCharacterStream } from "@/lib/com/mysql/driver_streams"
 
 // Reader.readN chunked drain — Reader 接口无 available()(D152 io.ss),
 // 只能 chunked loop 读到 EOF(empty string)。8KiB 与 JDK BufferedReader
@@ -1183,11 +1185,11 @@ class NoopParameterMetaData : ParameterMetaData {
     function isSigned(idx: int): int { return 0 }
 }
 
-// MysqlParameterMetaData — D157 §Phase 2 real reflection. Single-field
-// class wrapping the Array<ColumnDef> the driver already buffered off
-// COM_STMT_PREPARE_OK ParameterDef block (readParamDef at prepared.ss:169
-// — parseColumnDef shared with ColumnDef41 path, MySQL Native Protocol
-// §15.7.7 same struct as ColumnDef41 §6.6).
+// MysqlParameterMetaData — D157 §Phase 2 real reflection + D162 §Phase 3
+// paramDirections 三态 upgrade. paramMetadata: Array<ColumnDef> snapshot
+// from COM_STMT_PREPARE_OK ParameterDef block (readParamDef at
+// prepared.ss:169 — parseColumnDef shared with ColumnDef41 path, MySQL
+// Native Protocol §15.7.7 same struct as ColumnDef41 §6.6).
 //
 // 7 method 反射派生 — getParameterType / getParameterTypeName /
 // getParameterClassName 复用 D155 mysqlTypeToJdbcType / mysqlTypeName /
@@ -1196,17 +1198,19 @@ class NoopParameterMetaData : ParameterMetaData {
 // charset bit 不需二次 dispatch — D157 §A.2 H3 校准与 D155 §F5 ResultSet-
 // MetaData.getColumnClassName 同形).
 //
-// getParameterMode → parameterModeIn (MySQL prepare 不支持 OUT/INOUT,
-// CallableStatement 路径留 §F2). isNullable → parameterNullableUnknown
-// (prepare 阶段 server 不解析 SQL placeholder NOT NULL 约束,§A.2 H5).
-// isSigned → UNSIGNED_FLAG bit 5 反向 (query.ss:620 MysqlResultSetMetaData
-// .isSigned 同形 — flags & 0x0020 != 0 → 0 unsigned, == 0 → 1 signed).
+// D162 §Phase 3 paramDirections upgrade — getParameterMode reflects
+// the parallel paramDirections array (parameterModeIn / Out / InOut /
+// Unknown per index). PreparedStatement constructs with paramDirections
+// all set to parameterModeIn (D157 §核心原则 4 IN-only path preserved);
+// MysqlCallableStatement constructs with the registerOutParameter-driven
+// three-state directions array, breaking the static IN-only限制.
 //
-// Class 仅持 paramMetadata: Array<ColumnDef> snapshot — 不持 Mysql-
-// PreparedStatement ref (§核心原则 8): close 后 ParameterMetaData 仍可
-// 访问 (§A.2 H4), 无 D156 §F6 RC cycle 风险 (Connector/J value snapshot 同形).
+// Class 不持 MysqlPreparedStatement ref (§核心原则 8): close 后
+// ParameterMetaData 仍可访问 (§A.2 H4), 无 D156 §F6 RC cycle 风险
+// (Connector/J value snapshot 同形).
 class MysqlParameterMetaData : ParameterMetaData {
     paramMetadata: Array<ColumnDef>
+    paramDirections: Array<int>
 
     function getParameterCount(): int {
         return this.paramMetadata.length()
@@ -1224,8 +1228,13 @@ class MysqlParameterMetaData : ParameterMetaData {
         return mysqlTypeToJavaClassName(columnDefColType(this.paramMetadata[idx - 1]))
     }
 
+    // D162 §Phase 3 — three-state reflection. idx out-of-range (< 1 or
+    // > paramDirections.length) falls back to parameterModeUnknown so
+    // callers do not bounds-check (JDBC §10.2 idx is 1-based).
     function getParameterMode(idx: int): int {
-        return parameterModeIn
+        if (idx < 1) { return parameterModeUnknown }
+        if (idx > this.paramDirections.length()) { return parameterModeUnknown }
+        return this.paramDirections[idx - 1]
     }
 
     function isNullable(idx: int): int {
@@ -1423,7 +1432,7 @@ class MysqlPreparedStatement : PreparedStatement {
     }
 
     function getParameterMetaData(): ParameterMetaData {
-        return new MysqlParameterMetaData(this.paramDefs)
+        return new MysqlParameterMetaData(this.paramDefs, allInDirections(this.paramDefs.length()))
     }
 
     // Sends COM_STMT_CLOSE; server returns no packet, so no read. Idempotent.
@@ -1432,4 +1441,257 @@ class MysqlPreparedStatement : PreparedStatement {
         sendComStmtClose(this.fd, this.statementId)
         this.closed = 1
     }
+}
+
+// ── D162 §Phase 3 — MysqlCallableStatement + helpers ──────────────────
+// Real `class MysqlCallableStatement extends MysqlPreparedStatement :
+// CallableStatement` wires the D162 §Phase 2 walk-classParents check
+// through to the driver layer — the 13 PreparedStatement methods are
+// inherited from MysqlPreparedStatement (no re-declaration, D162 §核心
+// 目标 5), and the 21 own methods (registerOutParameter ×2 / 18 typed OUT
+// getter / wasNull) are declared here. getParameterMetaData overrides
+// the parent so MysqlParameterMetaData reflects paramDirections (the
+// three-state IN / OUT / INOUT array — D157 §核心原则 4 IN-only path
+// preserved on PreparedStatement, broken open on CallableStatement).
+//
+// MySQL stored-proc OUT path (Phase 3 wire scope): registerOutParameter
+// flips paramDirections[idx-1] on the ColumnDef snapshot; setXxx after
+// register flags INOUT via paramTypes[idx-1] != 0 (parent's bindParam
+// stamps MYSQL_TYPE_LONG / VAR_STRING / DOUBLE / etc — non-zero =
+// already bound). The actual wire path (rewriteSqlPlaceholders +
+// injectOutVarSetters + appendOutVarSelectors at execute time + drain
+// trailing OUT ResultSet) lands at D160 §Phase 3 docker e2e — Phase 3
+// here is unit-level: class construction + paramDirections three-state
+// + getParameterMode reflection + SQL rewrite helpers.
+//
+// Default OUT getters return zero / empty / epoch (Date 1970-01-01,
+// Time 00:00:00, Timestamp epoch) — same as D160 §Phase 1
+// NoopCallableStatement; the wire path swaps them for outRow.getXxx
+// reflection at D160 §Phase 3.
+
+// Builds an Array<int> of length n filled with parameterModeIn — used by
+// MysqlPreparedStatement.getParameterMetaData (above) so the IN-only
+// path keeps a single allocation per call.
+function allInDirections(n: int): Array<int> {
+    let dirs: Array<int> = []
+    let i = 0
+    while (i < n) {
+        dirs = dirs.push(parameterModeIn)
+        i = i + 1
+    }
+    return dirs
+}
+
+// Empty trailing OUT ResultSet placeholder — Phase 3 unit-level
+// MysqlCallableStatement default. Real stored-proc execute fills outRow
+// with the trailing OUT block ResultSet (MySQL Native Protocol §15.7.4
+// SERVER_MORE_RESULTS_EXISTS bit 8 — drained at D160 §Phase 3 wire).
+function emptyCallableOutRow(): ResultSet {
+    return new GeneratedKeyResultSet(0, 1, new NoopResultSetMetaData(), 0)
+}
+
+// Replaces ?-placeholders at OUT/INOUT positions with @out_<idx>
+// session-variable references; IN positions keep the ? placeholder
+// for the binary-protocol bind path. Position-aware single pass —
+// SQL string literals containing literal '?' are not currently
+// distinguished (留 D160 §Followup;same simplification as Connector/J
+// CallableStatement.parseSql earlier 5.x releases).
+function rewriteCallSqlPlaceholders(sql: string, paramDirections: Array<int>): string {
+    let result = ""
+    let placeholderIdx = 0
+    let i = 0
+    const n = sql.length()
+    const numDirs = paramDirections.length()
+    while (i < n) {
+        const c = sql.charCodeAt(i)
+        if (c == 63) {
+            placeholderIdx = placeholderIdx + 1
+            if (placeholderIdx <= numDirs) {
+                const dir = paramDirections[placeholderIdx - 1]
+                if (dir == parameterModeOut || dir == parameterModeInOut) {
+                    result = `${result}@out_${placeholderIdx}`
+                } else {
+                    result = `${result}?`
+                }
+            } else {
+                result = `${result}?`
+            }
+        } else {
+            result = result + fromCharCode(c)
+        }
+        i = i + 1
+    }
+    return result
+}
+
+// Builds the SET @out_<idx> = NULL; ... prefix for OUT/INOUT positions
+// (MySQL CALL OUT-binding standard: server has no native OUT-bind for
+// COM_STMT_EXECUTE binary protocol, so the driver pre-allocates session
+// vars then post-SELECTs them). Returns the prefix concatenated with
+// the placeholder-rewritten SQL.
+function injectOutVarSetters(sql: string, paramDirections: Array<int>): string {
+    let prefix = ""
+    let i = 0
+    const n = paramDirections.length()
+    while (i < n) {
+        const dir = paramDirections[i]
+        if (dir == parameterModeOut || dir == parameterModeInOut) {
+            const idx = i + 1
+            prefix = `${prefix}SET @out_${idx} = NULL; `
+        }
+        i = i + 1
+    }
+    return `${prefix}${rewriteCallSqlPlaceholders(sql, paramDirections)}`
+}
+
+// Appends `; SELECT @out_<idx1> AS col_<idx1>, @out_<idx2> AS col_<idx2>, ...`
+// to drain the OUT/INOUT session variables back as a trailing ResultSet
+// post-CALL execute. No-OUT case returns sql untouched.
+function appendOutVarSelectors(sql: string, paramDirections: Array<int>): string {
+    let suffix = ""
+    let count = 0
+    let i = 0
+    const n = paramDirections.length()
+    while (i < n) {
+        const dir = paramDirections[i]
+        if (dir == parameterModeOut || dir == parameterModeInOut) {
+            const idx = i + 1
+            if (count == 0) {
+                suffix = `; SELECT @out_${idx} AS col_${idx}`
+            } else {
+                suffix = `${suffix}, @out_${idx} AS col_${idx}`
+            }
+            count = count + 1
+        }
+        i = i + 1
+    }
+    return `${sql}${suffix}`
+}
+
+// MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement.
+// 13 PreparedStatement methods are inherited from the parent class via
+// D162 §Phase 2 walk-classParents check (no re-declaration); 21 own
+// methods cover the JDBC 4.3 §13 stored-procedure OUT/INOUT surface.
+// 3 own fields:
+//   paramDirections — parallel Array<int> mirroring paramTypes/Values etc;
+//                     parameterModeIn (default) / Out (registerOut on
+//                     fresh idx) / InOut (registerOut after setXxx).
+//   outRow          — placeholder ResultSet for trailing OUT block;
+//                     real wire path swaps in at D160 §Phase 3.
+//   lastWasNull     — sticky bit returned by wasNull(); driver-side
+//                     execute path stamps after each getXxx vs NULL
+//                     check. Phase 3 default 0; toggle from outside
+//                     for unit-level verification.
+class MysqlCallableStatement extends MysqlPreparedStatement : CallableStatement {
+    paramDirections: Array<int>
+    outRow: ResultSet
+    lastWasNull: int
+
+    // Single-arity registerOutParameter — flips paramDirections[idx-1]
+    // to OUT (fresh) or INOUT (parent's setXxx already wrote paramTypes
+    // non-zero). The two-arity overload delegates here; scale is
+    // recorded via the spec-matching scale signature but not yet wired
+    // into the binary protocol bind (留 D160 §Phase 3).
+    //
+    // `this.X[i] = v` is parser-rejected (parent class bindParam helper
+    // documents the same workaround); alias the field into a local
+    // first, then index-assign.
+    function registerOutParameter(idx: int, sqlType: int) {
+        const dirs = this.paramDirections
+        const types = this.paramTypes
+        if (types[idx - 1] != 0) {
+            dirs[idx - 1] = parameterModeInOut
+        } else {
+            dirs[idx - 1] = parameterModeOut
+        }
+    }
+
+    function registerOutParameter(idx: int, sqlType: int, scale: int) {
+        this.registerOutParameter(idx, sqlType)
+    }
+
+    function wasNull(): int { return this.lastWasNull }
+
+    // 18 typed OUT getters — Phase 3 default returns mirror NoopCallable-
+    // Statement; real wire path reads from outRow.getXxx at D160 §Phase 3.
+    function getString(idx: int): string { return "" }
+    function getBoolean(idx: int): int { return 0 }
+    function getByte(idx: int): int { return 0 }
+    function getShort(idx: int): int { return 0 }
+    function getInt(idx: int): int { return 0 }
+    function getLong(idx: int): int { return 0 }
+    function getFloat(idx: int): double { return 0.0 }
+    function getDouble(idx: int): double { return 0.0 }
+    function getBigDecimal(idx: int): BigDecimal { return new BigDecimal(0, 0) }
+    function getBytes(idx: int): string { return "" }
+    function getDate(idx: int): Date { return new NoopDate() }
+    function getTime(idx: int): Time { return new NoopTime() }
+    function getTimestamp(idx: int): Timestamp { return new MysqlTimestamp(1970, 1, 1, 0, 0, 0, 0, 0) }
+    function getObject(idx: int): string { return "" }
+    function getObject(idx: int, classType: string): string { return "" }
+    function getNString(idx: int): string { return "" }
+    function getCharacterStream(idx: int): Reader { return new MysqlCharacterStream("", 0, 0) }
+    function getNCharacterStream(idx: int): Reader { return new MysqlCharacterStream("", 0, 0) }
+
+    // Override parent — surface paramDirections three-state through the
+    // ParameterMetaData reflection (D157 §核心原则 4 IN-only限制 broken
+    // open here, parent path keeps allInDirections fallback).
+    function getParameterMetaData(): ParameterMetaData {
+        return new MysqlParameterMetaData(this.paramDefs, this.paramDirections)
+    }
+}
+
+// Unit-testable factory split from doPrepareCall — keeps the wire
+// half (sendComStmtPrepare → readPrepareOk → readParamDef →
+// readColumnDefList) separate from the field-tabulation half so Phase 3
+// spike can construct an MysqlCallableStatement without a live socket
+// (pass fd=0 + stmtId=0 + empty paramDefs/columnDefs).
+function buildCallableStatement(fd: int, stmtId: int, numParams: int, paramDefs: Array<ColumnDef>, columnDefs: Array<ColumnDef>): MysqlCallableStatement {
+    let paramTypes: Array<int> = []
+    let paramValues: Array<string> = []
+    let paramDoubles: Array<double> = []
+    let paramNullBits: Array<int> = []
+    let paramDirections: Array<int> = []
+    let i = 0
+    while (i < numParams) {
+        paramTypes = paramTypes.push(0)
+        paramValues = paramValues.push("")
+        paramDoubles = paramDoubles.push(0.0)
+        paramNullBits = paramNullBits.push(0)
+        paramDirections = paramDirections.push(parameterModeIn)
+        i = i + 1
+    }
+    return new MysqlCallableStatement(
+        fd,
+        stmtId,
+        numParams,
+        paramDefs,
+        paramTypes,
+        paramValues,
+        paramDoubles,
+        paramNullBits,
+        columnDefs,
+        0, // lastInsertId — parent default; first executeUpdate updates this
+        0, // closed — parent default; close() flips to 1
+        0, // fetchSize — parent default; setFetchSize updates this
+        0, // rsType — parent default (TYPE_FORWARD_ONLY)
+        0, // concurrency — parent default (CONCUR_READ_ONLY)
+        paramDirections,
+        emptyCallableOutRow(),
+        0  // lastWasNull — child default; D160 §Phase 3 wire path stamps after each getXxx
+    )
+}
+
+// Drives the prepare flow for a CALL stored-procedure SQL — same
+// COM_STMT_PREPARE / readPrepareOk / readParamDef / readColumnDefList
+// triplet as doPrepare, then wraps the buffered fields in a
+// MysqlCallableStatement (vs MysqlPreparedStatement). MysqlConnection.
+// prepareCall replaces its D160 §Phase 1 NoopCallableStatement stub
+// with this factory.
+function doPrepareCall(fd: int, sql: string): MysqlCallableStatement {
+    sendComStmtPrepare(fd, sql)
+    const ok = readPrepareOk(fd)
+    const paramDefs = readParamDef(fd, ok.numParams)
+    const columnDefs = readColumnDefList(fd, ok.numColumns)
+    return buildCallableStatement(fd, ok.statementId, ok.numParams, paramDefs, columnDefs)
 }

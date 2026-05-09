@@ -119,9 +119,8 @@ function main() {
         assertEqual(pmd.getParameterCount(), 0)
     })
 
-    test("Case 12 — MysqlConnection.prepareCall stub returns NoopCallableStatement (Phase 2 swaps in real MysqlCallableStatement); fd=0 since stub does not touch the socket", () => {
-        const conn = new MysqlConnection(0, 1, 0, "", "", new NoopDatabaseMetaData(), 0)
-        const cs = conn.prepareCall("CALL proc_d160_phase1(?, ?)")
+    test("Case 12 — NoopCallableStatement remains as a stub fallback (D162 §Phase 3 swapped MysqlConnection.prepareCall over to real doPrepareCall path; NoopCallableStatement stub still services D025 vtable test mocks not requiring a live socket)", () => {
+        const cs = new NoopCallableStatement()
         cs.registerOutParameter(2, 4)
         assertEqual(cs.getInt(2), 0)
         assertEqual(cs.wasNull(), 0)

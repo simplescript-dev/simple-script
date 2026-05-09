@@ -22,8 +22,8 @@ import { BigDecimal } from "@/lib/java/math"
 import { writePacket } from "@/lib/com/mysql/wire"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
 import { sendQuery, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, readQueryResultSet, MysqlResultSet, GeneratedKeyResultSet, NoopResultSetMetaData } from "@/lib/com/mysql/query"
-import { doPrepare, NoopParameterMetaData } from "@/lib/com/mysql/prepared"
-import { MysqlTimestamp } from "@/lib/com/mysql/driver_types"
+import { doPrepare, doPrepareCall, NoopParameterMetaData } from "@/lib/com/mysql/prepared"
+import { MysqlTimestamp, NoopDate, NoopTime } from "@/lib/com/mysql/driver_types"
 import { MysqlCharacterStream } from "@/lib/com/mysql/driver_streams"
 import { URL, URL_parse } from "@/lib/url"
 
@@ -83,14 +83,18 @@ class MysqlConnection : Connection {
         return ps
     }
 
-    // D160 §Phase 1 stub — Phase 2 swaps in
-    // `new MysqlCallableStatement(this, sql)` with the binary-protocol
-    // CALL path (COM_STMT_PREPARE on `CALL proc(?, ?)` syntax + drain
-    // trailing OUT ResultSet). Stub returns NoopCallableStatement so
-    // D025 vtable enforcement against the new Connection.prepareCall
-    // surface lands in lib/ without driver-side wire work this Phase.
+    // D162 §Phase 3 — real path swap. doPrepareCall walks COM_STMT_PREPARE
+    // on the CALL stored-proc SQL (COM_STMT_PREPARE_OK + paramDef block +
+    // columnDef block — same triplet as doPrepare) and wraps the buffered
+    // fields in MysqlCallableStatement (extends MysqlPreparedStatement :
+    // CallableStatement). The 13 inherited PreparedStatement methods land
+    // via D162 §Phase 2 walk-classParents check; 21 own methods cover the
+    // OUT/INOUT surface (registerOutParameter / typed OUT getters /
+    // wasNull / paramDirections-aware getParameterMetaData). Trailing OUT
+    // ResultSet drain at execute time is wired separately at D160
+    // §Phase 3 docker e2e.
     function prepareCall(sql: string): CallableStatement {
-        return new NoopCallableStatement()
+        return doPrepareCall(this.fd, sql)
     }
 
     function setAutoCommit(auto: int) {
@@ -379,8 +383,8 @@ class NoopDatabaseMetaData : DatabaseMetaData {
     function supportsResultSetConcurrency(type: int, concurrency: int): int { return 0 }
 }
 
-// ── D160 §Phase 1 — NoopDate / NoopTime / NoopCallableStatement stubs ──
-// Stateless stubs paralleling NoopDatabaseMetaData. Phase 2 swaps in real
+// ── D160 §Phase 1 — NoopCallableStatement stub ──
+// Stateless stub paralleling NoopDatabaseMetaData. Phase 2 swaps in real
 // MysqlCallableStatement (binary-protocol CALL + trailing OUT ResultSet
 // drain). Placement note: per-spec the user prompt suggested
 // lib/java/sql.ss for NoopCallableStatement, but the 13 inherited
@@ -391,36 +395,9 @@ class NoopDatabaseMetaData : DatabaseMetaData {
 // reverse the abstract→driver layering, so the stub lives here next to
 // NoopDatabaseMetaData (the established Noop* placement pattern).
 //
-// NoopDate / NoopTime: lib/com/mysql/ has no concrete Date / Time impl
-// (only MysqlTimestamp); these minimal stubs (epoch 1970-01-01 / 00:00:00)
-// give NoopCallableStatement.getDate / getTime concrete returns under
-// D025 vtable enforcement.
-
-class NoopDate : Date {
-    function getYear(): int { return 1970 }
-    function getMonth(): int { return 1 }
-    function getDay(): int { return 1 }
-    function getTime(): int { return 0 }
-    function setTime(time: int) {}
-    function before(other: Date): int { return 0 }
-    function after(other: Date): int { return 0 }
-    function equals(other: Date): int { return 0 }
-    function compareTo(other: Date): int { return 0 }
-    function toString(): string { return "1970-01-01" }
-}
-
-class NoopTime : Time {
-    function getHours(): int { return 0 }
-    function getMinutes(): int { return 0 }
-    function getSeconds(): int { return 0 }
-    function getTime(): int { return 0 }
-    function setTime(time: int) {}
-    function before(other: Time): int { return 0 }
-    function after(other: Time): int { return 0 }
-    function equals(other: Time): int { return 0 }
-    function compareTo(other: Time): int { return 0 }
-    function toString(): string { return "00:00:00" }
-}
+// NoopDate / NoopTime moved to driver_types.ss in D162 §Phase 3 so
+// prepared.ss MysqlCallableStatement can reuse them without inverting
+// the jdbc.ss → prepared.ss import direction.
 
 // 21 own (D160 §Phase 1 spec) + 13 inherited from PreparedStatement
 // (D161 §Phase 2 walk parent merge → D025 vtable check forces them all
