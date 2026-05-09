@@ -60,6 +60,45 @@ function inferCheckerClass(nodeId: int): string {
 // ── Interface / abstract impl checks ──────────────────────────
 
 function checkInterfaceImpl(classNodeId: int, className: string, implList: string, classMethods: string) {
+    // D162 Phase 2: walk classParents 链合并 ownMethods + parentMethods — 复用 D071 checkAbstractImpl
+    // line 100-129 walk classParents 范式 + D161 §Phase 2 visited Map self-loop 防御范式。
+    // classMethodNames 存 plain mName(check_class.ss:460);本类 classMethods 是 mangled
+    // (check_stmts.ss:83 mangleMethodList fdOnly=1)— 父类 plain mName 直接加入 allMethods
+    // 满足无 overload 接口要求(D162 实际用例 MysqlCallableStatement extends MysqlPreparedStatement
+    // : CallableStatement 13 inherited PreparedStatement method 全 plain sig 不涉 overload)。
+    let allMethods = classMethods
+    let p = ""
+    if (checkerClassParents.has(className) == 1) {
+        p = checkerClassParents.getString(className)
+    }
+    let visited = new Map()
+    while (p != "" && visited.has(p) == 0) {
+        visited.set(p, "1")
+        if (classMethodNames.has(p) == 1) {
+            const pMethods = classMethodNames.getString(p)
+            if (pMethods != ",") {
+                let rem = pMethods.substring(1, pMethods.length() - 1)
+                while (rem != "") {
+                    let m = rem
+                    const ci = rem.indexOf(",")
+                    if (ci >= 0) {
+                        m = rem.substring(0, ci)
+                        rem = rem.substring(ci + 1, rem.length() - ci - 1)
+                    } else {
+                        rem = ""
+                    }
+                    if (m != "" && allMethods.contains(`,${m},`) == 0) {
+                        allMethods = `${allMethods}${m},`
+                    }
+                }
+            }
+        }
+        if (checkerClassParents.has(p) == 1) {
+            p = checkerClassParents.getString(p)
+        } else {
+            p = ""
+        }
+    }
     // Scan comma-separated interface names without for-in (avoids i64/ptr issue)
     let remaining = implList
     while (remaining != "") {
@@ -84,7 +123,7 @@ function checkInterfaceImpl(classNodeId: int, className: string, implList: strin
                     } else {
                         remReq = ""
                     }
-                    if (classMethods.contains(`,${req},`) == 0) {
+                    if (allMethods.contains(`,${req},`) == 0) {
                         checkerError(`class '${className}' missing method '${req}' required by interface '${iface}'`, nGetLine(classNodeId), nGetCol(classNodeId))
                     }
                 }

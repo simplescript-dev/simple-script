@@ -1,0 +1,34 @@
+// D162 Phase 2 D025 negative doc-anchor — walk classParents 后真错强制不削弱
+//
+// `class BadChildD162 extends ParentD162Neg : ChildIfaceD162Neg { 父+子全集仍缺 method }`
+// → bin/ss build exit=1 stderr 含 "missing method 'missingFromBoth' required by interface
+// 'ChildIfaceD162Neg'" 错误。验证 D162 修法 walk classParents 后真错放过的反向断链 —
+// walk 不削弱 D025 vtable check 强制全集实现要求(§核心原则 7)。
+//
+// commit-time shell verify(本文件 .txt 后缀不被 bin/ss test 自动 run,通过 grep 反查 + bin/ss
+// build 手动验证):
+//   bin/ss build tests/d162_class_extends_interface_impl/_negative_phase2_d025.ss.txt -o /tmp/d162_neg 2>&1 | grep -c "missing method 'missingFromBoth'"  # ≥1
+//   bin/ss build tests/d162_class_extends_interface_impl/_negative_phase2_d025.ss.txt -o /tmp/d162_neg ; echo $?  # 1
+//   bin/ss build tests/d162_class_extends_interface_impl/_negative_phase2_d025.ss.txt -o /tmp/d162_neg 2>&1 | grep -c "ChildIfaceD162Neg"  # ≥1
+
+interface ChildIfaceD162Neg {
+    function fromParent(): int
+    function fromChild(): int
+    function missingFromBoth(): int
+}
+
+class ParentD162Neg {
+    function fromParent(): int { return 1 }
+}
+
+class BadChildD162 extends ParentD162Neg : ChildIfaceD162Neg {
+    function fromChild(): int { return 2 }
+    // 缺 missingFromBoth — walk classParents 合并 fromParent + fromChild + 本类无 missingFromBoth
+    // → D025 真错路径强制 exit=1
+}
+
+function main() {
+    const bad = new BadChildD162()
+    bad.fromParent()
+    bad.fromChild()
+}
