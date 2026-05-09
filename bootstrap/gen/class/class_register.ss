@@ -208,6 +208,45 @@ function registerClass(id: int) {
     }
 }
 
+// D161 Phase 5 — propagate ifaceImplementors up the ifaceParents chain.
+// registerClass walks the chain at class registration time, but cycle-driven
+// import inversion (sql.ss ↔ jdbc.ss: jdbc.ss content gets inlined before
+// sql.ss own content because resolveInner appends imported content first
+// and sql.ss imports jdbc.ss for DriverManager_getConnection) can place a
+// CLASS_DECL implementing a child interface BEFORE the child's
+// INTERFACE_DECL is processed — at which point ifaceParents is empty and
+// the walk silently misses the parent registration. This post-pass runs
+// after ALL interface and class registration is done, walking ifaceParents
+// once more to fill in missed propagations. Idempotent (dedupe via wrapped
+// CSV contains check).
+function propagateIfaceImplementorsToParents() {
+    const ifaceList = ifaceParents.keys()
+    for (iface in ifaceList) {
+        if (iface == "") { continue }
+        const impls = ifaceImplementors.has(iface) == 1 ? ifaceImplementors.getString(iface) : ""
+        if (impls == "") { continue }
+        const implParts = impls.split(",")
+        let visited = new Map()
+        let curParent = ifaceParents.has(iface) == 1 ? ifaceParents.getString(iface) : ""
+        while (curParent != "") {
+            if (visited.has(curParent) == 1) { break }
+            visited.set(curParent, "1")
+            const parentImpls = ifaceImplementors.has(curParent) == 1 ? ifaceImplementors.getString(curParent) : ""
+            let mergedParent = parentImpls
+            let wrapped = `,${parentImpls},`
+            for (impl in implParts) {
+                if (impl == "") { continue }
+                if (wrapped.contains(`,${impl},`) == 0) {
+                    mergedParent = listAppendStr(mergedParent, impl)
+                    wrapped = `,${mergedParent},`
+                }
+            }
+            ifaceImplementors.set(curParent, mergedParent)
+            curParent = ifaceParents.has(curParent) == 1 ? ifaceParents.getString(curParent) : ""
+        }
+    }
+}
+
 // Resolve inheritance after ALL classes are registered.
 // Uses resolve-parent-first recursion to handle 3+ level chains correctly.
 let resolvedInheritance = ""

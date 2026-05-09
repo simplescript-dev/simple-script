@@ -314,6 +314,51 @@ interface PreparedStatement {
     function close()
 }
 
+// ── CallableStatement — D160 §Phase 1 / JDBC 4.3 §13.x ──────────
+// `extends PreparedStatement` (D161 §Phase 2 walk parent merge auto
+// inherits the 13 PreparedStatement methods — setXxx for INOUT, the
+// execute path, generated keys, parameter metadata, close). Adds 21
+// own methods for stored-procedure OUT/INOUT parameters:
+//   registerOutParameter ×2 arity overloads (with / without scale)
+//   17 typed OUT getters (getString / getBoolean / getByte / getShort
+//     / getInt / getLong / getFloat / getDouble / getBigDecimal /
+//     getBytes / getDate / getTime / getTimestamp / getObject ×2 /
+//     getNString / getCharacterStream / getNCharacterStream)
+//   wasNull
+// Advanced SQL-type OUT getters (Blob / Clob / NClob / RowId / SQLXML
+// / Array / Ref / URL) 留 D160 §Followup F3.
+//
+// MySQL stored-procedure OUT path: the wire protocol returns OUT
+// values in a trailing ResultSet (MySQL Native Protocol §15.7.4
+// SERVER_MORE_RESULTS_EXISTS bit 8). Phase 2 wires
+// MysqlCallableStatement to drain to that trailing ResultSet and
+// reflect getXxx through it. Phase 1 (this file) lands the interface
+// + Connection.prepareCall + jdbc.ss stub returning
+// NoopCallableStatement.
+interface CallableStatement extends PreparedStatement {
+    function registerOutParameter(idx: int, sqlType: int)
+    function registerOutParameter(idx: int, sqlType: int, scale: int)
+    function wasNull(): int
+    function getString(idx: int): string
+    function getBoolean(idx: int): int
+    function getByte(idx: int): int
+    function getShort(idx: int): int
+    function getInt(idx: int): int
+    function getLong(idx: int): int
+    function getFloat(idx: int): double
+    function getDouble(idx: int): double
+    function getBigDecimal(idx: int): BigDecimal
+    function getBytes(idx: int): string
+    function getDate(idx: int): Date
+    function getTime(idx: int): Time
+    function getTimestamp(idx: int): Timestamp
+    function getObject(idx: int): string
+    function getObject(idx: int, classType: string): string
+    function getNString(idx: int): string
+    function getCharacterStream(idx: int): Reader
+    function getNCharacterStream(idx: int): Reader
+}
+
 // ── Connection ───────────────────────────────────────────────
 // D138 Phase 2: prepareStatement is overloaded by arity. The 1-arg form is the
 // legacy entry; the 2-arg form takes RETURN_GENERATED_KEYS / NO_GENERATED_KEYS
@@ -333,6 +378,10 @@ interface Connection {
     // type+concurrency through MysqlPreparedStatement.executeQuery to
     // toggle the COM_STMT_EXECUTE flags byte CURSOR_TYPE_READ_ONLY 0x01.
     function prepareStatement(sql: string, type: int, concurrency: int): PreparedStatement
+    // D160 §Phase 1 — JDBC 4.3 §11 Connection.prepareCall(sql) for stored-
+    // procedure CALL syntax. Single-arity in Phase 1; type+concurrency
+    // overloads (for scrollable OUT cursors) 留 D160 §Followup.
+    function prepareCall(sql: string): CallableStatement
     function setAutoCommit(auto: int)
     function commit()
     function rollback()

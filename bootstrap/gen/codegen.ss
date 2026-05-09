@@ -167,6 +167,10 @@ function registerAllDecls(rootId: int) {
     }
     // Resolve inheritance after all classes are registered
     resolveInheritance()
+    // D161 Phase 5 — propagate ifaceImplementors to ancestor interfaces
+    // (cycle-driven import inversion can leave parent registrations missed
+    // when a class is processed before its child interface's INTERFACE_DECL).
+    propagateIfaceImplementorsToParents()
     // Build vtable for classes in inheritance hierarchies
     buildClassVtables()
     // Emit struct types for generic parents deferred during registration

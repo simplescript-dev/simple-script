@@ -17,11 +17,14 @@
 // socket fd (D134 Phase 5 NAMESPACE COLLISION decision: handshake.ss owns auth
 // protocol only, driver-layer Connection state lives here in jdbc.ss).
 
-import { Connection, Statement, PreparedStatement, ResultSet, DatabaseMetaData, JDBC_MAJOR_VERSION, JDBC_MINOR_VERSION, TRANSACTION_READ_UNCOMMITTED, TRANSACTION_READ_COMMITTED, TRANSACTION_REPEATABLE_READ, TRANSACTION_SERIALIZABLE, TYPE_FORWARD_ONLY, TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
+import { Connection, Statement, PreparedStatement, CallableStatement, ResultSet, ResultSetMetaData, DatabaseMetaData, ParameterMetaData, Date, Time, Timestamp, Reader, JDBC_MAJOR_VERSION, JDBC_MINOR_VERSION, TRANSACTION_READ_UNCOMMITTED, TRANSACTION_READ_COMMITTED, TRANSACTION_REPEATABLE_READ, TRANSACTION_SERIALIZABLE, TYPE_FORWARD_ONLY, TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
+import { BigDecimal } from "@/lib/java/math"
 import { writePacket } from "@/lib/com/mysql/wire"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
 import { sendQuery, readUpdateResultPacket, okPacketAffectedRows, okPacketLastInsertId, readQueryResultSet, MysqlResultSet, GeneratedKeyResultSet, NoopResultSetMetaData } from "@/lib/com/mysql/query"
-import { doPrepare } from "@/lib/com/mysql/prepared"
+import { doPrepare, NoopParameterMetaData } from "@/lib/com/mysql/prepared"
+import { MysqlTimestamp } from "@/lib/com/mysql/driver_types"
+import { MysqlCharacterStream } from "@/lib/com/mysql/driver_streams"
 import { URL, URL_parse } from "@/lib/url"
 
 const COM_QUIT = 0x01
@@ -78,6 +81,16 @@ class MysqlConnection : Connection {
         const ps = doPrepare(this.fd, sql)
         ps.setCursorMode(type, concurrency)
         return ps
+    }
+
+    // D160 §Phase 1 stub — Phase 2 swaps in
+    // `new MysqlCallableStatement(this, sql)` with the binary-protocol
+    // CALL path (COM_STMT_PREPARE on `CALL proc(?, ?)` syntax + drain
+    // trailing OUT ResultSet). Stub returns NoopCallableStatement so
+    // D025 vtable enforcement against the new Connection.prepareCall
+    // surface lands in lib/ without driver-side wire work this Phase.
+    function prepareCall(sql: string): CallableStatement {
+        return new NoopCallableStatement()
     }
 
     function setAutoCommit(auto: int) {
@@ -364,6 +377,92 @@ class NoopDatabaseMetaData : DatabaseMetaData {
     function supportsTransactionIsolationLevel(level: int): int { return 0 }
     function supportsResultSetType(type: int): int { return 0 }
     function supportsResultSetConcurrency(type: int, concurrency: int): int { return 0 }
+}
+
+// ── D160 §Phase 1 — NoopDate / NoopTime / NoopCallableStatement stubs ──
+// Stateless stubs paralleling NoopDatabaseMetaData. Phase 2 swaps in real
+// MysqlCallableStatement (binary-protocol CALL + trailing OUT ResultSet
+// drain). Placement note: per-spec the user prompt suggested
+// lib/java/sql.ss for NoopCallableStatement, but the 13 inherited
+// PreparedStatement methods need ResultSet / ParameterMetaData stubs that
+// only exist in lib/com/mysql/* (NoopResultSetMetaData /
+// GeneratedKeyResultSet / NoopParameterMetaData / MysqlTimestamp /
+// MysqlCharacterStream). Importing those into lib/java/sql.ss would
+// reverse the abstract→driver layering, so the stub lives here next to
+// NoopDatabaseMetaData (the established Noop* placement pattern).
+//
+// NoopDate / NoopTime: lib/com/mysql/ has no concrete Date / Time impl
+// (only MysqlTimestamp); these minimal stubs (epoch 1970-01-01 / 00:00:00)
+// give NoopCallableStatement.getDate / getTime concrete returns under
+// D025 vtable enforcement.
+
+class NoopDate : Date {
+    function getYear(): int { return 1970 }
+    function getMonth(): int { return 1 }
+    function getDay(): int { return 1 }
+    function getTime(): int { return 0 }
+    function setTime(time: int) {}
+    function before(other: Date): int { return 0 }
+    function after(other: Date): int { return 0 }
+    function equals(other: Date): int { return 0 }
+    function compareTo(other: Date): int { return 0 }
+    function toString(): string { return "1970-01-01" }
+}
+
+class NoopTime : Time {
+    function getHours(): int { return 0 }
+    function getMinutes(): int { return 0 }
+    function getSeconds(): int { return 0 }
+    function getTime(): int { return 0 }
+    function setTime(time: int) {}
+    function before(other: Time): int { return 0 }
+    function after(other: Time): int { return 0 }
+    function equals(other: Time): int { return 0 }
+    function compareTo(other: Time): int { return 0 }
+    function toString(): string { return "00:00:00" }
+}
+
+// 21 own (D160 §Phase 1 spec) + 13 inherited from PreparedStatement
+// (D161 §Phase 2 walk parent merge → D025 vtable check forces them all
+// to be implemented here; this Phase is the first large-method-set wire
+// of D161's walk-parent-merge path in lib/, validating the 21+13=34
+// total method coverage).
+class NoopCallableStatement : CallableStatement {
+    function registerOutParameter(idx: int, sqlType: int) {}
+    function registerOutParameter(idx: int, sqlType: int, scale: int) {}
+    function wasNull(): int { return 0 }
+    function getString(idx: int): string { return "" }
+    function getBoolean(idx: int): int { return 0 }
+    function getByte(idx: int): int { return 0 }
+    function getShort(idx: int): int { return 0 }
+    function getInt(idx: int): int { return 0 }
+    function getLong(idx: int): int { return 0 }
+    function getFloat(idx: int): double { return 0.0 }
+    function getDouble(idx: int): double { return 0.0 }
+    function getBigDecimal(idx: int): BigDecimal { return new BigDecimal(0, 0) }
+    function getBytes(idx: int): string { return "" }
+    function getDate(idx: int): Date { return new NoopDate() }
+    function getTime(idx: int): Time { return new NoopTime() }
+    function getTimestamp(idx: int): Timestamp { return new MysqlTimestamp(1970, 1, 1, 0, 0, 0, 0, 0) }
+    function getObject(idx: int): string { return "" }
+    function getObject(idx: int, classType: string): string { return "" }
+    function getNString(idx: int): string { return "" }
+    function getCharacterStream(idx: int): Reader { return new MysqlCharacterStream("", 0, 0) }
+    function getNCharacterStream(idx: int): Reader { return new MysqlCharacterStream("", 0, 0) }
+
+    function setInt(idx: int, val: int) {}
+    function setLong(idx: int, val: int) {}
+    function setString(idx: int, val: string) {}
+    function setDouble(idx: int, val: double) {}
+    function setBoolean(idx: int, val: int) {}
+    function setNull(idx: int) {}
+    function setFetchSize(rows: int) {}
+    function executeQuery(): ResultSet { return new GeneratedKeyResultSet(0, 1, new NoopResultSetMetaData(), 0) }
+    function executeUpdate(): int { return 0 }
+    function getGeneratedKeys(): ResultSet { return new GeneratedKeyResultSet(0, 1, new NoopResultSetMetaData(), 0) }
+    function getLastInsertId(): int { return 0 }
+    function getParameterMetaData(): ParameterMetaData { return new NoopParameterMetaData() }
+    function close() {}
 }
 
 // ── D156 §Phase 3 — MysqlDatabaseMetaData (real reflection) ──────────
