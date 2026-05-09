@@ -202,8 +202,17 @@ function resolveInner(filePath: string): string {
     let imported = ""
     let mainCode = ""
     const lines = source.split("\n")
-    for (line in lines) {
+    let lineIdx = 0
+    while (lineIdx < lines.length()) {
+        let line = lines[lineIdx]
+        const startIdx = lineIdx
+        lineIdx = lineIdx + 1
         if (line.startsWith("import ") == 1) {
+            // Multi-line import (TS / ESM): accumulate continuations until `from` appears
+            while (line.indexOf("from ") < 0 && lineIdx < lines.length()) {
+                line = line + " " + lines[lineIdx].trim()
+                lineIdx = lineIdx + 1
+            }
             const importPath = extractImportPath(line)
             if (importPath != "") {
                 let fullPath = ""
@@ -222,6 +231,9 @@ function resolveInner(filePath: string): string {
                 const importedCode = resolveInner(fullPath)
                 imported = imported + importedCode + "\n"
             }
+            // Pad blank lines so multi-line imports preserve single-line's row-offset.
+            let pad = lineIdx - startIdx
+            while (pad > 1) { mainCode = mainCode + "\n"; pad = pad - 1 }
         } else {
             mainCode = mainCode + line + "\n"
         }

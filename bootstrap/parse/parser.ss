@@ -622,6 +622,7 @@ function parseEnumDecl(): int {
 function parseImport(): int {
     pExpect("IMPORT")
     pExpect("LBRACE")
+    skipNL()
     let names = ""
     while (curKind() != "RBRACE" && curKind() != "EOF") {
         const n = pExpectIdent()
@@ -634,6 +635,7 @@ function parseImport(): int {
             names = listAppendStr(names, n)
         }
         if (curKind() == "COMMA") { pAdvance() }
+        skipNL()
     }
     pExpect("RBRACE")
     // `from` contextual keyword(见 D166 / lexer keywordKind 注释)— import 位 IDENT 检查

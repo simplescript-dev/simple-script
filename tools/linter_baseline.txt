@@ -27,6 +27,7 @@
 # bump F1:bootstrap/parse/parser.ss 870→877 trail=D161#扩容申报-Phase-1-EXTENDS-parser date=2026-04-22
 # bump N1 34→35 trail=D161#扩容申报-Phase-2-N1-from-Phase-1-EXTENDS date=2026-04-22
 # bump F1:bootstrap/parse/parser.ss 877→885 trail=D166#扩容申报-Phase-1-from-as-contextual date=2026-04-22
+# bump F1:bootstrap/main.ss 630→645 trail=D167#扩容申报-Phase-1-multiline-import date=2026-04-22
 M1=5562:5750
 M2=81839:83300
 M3a=12844:13050
@@ -41,7 +42,7 @@ N2=409195:416000
 N3=564672:575500
 N4=350:350
 N5=0:0
-F1:bootstrap/main.ss=627:630
+F1:bootstrap/main.ss=627:645
 F1:bootstrap/parse/parser.ss=870:885
 F1:bootstrap/parse/parse_stmts.ss=617:617
 F1:bootstrap/gen/methods/gen_methods.ss=698:730
