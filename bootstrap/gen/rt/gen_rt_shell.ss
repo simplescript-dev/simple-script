@@ -4,7 +4,10 @@
 function emitRuntimeShell() {
     emitIR("define ptr @ss_shell(ptr %cmd) {")
     irLabel("entry")
-    irCall("fp", "ptr", "popen", "ptr %cmd, ptr @.rt.str.r")
+    // D168 §B.7: %cmd 是 SS String header,GEP buffer
+    emitIR("  %cmd_buf_ptr = getelementptr %String, ptr %cmd, i32 0, i32 2")
+    emitIR("  %cmd_buf = load ptr, ptr %cmd_buf_ptr, align 8")
+    irCall("fp", "ptr", "popen", "ptr %cmd_buf, ptr @.rt.str.r")
     irICmp("isnull", "eq", "ptr", "%fp", "null")
     irBrCond("isnull", "fail", "init")
 
@@ -44,12 +47,13 @@ function emitRuntimeShell() {
 
     irLabel("done")
     irCall("_1", "i32", "pclose", "ptr %fp")
-    irCall("result", "ptr", "ss_rc_strdup", "ptr %pbuf")
+    // D168 §B.7: 返回模式 B,包装 byte buf → SS String header,释放原 byte buf
+    irCall("result", "ptr", "ss_string_from_cstr", "ptr %pbuf")
     irCallVoid("free", "ptr %pbuf")
     irRet("ptr", "%result")
 
     irLabel("fail")
-    irCall("empty", "ptr", "ss_rc_strdup", "ptr @.rt.str.empty")
+    irCall("empty", "ptr", "ss_string_from_cstr", "ptr @.rt.str.empty")
     irRet("ptr", "%empty")
     emitIR("}")
     emitIR("")

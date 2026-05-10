@@ -344,7 +344,11 @@ function generateToFile(rootId: int, outFile: string) {
     emitPendingDeserializers()
     irOutFile = ""
     const body = readFile(outFile)
-    writeFile(outFile, `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${readFile(`${outFile}.str`)}\n${body}`)
+    // D168 §B.5: %String type forward-decl 必须在 @.str.N initializer 之前(LLVM IR forward
+    // reference rule: opaque type 的 init 默认 0 字段会让 5 字段 init 报 "wrong # elements")。
+    // header → typeDecl → str → body 的拼装顺序确保 LLVM 解析常量初始化器时已知 %String 5 字段布局。
+    const typeDecl = "%String = type { i64, ptr, ptr, i64, i64 }\n"
+    writeFile(outFile, `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${typeDecl}${readFile(`${outFile}.str`)}\n${body}`)
 }
 
 // Builtin function name mapping moved to gen_registry.ss (builtinMap, runtimeName)

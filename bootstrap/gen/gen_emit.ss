@@ -154,13 +154,19 @@ function addStringConst(value: string): string {
         } else { escaped = escaped + ch }
         i = i + 1
     }
-    const line = `${name} = constant [${sLen + 1} x i8] c"${escaped}\\00"\n`
+    // D168 §B.2: 字面量 boxed — 双全局常量(@.bytes.N 裸 bytes + @.str.N %String header immortal RC=-1)
+    const allocLen = sLen + 1
+    const bytesName = `@.bytes.${strCount - 1}`
+    const bytesLine = `${bytesName} = constant [${allocLen} x i8] c"${escaped}\\00"\n`
+    const headerLine = `${name} = constant %String { i64 -1, ptr @String_type_info, ptr ${bytesName}, i64 ${sLen}, i64 ${allocLen} }\n`
     // strOutFile overrides irOutFile for string constant output (used by arrow functions)
     const strTarget = strOutFile ?? irOutFile
     if (strTarget != "") {
-        appendFile(`${strTarget}.str`, line)
+        appendFile(`${strTarget}.str`, bytesLine)
+        appendFile(`${strTarget}.str`, headerLine)
     } else {
-        strConsts = strConsts + line
+        strConsts = strConsts + bytesLine
+        strConsts = strConsts + headerLine
     }
     return name
 }

@@ -4,7 +4,10 @@
 function genExprAsString(id: int, preReg: string = ""): string {
     const vType = inferType(id)
     const llType = ssTypeToLLVM(vType)
-    if (vType == "string" || (llType == "ptr" && vType != "ptr" && vType.contains("<") == 0)) {
+    // D168 §B.7: 严格 string 才直接借用;user class / array / map 等 ptr 类型走
+    // ptrtoint → ss_i64_to_string 路径(打印整数地址),否则 ss_println GEP buffer 时
+    // 会把 class 实例 offset 16 处的字段当 buffer ptr 读 → segfault。
+    if (vType == "string") {
         const sVal = preReg != "" ? preReg : genExpr(id)
         const sNodeKind = nGetKind(id)
         if (sNodeKind == "IDENT" && getVarType(nGetS1(id)) == "i64") {
@@ -27,7 +30,9 @@ function genExprAsString(id: int, preReg: string = ""): string {
         lastExprStringOwned = 1
         return r
     }
-    if (vType == "ptr" || vType.contains("<") == 1) {
+    // D168 §B.7: 凡 llType==ptr(user class / array / map / set / generic 等)走
+    // ptrtoint → ss_i64_to_string,打印整数地址(替代旧 ABI 把 ptr 当 cstr 给 puts 的 hack)。
+    if (vType == "ptr" || vType.contains("<") == 1 || llType == "ptr") {
         const castR = nextReg()
         emitIR(`  ${castR} = ptrtoint ptr ${val} to i64`)
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_i64_to_string(i64 ${castR})`)

@@ -35,10 +35,12 @@ function emitRuntimeMap() {
     emitIR("}")
     emitIR("")
 
-    // find_entry — internal helper
+    // find_entry — internal helper. D168 §B.7: %key 是 SS String header,GEP buffer
     emitIR("define internal ptr @find_entry(ptr %map, ptr %key) {")
     irLabel("entry")
-    irCall("idx", "i32", "hash_str", "ptr %key")
+    emitIR("  %key_buf_ptr = getelementptr %String, ptr %key, i32 0, i32 2")
+    emitIR("  %key_buf = load ptr, ptr %key_buf_ptr, align 8")
+    irCall("idx", "i32", "hash_str", "ptr %key_buf")
     irSext("idx64", "i32", "%idx", "i64")
     irGEP("bp", "ptr", "%map", "%idx64")
     irLoad("e0", "ptr", "%bp")
@@ -51,7 +53,7 @@ function emitRuntimeMap() {
     irBrCond("nil", "notfound", "cmp")
     irLabel("cmp")
     irLoad("ek", "ptr", "%e")
-    irCall("eq", "i32", "strcmp", "ptr %ek, ptr %key")
+    irCall("eq", "i32", "strcmp", "ptr %ek, ptr %key_buf")
     irICmp("match", "eq", "i32", "%eq", "0")
     irBrCond("match", "found", "next")
     irLabel("next")
@@ -96,11 +98,15 @@ function emitRuntimeMap() {
     irRetVoid()
     irLabel("insert")
     irCall("ne", "ptr", "malloc", "i64 24")
-    irCall("kd", "ptr", "ss_rc_strdup", "ptr %key")
+    // D168 §B.7: ss_rc_strdup 接收 cstr;%key 是 SS String header,先 GEP buffer。
+    // entry.key 内部存裸 cstr(byte ptr),与 strcmp / strlen 兼容。
+    emitIR("  %ikey_buf_ptr = getelementptr %String, ptr %key, i32 0, i32 2")
+    emitIR("  %ikey_buf = load ptr, ptr %ikey_buf_ptr, align 8")
+    irCall("kd", "ptr", "ss_rc_strdup", "ptr %ikey_buf")
     irStore("ptr", "%kd", "%ne")
     irGEP("nvp", "i8", "%ne", "8")
     irStore("i64", "%val", "%nvp")
-    irCall("idx", "i32", "hash_str", "ptr %key")
+    irCall("idx", "i32", "hash_str", "ptr %ikey_buf")
     irSext("idx64", "i32", "%idx", "i64")
     irGEP("bp", "ptr", "%map", "%idx64")
     irLoad("old", "ptr", "%bp")
@@ -143,7 +149,9 @@ function emitRuntimeMap() {
     irIntToPtr("p", "i64", "%v")
     irRet("ptr", "%p")
     irLabel("nf")
-    irRet("ptr", "@.rt.str.empty")
+    // D168 §B.7: not-found 也必须返 SS String header,包装 empty cstr
+    irCall("nfstr", "ptr", "ss_string_from_cstr", "ptr @.rt.str.empty")
+    irRet("ptr", "%nfstr")
     emitIR("}")
     emitIR("")
 
@@ -164,10 +172,12 @@ function emitRuntimeMap() {
     emitIR("}")
     emitIR("")
 
-    // ss_mapDelete
+    // ss_mapDelete — D168 §B.7: %key 是 SS String header,GEP buffer
     emitIR("define void @ss_mapDelete(ptr %map, ptr %key) {")
     irLabel("entry")
-    irCall("idx", "i32", "hash_str", "ptr %key")
+    emitIR("  %key_buf_ptr = getelementptr %String, ptr %key, i32 0, i32 2")
+    emitIR("  %key_buf = load ptr, ptr %key_buf_ptr, align 8")
+    irCall("idx", "i32", "hash_str", "ptr %key_buf")
     irSext("idx64", "i32", "%idx", "i64")
     irGEP("bp", "ptr", "%map", "%idx64")
     irAlloca("prev", "ptr", 8)
@@ -182,7 +192,7 @@ function emitRuntimeMap() {
     irBrCond("nil", "done", "cmp")
     irLabel("cmp")
     irLoad("ek", "ptr", "%e")
-    irCall("eq", "i32", "strcmp", "ptr %ek, ptr %key")
+    irCall("eq", "i32", "strcmp", "ptr %ek, ptr %key_buf")
     irICmp("match", "eq", "i32", "%eq", "0")
     irBrCond("match", "remove", "advance")
     irLabel("advance")
@@ -286,7 +296,10 @@ function emitRuntimeMap() {
     irLoad("fbuf", "ptr", "%bufp")
     irGEP("fterm", "i8", "%fbuf", "%fpos")
     irStore("i8", "0", "%fterm")
-    irRet("ptr", "%fbuf")
+    // D168 §B.7: 包装 byte buf → SS String header,释放原 byte buf
+    irCall("retstr", "ptr", "ss_string_from_cstr", "ptr %fbuf")
+    irCallVoid("ss_rc_release", "ptr %fbuf")
+    irRet("ptr", "%retstr")
     emitIR("}")
     emitIR("")
 
@@ -320,9 +333,9 @@ function emitRuntimeMap() {
     irICmp("enil", "eq", "ptr", "%e", "null")
     irBrCond("enil", "bnext", "ecopy")
     irLabel("ecopy")
-    // Get key string, strdup it for the array
+    // D168 §B.7: entry.key 内部存裸 cstr,包装成 String header 给 Array<string>
     irLoad("ek", "ptr", "%e")
-    irCall("kdup", "ptr", "ss_rc_strdup", "ptr %ek")
+    irCall("kdup", "ptr", "ss_string_from_cstr", "ptr %ek")
     // Store into array via ss_arraySet API
     irLoad("ci", "i64", "%ai")
     irTrunc("ci32", "i64", "%ci", "i32")

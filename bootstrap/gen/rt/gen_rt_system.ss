@@ -3,20 +3,24 @@
 // ── Filesystem ────────────────────────────────────────────────
 
 function emitRuntimeFS() {
-    // ss_mkdir
+    // ss_mkdir — D168 §B.7: %path GEP buffer
     emitIR("define i32 @ss_mkdir(ptr %path) {")
-    irCall("result", "i32", "mkdir", "ptr %path, i32 493")
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
+    irCall("result", "i32", "mkdir", "ptr %path_buf, i32 493")
     irRet("i32", "%result")
     emitIR("}")
     emitIR("")
 
-    // ss_mkdirp — recursive mkdir
+    // ss_mkdirp — recursive mkdir, D168 §B.7: %path GEP buffer
     emitIR("define i32 @ss_mkdirp(ptr %path) {")
     irLabel("entry")
-    irCall("len", "i64", "strlen", "ptr %path")
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
+    irCall("len", "i64", "strlen", "ptr %path_buf")
     irAdd("alloc", "i64", "%len", "1")
     irCall("buf", "ptr", "malloc", "i64 %alloc")
-    irCall("_1", "ptr", "memcpy", "ptr %buf, ptr %path, i64 %len")
+    irCall("_1", "ptr", "memcpy", "ptr %buf, ptr %path_buf, i64 %len")
     irGEP("term", "i8", "%buf", "%len")
     irStore("i8", "0", "%term")
     irAlloca("i", "i64", 8)
@@ -48,21 +52,25 @@ function emitRuntimeFS() {
     emitIR("}")
     emitIR("")
 
-    // ss_fileExists
+    // ss_fileExists — D168 §B.7: %path GEP buffer
     emitIR("define i32 @ss_fileExists(ptr %path) {")
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
     irAlloca("statbuf", "[144 x i8]", 8)
-    irCall("rc", "i32", "stat", "ptr %path, ptr %statbuf")
+    irCall("rc", "i32", "stat", "ptr %path_buf, ptr %statbuf")
     irICmp("exists", "eq", "i32", "%rc", "0")
     irZext("result", "i1", "%exists", "i32")
     irRet("i32", "%result")
     emitIR("}")
     emitIR("")
 
-    // ss_fileSize
+    // ss_fileSize — D168 §B.7: %path GEP buffer
     emitIR("define i64 @ss_fileSize(ptr %path) {")
     irLabel("entry")
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
     irAlloca("statbuf", "[144 x i8]", 8)
-    irCall("rc", "i32", "stat", "ptr %path, ptr %statbuf")
+    irCall("rc", "i32", "stat", "ptr %path_buf, ptr %statbuf")
     irICmp("failed", "ne", "i32", "%rc", "0")
     irBrCond("failed", "fail", "ok")
     irLabel("ok")
@@ -74,28 +82,36 @@ function emitRuntimeFS() {
     emitIR("}")
     emitIR("")
 
-    // ss_removeFile
+    // ss_removeFile — D168 §B.7: %path GEP buffer
     emitIR("define i32 @ss_removeFile(ptr %path) {")
-    irCall("result", "i32", "remove", "ptr %path")
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
+    irCall("result", "i32", "remove", "ptr %path_buf")
     irRet("i32", "%result")
     emitIR("}")
     emitIR("")
 
-    // ss_renameFile
+    // ss_renameFile — D168 §B.7: 双 path GEP buffer
     emitIR("define i32 @ss_renameFile(ptr %oldpath, ptr %newpath) {")
-    irCall("result", "i32", "rename", "ptr %oldpath, ptr %newpath")
+    emitIR("  %oldpath_buf_ptr = getelementptr %String, ptr %oldpath, i32 0, i32 2")
+    emitIR("  %oldpath_buf = load ptr, ptr %oldpath_buf_ptr, align 8")
+    emitIR("  %newpath_buf_ptr = getelementptr %String, ptr %newpath, i32 0, i32 2")
+    emitIR("  %newpath_buf = load ptr, ptr %newpath_buf_ptr, align 8")
+    irCall("result", "i32", "rename", "ptr %oldpath_buf, ptr %newpath_buf")
     irRet("i32", "%result")
     emitIR("}")
     emitIR("")
 
-    // ss_listDir (dynamic buffer)
+    // ss_listDir (dynamic buffer) — D168 §B.7: %path GEP buffer + 返回包装
     emitIR("define ptr @ss_listDir(ptr %path) {")
     irLabel("entry")
-    irCall("dp", "ptr", "opendir", "ptr %path")
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
+    irCall("dp", "ptr", "opendir", "ptr %path_buf")
     irICmp("isnull", "eq", "ptr", "%dp", "null")
     irBrCond("isnull", "fail", "init")
     irLabel("fail")
-    irCall("empty", "ptr", "ss_rc_strdup", "ptr @.rt.str.empty")
+    irCall("empty", "ptr", "ss_string_from_cstr", "ptr @.rt.str.empty")
     irRet("ptr", "%empty")
     irLabel("init")
     irAlloca("bufp", "ptr", 8)
@@ -144,7 +160,10 @@ function emitRuntimeFS() {
     irLoad("fbuf", "ptr", "%bufp")
     irGEP("fterm", "i8", "%fbuf", "%fpos")
     irStore("i8", "0", "%fterm")
-    irRet("ptr", "%fbuf")
+    // D168 §B.7: 包装 byte buf → SS String header,释放原 byte buf
+    irCall("retstr", "ptr", "ss_string_from_cstr", "ptr %fbuf")
+    irCallVoid("ss_rc_release", "ptr %fbuf")
+    irRet("ptr", "%retstr")
     emitIR("}")
     emitIR("")
 
@@ -214,33 +233,41 @@ function emitRuntimeNet() {
     emitIR("}")
     emitIR("")
 
-    // ss_tcpRead
+    // ss_tcpRead — D168 §B.7: 返回模式 B(ss_alloc_string + 设 len)
     emitIR("define ptr @ss_tcpRead(i32 %fd, i32 %maxlen) {")
     irSext("maxlen64", "i32", "%maxlen", "i64")
     irAdd("alloc", "i64", "%maxlen64", "1")
-    irCall("buf", "ptr", "ss_rc_alloc", "i64 %alloc, i32 0")
-    irCall("nread", "i64", "read", "i32 %fd, ptr %buf, i64 %maxlen64")
+    irCall("new", "ptr", "ss_alloc_string", "i64 %alloc")
+    emitIR("  %new_buf_ptr = getelementptr %String, ptr %new, i32 0, i32 2")
+    emitIR("  %new_buf = load ptr, ptr %new_buf_ptr, align 8")
+    irCall("nread", "i64", "read", "i32 %fd, ptr %new_buf, i64 %maxlen64")
     irICmp("neg", "slt", "i64", "%nread", "0")
     irSelect("safe", "neg", "i64", "0", "%nread")
-    irGEP("term", "i8", "%buf", "%safe")
+    irGEP("term", "i8", "%new_buf", "%safe")
     irStore("i8", "0", "%term")
-    irRet("ptr", "%buf")
+    emitIR("  %new_len_ptr = getelementptr %String, ptr %new, i32 0, i32 3")
+    emitIR("  store i64 %safe, ptr %new_len_ptr, align 8")
+    irRet("ptr", "%new")
     emitIR("}")
     emitIR("")
 
-    // ss_tcpWrite
+    // ss_tcpWrite — D168 §B.7: %data GEP buffer
     emitIR("define i32 @ss_tcpWrite(i32 %fd, ptr %data) {")
-    irCall("len", "i64", "strlen", "ptr %data")
-    irCall("nwritten", "i64", "write", "i32 %fd, ptr %data, i64 %len")
+    emitIR("  %data_buf_ptr = getelementptr %String, ptr %data, i32 0, i32 2")
+    emitIR("  %data_buf = load ptr, ptr %data_buf_ptr, align 8")
+    irCall("len", "i64", "strlen", "ptr %data_buf")
+    irCall("nwritten", "i64", "write", "i32 %fd, ptr %data_buf, i64 %len")
     irTrunc("result", "i64", "%nwritten", "i32")
     irRet("i32", "%result")
     emitIR("}")
     emitIR("")
 
-    // ss_tcpWriteBytes
+    // ss_tcpWriteBytes — D168 §B.7: %data 是 SS string,GEP buffer
     emitIR("define i32 @ss_tcpWriteBytes(i32 %fd, ptr %data, i32 %len) {")
+    emitIR("  %data_buf_ptr = getelementptr %String, ptr %data, i32 0, i32 2")
+    emitIR("  %data_buf = load ptr, ptr %data_buf_ptr, align 8")
     irSext("len64", "i32", "%len", "i64")
-    irCall("nwritten", "i64", "write", "i32 %fd, ptr %data, i64 %len64")
+    irCall("nwritten", "i64", "write", "i32 %fd, ptr %data_buf, i64 %len64")
     irTrunc("result", "i64", "%nwritten", "i32")
     irRet("i32", "%result")
     emitIR("}")
@@ -257,6 +284,9 @@ function emitRuntimeNet() {
     // addrinfo musl/Linux layout 48 bytes: ai_flags@0, ai_family@4, ai_socktype@8, ai_protocol@12, ai_addrlen@16, ai_addr@24.
     emitIR("define i32 @ss_tcpConnect(ptr %host, i32 %port) {")
     irLabel("entry")
+    // D168 §B.7: %host GEP buffer
+    emitIR("  %host_buf_ptr = getelementptr %String, ptr %host, i32 0, i32 2")
+    emitIR("  %host_buf = load ptr, ptr %host_buf_ptr, align 8")
     irAlloca("hints", "[48 x i8]", 8)
     irCall("_1", "ptr", "memset", "ptr %hints, i32 0, i64 48")
     irGEP("famp", "i8", "%hints", "4")
@@ -264,7 +294,7 @@ function emitRuntimeNet() {
     irGEP("typep", "i8", "%hints", "8")
     irStore("i32", "1", "%typep")
     irAlloca("resp", "ptr", 8)
-    irCall("gai", "i32", "getaddrinfo", "ptr %host, ptr null, ptr %hints, ptr %resp")
+    irCall("gai", "i32", "getaddrinfo", "ptr %host_buf, ptr null, ptr %hints, ptr %resp")
     irICmp("gai_bad", "ne", "i32", "%gai", "0")
     irBrCond("gai_bad", "fail", "make_socket")
     irLabel("make_socket")
@@ -303,6 +333,9 @@ function emitRuntimeNet() {
     // Returns bytes actually read; < len = EOF mid-stream.
     emitIR("define i32 @ss_tcpReadBytes(i32 %fd, ptr %buf, i32 %len) {")
     irLabel("entry")
+    // D168 §B.7: %buf 是 SS string,GEP buffer
+    emitIR("  %buf_buf_ptr = getelementptr %String, ptr %buf, i32 0, i32 2")
+    emitIR("  %buf_buf = load ptr, ptr %buf_buf_ptr, align 8")
     irSext("len64", "i32", "%len", "i64")
     irAlloca("so_far", "i64", 8)
     irStore("i64", "0", "%so_far")
@@ -313,7 +346,7 @@ function emitRuntimeNet() {
     irBrCond("done", "finish", "body")
     irLabel("body")
     irSub("remain", "i64", "%len64", "%cur")
-    irGEP("dst", "i8", "%buf", "%cur")
+    irGEP("dst", "i8", "%buf_buf", "%cur")
     irCall("n", "i64", "read", "i32 %fd, ptr %dst, i64 %remain")
     irICmp("eof", "sle", "i64", "%n", "0")
     irBrCond("eof", "finish", "inc")
@@ -356,8 +389,11 @@ function emitRuntimeNet() {
     // callers pass any byte offset into a packet payload without realignment.
     emitIR("define double @ss_readDoubleLE(ptr %buf, i32 %offset) {")
     irLabel("entry")
+    // D168 §B.7: %buf 是 SS string,GEP buffer
+    emitIR("  %buf_buf_ptr = getelementptr %String, ptr %buf, i32 0, i32 2")
+    emitIR("  %buf_buf = load ptr, ptr %buf_buf_ptr, align 8")
     irSext("off64", "i32", "%offset", "i64")
-    irGEP("p", "i8", "%buf", "%off64")
+    irGEP("p", "i8", "%buf_buf", "%off64")
     emitIR("  %i64bits = load i64, ptr %p, align 1")
     emitIR("  %d = bitcast i64 %i64bits to double")
     irRet("double", "%d")
@@ -383,8 +419,14 @@ function emitRuntimeExceptions() {
     irCallVoid("longjmp", "ptr %bufptr, i32 1")
     emitIR("  unreachable")
     irLabel("no_handler")
-    irCall("_1", "ptr", "ss_string_concat", "ptr @.rt.str.uncaught, ptr %msg")
-    emitIR("  call i32 @puts(ptr %_1)")
+    // D168 §B.7: %msg 是 SS String header,GEP buffer 给 puts。
+    // ss_string_concat 切轨后期望两端均 String header,但 @.rt.str.uncaught 是裸 cstr。
+    // 用 fputs(stdout 不带换行 prefix) + puts(msg buffer 自带 \n) 实现 "uncaught exception: <msg>\n"。
+    irLoad("out", "ptr", "@stdout")
+    irCall("_uc", "i32", "fputs", "ptr @.rt.str.uncaught, ptr %out")
+    emitIR("  %msg_buf_ptr = getelementptr %String, ptr %msg, i32 0, i32 2")
+    emitIR("  %msg_buf = load ptr, ptr %msg_buf_ptr, align 8")
+    irCall("_um", "i32", "puts", "ptr %msg_buf")
     irCallVoid("exit", "i32 1")
     emitIR("  unreachable")
     emitIR("}")
@@ -394,6 +436,7 @@ function emitRuntimeExceptions() {
 function emitRuntimeIsInstance() {
     // ss_isinstance(ptr %obj, ptr %target_name) → i32 (1=match, 0=no)
     // Walks TypeInfo parent chain comparing class name with target
+    // D168 §B.7: %target_name 是 SS String header,GEP buffer 给 strcmp(TypeInfo.name 是裸 cstr)
     emitIR("define i32 @ss_isinstance(ptr %obj, ptr %target_name) {")
     irLabel("entry")
     // Null object check — return 0 (false) for null
@@ -403,16 +446,19 @@ function emitRuntimeIsInstance() {
     // Load TypeInfo pointer (offset 1 in object)
     emitIR("  %ti_gep = getelementptr ptr, ptr %obj, i32 1")
     emitIR("  %ti = load ptr, ptr %ti_gep, align 8")
+    // GEP target_name buffer once
+    emitIR("  %tname_buf_ptr = getelementptr %String, ptr %target_name, i32 0, i32 2")
+    emitIR("  %tname_buf = load ptr, ptr %tname_buf_ptr, align 8")
     emitIR("  br label %loop")
     irLabel("loop")
     emitIR("  %cur_ti = phi ptr [ %ti, %load_ti ], [ %parent_ti, %next ]")
     emitIR("  %is_null = icmp eq ptr %cur_ti, null")
     emitIR("  br i1 %is_null, label %no_match, label %check")
     irLabel("check")
-    // Load name (index 4 in TypeInfo)
+    // Load name (index 4 in TypeInfo) — TypeInfo.name 是裸 cstr
     emitIR("  %name_gep = getelementptr %TypeInfo, ptr %cur_ti, i32 0, i32 4")
     emitIR("  %name = load ptr, ptr %name_gep, align 8")
-    emitIR("  %cmp = call i32 @strcmp(ptr %name, ptr %target_name)")
+    emitIR("  %cmp = call i32 @strcmp(ptr %name, ptr %tname_buf)")
     emitIR("  %eq = icmp eq i32 %cmp, 0")
     emitIR("  br i1 %eq, label %match, label %next")
     irLabel("next")
@@ -443,11 +489,14 @@ function emitRuntimeInotify() {
     // If recursive=1, traverses subdirectories via opendir/readdir
     emitIR("define i32 @_ss_inotify_add_watch(i32 %fd, ptr %path, i32 %recursive) {")
     irLabel("entry")
-    irCall("wd", "i32", "inotify_add_watch", "i32 %fd, ptr %path, i32 898")
+    // D168 §B.7: %path 是 SS String header,GEP buffer 一次给 C 函数用
+    emitIR("  %path_buf_ptr = getelementptr %String, ptr %path, i32 0, i32 2")
+    emitIR("  %path_buf = load ptr, ptr %path_buf_ptr, align 8")
+    irCall("wd", "i32", "inotify_add_watch", "i32 %fd, ptr %path_buf, i32 898")
     irICmp("not_rec", "eq", "i32", "%recursive", "0")
     irBrCond("not_rec", "done", "scan")
     irLabel("scan")
-    irCall("dp", "ptr", "opendir", "ptr %path")
+    irCall("dp", "ptr", "opendir", "ptr %path_buf")
     irICmp("dp_null", "eq", "ptr", "%dp", "null")
     irBrCond("dp_null", "done", "rd_loop")
     irLabel("rd_loop")
@@ -474,13 +523,13 @@ function emitRuntimeInotify() {
     irOr("skip", "i1", "%is_end", "%is_dd")
     irBrCond("skip", "rd_loop", "add_sub")
     irLabel("add_sub")
-    // Build full path: path + "/" + name
-    irCall("plen", "i64", "strlen", "ptr %path")
+    // Build full path: path + "/" + name. D168 §B.7: 用 %path_buf 而非 %path
+    irCall("plen", "i64", "strlen", "ptr %path_buf")
     irCall("nlen", "i64", "strlen", "ptr %name")
     irAdd("total", "i64", "%plen", "%nlen")
     irAdd("total2", "i64", "%total", "2")
     irCall("buf", "ptr", "malloc", "i64 %total2")
-    irCall("_1", "ptr", "memcpy", "ptr %buf, ptr %path, i64 %plen")
+    irCall("_1", "ptr", "memcpy", "ptr %buf, ptr %path_buf, i64 %plen")
     irGEP("slp", "i8", "%buf", "%plen")
     irStore("i8", "47", "%slp")  // ASCII '/'
     irAdd("pl1", "i64", "%plen", "1")
@@ -489,7 +538,10 @@ function emitRuntimeInotify() {
     irAdd("tend", "i64", "%pl1", "%nlen")
     irGEP("term", "i8", "%buf", "%tend")
     irStore("i8", "0", "%term")
-    irCall("_3", "i32", "_ss_inotify_add_watch", "i32 %fd, ptr %buf, i32 1")
+    // D168 §B.7: 递归前包装 byte buf → String header,递归后释放
+    irCall("subpath", "ptr", "ss_string_from_cstr", "ptr %buf")
+    irCall("_3", "i32", "_ss_inotify_add_watch", "i32 %fd, ptr %subpath, i32 1")
+    irCallVoid("ss_release", "ptr %subpath")
     irCallVoid("free", "ptr %buf")
     irBr("rd_loop")
     irLabel("close_dir")
@@ -526,10 +578,10 @@ function emitRuntimeInotify() {
     irBrCond("has_name", "get_name", "empty")
     irLabel("get_name")
     irGEP("nameptr", "i8", "%ebuf", "16")
-    irCall("result", "ptr", "ss_rc_strdup", "ptr %nameptr")
+    irCall("result", "ptr", "ss_string_from_cstr", "ptr %nameptr")
     irRet("ptr", "%result")
     irLabel("empty")
-    irCall("estr", "ptr", "ss_rc_strdup", "ptr @.rt.str.empty")
+    irCall("estr", "ptr", "ss_string_from_cstr", "ptr @.rt.str.empty")
     irRet("ptr", "%estr")
     emitIR("}")
     emitIR("")

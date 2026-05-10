@@ -191,11 +191,13 @@ function genTestCall(argList: string) {
     const p1 = nextReg()
     emitIR(`  ${p1} = add i32 ${p0}, 1`)
     emitIR(`  store i32 ${p1}, ptr @ss_test_passed, align 4`)
-    // Print "  PASS: <name>"
-    const passMsg = nextReg()
-    emitIR(`  ${passMsg} = call ptr @ss_string_concat(ptr @.rt.str.test_pass, ptr ${nameReg})`)
-    emitIR(`  call void @ss_println(ptr ${passMsg})`)
-    emitIR(`  call void @ss_rc_release(ptr ${passMsg})`)
+    // Print "  PASS: <name>" — D168 §B.7: @.rt.str.test_pass 是裸 cstr;不能与 SS String header concat。
+    // 拆 fputs(test_pass cstr) + ss_println(name SS string) 两段。命名 fputs 返回 reg 防隐式编号冲突。
+    const passOut = nextReg()
+    emitIR(`  ${passOut} = load ptr, ptr @stdout, align 8`)
+    const passFp = nextReg()
+    emitIR(`  ${passFp} = call i32 @fputs(ptr @.rt.str.test_pass, ptr ${passOut})`)
+    emitIR(`  call void @ss_println(ptr ${nameReg})`)
     emitIR(`  br label %${endLabel}`)
 
     // ── Catch ──
@@ -207,19 +209,29 @@ function genTestCall(argList: string) {
     const f1 = nextReg()
     emitIR(`  ${f1} = add i32 ${f0}, 1`)
     emitIR(`  store i32 ${f1}, ptr @ss_test_failed, align 4`)
-    // Print "  FAIL: <name> - <error>"
+    // Print "  FAIL: <name> - <error>" — D168 §B.7: @.rt.str.test_fail / test_sep 是裸 cstr。
+    // 拆 fputs(test_fail) + fputs(name buffer) + fputs(test_sep) + ss_println(excMsg) 四段。
+    // ss_exc_msg 是 SS String header(throw 已切轨)。
     const excMsg = nextReg()
     emitIR(`  ${excMsg} = load ptr, ptr @ss_exc_msg`)
-    const failPart = nextReg()
-    emitIR(`  ${failPart} = call ptr @ss_string_concat(ptr @.rt.str.test_fail, ptr ${nameReg})`)
-    const failSep = nextReg()
-    emitIR(`  ${failSep} = call ptr @ss_string_concat(ptr ${failPart}, ptr @.rt.str.test_sep)`)
-    emitIR(`  call void @ss_rc_release(ptr ${failPart})`)
-    const failFull = nextReg()
-    emitIR(`  ${failFull} = call ptr @ss_string_concat(ptr ${failSep}, ptr ${excMsg})`)
-    emitIR(`  call void @ss_rc_release(ptr ${failSep})`)
-    emitIR(`  call void @ss_println(ptr ${failFull})`)
-    emitIR(`  call void @ss_rc_release(ptr ${failFull})`)
+    const failOut = nextReg()
+    emitIR(`  ${failOut} = load ptr, ptr @stdout, align 8`)
+    const failFp1 = nextReg()
+    emitIR(`  ${failFp1} = call i32 @fputs(ptr @.rt.str.test_fail, ptr ${failOut})`)
+    // GEP name buffer 给 fputs
+    const nameBufPtr = nextReg()
+    emitIR(`  ${nameBufPtr} = getelementptr %String, ptr ${nameReg}, i32 0, i32 2`)
+    const nameBuf = nextReg()
+    emitIR(`  ${nameBuf} = load ptr, ptr ${nameBufPtr}, align 8`)
+    const failOut2 = nextReg()
+    emitIR(`  ${failOut2} = load ptr, ptr @stdout, align 8`)
+    const failFp2 = nextReg()
+    emitIR(`  ${failFp2} = call i32 @fputs(ptr ${nameBuf}, ptr ${failOut2})`)
+    const failOut3 = nextReg()
+    emitIR(`  ${failOut3} = load ptr, ptr @stdout, align 8`)
+    const failFp3 = nextReg()
+    emitIR(`  ${failFp3} = call i32 @fputs(ptr @.rt.str.test_sep, ptr ${failOut3})`)
+    emitIR(`  call void @ss_println(ptr ${excMsg})`)
     emitIR(`  br label %${endLabel}`)
 
     // ── End ──

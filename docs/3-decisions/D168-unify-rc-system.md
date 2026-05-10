@@ -280,7 +280,7 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 |---|---|---|---|
 | **P1.1** | ObjHeader RC i32→i64 全栈升级 + B3 immortal 跳过路径(`icmp slt i64 %rc, 0`) | gen_runtime.ss / class_register.ss / gen_type_ops.ss / gen_arrows.ss | [x] commit `cd72998` 2026-05-10(bootstrap PASS + 全测 0 regression) |
 | **P1.2** | B5 emitStringTypeInfo dead-code 元数据(`%String` 类型 + `@String_type_info` + ss_drop_String / ss_deep_clone_String / ss_shallow_clone_String;P1.3 才连接到字面量 + dispatch) | gen_runtime.ss(emitStringTypeInfo 函数 + 内嵌 75 行 IR) | [x] 本 commit 2026-05-10(bootstrap PASS + 全测 0 regression + IR 命中;§扩容申报-P1.2 bump M3b/F1) |
-| **P1.3** | **大改合并**(原 P1.2+P1.3+P1.4):B2 字面量 IR 升级 boxed + B6 dispatch string 路由 + B7 全栈 string runtime GEP 偏移修正 + B4 mimalloc 字符串分配切换。**范围不可分**:字面量 boxed 后 ss_println / 字符串拼接 / 比较 / length 等所有 string runtime 必须同步 GEP buffer 字段(字面量 ptr 不再是 byte 起点) | gen_emit.ss / gen_decls.ss / gen_rt_string.ss / gen_rt_io.ss / class.ss / gen_runtime.ss | [ ] Planned(改动估 100+ 行多文件) |
+| **P1.3** | **大改合并**:B2 字面量 IR 升级 boxed + B6 dispatch string 路由 + B7 全栈 string runtime GEP 偏移修正 + B4 mimalloc 字符串分配切换。**实测扩散到容器层(array/map/shell)+ 表达式层(calls/methods/exprs_str_conv)+ codegen.ss IR 拼装顺序**(实测偏差 +120% 已 §扩容申报失准记录) | gen_emit.ss / gen_runtime.ss / gen_rt_string.ss / gen_rt_io.ss / gen_rt_system.ss / gen_rt_array.ss / gen_rt_map.ss / gen_rt_shell.ss / class.ss / codegen.ss / gen_calls.ss / gen_methods.ss / exprs_str_conv.ss | [x] 本 commit 2026-05-10(bootstrap PASS + 全测 310/17/327 0 regression + reflection bump 6 metrics)|
 | **P1.4** | 综合大测 + 性能 micro-bench(可选)+ 残尾收尾(retain 路径 B8 b、跨函数返回值 B8 c) | 全测 + 性能脚本 | [ ] Planned |
 
 **P1.X 范围调整记录**:原划分(B5+B3+B6 / B2+B7 / B4 / 大测)在 P1.2 实施时 ultrathink 发现"字面量 boxed 与 string runtime GEP 适配不可分",修正为:P1.1=ObjHeader+B3、P1.2=B5 dead-code、P1.3=B2+B6+B7+B4 合并大改、P1.4=综合大测。原划分按子决策 ortho 切分,修正后按"独立可 commit + bootstrap 验证"切分,更符合 §B.9 三阶段验证原则。
@@ -303,6 +303,23 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 **根因解决度**:P1.2 是 D168 §B.5 子决策落地(emit String 类型元数据 dead-code 占位 SSoT),P1.3 才连接到字面量发射 + dispatch 路由。本扩容是 §B.5 直接副作用,非冗余实现 — 与 `emitClassTypeInfo` (`gen_type_ops.ss:210-233`) 同模式,IR emit 量是不可压缩的元数据底座。
 
 **对账(预估 vs 实测)**:预估 ~75 行(emit IR 字符串数固定),实测 +80 行(F1 delta 含函数定义 + 调用点注释)。预估偏差 < 7%(±5 行),无需写入 §扩容申报失准段。
+
+---
+
+## §扩容申报-P1.3-string-abi-切轨
+
+| metric | bm_old | bm_new | delta | 业务理由 |
+|---|---|---|---|---|
+| M2 | 83300 | 84600 | +1300 | string runtime 全切轨:gen_rt_string.ss 17 函数 + gen_rt_io.ss 6 函数 + gen_rt_system.ss 多函数 + 扩散修(map/array/shell/calls/methods/exprs_str_conv)新增 GEP buffer + load 模式;AST 节点 cur 84566 |
+| M3a | 13050 | 13400 | +350 | 同上,call 边数 cur 13366 |
+| M3b | 2050 | 2250 | +200 | 同上,最大入度 cur 2213 |
+| N2 | 416000 | 423000 | +7000 | 同上,Halstead vol cur 422830 |
+| N3 | 575500 | 584000 | +8500 | 同上,AST 深度和 cur 583462 |
+| F1:bootstrap/gen/gen_runtime.ss | 700 | 730 | +30 | P1.3 helpers ss_alloc_string + ss_string_from_cstr 追加 ~35 行(P1.2 693 → P1.3 728) |
+
+**根因解决度**:§B.2/§B.4/§B.6/§B.7 合并大改的直接副作用 — 字面量 boxed + dispatch 路由 + 全栈 string runtime GEP 适配 + mimalloc 切换不可分。改动模式机械化(GEP buffer + load + 给 C 函数),非冗余实现。扩散修复(map/array/shell/calls/methods/exprs_str_conv/codegen 拼装顺序)是 ABI 切轨的根因连锁。
+
+**对账(预估 vs 实测)**:预估 ~120 行,实测 +520/-256 = 净 +264 行。**预估偏差 ~120%(超出 2 倍)— 写入 §扩容申报失准段**。根因:原预估只覆盖 io+system 主任务,**未含容器层(map/array/shell)+ 表达式层(calls/methods/exprs_str_conv)+ codegen IR 拼装顺序连锁修**。下次 string ABI 类大改前置必含"容器层 + 表达式层 + 测试输出路径"全栈连锁评估,不仅看主调用路径。
 
 ---
 

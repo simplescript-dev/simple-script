@@ -138,7 +138,8 @@ function isInterfaceType(typeName: string): int {
 
 // Emit retain call for the appropriate RC system
 function emitRetainForType(reg: string, ssType: string) {
-    if (isUserClass(ssType) == 1) {
+    // D168 §B.6: string 走新 RC (ss_retain),字面量 immortal RC=-1 自然跳过
+    if (isUserClass(ssType) == 1 || ssType == "string") {
         emitIR(`  call void @ss_retain(ptr ${reg})`)
     } else {
         emitIR(`  call void @ss_rc_retain(ptr ${reg})`)
@@ -147,7 +148,7 @@ function emitRetainForType(reg: string, ssType: string) {
 
 // Emit release call for the appropriate RC system
 function emitReleaseForType(reg: string, ssType: string) {
-    if (isUserClass(ssType) == 1) {
+    if (isUserClass(ssType) == 1 || ssType == "string") {
         emitIR(`  call void @ss_release(ptr ${reg})`)
     } else {
         emitIR(`  call void @ss_rc_release(ptr ${reg})`)

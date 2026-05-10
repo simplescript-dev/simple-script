@@ -582,9 +582,10 @@ function emitRuntimeRC() {
 // D168 §B.5: %String = { i64 rc, ptr TypeInfo, ptr buffer, i64 len, i64 cap } 间接 buffer 布局
 // String immutable: shallow_clone = ss_retain self (零拷贝);deep_clone = 复制 buffer
 function emitStringTypeInfo() {
-    // %String struct type — 5 字段间接 buffer 布局,40 字节
-    emitIR("%String = type { i64, ptr, ptr, i64, i64 }")
-    emitIR("")
+    // %String struct type — D168 §B.5: 5 字段间接 buffer 布局,40 字节。
+    // type 声明已在 codegen.ss 最终拼装时 prepend 到 @.str.N initializer 之前,
+    // 此处不再重复 emit(redefinition error)。
+
 
     // 类型名常量
     emitIR("@.rt.str.String = private constant [7 x i8] c\"String\\00\"")
@@ -644,6 +645,40 @@ function emitStringTypeInfo() {
     emitIR("  ptr @.rt.str.String,")
     emitIR("  i32 -1,")
     emitIR("  ptr null")
+    emitIR("}")
+    emitIR("")
+
+    // D168 §B.4: ss_alloc_string(cap) — 分配 String header + buffer,返回 header ptr
+    // header layout: { i64 rc=1, ptr TypeInfo, ptr buffer, i64 len=0, i64 cap }
+    emitIR("define ptr @ss_alloc_string(i64 %cap) {")
+    emitIR("entry:")
+    emitIR("  %hdr = call ptr @mi_calloc(i64 1, i64 ptrtoint (ptr getelementptr (%String, ptr null, i32 1) to i64))")
+    emitIR("  %buf = call ptr @mi_calloc(i64 1, i64 %cap)")
+    emitIR("  %rc_ptr = getelementptr %String, ptr %hdr, i32 0, i32 0")
+    emitIR("  store i64 1, ptr %rc_ptr, align 8")
+    emitIR("  %ti_ptr = getelementptr %String, ptr %hdr, i32 0, i32 1")
+    emitIR("  store ptr @String_type_info, ptr %ti_ptr, align 8")
+    emitIR("  %buf_ptr = getelementptr %String, ptr %hdr, i32 0, i32 2")
+    emitIR("  store ptr %buf, ptr %buf_ptr, align 8")
+    emitIR("  %cap_ptr = getelementptr %String, ptr %hdr, i32 0, i32 4")
+    emitIR("  store i64 %cap, ptr %cap_ptr, align 8")
+    emitIR("  ret ptr %hdr")
+    emitIR("}")
+    emitIR("")
+
+    // D168 §B.4: ss_string_from_cstr(cs) — 从 C-string 创建 String header
+    // 用于替代 ss_rc_strdup 语义(从 byte ptr 包装成 SS string)
+    emitIR("define ptr @ss_string_from_cstr(ptr %cs) {")
+    emitIR("entry:")
+    emitIR("  %len = call i64 @strlen(ptr %cs)")
+    emitIR("  %alloc = add i64 %len, 1")
+    emitIR("  %new = call ptr @ss_alloc_string(i64 %alloc)")
+    emitIR("  %new_buf_ptr = getelementptr %String, ptr %new, i32 0, i32 2")
+    emitIR("  %new_buf = load ptr, ptr %new_buf_ptr, align 8")
+    emitIR("  %_mc = call ptr @memcpy(ptr %new_buf, ptr %cs, i64 %alloc)")
+    emitIR("  %new_len_ptr = getelementptr %String, ptr %new, i32 0, i32 3")
+    emitIR("  store i64 %len, ptr %new_len_ptr, align 8")
+    emitIR("  ret ptr %new")
     emitIR("}")
     emitIR("")
 }
