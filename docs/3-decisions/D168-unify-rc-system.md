@@ -1,6 +1,6 @@
 # D168: 统一双 RC 系统为 Perceus 主线
 
-**Status:** Phase 0.5 closed — §A.3 锁定 D1=A / D2=c / D3=ii;Phase 1 String 切轨 spike 待启动(下下轮)
+**Status:** Phase 1 String 切轨 closed at 2026-05-10(P1.1 cd72998 + P1.2 9edf09b + P1.3 0583e6a,全测 310/17/327 0 regression);§C Phase 2 Array 切轨子设计已锁定,P2.1 待启动
 **Depends on:** axiom C2/C4/V4(`docs/1-axioms.md:8,10,19`);相关 D164(PIR liveness 落地证据)
 **Date:** 2026-05-10
 **Last Updated:** 2026-05-10
@@ -103,8 +103,8 @@
 |---|---|---|---|
 | **Phase 0** | D 文档建立 + §未决策 ABI 三项列出 + PSM 通过 | [x] 本轮 | `ls docs/3-decisions/D168-unify-rc-system.md` GREEN |
 | **Phase 0.5** | 用户 close §未决策 D1/D2/D3 → §A.3 锁定(D1=A / D2=c / D3=ii) | [x] 2026-05-10 | 本对话 ultrathink 业界对标轮 + 用户 "全部接受推荐" |
-| **Phase 1** | **String 切轨** — `[rc:i32 \| TypeInfo*]` ObjHeader + mimalloc + `@String_type_info` + 字面量 immortal 路径(按 D1 锁定方案) + 全栈 string GEP 偏移修正 | [ ] Planned | bootstrap stage2==stage3 + 全测继承基线 |
-| **Phase 2** | **Array 切轨** — `Array<T>` TypeInfo monomorphization(按 D2 锁定方案) + 元素 retain/release 走统一路径 + Array slice/concat 适配 | [ ] Planned | bootstrap + Array 测试 |
+| **Phase 1** | **String 切轨** — `[rc:i64 \| TypeInfo*]` ObjHeader + mimalloc + `@String_type_info` + 字面量 boxed immortal(D1=A) + 全栈 string GEP 偏移修正(§B 9 节子设计落地) | [x] 2026-05-10 | P1.1 `cd72998` + P1.2 `9edf09b` + P1.3 `0583e6a`;bootstrap stage2==stage3 PASS;全测 310/17/327 0 regression;P1.4 (b)(c) 路径全测隐式覆盖,性能 bench 推 Phase 5 |
+| **Phase 2** | **Array 切轨** — `Array<T>` 双份 TypeInfo(D2=c scalar/ref)+ 元素 retain/release 走元素 vtable + Array slice/concat 适配(§C 10 节子设计 + P2.1-P2.4 子分阶段) | [ ] Planned | bootstrap + Array 测试 |
 | **Phase 3** | **Map 切轨** — `Map<K,V>` TypeInfo + key/value 双侧统一 + bucket 链表元素 retain/release 适配 | [ ] Planned | bootstrap + Map 测试 |
 | **Phase 4** | **删除旧系统** — 移除 `ss_rc_retain/release/release_no_children/destroy_array_ptrs/destroy_map`,`emitRetainForType` 退化为单一 `call @ss_retain` | [ ] Planned | bootstrap + grep `ss_rc_*` 命中 = 0 |
 | **Phase 5** | **PIR 全覆盖** — pir_lower/pir_opt 把 string/Array/Map 纳入 liveness,删除 codegen 路径手工 emit retain/release(消除 30+ 调用点) | [ ] Planned | bootstrap + 性能 micro-bench(可选) |
@@ -320,6 +320,226 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 **根因解决度**:§B.2/§B.4/§B.6/§B.7 合并大改的直接副作用 — 字面量 boxed + dispatch 路由 + 全栈 string runtime GEP 适配 + mimalloc 切换不可分。改动模式机械化(GEP buffer + load + 给 C 函数),非冗余实现。扩散修复(map/array/shell/calls/methods/exprs_str_conv/codegen 拼装顺序)是 ABI 切轨的根因连锁。
 
 **对账(预估 vs 实测)**:预估 ~120 行,实测 +520/-256 = 净 +264 行。**预估偏差 ~120%(超出 2 倍)— 写入 §扩容申报失准段**。根因:原预估只覆盖 io+system 主任务,**未含容器层(map/array/shell)+ 表达式层(calls/methods/exprs_str_conv)+ codegen IR 拼装顺序连锁修**。下次 string ABI 类大改前置必含"容器层 + 表达式层 + 测试输出路径"全栈连锁评估,不仅看主调用路径。
+
+---
+
+## 附录 C:Phase 2 Array 切轨子设计
+
+**Status:** Drafted at 2026-05-10(Phase 1 close 后 P2.1 spike 启动前最后子决策锁定层)
+**Scope:** C1-C10 子决策 + P2.1-P2.4 内部子分阶段;Phase 2 spike Execute 启动前必读
+**前置:** §A.3 D2=c 锁定(Array TypeInfo 分 scalar/ref 两份,ref 元素走元素 ObjHeader vtable);Phase 1 ObjHeader i64 + immortal sentinel 已落地,Array 直接复用
+
+---
+
+### §C.1 Array 字面量决策 — 锁定 B runtime 创建(D2' 子决策)
+
+| 选项 | 含义 | 业界 | Phase 2 评估 |
+|---|---|---|---|
+| A boxed immortal | `[1,2,3]` 编译为 `@.arr.N = constant %Array { i64 -1, ... }` 直接引用 | 类比 string 字面量 | ❌ 与 Array mutable 默认语义冲突;`arr.push(4)` 触发 mut immortal 内存;COW 机制违反 KISS |
+| **B runtime 创建** | `[1,2,3]` 编译为 `ss_alloc_array(N) + ss_arraySet × N` runtime 调用 | Java `newarray + iastore` JVM bytecode | ✅ **选定** — 与 SS mutable 默认语义一致,延续旧实现路径,Phase 2 仅切分配器 |
+| C const detect | `const arr = [1,2,3]` 走 boxed,`let arr = [1,2,3]` 走 runtime | Rust `const ARR: [T; N]` `.rodata` | ❌ 留 §F 远期 — SS const 现状不传递字面量 layout,需新机制 |
+
+**锁定 D2' = B**:Array 字面量保持 `ss_alloc_array(N) + ss_arraySet × N` runtime 创建模式,字面量本身不 boxed/immortal,仅 alloc 路径从 `ss_rc_calloc` 切到 mimalloc。**与 D1=A(string boxed)分歧**根因:string immutable 可 boxed,Array mutable 不可。
+
+### §C.2 Array 实例 layout — 锁定选项 1 间接 buffer
+
+| 选项 | layout | 业界 | Phase 2 评估 |
+|---|---|---|---|
+| **1 间接 buffer** | `{ i64 rc, ptr TypeInfo, ptr buffer, i64 len, i64 cap }` 40B + buffer 单独 mi_calloc | Lean 4 `lean_array_object` / Rust `Vec<T>` / Java `T[]` JNI 视图 | ✅ **选定** — 与 §B.1 String layout 字段顺序对称(rc@0 + TypeInfo@1 + 业务[2,3,4])可机械化迁移 GEP,扩容只 realloc buffer header ptr 不变(外部 RC 引用稳定) |
+| 2 inline FAM | `{ i64 rc, ptr TypeInfo, i64 len, i64 cap, [N x i64] }` flexible array | CPython `PyListObject`(部分场景)| ⚠ 扩容必须 realloc 整个对象 + memcpy header,外部 RC 引用全部失效,违反 Perceus 假设 |
+| 3 segmented | 多段 chunk linked list(rope-like) | 数据库 vector ext | ❌ 复杂度过高,SS 现状不需要 |
+
+**锁定 C2 = 选项 1**:
+- **header 5 字段**:rc(i64)@0、TypeInfo(ptr)@1、buffer(ptr)@2、len(i64)@3、cap(i64)@4
+- **运行时 Array**:header `mi_calloc(40, 1)` + buffer `mi_calloc(elem_size × cap, 1)`
+- **扩容路径**:仅 `realloc` buffer + 更新 buffer 字段 + 更新 cap 字段,**header ptr 保持不变**(外部 RC 引用稳定,Perceus owned/borrow 不受扰动)
+- **空间代价**:旧 24B header + 单独 data → 新 40B header + 单独 buffer = +16B/array,长期收益(Perceus PIR 集成 + 统一 vtable drop)远 > 短期空间代价
+
+### §C.3 Array per-type 函数生成 — 双份 TypeInfo(D2=c 核心)
+
+对照 emitClassTypeInfo / emitStringTypeInfo,新增 `emitArrayTypeInfo()`(双份):
+
+```ss
+function emitArrayTypeInfo() {
+    // ── scalar 共享:int / double / bool / char / 任意 LLVM scalar ──
+    emitIR("@Array_scalar_type_info = constant %TypeInfo { ptr @ss_drop_Array_scalar, ptr @ss_deep_clone_Array_scalar, ptr @ss_shallow_clone_Array_scalar, i64 40, ptr @.array_scalar_typename, i32 -2, ptr null }")
+    emitDropArrayScalar()           // mi_free(buffer) + ss_dealloc(p) — 元素 noop(无 RC)
+    emitDeepCloneArrayScalar()      // mi_calloc 新 header + 新 buffer + memcpy bytes
+    emitShallowCloneArrayScalar()   // = ss_retain self(buffer 共享,scalar Array 等价 immutable view)
+
+    // ── ref 共享:string / class / interface / Generic<...> / Map / Array 嵌套 ──
+    emitIR("@Array_ref_type_info = constant %TypeInfo { ptr @ss_drop_Array_ref, ptr @ss_deep_clone_Array_ref, ptr @ss_shallow_clone_Array_ref, i64 40, ptr @.array_ref_typename, i32 -3, ptr null }")
+    emitDropArrayRef()              // 循环 i=0..len: ss_release(buffer[i]) 走元素自身 vtable + mi_free(buffer) + ss_dealloc(p)
+    emitDeepCloneArrayRef()         // mi_calloc + 循环 deep_clone(buffer[i]) 走元素 vtable
+    emitShallowCloneArrayRef()      // mi_calloc + 循环 ss_retain(buffer[i]) 走元素 vtable
+}
+```
+
+**关键不变量**:`@ss_drop_Array_ref` 内部循环调 `call void @ss_release(ptr %elem)`,而 `ss_release` 入口已有 immortal sentinel 跳过 + TypeInfo.drop_fn 分派(P1.1/P1.2 落地),**ref 元素不论是 string / class / interface / Map / 嵌套 Array 都自动正确递归释放,零特殊化**。这是 D2=c "复用现有 ObjHeader vtable 机制零新概念" 的根因兑现点。
+
+`size = 40`:5 字段 × 8 字节;`class_id = -2`(scalar) / `-3`(ref)对照 String -1、用户 class ≥0,reflection 区分。
+
+### §C.4 mimalloc Array 分配切换 — 锁定双轨过渡
+
+| 选项 | 路径 | Phase 2 评估 |
+|---|---|---|
+| **双轨过渡** | 新增 `ss_alloc_array(i64 elem_size, i64 cap, ptr type_info) → ptr` 走 mimalloc;旧 `ss_rc_calloc` 保留供 Map(Phase 3 切) | ✅ **选定** — 类比 §B.4 String 切轨,RC ABI 已 hard break,分配器再切叠加双 hard break 难定位;双轨可逐步定位 bootstrap 失败 root cause |
+| 一次切完 | Phase 2 `ss_rc_calloc` 在 Array context 全替换为 mi_calloc,Map 暂保留旧路径 | ⚠ 与双轨同语义但合并在 P2.2,失败定位粒度更粗 |
+
+**实施**:
+- 新增 `gen_runtime.ss::ss_alloc_array(i64 elem_size, i64 cap, ptr type_info) → ptr`:
+  - header `mi_calloc(40, 1)`(rc=1, TypeInfo=type_info, buffer=mi_calloc(elem_size × cap), len=0, cap=cap)
+  - 字面量路径 alloc 后 ss_arraySet × N 填入元素
+- gen_rt_array.ss 内 Array 创建路径切到 ss_alloc_array(scalar/ref 由 emit 端选 type_info)
+- Phase 4 删除 `ss_rc_calloc` 在 Array 路径(Map 切完后)
+
+### §C.5 emitRetainForType / emitReleaseForType 路由 — 加 isArrayType 分支
+
+`bootstrap/gen/class/class.ss::emitRetainForType` 升级:
+
+```ss
+function emitRetainForType(reg: string, ssType: string) {
+    if (isUserClass(ssType) == 1 || ssType == "string" || isArrayType(ssType) == 1) {
+        emitIR(`  call void @ss_retain(ptr ${reg})`)
+    } else {
+        emitIR(`  call void @ss_rc_retain(ptr ${reg})`)
+    }
+}
+```
+
+`isArrayType(ssType: string) → int`:实现需对应 `ssType.startsWith("Array<") || ssType == "Array"`(裸 Array 旧泛型形)+ Generic Array 形。precise 实现 spike 前 grep `isArrayType\|Array<` 确定 SS 类型字符串归一化路径。
+
+emitReleaseForType 对称(同条件,改 `ss_release`)。Phase 4 全容器切完后,dispatch 退化为单一 `call @ss_retain`(无 if 条件链)。
+
+### §C.6 全栈 Array GEP 偏移修正清单
+
+**ABI 变更核心**:
+- 旧 user ptr = `ss_rc_calloc'd raw + 16`(`[rc:i64 \| tag:i32 \| pad:i32]` 后),user ptr 直接是 `[len, cap, data]` 起点 → GEP `%arr, 0` = len
+- 新 user ptr = struct base + 0,新 layout `[rc, TypeInfo, buffer, len, cap]` → GEP `%arr, 3` = len(偏移 +3)、GEP `%arr, 4` = cap、GEP `%arr, 2` = buffer ptr
+
+**改动范围**:`bootstrap/gen/rt/gen_rt_array.ss` 17 函数 GEP 偏移系统调整:
+
+| 旧 GEP 偏移 | 新 GEP 偏移 | 字段 | 影响函数 |
+|---|---|---|---|
+| GEP 0 (i64 load) | GEP 3 (i64 load) | len | ss_arrayLen / ss_arrayPush(头长更新)/ ss_arrayPop / ss_arraySlice / ss_arrayConcat |
+| GEP 1 (i64 load) | GEP 4 (i64 load) | cap | ss_arrayPush(扩容判断) |
+| GEP 2 (i64 ptrtoint load) → bitcast | GEP 2 (ptr load) | buffer | ss_arrayGet / ss_arraySet / ss_arrayPush(realloc 后写回)/ ss_arraySlice / ss_arrayConcat |
+| 新增 | GEP 0 | rc | RC 路径(由 ss_retain/release 内部访问) |
+| 新增 | GEP 1 | TypeInfo | drop 分派(由 ss_release 内部访问) |
+
+**改动模式**:每个 GEP 加 +3 偏移(len/cap)或 buffer 字段访问统一为 `load ptr` 而非旧 `load i64 + inttoptr`。
+
+**性能损失评估**:每次 array 操作多 1 次 indirect load(buffer ptr),与 String 同模式;非 hot loop 关键路径(array push/pop 频率 << 索引访问)。PIR Phase 5 接入后 LLVM 可 speculation 优化部分 buffer ptr 重复 load。
+
+### §C.7 RED 命令 — 三档 spike 路径
+
+| 候选 | RED 程序 | 触发路径 | P2.X 归属 |
+|---|---|---|---|
+| **(a) Array<scalar>** | `let arr = [1,2,3]; println(arr[0])` | 字面量 runtime 创建 + scalar TypeInfo + ss_arrayGet GEP +3 | **P2.1 + P2.2 起首** |
+| (b) push 扩容 | `let arr = []; arr.push(1); arr.push(2); arr.push(3); arr.push(4); arr.push(5)` 触发 cap 4 → 8 realloc | 上 + 扩容 realloc buffer + cap 更新 GEP 4 | P2.2 |
+| (c) Array<string> ref | `let arr = ["hello", "world"]; println(arr[0])` | 上 + ref TypeInfo + 元素 string vtable + 字面量 element retain | **P2.3 起首** |
+| (d) Array<class> 元素 release | `let arr = [new Dog()]; arr = []` 触发 ss_drop_Array_ref 循环 → 元素 ss_release 走 Dog vtable | 上 + 嵌套 retain/release | P2.3 |
+| (e) Array<Map<K,V>> 嵌套 | `let arr = [new Map(), new Map()]` | 上 + Map 元素未切的 dispatch 兜底(双轨过渡期) | P2.4 |
+
+**RED 命令(spike 前实测)**:
+```bash
+cat > /tmp/d168_p2_spike.ss <<'EOF'
+function main() {
+    let arr = [1, 2, 3]
+    println(arr[0])
+}
+EOF
+bin/ss build /tmp/d168_p2_spike.ss --emit-ir 2>&1 | grep -E '@Array_scalar_type_info|@.array_scalar_typename|ss_alloc_array'
+```
+
+**spike 前预期**:全部命中 = 0(emitArrayTypeInfo dead code)
+**P2.1 后预期**:`@Array_scalar_type_info` + `@Array_ref_type_info` + 6 per-type 函数全部命中(dead-code 已发射)
+**P2.2 后预期**:用户代码 `[1,2,3]` 字面量编译触发 `ss_alloc_array(8, 3, @Array_scalar_type_info)` 调用命中
+
+### §C.8 Bootstrap hard break 策略 — 标准三阶段,不冻结 seed
+
+与 §B.9 String 切轨同策略:
+- RC + ABI 改动是 codegen 内部细节,seed 编译器不受影响(seed 自身用旧 ABI 运行 OK)
+- stage1 = seed 编译 bootstrap/*(stage1 内部仍旧 ABI,但 stage1 输出新 ABI)
+- stage2 = stage1 编译 bootstrap/*(stage2 内部新 ABI)
+- stage3 = stage2 编译 bootstrap/*
+- 验证 stage2 == stage3 bit-identical
+
+**风险点**:stage2 启动若 Array runtime 函数链有 bug → segfault;失败 `git reset --soft HEAD^` + 修。Bootstrap 单次约 55s,迭代成本可承受。
+
+**与 P1.X 落地经验对照**:P1.3 实测扩散到容器层(map/array/shell)+ 表达式层(calls/methods/exprs_str_conv)+ codegen IR 拼装顺序,**P2 类比预估必含同等扩散维度**(具体见 §扩容申报-P1.3 对账记录的"全栈连锁评估"教训);P2 字面量是 runtime 创建路径,不触发 codegen IR 拼装顺序问题(与 P1.3 字面量 boxed 不同),扩散面预估略低于 P1.3。
+
+### §C.9 Array 扩容路径 RC 处理
+
+**关键不变量**:`ss_arrayPush` 通过 realloc 扩容 buffer,**header ptr 不变**,所以外部对 array 的 RC 引用稳定(Perceus owned 不破)。
+
+**push elem 时元素 RC**:
+- elem 是 ref 类型 → push 入 buffer 前调 `ss_retain(elem)`(让 array 持有该 elem 一份引用)
+- elem 是 scalar 类型 → 直接写 buffer,无 RC 操作
+
+**pop 时元素 RC**:
+- buffer 槽位元素 ref 类型 → pop 返回前 `ss_retain(elem)`(caller 持有),buffer 槽位无需 release(转移所有权);但若调用方丢弃 pop 结果,Perceus liveness pass(Phase 5)负责自动 release
+- 旧实现 `ss_arrayPop` 直接返回 i64,无 retain;P2.3 切到 emitRetainForType/emitReleaseForType dispatch
+
+**slice/concat**:
+- 创建新 Array,**所有 ref 元素 retain**(浅拷贝语义);scalar 元素 memcpy
+- 旧实现 ss_rc_retain 手工调用 → P2.3 切 dispatch
+
+### §C.10 ref 元素 drop 循环 vtable 调用 — `ss_drop_Array_ref` 实现
+
+```llvm
+define void @ss_drop_Array_ref(ptr %arr) {
+entry:
+  %lenp = getelementptr inbounds %Array, ptr %arr, i32 0, i32 3
+  %len = load i64, ptr %lenp
+  %bufp = getelementptr inbounds %Array, ptr %arr, i32 0, i32 2
+  %buffer = load ptr, ptr %bufp
+  %is_empty = icmp eq i64 %len, 0
+  br i1 %is_empty, label %dealloc, label %loop_check
+loop_check:
+  %i = phi i64 [ 0, %entry ], [ %inext, %loop_body ]
+  %done = icmp uge i64 %i, %len
+  br i1 %done, label %dealloc, label %loop_body
+loop_body:
+  %elemp = getelementptr i64, ptr %buffer, i64 %i
+  %elem_i = load i64, ptr %elemp
+  %elem = inttoptr i64 %elem_i to ptr
+  call void @ss_release(ptr %elem)    ; 走元素自身 ObjHeader.TypeInfo.drop_fn vtable
+  %inext = add i64 %i, 1
+  br label %loop_check
+dealloc:
+  call void @mi_free(ptr %buffer)
+  call void @ss_dealloc(ptr %arr)
+  ret void
+}
+```
+
+**根因证据**:`ss_release` 入口路径(`gen_runtime.ss:527-548` Phase 1 落地版)已有(a) null 检查(b) immortal sentinel `slt i64 %rc, 0` 跳过(c) RC dec → if 0 触发 `TypeInfo.drop_fn(p)`,所以 ref 元素是 string / class / interface / Map / Array 嵌套 全自动正确递归。**这是 D2=c 选 c 而非 a/b 的兑现** — 单一通用 vtable 路径,零元素类型特化,IR 体积 O(1)。
+
+---
+
+### §C Phase 2 内部子分阶段(每子步独立 commit + bootstrap 验证)
+
+| 子阶段 | 范围 | 触达 | Status |
+|---|---|---|---|
+| **P2.1** | §C.3 emitArrayTypeInfo 双份 dead-code(scalar + ref TypeInfo + 6 per-type 函数 + typename 常量)+ §C.4 ss_alloc_array helper(dead-code,P2.2 才连接到字面量)| gen_runtime.ss(emitArrayTypeInfo +~150 行 IR) | [ ] Planned |
+| **P2.2** | §C.1 字面量 runtime 创建路径切到 ss_alloc_array + §C.6 gen_rt_array.ss 17 函数 GEP +3 全栈修正 + §C.5 emitRetainForType isArrayType dispatch + scalar Array 切轨完成 | gen_rt_array.ss / class.ss / 字面量 emit 路径 / 容器扩散修(map/shell call sites) | [ ] Planned |
+| **P2.3** | §C.9 push/pop/slice/concat 元素 retain/release 切 dispatch + ref Array 切轨(Array<string>/Array<class>)+ §C.10 ss_drop_Array_ref 循环 vtable 调用启用 | gen_rt_array.ss + 调用方扩散 + Array<class> 测试用例 | [ ] Planned |
+| **P2.4** | 综合大测 + Array<嵌套泛型> 验证(Array<Map<K,V>> / Array<Array<T>>)+ Phase 2 close | 全测 + 性能 micro-bench(可选)| [ ] Planned |
+
+**子阶段间硬约束**:
+- 任一子阶段 bootstrap 失败 → `git reset --soft HEAD^` + 修,**不允许带失败 commit**
+- 子阶段独立 commit,**禁打包**(便于回滚定位)
+- P2.1 必须 P2.2 前完成(类型基础设施先于字面量切换)
+- P2.3 必须 P2.2 GREEN 后启动(scalar 路径稳定再切 ref,失败定位粒度更细)
+- P2.4 必须 P2.1-P2.3 全 GREEN 后启动
+
+**Phase 2 close 判据**:
+- bootstrap 三阶段 bit-identical
+- 全测 0 regression
+- `grep ss_rc_calloc bootstrap/gen/rt/gen_rt_array.ss` 命中 = 0(只剩 Map 路径 Phase 3 切)
+- `emitRetainForType` 加 isArrayType dispatch ✅,Array<T> 走 ss_retain
+- `@Array_scalar_type_info` + `@Array_ref_type_info` 双份 IR 命中,`@ss_drop_Array_ref` 循环 vtable 调用命中
 
 ---
 
