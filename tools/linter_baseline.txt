@@ -29,10 +29,11 @@
 # bump F1:bootstrap/parse/parser.ss 877→885 trail=D166#扩容申报-Phase-1-from-as-contextual date=2026-04-22
 # bump F1:bootstrap/main.ss 630→645 trail=D167#扩容申报-Phase-1-multiline-import date=2026-04-22
 # bump F1:bootstrap/gen/gen_decls.ss 726/730→738/745 trail=SS-LIM-4#9c06032-drift-sync date=2026-05-10 (cleanup)
+# bump-group M3b=2042/2050 F1:bootstrap/gen/gen_runtime.ss=693/700 trail=D168#扩容申报-P1.2-emitStringTypeInfo date=2026-05-10
 M1=5562:5750
 M2=81839:83300
 M3a=12844:13050
-M3b=2005:2010
+M3b=2042:2050
 M4=3242:3400
 M5=1835:1900
 M6=37:40
@@ -50,4 +51,4 @@ F1:bootstrap/gen/methods/gen_methods.ss=698:730
 F1:bootstrap/gen/gen_calls.ss=728:740
 F1:bootstrap/gen/gen_types.ss=885:1050
 F1:bootstrap/gen/gen_decls.ss=738:745
-F1:bootstrap/gen/gen_runtime.ss=613:623
+F1:bootstrap/gen/gen_runtime.ss=693:700

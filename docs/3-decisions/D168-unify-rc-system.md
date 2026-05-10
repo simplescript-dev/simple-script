@@ -276,18 +276,33 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 
 ### §B Phase 1 内部子分阶段(每子步独立 commit + bootstrap 验证)
 
-| 子阶段 | 内容 | 触达 | 验证 |
+| 子阶段 | 范围(实施时 ultrathink 修正) | 触达 | Status / Commit |
 |---|---|---|---|
-| **P1.1** | B5 emit `@String_type_info` + per-type 函数生成 + B3 immortal 跳过路径 + B6 dispatch string 走 ss_retain | gen_runtime.ss / gen_type_ops.ss / class.ss | bootstrap stage2==stage3 + 全测继承基线(0 regression) |
-| **P1.2** | B2 字面量 IR 升级 boxed + B7 GEP 偏移修正 | gen_emit.ss / gen_decls.ss / gen_rt_string.ss | bootstrap + B8 (a) RED→GREEN |
-| **P1.3** | B4 mimalloc 字符串分配切换(双轨过渡) | gen_runtime.ss / gen_rt_string.ss | bootstrap + 全测 + 验证 ss_alloc_string 调用点替换 ss_rc_alloc |
-| **P1.4** | retain 路径 B8 (b) + 跨函数返回值 B8 (c) + 综合大测 + 性能 micro-bench(可选) | 全测 + 性能脚本 | bootstrap + 全测 + 性能基线 |
+| **P1.1** | ObjHeader RC i32→i64 全栈升级 + B3 immortal 跳过路径(`icmp slt i64 %rc, 0`) | gen_runtime.ss / class_register.ss / gen_type_ops.ss / gen_arrows.ss | [x] commit `cd72998` 2026-05-10(bootstrap PASS + 全测 0 regression) |
+| **P1.2** | B5 emitStringTypeInfo dead-code 元数据(`%String` 类型 + `@String_type_info` + ss_drop_String / ss_deep_clone_String / ss_shallow_clone_String;P1.3 才连接到字面量 + dispatch) | gen_runtime.ss(emitStringTypeInfo 函数 + 内嵌 75 行 IR) | [x] 本 commit 2026-05-10(bootstrap PASS + 全测 0 regression + IR 命中;§扩容申报-P1.2 bump M3b/F1) |
+| **P1.3** | **大改合并**(原 P1.2+P1.3+P1.4):B2 字面量 IR 升级 boxed + B6 dispatch string 路由 + B7 全栈 string runtime GEP 偏移修正 + B4 mimalloc 字符串分配切换。**范围不可分**:字面量 boxed 后 ss_println / 字符串拼接 / 比较 / length 等所有 string runtime 必须同步 GEP buffer 字段(字面量 ptr 不再是 byte 起点) | gen_emit.ss / gen_decls.ss / gen_rt_string.ss / gen_rt_io.ss / class.ss / gen_runtime.ss | [ ] Planned(改动估 100+ 行多文件) |
+| **P1.4** | 综合大测 + 性能 micro-bench(可选)+ 残尾收尾(retain 路径 B8 b、跨函数返回值 B8 c) | 全测 + 性能脚本 | [ ] Planned |
+
+**P1.X 范围调整记录**:原划分(B5+B3+B6 / B2+B7 / B4 / 大测)在 P1.2 实施时 ultrathink 发现"字面量 boxed 与 string runtime GEP 适配不可分",修正为:P1.1=ObjHeader+B3、P1.2=B5 dead-code、P1.3=B2+B6+B7+B4 合并大改、P1.4=综合大测。原划分按子决策 ortho 切分,修正后按"独立可 commit + bootstrap 验证"切分,更符合 §B.9 三阶段验证原则。
 
 **子阶段间硬约束**:
 - 任一子阶段 bootstrap 失败 → `git reset --soft HEAD^` + 修,**不允许带失败 commit**
 - 子阶段独立 commit,**禁打包**(便于回滚定位)
 - P1.1 必须 P1.2 前完成(类型基础设施先于字面量切换)
 - P1.4 必须 P1.1-P1.3 全 GREEN 后启动
+
+---
+
+## §扩容申报-P1.2-emitStringTypeInfo
+
+| metric | bm_old | bm_new | delta | 业务理由 |
+|---|---|---|---|---|
+| M3b | 2010 | 2050 | +40 | emitStringTypeInfo() emit ~75 行 IR(`%String` 类型 + `@String_type_info` + 三 per-type 函数定义 + 类型名常量),反射可见 IR 行数 cur 2042;buffer +8 行预留 P1.3 字面量切轨追加。§B.5 落地证据。 |
+| F1:bootstrap/gen/gen_runtime.ss | 623 | 700 | +77 | 同上,emitStringTypeInfo() 函数定义 + 内嵌 IR 字符串 75 行,文件 cur 693;buffer +7 行预留。§B.5 落地证据。 |
+
+**根因解决度**:P1.2 是 D168 §B.5 子决策落地(emit String 类型元数据 dead-code 占位 SSoT),P1.3 才连接到字面量发射 + dispatch 路由。本扩容是 §B.5 直接副作用,非冗余实现 — 与 `emitClassTypeInfo` (`gen_type_ops.ss:210-233`) 同模式,IR emit 量是不可压缩的元数据底座。
+
+**对账(预估 vs 实测)**:预估 ~75 行(emit IR 字符串数固定),实测 +80 行(F1 delta 含函数定义 + 调用点注释)。预估偏差 < 7%(±5 行),无需写入 §扩容申报失准段。
 
 ---
 

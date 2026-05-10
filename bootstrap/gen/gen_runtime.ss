@@ -573,6 +573,79 @@ function emitRuntimeRC() {
     irRetVoid()
     emitIR("}")
     emitIR("")
+
+    // D168 §B.5: 内置 String 类型 TypeInfo + per-type 函数
+    // P1.2 dead-code 元数据;P1.3 连接到字面量发射 + dispatch 路由
+    emitStringTypeInfo()
+}
+
+// D168 §B.5: %String = { i64 rc, ptr TypeInfo, ptr buffer, i64 len, i64 cap } 间接 buffer 布局
+// String immutable: shallow_clone = ss_retain self (零拷贝);deep_clone = 复制 buffer
+function emitStringTypeInfo() {
+    // %String struct type — 5 字段间接 buffer 布局,40 字节
+    emitIR("%String = type { i64, ptr, ptr, i64, i64 }")
+    emitIR("")
+
+    // 类型名常量
+    emitIR("@.rt.str.String = private constant [7 x i8] c\"String\\00\"")
+    emitIR("")
+
+    // ss_drop_String — free buffer + ss_dealloc self
+    emitIR("define void @ss_drop_String(ptr %p) {")
+    emitIR("entry:")
+    emitIR("  %buf_ptr = getelementptr %String, ptr %p, i32 0, i32 2")
+    emitIR("  %buf = load ptr, ptr %buf_ptr, align 8")
+    emitIR("  call void @mi_free(ptr %buf)")
+    emitIR("  call void @ss_dealloc(ptr %p)")
+    emitIR("  ret void")
+    emitIR("}")
+    emitIR("")
+
+    // ss_deep_clone_String — mi_calloc 新 header + 新 buffer + memcpy bytes
+    emitIR("define ptr @ss_deep_clone_String(ptr %p) {")
+    emitIR("entry:")
+    emitIR("  %new_header = call ptr @mi_calloc(i64 1, i64 ptrtoint (ptr getelementptr (%String, ptr null, i32 1) to i64))")
+    emitIR("  %src_buf_ptr = getelementptr %String, ptr %p, i32 0, i32 2")
+    emitIR("  %src_buf = load ptr, ptr %src_buf_ptr, align 8")
+    emitIR("  %src_len_ptr = getelementptr %String, ptr %p, i32 0, i32 3")
+    emitIR("  %src_len = load i64, ptr %src_len_ptr, align 8")
+    emitIR("  %src_cap_ptr = getelementptr %String, ptr %p, i32 0, i32 4")
+    emitIR("  %src_cap = load i64, ptr %src_cap_ptr, align 8")
+    emitIR("  %new_buf = call ptr @mi_calloc(i64 1, i64 %src_cap)")
+    emitIR("  %_mc = call ptr @memcpy(ptr %new_buf, ptr %src_buf, i64 %src_len)")
+    emitIR("  %new_rc_ptr = getelementptr %String, ptr %new_header, i32 0, i32 0")
+    emitIR("  store i64 1, ptr %new_rc_ptr, align 8")
+    emitIR("  %new_ti_ptr = getelementptr %String, ptr %new_header, i32 0, i32 1")
+    emitIR("  store ptr @String_type_info, ptr %new_ti_ptr, align 8")
+    emitIR("  %new_buf_ptr = getelementptr %String, ptr %new_header, i32 0, i32 2")
+    emitIR("  store ptr %new_buf, ptr %new_buf_ptr, align 8")
+    emitIR("  %new_len_ptr = getelementptr %String, ptr %new_header, i32 0, i32 3")
+    emitIR("  store i64 %src_len, ptr %new_len_ptr, align 8")
+    emitIR("  %new_cap_ptr = getelementptr %String, ptr %new_header, i32 0, i32 4")
+    emitIR("  store i64 %src_cap, ptr %new_cap_ptr, align 8")
+    emitIR("  ret ptr %new_header")
+    emitIR("}")
+    emitIR("")
+
+    // ss_shallow_clone_String — String immutable: retain self + return self
+    emitIR("define ptr @ss_shallow_clone_String(ptr %p) {")
+    emitIR("entry:")
+    emitIR("  call void @ss_retain(ptr %p)")
+    emitIR("  ret ptr %p")
+    emitIR("}")
+    emitIR("")
+
+    // @String_type_info 常量(class_id=-1 表非用户 class,parent=null)
+    emitIR("@String_type_info = constant %TypeInfo {")
+    emitIR("  ptr @ss_drop_String,")
+    emitIR("  ptr @ss_deep_clone_String,")
+    emitIR("  ptr @ss_shallow_clone_String,")
+    emitIR("  i64 ptrtoint (ptr getelementptr (%String, ptr null, i32 1) to i64),")
+    emitIR("  ptr @.rt.str.String,")
+    emitIR("  i32 -1,")
+    emitIR("  ptr null")
+    emitIR("}")
+    emitIR("")
 }
 
 // ── D079: Test framework runtime ─────────────────────────────
