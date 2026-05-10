@@ -323,6 +323,20 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 
 ---
 
+## §扩容申报-P2.1-emitArrayTypeInfo
+
+| metric | bm_old | bm_new | delta | 业务理由 |
+|---|---|---|---|---|
+| M3a | 13400 | 13700 | +300 | emitArrayTypeInfo() 函数体内 SS 端 emit 节点(双份 TypeInfo + 6 per-type 函数 IR + ss_alloc_array helper)增加反射路径 call 边数;cur 13559 |
+| M3b | 2250 | 2470 | +220 | 同上,反射可见 IR 行数 cur 2405;ref deep_clone/shallow_clone 是循环 + phi block 实现,每函数 ~25 行 IR string emit,合计远大于 P1.2 String 三函数(string immutable 实现极简) |
+| F1:bootstrap/gen/gen_runtime.ss | 730 | 985 | +255 | emitArrayTypeInfo() 函数定义 + 内嵌 IR 字符串 ~228 行(双份 TypeInfo + 6 per-type 函数 + 2 typename 常量 + ss_alloc_array helper);文件 728 → 958;buffer +27 行预留 |
+
+**根因解决度**:P2.1 是 D168 §C.3/§C.4 子决策落地(emit Array 类型双份元数据 + ss_alloc_array helper dead-code 占位 SSoT),P2.2 才连接到字面量发射 + GEP +3 + dispatch 路由。本扩容是 §C.3/§C.4 直接副作用,非冗余实现 — 与 emitStringTypeInfo / emitClassTypeInfo 同模式;ref Array 双份 TypeInfo 比 String 单份 TypeInfo 多 1 倍函数(scalar/ref 各 3 函数 = 6),且 ref 函数循环 + phi block 实现 IR 体积放大,emit 量是不可压缩的元数据底座。
+
+**对账(预估 vs 实测)**:预估 +150 行(F1)/ +100 行(M3b),实测 +228 行(F1) / +155 行(M3b)。**F1 预估偏差 +52%、M3b 预估偏差 +55%(均 > 20%)— 写入 §扩容申报失准段**。根因:原预估按"6 函数 + helper 共 ~150 行"按 P1.2 String 三函数模式直接外推,**未实测 ref 元素 deep_clone/shallow_clone 是循环 + phi block 而非 String 简单 retain self;每个 ref 循环函数 ~25 行 emit 字符串,且 §C.10 ss_drop_Array_ref 全文 IR 是 phi 节点循环 ~30 行**(对比 String shallow_clone 仅 3 行 IR)。下次 vtable 元数据扩容预估前置:**循环 / phi block 实现的 per-type 函数按 ~25-30 行 IR string emit 估算,而非按 P1.2 String 简单实现外推**;且 M3a 项 P2.1 prompt 漏报(实测 +193 → 必入 bump),next prompt §扩容申报 表必含 M3a / M3b / F1 三项最小集。
+
+---
+
 ## 附录 C:Phase 2 Array 切轨子设计
 
 **Status:** Drafted at 2026-05-10(Phase 1 close 后 P2.1 spike 启动前最后子决策锁定层)

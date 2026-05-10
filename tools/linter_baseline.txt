@@ -31,10 +31,11 @@
 # bump F1:bootstrap/gen/gen_decls.ss 726/730→738/745 trail=SS-LIM-4#9c06032-drift-sync date=2026-05-10 (cleanup)
 # bump-group M3b=2042/2050 F1:bootstrap/gen/gen_runtime.ss=693/700 trail=D168#扩容申报-P1.2-emitStringTypeInfo date=2026-05-10
 # bump-group M2=84566/84600 M3a=13366/13400 M3b=2213/2250 N2=422830/423000 N3=583462/584000 F1:bootstrap/gen/gen_runtime.ss=728/730 trail=D168#扩容申报-P1.3-string-abi-切轨 date=2026-05-10
+# bump-group M3a=13559/13700 M3b=2405/2470 F1:bootstrap/gen/gen_runtime.ss=958/985 trail=D168#扩容申报-P2.1-emitArrayTypeInfo date=2026-05-10
 M1=5562:5750
 M2=84566:84600
-M3a=13366:13400
-M3b=2213:2250
+M3a=13559:13700
+M3b=2405:2470
 M4=3242:3400
 M5=1835:1900
 M6=37:40
@@ -52,4 +53,4 @@ F1:bootstrap/gen/methods/gen_methods.ss=698:730
 F1:bootstrap/gen/gen_calls.ss=728:740
 F1:bootstrap/gen/gen_types.ss=885:1050
 F1:bootstrap/gen/gen_decls.ss=738:745
-F1:bootstrap/gen/gen_runtime.ss=728:730
+F1:bootstrap/gen/gen_runtime.ss=958:985
