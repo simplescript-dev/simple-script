@@ -1,44 +1,39 @@
 // gen_rt_array.ss — Runtime array/list operations
-// Layout: header [len(i64), cap(i64), data(ptr as i64)] + separate data buffer
+// D168 §C: layout {i64 rc, ptr TypeInfo, ptr buffer, i64 len, i64 cap} 40B 间接 buffer
+//   (rc@0 + TypeInfo@1 + buffer@2 + len@3 + cap@4)。P2.2 切轨完成 scalar Array,
+//   ref Array 字面量元素 retain / push/pop dispatch 留 P2.3。
 
 // ── Array operations ──────────────────────────────────────────
 
-function emitNewArrayFn(name: string, tag: string) {
+function emitNewArrayFn(name: string, tiName: string) {
     emitIR(`define ptr @${name}(i32 %size) {`)
     irLabel("entry")
     irSext("size64", "i32", "%size", "i64")
-    irCall("hdr", "ptr", "ss_rc_calloc", `i64 24, i32 ${tag}`)
-    irStore("i64", "%size64", "%hdr")
-    irGEP("capp", "i64", "%hdr", "1")
-    irStore("i64", "%size64", "%capp")
-    irICmp("need_data", "sgt", "i32", "%size", "0")
-    irBrCond("need_data", "alloc_data", "done")
-    irLabel("alloc_data")
-    irMul("dbytes", "i64", "%size64", "8")
-    irCall("data", "ptr", "calloc", "i64 %dbytes, i64 1")
-    irPtrToInt("data_i", "%data", "i64")
-    irGEP("datap", "i64", "%hdr", "2")
-    irStore("i64", "%data_i", "%datap")
-    irBr("done")
-    irLabel("done")
+    // D168 §C.4: ss_alloc_array(elem_size=8, cap=size, type_info)
+    // 内部 mi_calloc 40B header + buffer + 设 rc=1 / TypeInfo / buffer / cap
+    irCall("hdr", "ptr", "ss_alloc_array", `i64 8, i64 %size64, ptr ${tiName}`)
+    // 设 len = size(ss_alloc_array 默认 len=0)
+    emitIR("  %lenp = getelementptr %Array, ptr %hdr, i32 0, i32 3")
+    irStore("i64", "%size64", "%lenp")
     irRet("ptr", "%hdr")
     emitIR("}")
     emitIR("")
 }
 
 function emitRuntimeArrayOps() {
-    // Header layout:
-    //   slot 0 (GEP i64, arr, 0): len  — current element count
-    //   slot 1 (GEP i64, arr, 1): cap  — allocated capacity
-    //   slot 2 (GEP i64, arr, 2): data — ptrtoint of data buffer pointer
-    // Data buffer: plain calloc/realloc, elements stored as i64
+    // D168 §C.6 header layout(切轨后): {i64 rc, ptr TypeInfo, ptr buffer, i64 len, i64 cap}
+    //   GEP 0 rc / GEP 1 TypeInfo / GEP 2 buffer / GEP 3 len / GEP 4 cap
+    //   buffer 直接 ptr load(旧 i64 inttoptr 已删除,见 irLoadArrayData);
+    //   ss_alloc_array helper 已在 emitArrayTypeInfo() 内 emit(gen_runtime.ss:898)。
+    // Data buffer: 元素 i64 槽,scalar 直接放,ref 通过 ptrtoint 装入。
 
-    emitNewArrayFn("ss_newArray", "1")
-    emitNewArrayFn("ss_newArrayPtr", "5")
+    emitNewArrayFn("ss_newArray", "@Array_scalar_type_info")
+    emitNewArrayFn("ss_newArrayPtr", "@Array_ref_type_info")
 
-    // ss_arrayLen
+    // ss_arrayLen — D168 §C.6: len 在 GEP 3
     emitIR("define i32 @ss_arrayLen(ptr %arr) {")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irTrunc("result", "i64", "%len", "i32")
     irRet("i32", "%result")
     emitIR("}")
@@ -64,11 +59,13 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayPush — grow data if needed, returns SAME header ptr
+    // ss_arrayPush — D168 §C.6: len@3 / cap@4 / buffer@2(ptr 直接);realloc 后写 buffer 字段
+    // header ptr 不变(Perceus owned/borrow 引用稳定);仅 buffer slot + len + cap 字段更新
     emitIR("define ptr @ss_arrayPush(ptr %arr, i64 %val) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
-    irGEP("capp", "i64", "%arr", "1")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
+    emitIR("  %capp = getelementptr %Array, ptr %arr, i32 0, i32 4")
     irLoad("cap", "i64", "%capp")
     irICmp("full", "eq", "i64", "%len", "%cap")
     irBrCond("full", "grow", "store")
@@ -84,10 +81,10 @@ function emitRuntimeArrayOps() {
     emitIR("  %newcap = phi i64 [ 4, %set_cap ], [ %doubled, %double_cap ]")
     irMul("nbytes", "i64", "%newcap", "8")
     irLoadArrayData("old", "%arr")
-    irCall("newbuf", "ptr", "realloc", "ptr %old, i64 %nbytes")
-    irPtrToInt("new_i", "%newbuf", "i64")
-    irGEP("datap_g", "i64", "%arr", "2")
-    irStore("i64", "%new_i", "%datap_g")
+    // D168 §C.4: buffer 由 mi_calloc 分配,扩容必须用 mi_realloc(libc realloc 与 mimalloc 不兼容)
+    irCall("newbuf", "ptr", "mi_realloc", "ptr %old, i64 %nbytes")
+    emitIR("  %datap_g = getelementptr %Array, ptr %arr, i32 0, i32 2")
+    emitIR("  store ptr %newbuf, ptr %datap_g, align 8")
     irStore("i64", "%newcap", "%capp")
     irBr("store")
     irLabel("store")
@@ -95,7 +92,7 @@ function emitRuntimeArrayOps() {
     irGEP("dst", "i64", "%data_s", "%len")
     irStore("i64", "%val", "%dst")
     irAdd("newlen", "i64", "%len", "1")
-    irStore("i64", "%newlen", "%arr")
+    irStore("i64", "%newlen", "%lenp")
     irRet("ptr", "%arr")
     emitIR("}")
     emitIR("")
@@ -114,7 +111,8 @@ function emitRuntimeArrayOps() {
     emitIR("")
     emitIR("define void @ss_arraySort(ptr %arr) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irICmp("need_sort", "sgt", "i64", "%len", "1")
     irBrCond("need_sort", "sort", "done")
     irLabel("sort")
@@ -126,10 +124,11 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayReverse
+    // ss_arrayReverse — D168 §C.6: len@3
     emitIR("define void @ss_arrayReverse(ptr %arr) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irSDiv("half", "i64", "%len", "2")
     irLoadArrayData("data", "%arr")
     irAlloca("i", "i64", 8)
@@ -156,10 +155,11 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayFirst
+    // ss_arrayFirst — D168 §C.6: len@3
     emitIR("define i64 @ss_arrayFirst(ptr %arr) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irICmp("has", "sgt", "i64", "%len", "0")
     irBrCond("has", "has_elem", "empty")
     irLabel("has_elem")
@@ -171,10 +171,11 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayLast
+    // ss_arrayLast — D168 §C.6: len@3
     emitIR("define i64 @ss_arrayLast(ptr %arr) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irICmp("has", "sgt", "i64", "%len", "0")
     irBrCond("has", "has_elem", "empty")
     irLabel("has_elem")
@@ -188,10 +189,11 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayIndexOf
+    // ss_arrayIndexOf — D168 §C.6: len@3
     emitIR("define i32 @ss_arrayIndexOf(ptr %arr, i64 %needle) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irLoadArrayData("data", "%arr")
     irAlloca("i", "i64", 8)
     irStore("i64", "0", "%i")
@@ -217,11 +219,12 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayIndexOfStr — linear scan with strcmp, for Array<string>.indexOf
-    // Elements are stored as i64 (ptrtoint of string ptr); cast back and strcmp against needle.
+    // ss_arrayIndexOfStr — linear scan with ss_string_eq, for Array<string>.indexOf
+    // D168 §C.6: len@3;元素和 needle 都是 SS String header,走 ss_string_eq(D168 §B.7)
     emitIR("define i32 @ss_arrayIndexOfStr(ptr %arr, ptr %needle) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irLoadArrayData("data", "%arr")
     irAlloca("i", "i64", 8)
     irStore("i64", "0", "%i")
@@ -250,10 +253,12 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arraySlice — create new header+data, copy from source
+    // ss_arraySlice — D168 §C.6: TypeInfo 继承 (GEP 1) + ss_alloc_array + len@3
+    // 旧 tag (GEP -8) 已废,改读源 TypeInfo;ref 元素 retain 改走元素 ObjHeader vtable (ss_retain)
     emitIR("define ptr @ss_arraySlice(ptr %arr, i32 %start, i32 %end_idx) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %src_lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%src_lenp")
     irSext("s", "i32", "%start", "i64")
     irSext("e", "i32", "%end_idx", "i64")
     irICmp("e2", "sgt", "i64", "%e", "%len")
@@ -261,27 +266,25 @@ function emitRuntimeArrayOps() {
     irSub("nlen", "i64", "%end", "%s")
     irICmp("nlen2", "slt", "i64", "%nlen", "0")
     irSelect("nlen3", "nlen2", "i64", "0", "%nlen")
-    // Inherit tag from source
-    irGEP("src_tagp", "i8", "%arr", "-8")
-    irLoad("src_tag", "i32", "%src_tagp")
-    irCall("hdr", "ptr", "ss_rc_calloc", "i64 24, i32 %src_tag")
-    irStore("i64", "%nlen3", "%hdr")
-    irGEP("capp", "i64", "%hdr", "1")
-    irStore("i64", "%nlen3", "%capp")
+    // 继承源 TypeInfo (GEP 1)
+    emitIR("  %src_tip = getelementptr %Array, ptr %arr, i32 0, i32 1")
+    emitIR("  %src_ti = load ptr, ptr %src_tip, align 8")
+    // ss_alloc_array 一次性 alloc header + buffer + 设 rc=1/TypeInfo/buffer/cap
+    irCall("hdr", "ptr", "ss_alloc_array", "i64 8, i64 %nlen3, ptr %src_ti")
+    // Set len = nlen3 (ss_alloc_array 默认 len=0)
+    emitIR("  %hdr_lenp = getelementptr %Array, ptr %hdr, i32 0, i32 3")
+    irStore("i64", "%nlen3", "%hdr_lenp")
     irICmp("has_elems", "sgt", "i64", "%nlen3", "0")
     irBrCond("has_elems", "copy", "done")
     irLabel("copy")
     irMul("dbytes", "i64", "%nlen3", "8")
-    irCall("newdata", "ptr", "calloc", "i64 %dbytes, i64 1")
-    irPtrToInt("nd_i", "%newdata", "i64")
-    irGEP("hdatap", "i64", "%hdr", "2")
-    irStore("i64", "%nd_i", "%hdatap")
+    irLoadArrayData("newdata", "%hdr")
     irLoadArrayData("src_data", "%arr")
     irGEP("srcp", "i64", "%src_data", "%s")
     irCall("_1", "ptr", "memcpy", "ptr %newdata, ptr %srcp, i64 %dbytes")
-    // If ptr array (tag=5), retain all copied elements
-    irICmp("is_ptr", "eq", "i32", "%src_tag", "5")
-    irBrCond("is_ptr", "retain.init", "done")
+    // 若 ref array (TypeInfo == @Array_ref_type_info),元素 retain 走元素 vtable
+    emitIR("  %is_ref = icmp eq ptr %src_ti, @Array_ref_type_info")
+    irBrCond("is_ref", "retain.init", "done")
     irLabel("retain.init")
     irAlloca("ria", "i64", 8)
     irStore("i64", "0", "%ria")
@@ -294,7 +297,7 @@ function emitRuntimeArrayOps() {
     irGEP("rep", "i64", "%newdata", "%ri")
     irLoad("rev", "i64", "%rep")
     irIntToPtr("rptr", "i64", "%rev")
-    irCallVoid("ss_rc_retain", "ptr %rptr")
+    irCallVoid("ss_retain", "ptr %rptr")
     irAdd("rni", "i64", "%ri", "1")
     irStore("i64", "%rni", "%ria")
     irBr("retain.loop")
@@ -303,26 +306,26 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayConcat — create new header+data from two arrays
+    // ss_arrayConcat — D168 §C.6: TypeInfo 继承 (GEP 1) + ss_alloc_array + len@3
+    // 旧 tag (GEP -8) 已废,改读源 TypeInfo;ref 元素 retain 改走元素 ObjHeader vtable (ss_retain)
     emitIR("define ptr @ss_arrayConcat(ptr %a, ptr %b) {")
     irLabel("entry")
-    irLoad("alen", "i64", "%a")
-    irLoad("blen", "i64", "%b")
+    emitIR("  %a_lenp = getelementptr %Array, ptr %a, i32 0, i32 3")
+    irLoad("alen", "i64", "%a_lenp")
+    emitIR("  %b_lenp = getelementptr %Array, ptr %b, i32 0, i32 3")
+    irLoad("blen", "i64", "%b_lenp")
     irAdd("total", "i64", "%alen", "%blen")
-    irGEP("src_tagp", "i8", "%a", "-8")
-    irLoad("src_tag", "i32", "%src_tagp")
-    irCall("hdr", "ptr", "ss_rc_calloc", "i64 24, i32 %src_tag")
-    irStore("i64", "%total", "%hdr")
-    irGEP("capp", "i64", "%hdr", "1")
-    irStore("i64", "%total", "%capp")
+    // 继承 a 的 TypeInfo (GEP 1)
+    emitIR("  %src_tip = getelementptr %Array, ptr %a, i32 0, i32 1")
+    emitIR("  %src_ti = load ptr, ptr %src_tip, align 8")
+    irCall("hdr", "ptr", "ss_alloc_array", "i64 8, i64 %total, ptr %src_ti")
+    // Set len = total (ss_alloc_array 默认 len=0)
+    emitIR("  %hdr_lenp = getelementptr %Array, ptr %hdr, i32 0, i32 3")
+    irStore("i64", "%total", "%hdr_lenp")
     irICmp("has_elems", "sgt", "i64", "%total", "0")
-    irBrCond("has_elems", "alloc_data", "done")
-    irLabel("alloc_data")
-    irMul("dbytes", "i64", "%total", "8")
-    irCall("newdata", "ptr", "calloc", "i64 %dbytes, i64 1")
-    irPtrToInt("nd_i", "%newdata", "i64")
-    irGEP("hdatap", "i64", "%hdr", "2")
-    irStore("i64", "%nd_i", "%hdatap")
+    irBrCond("has_elems", "copy", "done")
+    irLabel("copy")
+    irLoadArrayData("newdata", "%hdr")
     irLoadArrayData("a_data", "%a")
     irMul("abytes", "i64", "%alen", "8")
     irCall("_1", "ptr", "memcpy", "ptr %newdata, ptr %a_data, i64 %abytes")
@@ -330,9 +333,9 @@ function emitRuntimeArrayOps() {
     irGEP("dst2", "i64", "%newdata", "%alen")
     irMul("bbytes", "i64", "%blen", "8")
     irCall("_2", "ptr", "memcpy", "ptr %dst2, ptr %b_data, i64 %bbytes")
-    // If ptr array (tag=5), retain all elements
-    irICmp("is_ptr", "eq", "i32", "%src_tag", "5")
-    irBrCond("is_ptr", "retain.init", "done")
+    // 若 ref array (TypeInfo == @Array_ref_type_info),元素 retain 走元素 vtable
+    emitIR("  %is_ref = icmp eq ptr %src_ti, @Array_ref_type_info")
+    irBrCond("is_ref", "retain.init", "done")
     irLabel("retain.init")
     irAlloca("ria", "i64", 8)
     irStore("i64", "0", "%ria")
@@ -345,7 +348,7 @@ function emitRuntimeArrayOps() {
     irGEP("rep", "i64", "%newdata", "%ri")
     irLoad("rev", "i64", "%rep")
     irIntToPtr("rptr", "i64", "%rev")
-    irCallVoid("ss_rc_retain", "ptr %rptr")
+    irCallVoid("ss_retain", "ptr %rptr")
     irAdd("rni", "i64", "%ri", "1")
     irStore("i64", "%rni", "%ria")
     irBr("retain.loop")
@@ -354,10 +357,11 @@ function emitRuntimeArrayOps() {
     emitIR("}")
     emitIR("")
 
-    // ss_arrayToString — "[1, 2, 3]" style output (dynamic buffer)
+    // ss_arrayToString — "[1, 2, 3]" style output;D168 §C.6: len@3
     emitIR("define ptr @ss_arrayToString(ptr %arr) {")
     irLabel("entry")
-    irLoad("len", "i64", "%arr")
+    emitIR("  %lenp = getelementptr %Array, ptr %arr, i32 0, i32 3")
+    irLoad("len", "i64", "%lenp")
     irLoadArrayData("data", "%arr")
     irAlloca("bufp", "ptr", 8)
     irAlloca("cap", "i64", 8)

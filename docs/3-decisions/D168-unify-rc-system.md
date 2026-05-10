@@ -337,6 +337,20 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 
 ---
 
+## §扩容申报-P2.2-scalar-array-切轨
+
+| metric | bm_old | bm_new | delta | 业务理由 |
+|---|---|---|---|---|
+| (无 bump) | — | — | — | 所有指标实测均 PROGRESS(M2 -72 / M3a -8 / M4 -3 / N2 -360 / N3 -137);仅 M3b +2 / M6 / N1 已是 baseline 状态。F1 gen_runtime.ss 958 → 958(emitArrayTypeInfo 内 `%Array = type` 删除 + mi_realloc declare 加 1 = 净 0)。 |
+
+**根因解决度**:P2.2 是**ABI 切轨改造**(改 emit 模式 + GEP 偏移),非新增 IR — 旧 ss_rc_calloc + 旧 GEP 偏移代码删除 + 新 ss_alloc_array + GEP +3 代码替换 = 净改动量小;`ss_arraySlice/Concat` 旧 tag 分派(GEP -8 + retain 循环)替换为 TypeInfo 分派(GEP 1 + ss_retain 循环)字符等量。
+
+**对账(预估 vs 实测)**:**预估极度悲观**(M2 +1600 实测 -72 / M3a +400 实测 -8 / N2 +9000 实测 -360 / N3 +10000 实测 -137)。**预估偏差 -100% 以上 — 写入 §扩容申报失准段**。根因:本 prompt §扩容申报-P2.2 预估按 P1.3 String ABI 切轨实测 +1300/+264 同等扩散面外推(且加 buffer),未实测 P2.2 与 P1.3 的本质区别 — **P1.3 是"新增 emit + 容器 / 表达式 / codegen 拼装顺序连锁修"(实测 +520/-256 净 +264 行),P2.2 是"emit 模式替换"(行数等量替换)**。下次 ABI 切轨预估必区分:
+- **新增 emit 类型**(P1.2 String type-info dead-code 元数据 / P2.1 Array type-info dead-code)→ 按 emit IR 行数线性估算
+- **替换 emit 类型**(P1.3 字面量 + dispatch + GEP 全栈 / P2.2 GEP +3 + emit 转发)→ **行数等量替换,反射指标几乎不变,M2/M3a/N2/N3 预估 ±0**
+
+---
+
 ## 附录 C:Phase 2 Array 切轨子设计
 
 **Status:** Drafted at 2026-05-10(Phase 1 close 后 P2.1 spike 启动前最后子决策锁定层)
@@ -536,8 +550,8 @@ dealloc:
 
 | 子阶段 | 范围 | 触达 | Status |
 |---|---|---|---|
-| **P2.1** | §C.3 emitArrayTypeInfo 双份 dead-code(scalar + ref TypeInfo + 6 per-type 函数 + typename 常量)+ §C.4 ss_alloc_array helper(dead-code,P2.2 才连接到字面量)| gen_runtime.ss(emitArrayTypeInfo +~150 行 IR) | [ ] Planned |
-| **P2.2** | §C.1 字面量 runtime 创建路径切到 ss_alloc_array + §C.6 gen_rt_array.ss 17 函数 GEP +3 全栈修正 + §C.5 emitRetainForType isArrayType dispatch + scalar Array 切轨完成 | gen_rt_array.ss / class.ss / 字面量 emit 路径 / 容器扩散修(map/shell call sites) | [ ] Planned |
+| **P2.1** | §C.3 emitArrayTypeInfo 双份 dead-code(scalar + ref TypeInfo + 6 per-type 函数 + typename 常量)+ §C.4 ss_alloc_array helper(dead-code,P2.2 才连接到字面量)| gen_runtime.ss(emitArrayTypeInfo +~150 行 IR) | [x] commit `daa40e8` 2026-05-10 |
+| **P2.2** | §C.1 字面量 runtime 创建路径切到 ss_alloc_array(emitNewArrayFn 内部转发,所有调用方零改动)+ §C.6 gen_rt_array.ss 17 函数 GEP +3 全栈修正(len@3 / cap@4 / buffer@2 ptr load 直接,irLoadArrayData helper 归一化)+ §C.5 emitRetainForType isArrayType dispatch + ss_arraySlice/Concat TypeInfo 替代 tag 分派 + scalar Array 切轨完成 | gen_rt_array.ss / class.ss / ir_builder.ss / gen_runtime.ss(mi_realloc declare)/ codegen.ss(%Array prepend) | [x] 本 commit 2026-05-10(bootstrap stage2==stage3 PASS;全测 307/20/327 0 regression with P2.1 baseline;反射 gate PASS 无 bump 需要;失准段见下) |
 | **P2.3** | §C.9 push/pop/slice/concat 元素 retain/release 切 dispatch + ref Array 切轨(Array<string>/Array<class>)+ §C.10 ss_drop_Array_ref 循环 vtable 调用启用 | gen_rt_array.ss + 调用方扩散 + Array<class> 测试用例 | [ ] Planned |
 | **P2.4** | 综合大测 + Array<嵌套泛型> 验证(Array<Map<K,V>> / Array<Array<T>>)+ Phase 2 close | 全测 + 性能 micro-bench(可选)| [ ] Planned |
 

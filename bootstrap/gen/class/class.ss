@@ -136,10 +136,18 @@ function isInterfaceType(typeName: string): int {
     return 0
 }
 
+// D168 §C.5: Array<T> / 裸 Array 走新 RC (ss_retain/ss_release)。
+// Phase 4 Map 切完后,emitRetain/ReleaseForType 退化为单一 ss_retain/ss_release。
+function isArrayType(typeName: string): int {
+    if (typeName == "Array") { return 1 }
+    if (typeName.startsWith("Array<") == 1) { return 1 }
+    return 0
+}
+
 // Emit retain call for the appropriate RC system
 function emitRetainForType(reg: string, ssType: string) {
-    // D168 §B.6: string 走新 RC (ss_retain),字面量 immortal RC=-1 自然跳过
-    if (isUserClass(ssType) == 1 || ssType == "string") {
+    // D168 §B.6 + §C.5: string / class / Array 走新 RC (ss_retain),immortal RC<0 自然跳过
+    if (isUserClass(ssType) == 1 || ssType == "string" || isArrayType(ssType) == 1) {
         emitIR(`  call void @ss_retain(ptr ${reg})`)
     } else {
         emitIR(`  call void @ss_rc_retain(ptr ${reg})`)
@@ -148,7 +156,7 @@ function emitRetainForType(reg: string, ssType: string) {
 
 // Emit release call for the appropriate RC system
 function emitReleaseForType(reg: string, ssType: string) {
-    if (isUserClass(ssType) == 1 || ssType == "string") {
+    if (isUserClass(ssType) == 1 || ssType == "string" || isArrayType(ssType) == 1) {
         emitIR(`  call void @ss_release(ptr ${reg})`)
     } else {
         emitIR(`  call void @ss_rc_release(ptr ${reg})`)

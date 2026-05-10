@@ -93,9 +93,10 @@ function irIntToPtr(dst: string, fromTy: string, val: string) {
     emitIR(`  %${dst} = inttoptr ${fromTy} ${val} to ptr`)
 }
 
-// Load array data buffer pointer from header slot 2
+// Load array data buffer pointer. D168 §C.6: %Array = {i64 rc, ptr TypeInfo,
+// ptr buffer, i64 len, i64 cap} 间接 buffer; buffer slot @ struct index 2,
+// 直接 ptr load(旧 layout 是 i64 inttoptr,P2.2 切轨后归一化)。
 function irLoadArrayData(dst: string, arr: string) {
-    irGEP(`${dst}p`, "i64", arr, "2")
-    irLoad(`${dst}_i`, "i64", `%${dst}p`)
-    irIntToPtr(dst, "i64", `%${dst}_i`)
+    emitIR(`  %${dst}p = getelementptr %Array, ptr ${arr}, i32 0, i32 2`)
+    emitIR(`  %${dst} = load ptr, ptr %${dst}p, align 8`)
 }

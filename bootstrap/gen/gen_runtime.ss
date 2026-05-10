@@ -62,6 +62,7 @@ function emitLibcDecls() {
     emitIR("declare ptr @memset(ptr, i32, i64)")
     // Memory (mimalloc — class instance allocation)
     emitIR("declare ptr @mi_calloc(i64, i64)")
+    emitIR("declare ptr @mi_realloc(ptr, i64)")
     emitIR("declare void @mi_free(ptr)")
     // Conversion
     emitIR("declare i32 @atoi(ptr)")
@@ -691,9 +692,8 @@ function emitStringTypeInfo() {
 // 双份 TypeInfo:scalar(class_id=-2 元素无 RC)/ ref(class_id=-3 元素走自身 vtable)
 // 与 emitStringTypeInfo 同模式;P2.1 dead-code 元数据,P2.2 连接字面量 + GEP +3 + dispatch
 function emitArrayTypeInfo() {
-    // %Array struct type — 5 字段间接 buffer 布局,40 字节;shape 与 %String 相同
-    emitIR("%Array = type { i64, ptr, ptr, i64, i64 }")
-    emitIR("")
+    // %Array struct type 已在 codegen.ss 最终拼装时 prepend(与 %String 同模式),
+    // 此处不再 emit 防 redefinition error。
 
     // 类型名常量
     emitIR("@.array_scalar_typename = private constant [14 x i8] c\"Array<scalar>\\00\"")
