@@ -103,8 +103,7 @@ function emitDeserializeForType(ssType: string, jsonNodeR: string): string {
     //   不安全 → 用 alloca slot 跨 block load。
     const stripped = stripNullableCG(ssType)
     if (stripped != ssType) {
-        const slotR = nextReg()
-        emitIR(`  ${slotR} = alloca i64, align 8`)
+        const slotR = emitEntryAlloca(nextReg(), "i64", 8)
         emitIR(`  store i64 0, ptr ${slotR}, align 8`)
         const isNullR = nextReg()
         emitIR(`  ${isNullR} = call i32 @jnIsNullOrMissing(i32 ${jsonNodeR})`)
@@ -187,11 +186,9 @@ function emitArrayDeserializeInto(arrNodeR: string, arrFieldType: string): strin
     emitIR(`  ${arrLenR} = call i32 @jnArrayLen(i32 ${arrNodeR})`)
     const initArrR = nextReg()
     emitIR(`  ${initArrR} = call ptr @${newArrFn}(i32 0)`)
-    const arrSlotR = nextReg()
-    emitIR(`  ${arrSlotR} = alloca ptr, align 8`)
+    const arrSlotR = emitEntryAlloca(nextReg(), "ptr", 8)
     emitIR(`  store ptr ${initArrR}, ptr ${arrSlotR}, align 8`)
-    const idxSlotR = nextReg()
-    emitIR(`  ${idxSlotR} = alloca i32, align 4`)
+    const idxSlotR = emitEntryAlloca(nextReg(), "i32", 4)
     emitIR(`  store i32 0, ptr ${idxSlotR}, align 4`)
     const headLabel = nextLabel("arr_loop.head")
     const bodyLabel = nextLabel("arr_loop.body")
@@ -241,8 +238,7 @@ function emitMapDeserializeInto(mapNodeR: string, mapFieldType: string): string 
     emitIR(`  ${keysArrR} = call ptr @jnObjectKeys(i32 ${mapNodeR})`)
     const keysLenR = nextReg()
     emitIR(`  ${keysLenR} = call i32 @ss_arrayLen(ptr ${keysArrR})`)
-    const idxSlotR = nextReg()
-    emitIR(`  ${idxSlotR} = alloca i32, align 4`)
+    const idxSlotR = emitEntryAlloca(nextReg(), "i32", 4)
     emitIR(`  store i32 0, ptr ${idxSlotR}, align 4`)
     const headLabel = nextLabel("map_loop.head")
     const bodyLabel = nextLabel("map_loop.body")
@@ -299,8 +295,14 @@ function emitFieldStoreI64(dstR: string, ft: string, valI64R: string) {
 function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: int) {
     regCount = 0
     regTable = []
+    // SS-LIM-4: deserialize emit can recurse into emitArrayDeserializeInto /
+    // emitMapDeserializeInto, which call emitEntryAlloca via tracked state.
+    // Wrap with startFuncEmit/endFuncEmit so all the alloca within end up in
+    // entry block of @ClassName_deserialize.
+    startFuncEmit()
     emitIR(`define ptr @${className}_deserialize(i32 %nodeId.arg) {`)
     emitIR("entry:")
+    markEntryAllocaPoint()
     emitIR(`  %size = ptrtoint ptr getelementptr (%${className}, ptr null, i32 1) to i64`)
     emitIR("  %new = call ptr @mi_calloc(i64 1, i64 %size)")
     emitIR("  store i32 1, ptr %new, align 4")
@@ -334,4 +336,10 @@ function emitClassDeserializeFn(className: string, fieldStr: string, hasVtable: 
     emitIR("  ret ptr %new")
     emitIR("}")
     emitIR("")
+    const deserIR = endFuncEmit()
+    if (irOutFile != "") {
+        appendFile(irOutFile, deserIR)
+    } else {
+        irBuf = `${irBuf}${deserIR}`
+    }
 }

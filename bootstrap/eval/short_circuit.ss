@@ -12,8 +12,7 @@ function evalShortCircuit(op: string, astId: int): int {
     }
     if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
     const leftStr = reg(lv)
-    const scResult = nextReg()
-    emitIR(`  ${scResult} = alloca i32, align 4`)
+    const scResult = emitEntryAlloca(nextReg(), "i32", 4)
     emitIR(`  store i32 ${leftStr}, ptr ${scResult}, align 4`)
     const scCmp = nextReg()
     emitIR(`  ${scCmp} = icmp ne i32 ${leftStr}, 0`)

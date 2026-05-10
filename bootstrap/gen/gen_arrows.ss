@@ -138,20 +138,17 @@ function genArrowFunc(id: int): string {
         }
     }
 
-    // Save state (including RC tracking state)
+    // Save non-IR-emit state (RC tracking, var aliases, etc.). irBuf/irOutFile/
+    // strOutFile/funcEntry* are owned by startFuncEmit/endFuncEmit (stack-based).
     const savedFunc = currentFunc
     const savedReg = regCount
     const savedTerm = terminated
     const savedAliases = varAliases
-    const savedIrOut = irOutFile
-    const savedIrBuf = irBuf
-    const savedStrOut = strOutFile
     const savedPtrVars = localPtrVars
     const savedFnVars = localFnVars
     const savedBlockDepth = rcBlockDepth
     const savedBlockStack = blockPtrVarStack
 
-    // Generate body into buffer; string constants still go to main .str
     currentFunc = fnName
     regCount = 0
     regTable = []
@@ -161,12 +158,13 @@ function genArrowFunc(id: int): string {
     localFnVars = ""
     rcBlockDepth = 0
     blockPtrVarStack = ""
-    if (irOutFile != "") { strOutFile = irOutFile }
-    irOutFile = ""
-    irBuf = ""
+
+    // SS-LIM-4: enter function-emit window (push IR-emit + entry-alloca state).
+    startFuncEmit()
 
     emitIR(`define ${llRetType} @${fnName}(${paramStr}) {`)
     emitIR("entry:")
+    markEntryAllocaPoint()
     emitParamAllocas(paramList, 1)
 
     // Load captured values from closure struct
@@ -179,7 +177,7 @@ function genArrowFunc(id: int): string {
             if (capName != "") {
                 const llCapType = ssTypeToLLVM(capType)
                 const capAlias = allocVarName(capName)
-                emitIR(`  %${capAlias} = alloca ${llCapType}, align 8`)
+                emitEntryAlloca(`%${capAlias}`, llCapType, 8)
                 const gepR = nextReg()
                 emitIR(`  ${gepR} = getelementptr ptr, ptr %self.arg, i32 ${CLOSURE_HDR_SLOTS + capIdx}`)
                 const loadR = nextReg()
@@ -236,12 +234,11 @@ function genArrowFunc(id: int): string {
         emitIR("")
     }
 
-    arrowDefs = `${arrowDefs}${irBuf}`
+    // SS-LIM-4: pop function-emit frame (splice entry allocas + restore IR-emit state).
+    const arrowIR = endFuncEmit()
+    arrowDefs = `${arrowDefs}${arrowIR}`
 
-    // Restore state (including RC tracking state)
-    irBuf = savedIrBuf
-    irOutFile = savedIrOut
-    strOutFile = savedStrOut
+    // Restore non-IR-emit state.
     currentFunc = savedFunc
     regCount = savedReg
     terminated = savedTerm

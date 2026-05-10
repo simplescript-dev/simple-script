@@ -11,6 +11,28 @@ let regCount = 0
 let regTable: Array<string> = []
 let labelCount = 0
 
+// SS-LIM-4 entry-alloca hoist (gen_emit.ss owns the buffer + splice).
+// All user-code-path alloca calls go through emitEntryAlloca → funcEntryAllocas.
+// startFuncEmit/endFuncEmit wrap each function body emit so alloca physical
+// position lands right after `entry:` (LLVM dominate-all-uses standard).
+//
+// Nesting model — stack-based: each startFuncEmit pushes (entryAllocas/Anchor/
+// Active + irBuf/irOutFile/strOutFile) onto the 6 stacks then resets to a
+// fresh frame; endFuncEmit splices funcEntryAllocas into the freshly emitted
+// irBuf, **returns** the spliced funcIR string, then pops saved state. Caller
+// routes the returned funcIR to its target (outFile via appendFile, outer
+// irBuf, arrowDefs, genericSpecDefs, ...). Supports
+// main → genGenericCall → identity_int 三层 + 多 arrow / generic 嵌套.
+let funcEntryAllocas = ""
+let funcEntryAnchor = -1
+let funcEmitActive = 0
+let funcEmitAllocasStack: Array<string> = []
+let funcEmitAnchorStack: Array<string> = []
+let funcEmitActiveStack: Array<string> = []
+let funcEmitIrBufStack: Array<string> = []
+let funcEmitIrOutStack: Array<string> = []
+let funcEmitStrOutStack: Array<string> = []
+
 // ── IR emit / SSA counters ────────────────────────────────────
 
 function emitIR(s: string) {
@@ -19,6 +41,88 @@ function emitIR(s: string) {
     } else {
         irBuf = `${irBuf}${s}\n`
     }
+}
+
+// SS-LIM-4 — start a function body emit window. Pushes current 6-state to
+// stacks then resets. Caller must pair with endFuncEmit() and route the
+// returned funcIR to the appropriate target (outFile / outer irBuf /
+// arrowDefs / genericSpecDefs).
+function startFuncEmit() {
+    funcEmitAllocasStack = funcEmitAllocasStack.push(funcEntryAllocas)
+    funcEmitAnchorStack = funcEmitAnchorStack.push(`${funcEntryAnchor}`)
+    funcEmitActiveStack = funcEmitActiveStack.push(`${funcEmitActive}`)
+    funcEmitIrBufStack = funcEmitIrBufStack.push(irBuf)
+    funcEmitIrOutStack = funcEmitIrOutStack.push(irOutFile)
+    funcEmitStrOutStack = funcEmitStrOutStack.push(strOutFile)
+    if (irOutFile != "") { strOutFile = irOutFile }
+    irOutFile = ""
+    irBuf = ""
+    funcEntryAllocas = ""
+    funcEntryAnchor = -1
+    funcEmitActive = 1
+}
+
+function markEntryAllocaPoint() {
+    if (funcEmitActive == 0) { return }
+    funcEntryAnchor = irBuf.length()
+}
+
+// Emit alloca that should live in entry block (auto-hoist).
+// reg: register name like "%foo" or "%42" (with leading %)
+// LLVM SSA digit register sequence must be ascending by first-use position;
+// hoisting a digit-named alloca (%42) to entry would put high-N before low-N
+// and crash the verifier. Detect digit registers and rename to %hoist.N to
+// keep them off the SSA digit ladder. Caller MUST use the returned reg name.
+function emitEntryAlloca(reg: string, llType: string, align: int): string {
+    let regOut = reg
+    if (reg.length() >= 2 && reg.charAt(0) == "%") {
+        const c1 = charCodeAt(reg, 1)
+        if (c1 >= 48 && c1 <= 57) {
+            regOut = `%hoist.${reg.substring(1, reg.length() - 1)}`
+        }
+    }
+    if (funcEmitActive == 0 || funcEntryAnchor < 0) {
+        emitIR(`  ${regOut} = alloca ${llType}, align ${align}`)
+        return regOut
+    }
+    funcEntryAllocas = `${funcEntryAllocas}  ${regOut} = alloca ${llType}, align ${align}\n`
+    return regOut
+}
+
+// Splice funcEntryAllocas into irBuf at funcEntryAnchor (immediately after
+// `entry:`), capture the spliced function IR string, pop saved 6-state, and
+// return the funcIR for caller-controlled routing.
+function endFuncEmit(): string {
+    if (funcEntryAllocas != "" && funcEntryAnchor >= 0) {
+        const before = irBuf.substring(0, funcEntryAnchor)
+        const afterLen = irBuf.length() - funcEntryAnchor
+        const after = irBuf.substring(funcEntryAnchor, afterLen)
+        irBuf = `${before}${funcEntryAllocas}${after}`
+    }
+    const funcIR = irBuf
+    const top = funcEmitAllocasStack.length() - 1
+    if (top < 0) {
+        funcEntryAllocas = ""
+        funcEntryAnchor = -1
+        funcEmitActive = 0
+        irBuf = ""
+        irOutFile = ""
+        strOutFile = ""
+        return funcIR
+    }
+    funcEntryAllocas = funcEmitAllocasStack[top]
+    funcEntryAnchor = parseInt(funcEmitAnchorStack[top])
+    funcEmitActive = parseInt(funcEmitActiveStack[top])
+    irBuf = funcEmitIrBufStack[top]
+    irOutFile = funcEmitIrOutStack[top]
+    strOutFile = funcEmitStrOutStack[top]
+    funcEmitAllocasStack = funcEmitAllocasStack.slice(0, top)
+    funcEmitAnchorStack = funcEmitAnchorStack.slice(0, top)
+    funcEmitActiveStack = funcEmitActiveStack.slice(0, top)
+    funcEmitIrBufStack = funcEmitIrBufStack.slice(0, top)
+    funcEmitIrOutStack = funcEmitIrOutStack.slice(0, top)
+    funcEmitStrOutStack = funcEmitStrOutStack.slice(0, top)
+    return funcIR
 }
 
 function nextReg(): string {

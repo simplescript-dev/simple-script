@@ -70,8 +70,7 @@ function genEnumValueOf(eName: string, argList: string): string {
         if (argId > 0) { argReg = genExpr(argId) }
     }
 
-    const resultAlloca = nextReg()
-    emitIR(`  ${resultAlloca} = alloca ${retLLType}, align 8`)
+    const resultAlloca = emitEntryAlloca(nextReg(), retLLType, 8)
 
     const doneLabel = nextLabel("valueof.done")
     const throwLabel = nextLabel("valueof.throw")
@@ -134,8 +133,7 @@ function genOptionalMethodCall(id: int): string {
     const llRetType = ssTypeToLLVM(retType)
 
     // Alloca for result
-    const resultAlloca = nextReg()
-    emitIR(`  ${resultAlloca} = alloca ${llRetType}, align 8`)
+    const resultAlloca = emitEntryAlloca(nextReg(), llRetType, 8)
     // Store default
     if (llRetType == "ptr") {
         const emptyStr = addStringConst("")

@@ -396,12 +396,12 @@ function genGenericCall(id: int, callee: string, argList: string): string {
         funcRetTypes.set(mangledName, resolvedRet)
         funcParamCount.set(mangledName, funcParamCount.getString(callee) ?? "0")
 
-        // Save codegen state (same pattern as genArrowFunc)
+        // Save non-IR-emit state. IR-emit state (irBuf/irOutFile/strOutFile +
+        // funcEntry*) is owned by startFuncEmit/endFuncEmit (stack-based).
         const savedFunc = currentFunc
         const savedReg = regCount
         const savedTerm = terminated
         const savedAliases = varAliases
-        const savedIrOut = irOutFile
         const savedPtrVars = localPtrVars
         const savedFnVars = localFnVars
         const savedBlockDepth = rcBlockDepth
@@ -411,20 +411,18 @@ function genGenericCall(id: int, callee: string, argList: string): string {
         // Set up specialization context
         genericTypeSubs = subs
         specFuncName = mangledName
-        if (irOutFile != "") { strOutFile = irOutFile }
-        irOutFile = ""
-        irBuf = ""
 
-        // Generate the specialized function
+        // SS-LIM-4: enter specialization-emit window (push frame + reset).
+        startFuncEmit()
+
+        // Generate the specialized function (genFuncDecl wraps its own frame).
         genFuncDecl(funcNodeId)
 
-        // Buffer the generated IR
-        genericSpecDefs = `${genericSpecDefs}${irBuf}`
+        // Pop frame and route the captured IR to genericSpecDefs.
+        const specIR = endFuncEmit()
+        genericSpecDefs = `${genericSpecDefs}${specIR}`
 
-        // Restore state
-        irBuf = ""
-        irOutFile = savedIrOut
-        strOutFile = ""
+        // Restore non-IR-emit state.
         currentFunc = savedFunc
         regCount = savedReg
         terminated = savedTerm
@@ -659,8 +657,7 @@ function genArrayLit(id: int): string {
 
     // If spread exists, use push-based building
     if (hasSpread == 1) {
-        const arrAlloca = nextReg()
-        emitIR(`  ${arrAlloca} = alloca ptr, align 8`)
+        const arrAlloca = emitEntryAlloca(nextReg(), "ptr", 8)
         const initArr = nextReg()
         emitIR(`  ${initArr} = call ptr ${arrCtor}(i32 0)`)
         emitIR(`  store ptr ${initArr}, ptr ${arrAlloca}, align 8`)

@@ -14,7 +14,7 @@ function genForInUnrolled(id: int, itemCsv: string) {
     const bodyId = nGetI2(id)
 
     const itemLLName = allocVarName(itemName)
-    emitIR(`  %${itemLLName} = alloca ptr, align 8`)
+    emitEntryAlloca(`%${itemLLName}`, "ptr", 8)
     setVarType(itemName, "string")
 
     if (itemCsv == "") { return }
@@ -156,14 +156,14 @@ function genForIn(id: int) {
     const lenReg = nextReg(); emitIR(`  ${lenReg} = call i32 @ss_arrayLen(ptr ${arr})`)
 
     // Index variable
-    const idxAlloca = nextReg(); emitIR(`  ${idxAlloca} = alloca i32, align 4`)
+    const idxAlloca = emitEntryAlloca(nextReg(), "i32", 4)
     emitIR(`  store i32 0, ptr ${idxAlloca}, align 4`)
 
     let itemType = inferArrayElemType(iterableId)
     if (itemType == "") { itemType = "i64" }
     const itemLLName = allocVarName(itemName)
     const itemLLType = ssTypeToLLVM(itemType)
-    emitIR(`  %${itemLLName} = alloca ${itemLLType}, align 8`)
+    emitEntryAlloca(`%${itemLLName}`, itemLLType, 8)
     setVarType(itemName, itemType)
 
     const condLabel = nextLabel("forin.cond")

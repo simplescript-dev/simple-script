@@ -139,7 +139,7 @@ function genCatchClauses(catchList: string, convergeLabel: string, finallyBody: 
         emitIR(`${bodyLabel}:`)
         terminated = 0
         const errLLName = allocVarName(errName)
-        emitIR(`  %${errLLName} = alloca ptr, align 8`)
+        emitEntryAlloca(`%${errLLName}`, "ptr", 8)
         if (errType != "") {
             const obj2 = nextReg()
             emitIR(`  ${obj2} = load ptr, ptr @ss_exc_obj`)

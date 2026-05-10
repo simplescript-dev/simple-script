@@ -73,12 +73,15 @@ function genClassMethod(className: string, id: int) {
     localPtrVars = ""
     rcBlockDepth = 0
 
+    // SS-LIM-4: enter function-emit window
+    startFuncEmit()
     emitIR(`define ${llRetType} @${llMethodName}(${paramStr}) {`)
     emitIR("entry:")
+    markEntryAllocaPoint()
 
     // Alloca this (skip for static methods)
     if (isStatic == 0) {
-        emitIR("  %this = alloca ptr, align 8")
+        emitEntryAlloca("%this", "ptr", 8)
         emitIR("  store ptr %this.ptr, ptr %this, align 8")
         setVarType("this", className)
     }
@@ -104,6 +107,12 @@ function genClassMethod(className: string, id: int) {
     }
     emitIR("}")
     emitIR("")
+    const methodIR = endFuncEmit()
+    if (irOutFile != "") {
+        appendFile(irOutFile, methodIR)
+    } else {
+        irBuf = `${irBuf}${methodIR}`
+    }
     currentClassName = ""
 }
 

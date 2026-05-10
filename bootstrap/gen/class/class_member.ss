@@ -80,8 +80,7 @@ function genOptionalMemberAccess(id: int, preObj: string = ""): string {
     const retType = inferType(id)
     const llRetType = ssTypeToLLVM(retType)
 
-    const resultAlloca = nextReg()
-    emitIR(`  ${resultAlloca} = alloca ${llRetType}, align 8`)
+    const resultAlloca = emitEntryAlloca(nextReg(), llRetType, 8)
     if (llRetType == "ptr") {
         const emptyStr = addStringConst("")
         emitIR(`  store ptr ${emptyStr}, ptr ${resultAlloca}, align 8`)

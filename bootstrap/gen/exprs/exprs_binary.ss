@@ -56,8 +56,7 @@ function genStringCompare(op: string, leftId: int, rightId: int, blt: string, br
 }
 
 function genNullCoalesce(leftId: int, rightId: int): string {
-    const ncResult = nextReg()
-    emitIR(`  ${ncResult} = alloca ptr, align 8`)
+    const ncResult = emitEntryAlloca(nextReg(), "ptr", 8)
     const ncLeft = genExpr(leftId)
     emitIR(`  store ptr ${ncLeft}, ptr ${ncResult}, align 8`)
     // String: check length == 0; class/other ptr: check == null (D067)
@@ -86,8 +85,7 @@ function genNullCoalesce(leftId: int, rightId: int): string {
 }
 
 function genShortCircuit(op: string, leftId: int, rightId: int): string {
-    const scResult = nextReg()
-    emitIR(`  ${scResult} = alloca i32, align 4`)
+    const scResult = emitEntryAlloca(nextReg(), "i32", 4)
     const scLeft = genExpr(leftId)
     emitIR(`  store i32 ${scLeft}, ptr ${scResult}, align 4`)
     const scCmp = nextReg()

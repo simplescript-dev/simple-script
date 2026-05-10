@@ -21,7 +21,7 @@ function emitParamAllocas(paramList: string, useVarAlias: int) {
         const llType = ssTypeToLLVM(pType)
         let llName = pName
         if (useVarAlias == 1) { llName = allocVarName(pName) }
-        emitIR(`  %${llName} = alloca ${llType}, align 8`)
+        emitEntryAlloca(`%${llName}`, llType, 8)
         emitIR(`  store ${llType} %${pName}.arg, ptr %${llName}, align 8`)
         setVarType(pName, pType)
         const pTypeBase = stripNullableCG(pType)
@@ -92,6 +92,9 @@ function genFuncDecl(id: int) {
     localFnVars = ""
     rcBlockDepth = 0
 
+    // SS-LIM-4: enter function-emit window (alloca → entry hoist buffer)
+    startFuncEmit()
+
     // For 'main', use C main signature
     if (name == "main") {
         emitMainProlog()
@@ -116,6 +119,7 @@ function genFuncDecl(id: int) {
         const llRetType = ssTypeToLLVM(retType)
         emitIR(`define ${llRetType} @${llName}(${paramStr}) {`)
         emitIR("entry:")
+        markEntryAllocaPoint()
         emitParamAllocas(paramList, 1)
     }
 
@@ -154,6 +158,13 @@ function genFuncDecl(id: int) {
     }
     emitIR("}")
     emitIR("")
+    // SS-LIM-4: splice funcEntryAllocas + pop frame; caller routes funcIR.
+    const funcIR = endFuncEmit()
+    if (irOutFile != "") {
+        appendFile(irOutFile, funcIR)
+    } else {
+        irBuf = `${irBuf}${funcIR}`
+    }
     pirActive = 0
     flushArrowDefs()
     flushGenericSpecDefs()
@@ -298,6 +309,7 @@ function emitGlobalVars(stmtList: string) {
 function emitMainProlog() {
     emitIR("define i32 @main(i32 %0, ptr %1) {")
     emitIR("entry:")
+    markEntryAllocaPoint()
     emitIR("  call void @ss_initArgs(i32 %0, ptr %1)")
     emitIR("  %_atexit = call i32 @atexit(ptr @ss_rc_atexit_cleanup)")
     emitIR("  %_atexit_test = call i32 @atexit(ptr @ss_test_summary)")
@@ -382,7 +394,7 @@ function genDestructureArray(id: int) {
         if (n.startsWith("...") == 1) {
             const restName = n.substring(3, n.length() - 3)
             const llName = allocVarName(restName)
-            emitIR(`  %${llName} = alloca ptr, align 8`)
+            emitEntryAlloca(`%${llName}`, "ptr", 8)
             const sliceR = nextReg()
             emitIR(`  ${sliceR} = call ptr @ss_arraySlice(ptr ${arrVal}, i32 ${idx}, i32 2147483647)`)
             emitIR(`  store ptr ${sliceR}, ptr %${llName}, align 8`)
@@ -399,7 +411,7 @@ function genDestructureArray(id: int) {
         }
         const llType = ssTypeToLLVM(elemType)
         const llName = allocVarName(n)
-        emitIR(`  %${llName} = alloca ${llType}, align 8`)
+        emitEntryAlloca(`%${llName}`, llType, 8)
         const elemR = nextReg()
         emitIR(`  ${elemR} = call i64 @ss_arrayGet(ptr ${arrVal}, i32 ${idx})`)
         // Convert i64 to target type
@@ -480,7 +492,7 @@ function genDestructureObject(id: int) {
         const fType = classFieldTypes.getString(`${className}.${fieldName}`)
         const llType = ssTypeToLLVM(fType)
         const llName = allocVarName(varName)
-        emitIR(`  %${llName} = alloca ${llType}, align 8`)
+        emitEntryAlloca(`%${llName}`, llType, 8)
         emitIR(`  store ${llType} ${fieldVal}, ptr %${llName}, align 8`)
         setVarType(varName, fType)
         // Track class for method dispatch
@@ -551,7 +563,7 @@ function genVarDecl(id: int) {
         return
     }
     const llName = allocVarName(name)
-    emitIR(`  %${llName} = alloca ${llType}, align 8`)
+    emitEntryAlloca(`%${llName}`, llType, 8)
     setVarType(name, initType)
 
     // Track generic type annotation (e.g., Array<string>)

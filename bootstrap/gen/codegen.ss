@@ -230,6 +230,8 @@ function emitGlobalsAndCode(rootId: int) {
 
     if (hasMain == 0 && bareStmts != "") {
         currentFunc = "main"
+        // SS-LIM-4: bare-stmts main also enters function-emit window
+        startFuncEmit()
         emitMainProlog()
         const bareParts = bareStmts.split(",")
         for (bs in bareParts) {
@@ -241,6 +243,12 @@ function emitGlobalsAndCode(rootId: int) {
         emitIR("  ret i32 0")
         emitIR("}")
         emitIR("")
+        const bareMainIR = endFuncEmit()
+        if (irOutFile != "") {
+            appendFile(irOutFile, bareMainIR)
+        } else {
+            irBuf = `${irBuf}${bareMainIR}`
+        }
         flushArrowDefs()
         currentFunc = ""
     }

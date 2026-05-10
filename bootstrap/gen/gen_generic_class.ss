@@ -294,12 +294,11 @@ function genGenericNewExpr(id: int, className: string): string {
         specializedClasses.set(mangledName, "1")
         preRegisterSpecializedClass(classNodeId, mangledName, subs)
 
-        // State-save/buffer/flush (same pattern as genGenericCall)
+        // Save non-IR-emit state. IR-emit state owned by start/endFuncEmit.
         const savedFunc = currentFunc
         const savedReg = regCount
         const savedTerm = terminated
         const savedAliases = varAliases
-        const savedIrOut = irOutFile
         const savedPtrVars = localPtrVars
         const savedFnVars = localFnVars
         const savedBlockDepth = rcBlockDepth
@@ -310,18 +309,16 @@ function genGenericNewExpr(id: int, className: string): string {
 
         genericTypeSubs = subs
         specClassName = mangledName
-        if (irOutFile != "") { strOutFile = irOutFile }
-        irOutFile = ""
-        irBuf = ""
+
+        // SS-LIM-4: enter generic-class specialization-emit window.
+        startFuncEmit()
 
         genClassDecl(classNodeId)
         specClassGenerated.set(mangledName, "1")
 
-        genericSpecDefs = `${genericSpecDefs}${irBuf}`
+        const specClassIR = endFuncEmit()
+        genericSpecDefs = `${genericSpecDefs}${specClassIR}`
 
-        irBuf = ""
-        irOutFile = savedIrOut
-        strOutFile = ""
         currentFunc = savedFunc
         regCount = savedReg
         terminated = savedTerm
@@ -382,12 +379,11 @@ function generateDeferredSpecializations() {
                 idx = idx + 1
             }
         }
-        // State-save/buffer/flush pattern (same as genGenericNewExpr)
+        // Save non-IR-emit state. IR-emit state owned by start/endFuncEmit.
         const savedFunc = currentFunc
         const savedReg = regCount
         const savedTerm = terminated
         const savedAliases = varAliases
-        const savedIrOut = irOutFile
         const savedPtrVars = localPtrVars
         const savedFnVars = localFnVars
         const savedBlockDepth = rcBlockDepth
@@ -398,17 +394,15 @@ function generateDeferredSpecializations() {
 
         genericTypeSubs = subs
         specClassName = mn
-        if (irOutFile != "") { strOutFile = irOutFile }
-        irOutFile = ""
-        irBuf = ""
+
+        // SS-LIM-4: enter deferred specialization-emit window.
+        startFuncEmit()
 
         genClassDecl(nodeId)
 
-        genericSpecDefs = `${genericSpecDefs}${irBuf}`
+        const deferredSpecIR = endFuncEmit()
+        genericSpecDefs = `${genericSpecDefs}${deferredSpecIR}`
 
-        irBuf = ""
-        irOutFile = savedIrOut
-        strOutFile = ""
         currentFunc = savedFunc
         regCount = savedReg
         terminated = savedTerm

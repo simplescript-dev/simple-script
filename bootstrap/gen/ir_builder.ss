@@ -6,7 +6,7 @@ function irLabel(name: string) {
 }
 
 function irAlloca(dst: string, ty: string, align: int) {
-    emitIR(`  %${dst} = alloca ${ty}, align ${align}`)
+    emitEntryAlloca(`%${dst}`, ty, align)
 }
 
 function irLoad(dst: string, ty: string, ptr: string) {
