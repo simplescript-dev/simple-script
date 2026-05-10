@@ -189,7 +189,8 @@ function emitRuntimeGlobals() {
     // TypeInfo type: { drop_fn, deep_clone_fn, shallow_clone_fn, size, name, class_id }
     emitIR("%TypeInfo = type { ptr, ptr, ptr, i64, ptr, i32, ptr }")
     // ObjHeader type: { rc:i32, type_info:ptr } — first two fields of every class instance
-    emitIR("%ObjHeader = type { i32, ptr }")
+    // D168 §A.3 D3=ii: rc i32 → i64 (零空间代价 — padding 4B 升级为有意义 RC 高位 + future-proof for weak/finalize)
+    emitIR("%ObjHeader = type { i64, ptr }")
     emitIR("")
 }
 
@@ -507,39 +508,45 @@ function emitRuntimeRC() {
 
     // ── New class-instance RC (in-struct rc at offset 0, TypeInfo at offset 1) ──
 
-    // ss_retain(ptr) — increment i32 rc at struct offset 0
+    // ss_retain(ptr) — increment i64 rc at struct offset 0; D168 §B.3 immortal (rc<0) 跳过
     emitIR("define void @ss_retain(ptr %p) {")
     irLabel("entry")
     irICmp("isnull", "eq", "ptr", "%p", "null")
-    irBrCond("isnull", "done", "inc")
-    irLabel("inc")
+    irBrCond("isnull", "done", "load")
+    irLabel("load")
     emitIR("  %rc_ptr = getelementptr %ObjHeader, ptr %p, i32 0, i32 0")
-    irLoad("rc", "i32", "%rc_ptr")
-    irAdd("rc1", "i32", "%rc", "1")
-    irStore("i32", "%rc1", "%rc_ptr")
+    irLoad("rc", "i64", "%rc_ptr")
+    irICmp("immortal", "slt", "i64", "%rc", "0")
+    irBrCond("immortal", "done", "inc")
+    irLabel("inc")
+    irAdd("rc1", "i64", "%rc", "1")
+    irStore("i64", "%rc1", "%rc_ptr")
     irBr("done")
     irLabel("done")
     irRetVoid()
     emitIR("}")
     emitIR("")
 
-    // ss_release(ptr) — decrement i32 rc; if 0 call drop via TypeInfo
+    // ss_release(ptr) — decrement i64 rc; if 0 call drop via TypeInfo; D168 §B.3 immortal (rc<0) 跳过
     emitIR("define void @ss_release(ptr %p) {")
     irLabel("entry")
     irICmp("isnull", "eq", "ptr", "%p", "null")
-    irBrCond("isnull", "done", "dec")
-    irLabel("dec")
+    irBrCond("isnull", "done", "load")
+    irLabel("load")
     emitIR("  %rc_ptr = getelementptr %ObjHeader, ptr %p, i32 0, i32 0")
-    irLoad("rc", "i32", "%rc_ptr")
-    irSub("rc1", "i32", "%rc", "1")
-    irICmp("iszero", "eq", "i32", "%rc1", "0")
+    irLoad("rc", "i64", "%rc_ptr")
+    irICmp("immortal", "slt", "i64", "%rc", "0")
+    irBrCond("immortal", "done", "dec")
+    irLabel("dec")
+    irSub("rc1", "i64", "%rc", "1")
+    irICmp("iszero", "eq", "i64", "%rc1", "0")
     irBrCond("iszero", "drop", "store")
     irLabel("store")
-    irStore("i32", "%rc1", "%rc_ptr")
+    irStore("i64", "%rc1", "%rc_ptr")
     irBr("done")
     irLabel("drop")
     // Write rc=0 before calling drop to prevent reentrant double-free
-    irStore("i32", "0", "%rc_ptr")
+    irStore("i64", "0", "%rc_ptr")
     emitIR("  %ti_ptr = getelementptr %ObjHeader, ptr %p, i32 0, i32 1")
     irLoad("ti", "ptr", "%ti_ptr")
     emitIR("  %drop_fn_ptr = getelementptr %TypeInfo, ptr %ti, i32 0, i32 0")

@@ -264,7 +264,7 @@ function genArrowFunc(id: int): string {
     emitIR(`  ${closureReg} = call ptr @mi_calloc(i64 1, i64 ${structSize})`)
     const rcPtr = nextReg()
     emitIR(`  ${rcPtr} = getelementptr i32, ptr ${closureReg}, i32 0`)
-    emitIR(`  store i32 1, ptr ${rcPtr}, align 4`)
+    emitIR(`  store i64 1, ptr ${rcPtr}, align 8`)
     const tiPtr = nextReg()
     emitIR(`  ${tiPtr} = getelementptr ptr, ptr ${closureReg}, i32 1`)
     emitIR(`  store ptr @__closure_${arrowCount}_type_info, ptr ${tiPtr}, align 8`)

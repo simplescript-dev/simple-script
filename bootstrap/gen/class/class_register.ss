@@ -296,8 +296,8 @@ function resolveInheritanceForClass(cls: string) {
 // ── Class codegen helpers ────────────────────────────────────
 
 function emitClassStruct(name: string, fieldStr: string, hasVtable: int) {
-    // New layout: rc:i32 at offset 0, TypeInfo*:ptr at offset 1, then optional vtable, then fields
-    let fieldTypes = "i32, ptr"
+    // D168 §A.3 D3=ii: rc i64 at offset 0, TypeInfo*:ptr at offset 1, then optional vtable, then fields
+    let fieldTypes = "i64, ptr"
     if (hasVtable == 1) { fieldTypes = fieldTypes + ", ptr" }
     if (fieldStr != "") {
         const parts = fieldStr.split(",")

@@ -260,7 +260,7 @@ function emitClassDropFieldsFn(className: string, fieldStr: string, hasVtable: i
 function emitClassCtorBody(name: string, fieldStr: string, hasVtable: int, objReg: string) {
     const rcGep = nextReg()
     emitIR(`  ${rcGep} = getelementptr %${name}, ptr ${objReg}, i32 0, i32 0`)
-    emitIR(`  store i32 1, ptr ${rcGep}, align 4`)
+    emitIR(`  store i64 1, ptr ${rcGep}, align 8`)
     const tiGep = nextReg()
     emitIR(`  ${tiGep} = getelementptr %${name}, ptr ${objReg}, i32 0, i32 1`)
     emitIR(`  store ptr @${name}_type_info, ptr ${tiGep}, align 8`)
@@ -316,8 +316,8 @@ function emitClassDeepCloneFn(className: string, fieldStr: string, hasVtable: in
     // Allocate new object via mimalloc
     emitIR(`  %size = ptrtoint ptr getelementptr (%${className}, ptr null, i32 1) to i64`)
     emitIR("  %new = call ptr @mi_calloc(i64 1, i64 %size)")
-    // Set rc = 1
-    emitIR("  store i32 1, ptr %new, align 4")
+    // Set rc = 1 (D168 §A.3 D3=ii i64)
+    emitIR("  store i64 1, ptr %new, align 8")
     // Set TypeInfo pointer
     emitIR(`  %ti_ptr = getelementptr %${className}, ptr %new, i32 0, i32 1`)
     emitIR(`  store ptr @${className}_type_info, ptr %ti_ptr, align 8`)
@@ -403,8 +403,8 @@ function emitClassShallowCloneFn(className: string, fieldStr: string, hasVtable:
     emitIR(`  %size = ptrtoint ptr getelementptr (%${className}, ptr null, i32 1) to i64`)
     emitIR("  %new = call ptr @mi_calloc(i64 1, i64 %size)")
     emitIR("  %_mc = call ptr @memcpy(ptr %new, ptr %self, i64 %size)")
-    // Reset rc = 1 (overwrite the copied rc)
-    emitIR("  store i32 1, ptr %new, align 4")
+    // Reset rc = 1 (overwrite the copied rc) (D168 §A.3 D3=ii i64)
+    emitIR("  store i64 1, ptr %new, align 8")
     // Retain all ref-type fields (now shared between old and new)
     if (fieldStr != "") {
         let idx = fieldStartIdx(hasVtable)
