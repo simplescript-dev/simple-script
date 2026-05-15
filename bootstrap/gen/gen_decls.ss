@@ -400,7 +400,7 @@ function genDestructureArray(id: int) {
             emitIR(`  store ptr ${sliceR}, ptr %${llName}, align 8`)
             const arrType = itemType != "i64" ? `Array<${itemType}>` : "Array<int>"
             setVarType(restName, arrType)
-            if (currentFunc != "") { trackPtrVar(llName) }
+            if (currentFunc != "") { trackPtrVar(llName, arrType) }
             break
         }
         // Per-element type for tuples, uniform type for arrays
@@ -420,8 +420,9 @@ function genDestructureArray(id: int) {
             emitIR(`  ${elemPtr} = inttoptr i64 ${elemR} to ptr`)
             emitIR(`  store ptr ${elemPtr}, ptr %${llName}, align 8`)
             if (currentFunc != "") {
-                trackPtrVar(llName)
-                emitIR(`  call void @ss_rc_retain(ptr ${elemPtr})`)
+                trackPtrVar(llName, "string")
+                // D168 §C.9: dispatch — string 走 ss_retain(P1.3 已切轨)
+                emitRetainForType(elemPtr, "string")
             }
         } else if (elemType == "int") {
             const elemI32 = nextReg()
@@ -436,7 +437,7 @@ function genDestructureArray(id: int) {
             emitIR(`  ${elemPtr} = inttoptr i64 ${elemR} to ptr`)
             emitIR(`  store ptr ${elemPtr}, ptr %${llName}, align 8`)
             if (currentFunc != "") {
-                trackPtrVar(llName)
+                trackPtrVar(llName, elemType)
                 emitRetainForType(elemPtr, elemType)
             }
         } else {
@@ -505,8 +506,9 @@ function genDestructureObject(id: int) {
                 emitRetainForType(fieldVal, fType)
                 pirMarkManaged(llName)
             } else {
-                trackPtrVar(llName)
-                emitIR(`  call void @ss_rc_retain(ptr ${fieldVal})`)
+                trackPtrVar(llName, fType)
+                // D168 §C.9: dispatch — string/Array 走 ss_retain,Map 走 ss_rc_retain
+                emitRetainForType(fieldVal, fType)
             }
         }
     }
@@ -647,9 +649,20 @@ function genVarDecl(id: int) {
             }
             pirMarkManaged(llName)
         } else {
-            trackPtrVar(llName)
+            // D168 §C.9: trackType 优先用 typeAnn(`Array<T>` 等),否则 fallback initType
+            // (inferType ARRAY_LIT 返 "ptr" 丢类型 — 见 gen_types.ss:567)。
+            let trackType = initType
+            if (typeAnn != "" && typeAnn.contains("<") == 1) { trackType = typeAnn }
+            trackPtrVar(llName, trackType)
             if (isOwnedExpr(initId) == 0) {
-                emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+                // D168 §C.9: ref Array<T> let init 切 emitRetainForType — 让 array
+                // 持有新 RC,与 emitReleaseVarList 的 isArrayType 分支 ss_release 配对
+                // 触发 ss_drop_Array_ref vtable;其他类型保持旧 hardcode 兼容(P3+ 切完统一).
+                if (isArrayType(trackType) == 1) {
+                    emitRetainForType(val, trackType)
+                } else {
+                    emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+                }
             }
         }
     }

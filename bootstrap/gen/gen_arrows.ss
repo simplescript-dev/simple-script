@@ -215,11 +215,9 @@ function genArrowFunc(id: int): string {
                     emitIR(`  ${gepD} = getelementptr ptr, ptr %p, i32 ${CLOSURE_HDR_SLOTS + capIdx2}`)
                     const loadD = nextReg()
                     emitIR(`  ${loadD} = load ptr, ptr ${gepD}, align 8`)
-                    if (classFields.has(capType2) == 1) {
-                        emitIR(`  call void @ss_release(ptr ${loadD})`)
-                    } else {
-                        emitIR(`  call void @ss_rc_release(ptr ${loadD})`)
-                    }
+                    // D168 §C.9: dispatch via emitReleaseForType — class/string/Array 走 ss_release
+                    // 触发 vtable.drop_fn,Map 等旧 ABI 走 ss_rc_release 兼容(Phase 3 切完统一)
+                    emitReleaseForType(loadD, capType2)
                 }
                 capIdx2 = capIdx2 + 1
             }
@@ -289,11 +287,9 @@ function genArrowFunc(id: int): string {
             } else {
                 emitIR(`  store ${llCapType3} ${capVal}, ptr ${capField}, align 8`)
                 if (llCapType3 == "ptr") {
-                    if (classFields.has(capType3) == 1) {
-                        emitIR(`  call void @ss_retain(ptr ${capVal})`)
-                    } else {
-                        emitIR(`  call void @ss_rc_retain(ptr ${capVal})`)
-                    }
+                    // D168 §C.9: dispatch via emitRetainForType — class/string/Array 走 ss_retain,
+                    // Map 等旧 ABI 走 ss_rc_retain 兼容(Phase 3 切完统一)
+                    emitRetainForType(capVal, capType3)
                 }
             }
             capIdx3 = capIdx3 + 1

@@ -279,11 +279,13 @@ function checkStmt(id: int) {
     if (kind == "INDEX_ASSIGN") {
         const indexId = nGetI1(id)
         const valId = nGetI2(id)
+        const objExprId = nGetI3(id)
         if (indexId > 0) { checkExpr(indexId) }
         if (valId > 0) { checkExpr(valId) }
-        // Type check: array element type vs assigned value
-        const arrName = nGetS1(id)
-        const arrType = lookupVar(arrName)
+        if (objExprId > 0) { checkExpr(objExprId) }
+        // SS-LIM-2: arr type from obj-expr (h.items[0]=v) or from var-name (x[0]=v)
+        let arrType = ""
+        if (objExprId > 0) { arrType = checkerInferType(objExprId, "") } else { arrType = lookupVar(nGetS1(id)) }
         if (arrType != "" && arrType != "auto" && valId > 0) {
             const elemType = extractElemType(arrType)
             if (elemType != "") {

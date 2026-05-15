@@ -1,6 +1,6 @@
 # D166: contextual keywords (`from` / `as`) 修法
 
-**Status:** Phase 1 进行中
+**Status:** Done
 **Depends on:** None
 **Date:** 2026-05-09
 **Last Updated:** 2026-05-09
@@ -63,10 +63,10 @@
 
 | Phase | 内容 | 状态 |
 |---|---|---|
-| Phase 0 | D 文档 + options.md 起首 | [x] commit `<phase0-hash>` |
-| Phase 1 | `from` 修法(lexer 删 + parser contextual) + bootstrap 固定点 + spike 三 case GREEN + 全测 306/17/323 | [/] PARTIAL(代码已 GREEN,D 文档锚回填待 Phase 2 收尾) |
-| Phase 2 | `as` 修法(lexer 删 + parse_exprs 中缀分支 + parser:629 dead code 还原) + spike type cast + import alias GREEN + bootstrap 固定点 + 全测继承 | [ ] |
-| Phase 3 | §After Done 三步:simplify + commit + next_prompt;跨 D 起首回填 D166 §Phase 0/1/2 hash | [ ] |
+| Phase 0 | D 文档 + options.md 起首 | [x] commit `2bb204d` |
+| Phase 1 | `from` 修法(lexer 删 + parser contextual) + bootstrap 固定点 + spike 三 case GREEN + 全测 306/17/323 | [x] DONE commit `2bb204d` |
+| Phase 2 | `as` 修法(lexer 删 + parse_exprs 中缀分支 + parser:629 dead code 还原) + spike type cast + import alias GREEN + bootstrap 固定点 + 全测继承 | [x] DONE commit `2bb204d` |
+| Phase 3 | §After Done 三步:simplify + commit + next_prompt;跨 D 起首回填 D166 §Phase 0/1/2 hash | [x] DONE commit `2bb204d` |
 
 ---
 
@@ -87,4 +87,4 @@
 
 ## Status 时间线
 
-- 2026-05-09 D166 起首,Phase 0 D 文档 + options.md 落地;Phase 1 `from` 修法 GREEN(commit `<phase1-hash>` 待回填);Phase 2 `as` 扩 scope 进行中。
+- 2026-05-09 D166 起首,Phase 0 D 文档 + options.md 落地;Phase 1 `from` 修法 GREEN;Phase 2 `as` 修法 GREEN(lexer 删 + parse_exprs 中缀分支 + parser:629 dead code 还原);Phase 3 §After Done simplify + commit + next_prompt + 跨 D 起首回填一并落地;commit `2bb204d` 一次性涵盖 Phase 0-3,主线 close。

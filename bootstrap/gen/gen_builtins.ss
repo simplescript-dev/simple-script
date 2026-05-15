@@ -138,7 +138,9 @@ function genArrayMethod(method: string, objVal: string, objType: string, argList
         const llPushType = ssTypeToLLVM(pushType)
         if (llPushType == "ptr") {
             if (pushNonOwning == 0) {
-                emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+                // D168 §C.9: ref Array push 入参 retain — array 持有 elem 一份引用,
+                // dispatch via emitRetainForType(string/class/Array<T> 走 ss_retain,Map 走 ss_rc_retain).
+                emitRetainForType(val, pushType)
             }
             const cR = nextReg()
             emitIR(`  ${cR} = ptrtoint ptr ${val} to i64`)

@@ -461,6 +461,33 @@ function parseBlock(): int {
     return id
 }
 
+// SS-LIM-2: builds INDEX_ASSIGN node — name="" + objExprId>0 = obj-expr form (h.items[0] = v); else var-name form.
+function makeIndexAssign(name: string, indexId: int, valId: int, objExprId: int, startLine: int, startCol: int): int {
+    const id = newNode("INDEX_ASSIGN")
+    nSetLine(id, startLine); nSetCol(id, startCol)
+    nSetS1(id, name); nSetI1(id, indexId); nSetI2(id, valId); nSetI3(id, objExprId)
+    return id
+}
+
+function makeMemberAssign(objId: int, name: string, op: string, valId: int, startLine: int, startCol: int): int {
+    const id = newNode("MEMBER_ASSIGN")
+    nSetLine(id, startLine); nSetCol(id, startCol)
+    nSetI1(id, objId); nSetS1(id, name); nSetS2(id, op); nSetI2(id, valId)
+    return id
+}
+
+function makeAssignNode(name: string, op: string, valId: int, startLine: int, startCol: int): int {
+    const id = newNode("ASSIGN")
+    nSetLine(id, startLine); nSetCol(id, startCol)
+    nSetS1(id, name); nSetS2(id, op); nSetI1(id, valId)
+    return id
+}
+
+function parseIndexAssignTail(accessExpr: int, startLine: int, startCol: int): int {
+    pAdvance(); const v = parseExpr(); expectNLOrRB()
+    return makeIndexAssign("", nGetI2(accessExpr), v, nGetI1(accessExpr), startLine, startCol)
+}
+
 function parseAssignOrExpr(): int {
     const startLine = curLineNum()
     const startCol = curColNum()
@@ -477,13 +504,7 @@ function parseAssignOrExpr(): int {
             pAdvance()
             const valId = parseExpr()
             expectNLOrRB()
-            const id = newNode("INDEX_ASSIGN")
-            nSetLine(id, startLine)
-            nSetCol(id, startCol)
-            nSetS1(id, name)
-            nSetI1(id, indexId)
-            nSetI2(id, valId)
-            return id
+            return makeIndexAssign(name, indexId, valId, 0, startLine, startCol)
         }
         // Not assignment — build INDEX_ACCESS and continue postfix chain
         const objExpr = newNode("IDENT")
@@ -527,22 +548,18 @@ function parseAssignOrExpr(): int {
                 expr = ma
             }
         }
-        // Member assign: arr[i].field = val
+        // SS-LIM-2: chain ending in INDEX_ACCESS followed by ASSIGN — arr[i].field[j] = val
         const ck2 = curKind()
+        if (nGetKind(expr) == "INDEX_ACCESS" && ck2 == "ASSIGN") {
+            return parseIndexAssignTail(expr, startLine, startCol)
+        }
+        // Member assign: arr[i].field = val
         if (nGetKind(expr) == "MEMBER_ACCESS" && (ck2 == "ASSIGN" || ck2 == "PLUS_ASSIGN" || ck2 == "MINUS_ASSIGN" || ck2 == "STAR_ASSIGN" || ck2 == "SLASH_ASSIGN" || ck2 == "PERCENT_ASSIGN" || ck2 == "POWER_ASSIGN")) {
-            let mOp = "ASSIGN"
-            if (ck2 != "ASSIGN") { mOp = ck2 }
+            const mOp = ck2 == "ASSIGN" ? "ASSIGN" : ck2
             pAdvance()
             const mVal = parseExpr()
             expectNLOrRB()
-            const mId = newNode("MEMBER_ASSIGN")
-            nSetLine(mId, startLine)
-            nSetCol(mId, startCol)
-            nSetI1(mId, nGetI1(expr))
-            nSetS1(mId, nGetS1(expr))
-            nSetS2(mId, mOp)
-            nSetI2(mId, mVal)
-            return mId
+            return makeMemberAssign(nGetI1(expr), nGetS1(expr), mOp, mVal, startLine, startCol)
         }
         expectNLOrRB()
         const stmtId = newNode("EXPR_STMT")
@@ -551,17 +568,10 @@ function parseAssignOrExpr(): int {
     }
     // Simple assignment: x = expr
     if (nextTok == "ASSIGN") {
-        pAdvance()
-        pAdvance()
+        pAdvance(); pAdvance()
         const valId = parseExpr()
         expectNLOrRB()
-        const id = newNode("ASSIGN")
-        nSetLine(id, startLine)
-        nSetCol(id, startCol)
-        nSetS1(id, name)
-        nSetS2(id, "ASSIGN")
-        nSetI1(id, valId)
-        return id
+        return makeAssignNode(name, "ASSIGN", valId, startLine, startCol)
     }
     // Compound assignment: x += expr
     if (nextTok == "PLUS_ASSIGN" || nextTok == "MINUS_ASSIGN" || nextTok == "STAR_ASSIGN" || nextTok == "SLASH_ASSIGN" || nextTok == "PERCENT_ASSIGN" || nextTok == "POWER_ASSIGN") {
@@ -570,17 +580,10 @@ function parseAssignOrExpr(): int {
         pAdvance()
         const valId = parseExpr()
         expectNLOrRB()
-        const id = newNode("ASSIGN")
-        nSetLine(id, startLine)
-        nSetCol(id, startCol)
-        nSetS1(id, name)
-        nSetS2(id, op)
-        nSetI1(id, valId)
-        return id
+        return makeAssignNode(name, op, valId, startLine, startCol)
     }
     if (nextTok == "PLUS_PLUS" || nextTok == "MINUS_MINUS") {
-        let pfKind = "POSTFIX_DEC"
-        if (nextTok == "PLUS_PLUS") { pfKind = "POSTFIX_INC" }
+        const pfKind = nextTok == "PLUS_PLUS" ? "POSTFIX_INC" : "POSTFIX_DEC"
         pAdvance()
         pAdvance()
         expectNLOrRB()
@@ -592,23 +595,19 @@ function parseAssignOrExpr(): int {
         nSetI1(id, pfId)
         return id
     }
-    // Expression statement — or member assignment (obj.field = value)
+    // Expression statement — or member assignment (obj.field = value) — or index assignment (obj.field[i] = value)
     const exprId = parseExpr()
     const ck = curKind()
+    // SS-LIM-2: obj.field[i] = value — INDEX_ACCESS LHS over arbitrary obj-expr
+    if (nGetKind(exprId) == "INDEX_ACCESS" && ck == "ASSIGN") {
+        return parseIndexAssignTail(exprId, startLine, startCol)
+    }
     if (nGetKind(exprId) == "MEMBER_ACCESS" && (ck == "ASSIGN" || ck == "PLUS_ASSIGN" || ck == "MINUS_ASSIGN" || ck == "STAR_ASSIGN" || ck == "SLASH_ASSIGN" || ck == "PERCENT_ASSIGN" || ck == "POWER_ASSIGN")) {
-        let mOp = "ASSIGN"
-        if (ck != "ASSIGN") { mOp = ck }
+        const mOp = ck == "ASSIGN" ? "ASSIGN" : ck
         pAdvance()
         const mVal = parseExpr()
         expectNLOrRB()
-        const mId = newNode("MEMBER_ASSIGN")
-        nSetLine(mId, startLine)
-        nSetCol(mId, startCol)
-        nSetI1(mId, nGetI1(exprId))
-        nSetS1(mId, nGetS1(exprId))
-        nSetS2(mId, mOp)
-        nSetI2(mId, mVal)
-        return mId
+        return makeMemberAssign(nGetI1(exprId), nGetS1(exprId), mOp, mVal, startLine, startCol)
     }
     expectNLOrRB()
     const id = newNode("EXPR_STMT")

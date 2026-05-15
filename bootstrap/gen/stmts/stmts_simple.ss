@@ -37,7 +37,9 @@ function genPostfixStmt(id: int) {
 }
 
 function genIndexAssign(id: int) {
-    if (comptimeDepth > 0) {
+    // SS-LIM-2: nGetI3(id) > 0 = generic obj-expr form (obj.field[i] = v); else var-name form (x[i] = v)
+    const iaObjExprId = nGetI3(id)
+    if (comptimeDepth > 0 && iaObjExprId == 0) {
         const iaVarName = nGetS1(id)
         const iaIdxVal = genVal(nGetI1(id))
         const iaValVal = genVal(nGetI2(id))
@@ -75,17 +77,19 @@ function genIndexAssign(id: int) {
     }
     // D088: compile-time field name → direct GEP+store; otherwise fall through to ss_arraySet
     // D095: idx can also be f.name where f is comptimeConsts-bound
+    // SS-LIM-2: D088 fast-path only applies to var-name form
     const iaIdxNode = nGetI1(id)
-    if (isCtStringIdx(iaIdxNode) == 1) {
-        let iaObjClass = getObjClass(nGetS1(id))
+    const iaVarName = nGetS1(id)
+    if (iaObjExprId == 0 && isCtStringIdx(iaIdxNode) == 1) {
+        let iaObjClass = getObjClass(iaVarName)
         if (iaObjClass == "") {
-            const vt = getVarType(nGetS1(id))
+            const vt = getVarType(iaVarName)
             if (vt != "" && classFields.has(vt) == 1) { iaObjClass = vt }
         }
         if (iaObjClass != "" && classFields.has(iaObjClass) == 1) {
             const iaFieldName = resolveCtString(iaIdxNode)
             const iaObjReg = nextReg()
-            emitIR(`  ${iaObjReg} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
+            emitIR(`  ${iaObjReg} = load ptr, ptr ${varRef(iaVarName)}, align 8`)
             const iaIdx = getFieldIndex(iaObjClass, iaFieldName)
             if (iaIdx < 0) {
                 println(`codegen error: class '${iaObjClass}' has no field '${iaFieldName}'`)
@@ -111,24 +115,35 @@ function genIndexAssign(id: int) {
         }
     }
 
-    const arrPtr = nextReg(); emitIR(`  ${arrPtr} = load ptr, ptr ${varRef(nGetS1(id))}, align 8`)
+    // SS-LIM-2: arrPtr from object expression (obj.field[i] = v) OR from var ref (x[i] = v)
+    let arrPtr = ""
+    if (iaObjExprId > 0) {
+        arrPtr = genExpr(iaObjExprId)
+    } else {
+        const r = nextReg(); emitIR(`  ${r} = load ptr, ptr ${varRef(iaVarName)}, align 8`)
+        arrPtr = r
+    }
     const idxVal = genExpr(nGetI1(id))
     const valVal = genExpr(nGetI2(id))
     const vt = inferType(nGetI2(id))
+    // SS-LIM-2: dispatch by LLVM type (ptr covers string + class + interface + Generic<...> + T?)
+    const llTy = ssTypeToLLVM(vt)
     let v64 = valVal
-    if (vt == "int" || vt == "auto" || vt == "") { const s = nextReg(); emitIR(`  ${s} = sext i32 ${valVal} to i64`); v64 = s }
-    if (vt == "double") { const s = nextReg(); emitIR(`  ${s} = bitcast double ${valVal} to i64`); v64 = s }
-    if (vt == "string" || vt == "ptr") {
-        // RC: retain new, load+release old (null-safe)
+    if (llTy == "i32") { const s = nextReg(); emitIR(`  ${s} = sext i32 ${valVal} to i64`); v64 = s }
+    if (llTy == "double") { const s = nextReg(); emitIR(`  ${s} = bitcast double ${valVal} to i64`); v64 = s }
+    if (llTy == "ptr") {
+        // RC: retain new (skip if owned), load+release old (null-safe via runtime)
         const oldVal = nextReg()
         emitIR(`  ${oldVal} = call i64 @ss_arrayGet(ptr ${arrPtr}, i32 ${idxVal})`)
         const oldPtr = nextReg()
         emitIR(`  ${oldPtr} = inttoptr i64 ${oldVal} to ptr`)
-        emitIR(`  call void @ss_rc_retain(ptr ${valVal})`)
+        if (isOwnedExpr(nGetI2(id)) == 0) {
+            emitRetainForType(valVal, vt)
+        }
         const c = nextReg(); emitIR(`  ${c} = ptrtoint ptr ${valVal} to i64`); v64 = c
         emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
-        emitIR(`  call void @ss_rc_release(ptr ${oldPtr})`)
-    } else {
-        emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
+        emitReleaseForType(oldPtr, vt)
+        return
     }
+    emitIR(`  call void @ss_arraySet(ptr ${arrPtr}, i32 ${idxVal}, i64 ${v64})`)
 }
