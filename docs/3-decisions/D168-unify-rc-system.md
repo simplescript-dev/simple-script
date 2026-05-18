@@ -579,7 +579,7 @@ dealloc:
 
 **实测约束(I024 Execute 轮,各候选已建编译器全测对照)**:`f21271d` 的 4 个 RC 文件**部分 revert 必产生半迁移不一致并 regress**(revert `emitReleaseVarList` 单 hunk → 留借入数组局部泄漏;双侧 revert → regress `generic_constraint_basic`;整体 revert {gen_rc,gen_decls} → 与 gen_arrows/gen_builtins 不一致)。故 P2.3 须**整体推进到新系统一致态**,不可半留半 revert;且 `gen_builtins:140-143` 的 `emitRetainForType`(SS-LIM-6 §E corruption 闭合修法,见 I023 §备注)须保留。
 
-**P2.3 子步分解**(每子步独立 commit + bootstrap 三阶段 Stage2=Stage3 + 全测 0 regression + 反射 gate):
+**P2.3 子步分解**(bootstrap 三阶段 Stage2=Stage3 + 全测 0 regression + 反射 gate;**子步非全可独立 commit** —— 见下 §2026-05-18(P2.3 方案坐实)):
 
 | 子步 | 范围 | 验收 |
 |---|---|---|
@@ -588,9 +588,15 @@ dealloc:
 | **P2.3c** | f21271d 残留归正:借入/owned 数组局部 retain/release 平衡核验(与 I023 `isOwnedExpr` METHOD_CALL 协议对齐,避免 over-release) | 全测 fail 数 ≤ d062c18 baseline(20),0 新 regression |
 | **P2.3d** | 综合:bootstrap 三阶段 bit-identical + `reflection_health_linter` GATE + §C.9/§C.10 + Phase 2 close 判据全过 | Phase 2 P2.3 close |
 
-**衍生 issue**:`tests/phase5/generic_multi_constraint.ss` 在 d062c18 干净基线即 standalone 确定性 fail —— 既存 broken 测试,按 MNK §衍生 issue 独立立项,不混入 P2.3 regression 计数。
+**衍生 issue**:`tests/phase5/generic_multi_constraint.ss` —— 已立项 `docs/4-issues/I025-generic-multi-constraint-rc-miscompile.md`(2026-05-18)。同根(P2.3 数组 RC 半迁移)、不同症(泛型多约束 codegen 非确定 miscompilation);**实测订正**:「d062c18 standalone 确定性 fail」精确为「d062c18 编译器 + 原版 `exit(1)` 形态」,当前 `bin/ss` 对原版 standalone 稳定 PASS、缺陷是 codegen 非确定。不混入 P2.3 regression 计数。
 
 **与 I023 链路**:P2.3 完成、d095 修复、干净 baseline 还原后,I023 才可对原版候选 A 测真实 regression delta(I023 §状态)。
+
+**2026-05-18(P2.3 方案坐实)**:P2.3 Execute 轮蓝图 = repo root `d168_p2.3_array_rc.options.md`(`bug_options_linter` 5/5 GATE OK)。要点:
+- **选定候选 C**(系统审计 + 一致切换)—— A=`f21271d` 数据层 patch 已证崩、B 接口层 trap 留 runtime/审计缺口、D(数组纳入 PIR liveness)属 Phase 5。
+- **P2.3 非全子步可独立 commit**:`emitReleaseVarList` 切类型分派(P2.3b)+ owned/borrowed 协议(P2.3c)+ string `let` 局部连带 **必须同 commit** —— 任何中间态(切 release 未修协议、或反之)即 `f21271d` 崩溃态(§实测约束 已证「部分推进必 regress」);仅 P2.3a(`ss_arrayPush` 元素 retain,runtime 侧)可独立先行。
+- **唯一不一致点**:`emitReleaseVarList`(gen_rc.ss:108)一律 `ss_rc_release`,与 `emitReleaseForType` 类型分派割裂;`localPtrVars` `name:type` 的 type 段已存、reader 待启用。
+- **3 个假设破裂入口**((a) 新旧布局 no-op 掩盖 / (b) `isOwnedExpr` 误判借入数组无配对 retain / (c) `genReturn` declRet 退化致 CALL 返 borrowed)+ 完整改动清单(runtime/codegen/协议)详 options.md §2/§5;Execute 前必读。
 
 ---
 
