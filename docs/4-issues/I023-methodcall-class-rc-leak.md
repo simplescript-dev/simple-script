@@ -1,7 +1,7 @@
 # I023 — METHOD_CALL 返 user class 的 owned/borrowed RC 协议错配 → over-retain + chain-temp 双泄漏
 
 **父决策:** D168《统一双 RC 系统为 Perceus 主线》（RC 协议正确性）；axiom C4「Deterministic memory management only (Perceus RC)」
-**状态:** Planned —— leak-观测 RED 已落地并复现(见 §2026-05-18);A+B 对泄漏有效(实测 276MB→396KB)但**候选 A 实现机制不安全**(`isOwnedExpr` 调 side-effectful `inferType`),A/B 已回退 baseline,待 A 机制重设计后 re-Execute
+**状态:** Planned —— leak-观测 RED 已落地并复现(见 §2026-05-18);A+B 对泄漏有效(实测 276MB→396KB)。**「候选 A 机制不安全」结论经 §2026-05-18(订正)轮 bisect 证伪** —— previous round 归因 A 的 `d095_setter_mixed` 编译器 segfault 实为 `f21271d` 引入的 pre-existing baseline regression(独立立项 `docs/4-issues/I024-double-comptime-annotation-codegen-segfault.md`),与候选 A 无关。I023 依赖 I024:待 I024 修复 d095、还原干净 baseline 后,重新测量候选 A 的真实 regression delta 再定 re-Execute
 **颗粒度:** 预估 A ~3-6 LOC（`gen_decls.ss` isOwnedExpr 1 分支）+ B ~15-30 LOC（`gen_methods.ss` genMethodCall 链式 receiver temp 释放）；需新增 leak-观测测试
 **依赖:** 无（根因独立）；**B 依赖 A 先落地**（A 把 METHOD_CALL→class 标 owned 后，chain 中间 temp 才确定为 owned、才有 release 必要）
 **创建:** 2026-05-16
@@ -53,6 +53,8 @@ caller↔callee 的 **owned/borrowed RC 协议** 在 METHOD_CALL 的总入口分
 
 ## 2026-05-18 Execute 轮实测 —— RED 落地 + A 机制缺陷
 
+⚠ **本节「候选 A 致 d095 segfault」论断经 §2026-05-18(订正)轮 bisect 证伪** —— d095 segfault 是 `f21271d` 引入的 pre-existing regression,非候选 A。下文「A 机制不安全」「未精确定位」段保留作历史推演,实测结论以 §2026-05-18(订正)为准。
+
 **leak-观测 RED 已落地并复现** —— `tests/phase5/i023_methodcall_class_rc_leak.ss`：
 
 - 泄漏模式放在 helper 函数 `leakRound`（`pirActive=1`，PIR 正确管理 class 局部）：`const x = box.make()`（A over-retain）+ `box.make().fresh()`（B chain-temp + y over-retain）。**不能放 `main`**：`main` 不跑 PIR（`gen_decls.ss:129`），其 class 局部走非-PIR 释放路径（`emitReleaseVarList` 对非-array user class 仍发旧系统 `ss_rc_release`，D168 §C.9「P3+ 切完统一」遗留）会混入无关泄漏噪声。
@@ -72,6 +74,36 @@ caller↔callee 的 **owned/borrowed RC 协议** 在 METHOD_CALL 的总入口分
 **B 状态**：B（`evalMethodCall` 链式 receiver owned temp 在 method call 发射后 `emitReleaseForType` 释放,`method_call.ss:254` 后）对泄漏有效;但其 `isChainOwnedTemp` 同样调 `isOwnedExpr`+`inferType` → 同源不安全,须与 A 一并重设计。**B 实际修复点是 `evalMethodCall` 而非 `gen_methods.ss:422 genMethodCall`** —— 正常 method call 的 receiver 由 `method_call.ss:29 genVal(mcObjNode)` 求值后作 `preObj` 传入 genMethodCall,§候选修法 §B 的「`gen_methods.ss:453 objVal=genExpr(objId)`」定位有误,下轮按 `evalMethodCall` 修。
 
 **本轮交付**:leak-观测 RED 测试 + 本节findings。A+B 代码已回退至 baseline(`git diff bootstrap/` 空、bootstrap 固定点 Stage2=Stage3 已 `cmp` 自验)。I023 维持 **Planned**。
+
+---
+
+## 2026-05-18(订正)—— d095 segfault 误归因证伪,候选 A 机制缺陷结论作废
+
+§2026-05-18 Execute 轮把 `tests/phase5/d095_setter_mixed.ss` 的编译器 segfault 归因为候选 A 的 `isOwnedExpr→inferType` 机制,据此回退 A/B、判 A「机制不安全」、要求「重设计 A」。本轮按 task「先精确定位 segfault 与因果链」复核 —— **因果链证伪,d095 segfault 与候选 A 无关**。
+
+**实证 1 — baseline 自身即崩**:源树 `git diff --stat HEAD` 空、`isOwnedExpr` METHOD_CALL 分支 = `return 0`(无候选 A),`bin/ss build tests/phase5/d095_setter_mixed.ss` → **exit 139(SIGSEGV)**,确定性 3/3;从 baseline 源 fresh stage1 重建后同样 segfault。候选 A 从未 commit,baseline 编译器即崩 → §2026-05-18「baseline 通过」不成立。
+
+**实证 2 — bisect 定位 regression commit**(`bin/ss` git-tracked,逐 commit 抽二进制直接测 `build d095`):
+
+| commit | subject | `build d095` |
+|---|---|---|
+| 9edf09b … d062c18 | D168 P1.2 … P2.2 | exit 0(通过) |
+| **f21271d** | **"add"** | **SIGSEGV** ← regression 引入点 |
+| b3fb14f / 32dc3dd | docs / test(I023) | SIGSEGV |
+
+→ d095 segfault 是 **`f21271d` 引入的 pre-existing baseline regression**,在候选 A 出现之前已存在。
+
+**实证 3 — 最小复现**:`@Getter` 单独 build OK、`@Setter` 单独 build OK、`@Getter`+`@Setter` 同 class → SIGSEGV;`--emit-ir` 实测崩溃在 codegen 中(IR 发射至 5688/6110 行 ≈ 93% 中止),与 `isOwnedExpr`/`inferType` 路径无关。
+
+**结论修正**:
+- §2026-05-18「候选 A 实现机制不安全(致 d095 segfault 回归)」**作废** —— 误归因。previous round honest 声明「因果链尚未坐实」本轮坐实为:**证伪**。
+- 「A-only 净增回归 1 个 d095」**作废** —— d095 在 baseline 即 fail,非候选 A 净增。候选 A 的**真实 regression delta 未知**,须在 d095 修复后(干净 baseline)重新测量。
+- d095 segfault 独立 root cause(`f21271d`),非 I023 协议错配 → 按 MNK §衍生 issue 归档「非阻挡 → 独立立项」拆出 **`docs/4-issues/I024-double-comptime-annotation-codegen-segfault.md`**。
+- **候选 A 实现机制是否安全 —— 本轮无凭据判定**:previous round 唯一的「不安全」证据(d095)已证伪;但也不能反向断言 A 安全(A 的全测对照本轮未做、需干净 baseline)。「重设计 A(增类型形参)」的前提(「A 调 side-effectful inferType 不安全」)随之悬空 —— 若原版简单 A 在干净 baseline 上全测 0 regression,「重设计」可能并不必要。
+
+**误归因的流程根因**:previous round 未走 MNK §特定领域 §untracked-test-fail 诊断流程(stash 本轮改动 + rebuild baseline + 隔离单测,区分 pre-existing vs introduced);叠加 `f21271d` 是未走 MNK 的 "add" 巨型 commit(396 insertion)悄悄引入 d095 regression 无人测。
+
+**I023 下一步**:I023 依赖 I024 —— 先修 d095(I024,还原干净 baseline),再对**原版候选 A**(非「重设计 A」)跑全测对照测真实 regression delta,才能定 A/B re-Execute。I023 维持 **Planned**。
 
 ---
 
