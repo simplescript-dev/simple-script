@@ -130,4 +130,4 @@ RIP = `ss_arrayPush+0x48`(`mov %r14,(%rax,%r15,8)`),`rax=0`(`array.data` NULL)�
 - **VCM**:`d095_setter_mixed` / `d095_setter` `build`+运行 exit 139→0;`d095_getter*` 不回归;bootstrap 三阶段 Stage2=Stage3 `cmp` 固定点;`bin/ss test tests/` 323/5 —— **0 真实 regression**(5 fail 全既存:`d096_p4_l2_reactive`/`harness_bug`/`harness_task`/`spring_web_params` 在 f21271d baseline,`generic_multi_constraint` 并发 flaky 且新 `bin/ss` build-once-run-12× standalone 全 PASS、d062c18 反而 12/12 fail);`reflection_health_linter` GATE PASS;`.bugfix`(`tools/bugfix_reports/2026-05-18-d095-array-rc-release-uaf.bugfix`)6/6 ALL GATES PASSED。
 - **残留**:借入 `Array<T>` `let` 局部 retain 走新系统 `ss_retain`、释放侧统一 `ss_rc_release` 不配对 → 有界编译期 over-retain(非崩溃、非错值、测试观测不到)。归账 D168 §C.9-exec 子步 P2.3c,待数组 RC 全栈迁移平衡。
 - **I023 解锁**:d095 已修、干净 baseline 还原 → I023 可对原版候选 A 跑全测对照测真实 regression delta(见 I023 §状态)。
-- **衍生 issue 待立**:`generic_multi_constraint.ss` 按 MNK §衍生 issue 独立立项(下轮)。
+- **衍生 issue 已立**:`generic_multi_constraint.ss` → `docs/4-issues/I025-generic-multi-constraint-rc-miscompile.md`(2026-05-18 立项)。同根(D168 P2.3 数组 RC 半迁移)、不同症(泛型多约束 codegen 非确定 miscompilation);本 issue Candidate A 仅表面消除 d095 一个症状,I025 是同根因另一暴露面。
