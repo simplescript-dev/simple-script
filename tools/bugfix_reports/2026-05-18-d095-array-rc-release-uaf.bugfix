@@ -1,0 +1,30 @@
+[meta]
+type = bugfix
+title = d095 @Getter+@Setter 双 comptime 注解 codegen SIGSEGV — emitReleaseVarList 对借入数组局部 ss_release over-free
+date = 2026-05-18
+commit = uncommitted
+
+[found]
+symptom = bin/ss build tests/phase5/d095_setter_mixed.ss → 编译器 SIGSEGV exit 139;core 解析崩在 ss_arrayPush(rax=0 array.data 为 NULL、r12=0xdedededededede mimalloc freed-block 毒值)= use-after-free,调用栈 genClassDecl→runComptimeAnnotationCall→runComptimeBlockBody→ss_arrayPush
+
+[isolate]
+test_file = tests/phase5/d095_setter_mixed.ss
+stash_exit = 139
+
+[analyze]
+broken = f21271d 的 gen_rc.ss emitReleaseVarList 对 Array 型 tracked 局部改用新系统 ss_release(真实递减+free)释放;但数组 RC 未随 D168 P2 全栈迁移,借入数组局部无配对 ss_retain,被 ss_release over-free 后又被 ss_arrayPush 踩中
+why = 新旧 RC 系统对象布局不兼容:旧 ss_rc_release 在 p-4 有 magic-number guard 1397969747,对非旧布局对象失配即静默 no-op;新 ss_release 无 guard、无条件真实递减+经 TypeInfo vtable drop。旧 ss_rc_release 的 no-op 一直静默掩盖借入数组局部 retain/release 不对称,f21271d(un-MNK add 巨型 commit,把此 codegen-local RC 改动 mislabel 为 D168 §C.9)把释放切到 ss_release 真实化即暴露 UAF
+fix = gen_rc.ss emitReleaseVarList 撤销 type-aware Array→ss_release 分派、一律 ss_rc_release(恢复 d062c18 经全测验证的行为);删 orphaned 的 rcEntryType helper;修正 gen_decls.ss 4 处 f21271d 经本撤销后已 stale/误标的 §C.9 注释
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = -1
+net_new_fns = -1
+
+[verify]
+bootstrap = PASS
+test_passed = 323
+test_failed = 5
+test_known_fail = 5

@@ -2,13 +2,12 @@
 // ── RC state + scope tracking + cycle detection ──────────────
 
 // ── RC global state ──────────────────────────────────────────
-// D168 §C.9: localPtrVars / blockPtrVarStack 升级 type-aware schema —
-// "name:type" entries 用 ";" 分隔,"|" 分隔 block。type 内 "," 不冲突
-// (Map<K,V> 嵌套泛型场景安全)。emitRelease* 走 emitReleaseForType 让
-// 新 ABI 类型(string / Array / class)路由 ss_release 触发 vtable.drop_fn,
-// 旧 ABI 类型(Map)走 ss_rc_release 兼容(Phase 3 切完统一)。
+// localPtrVars / blockPtrVarStack schema — "name:type" entries 用 ";" 分隔,
+// "|" 分隔 block(type 内 "," 不冲突,Map<K,V> 嵌套泛型安全)。
+// I024: emitReleaseVarList 一律 ss_rc_release(见其注释),只读 entry 的 name
+// 段;type 段暂存而不读,待 D168 P2.3 数组 RC 全栈迁移重启类型分派时再加 reader。
 
-let localPtrVars = ""        // "name1:type1;name2:type2;..."(D168 §C.9 type-aware)
+let localPtrVars = ""        // "name1:type1;name2:type2;..."
 let localFnVars = ""         // fn-typed locals holding closures (released via ss_release)
 let rcBlockDepth = 0
 let blockPtrVarStack = ""    // "|"-separated segments of "name:type;..." entries
@@ -28,7 +27,7 @@ function initRcState() {
     nonOwningFields = Map()
 }
 
-// ── Ptr var entry helpers (D168 §C.9 schema: "name:type" with ";" sep) ──
+// ── Ptr var entry helpers ("name:type" schema, ";" sep) ──
 
 function rcAppendEntry(list: string, name: string, ssType: string): string {
     const entry = `${name}:${ssType}`
@@ -42,16 +41,10 @@ function rcEntryName(entry: string): string {
     return entry.substring(0, ci)
 }
 
-function rcEntryType(entry: string): string {
-    const ci = entry.indexOf(":")
-    if (ci < 0) { return "" }
-    return entry.substring(ci + 1, entry.length() - ci - 1)
-}
-
 // ── Ptr var tracking ─────────────────────────────────────────
 
-// Track a ptr var for RC release — adds to function-level or block-level list
-// D168 §C.9: ssType is required for emitReleaseForType dispatch (ss_release vs ss_rc_release).
+// Track a ptr var for RC release — adds to function-level or block-level list.
+// ssType 存入 entry 的 type 段(I024 起 emitReleaseVarList 暂不读,D168 P2.3 重启类型分派时用)。
 function trackPtrVar(llName: string, ssType: string) {
     if (rcBlockDepth == 0) {
         // Function-level: track in localPtrVars (released at function exit)
@@ -108,24 +101,20 @@ function popBlockScope() {
 // ── Release helpers ──────────────────────────────────────────
 
 // Emit release for a ";"-separated entry list ("name:type;name:type;...").
-// D168 §C.9: type-aware dispatch — Array<T> 走 ss_release 触发 ss_drop_Array_ref
-// vtable(P2.3 ref Array 切轨核心兑现点);string/class/Map 等保持旧 ss_rc_release 兼容
-// (string immortal sentinel 跳过 OK,class 由 PIR 接管,Map P3 切完统一)。
+// I024: 一律 ss_rc_release。f21271d 曾按 type 把 Array 局部切 ss_release(误标
+// D168 §C.9),但数组 RC 全栈迁移(D168 P2.3)未完成时,借入数组局部的
+// ss_release 会 over-free → d095 use-after-free(崩 ss_arrayPush);故撤销,
+// 待 D168 P2.3 数组 RC 全栈一致后按 §C.9-exec 设计重做类型分派。
 function emitReleaseVarList(varList: string) {
     if (varList == "") { return }
     const parts = varList.split(";")
     for (p in parts) {
         if (p == "") { continue }
         const name = rcEntryName(p)
-        const ssType = rcEntryType(p)
         if (name == "") { continue }
         const r = nextReg()
         emitIR(`  ${r} = load ptr, ptr %${name}, align 8`)
-        if (isArrayType(ssType) == 1) {
-            emitIR(`  call void @ss_release(ptr ${r})`)
-        } else {
-            emitIR(`  call void @ss_rc_release(ptr ${r})`)
-        }
+        emitIR(`  call void @ss_rc_release(ptr ${r})`)
     }
 }
 
