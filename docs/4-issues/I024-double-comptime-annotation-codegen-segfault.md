@@ -1,7 +1,7 @@
 # I024 — `@Getter`+`@Setter` 双 comptime 注解同 class → 编译器 codegen SIGSEGV(f21271d regression)
 
 **父决策:** `f21271d` regression —— 横跨 D168 §C.9（RC dispatch 迁移）+ SS-LIM-2（`genIndexAssign` obj-expr 重写),un-MNK 巨型 commit 悄引入
-**状态:** Planned —— Execute 轮(2026-05-18)within-commit bisect 已**收敛坐实** culprit hunk(`gen_rc.ss emitReleaseVarList` 的 `Array→ss_release` 分派);但实测每个 within-I024 surgical 修法均有真实缺陷,唯一干净修法须跨 D168 设计变更(P2.3 数组 RC 全栈统一)→ 按 task escape clause **降级 Plan 交还裁决**(详见 §2026-05-18(Execute))
+**状态:** Resolved(2026-05-18,commit `dac2258`)—— d095 segfault 已由 Candidate A 修复:`gen_rc.ss emitReleaseVarList` 撤销 f21271d 的 `Array→ss_release` 分派、一律 `ss_rc_release`。d095 RED(exit 139)→GREEN(build+运行 exit 0)+ bootstrap 三阶段固定点 + 全测 0 真实 regression + `reflection_health_linter` GATE PASS + `.bugfix` 6/6。残留借入 Array 局部 over-retain 有界泄漏 → D168 §C.9-exec 子步 P2.3c 归账。详见 §2026-05-18(Execute 完成)
 **颗粒度:** 预估 中 —— `f21271d` 是 396-insertion 多文件 commit,需 within-commit bisect 定位 culprit hunk + Bug Harness §轨1
 **依赖:** 无(独立 root cause);**I023 依赖本 issue** —— d095 污染全测 baseline,I023 候选 A 的真实 regression delta 必须在 d095 修复后(还原干净 baseline)才能干净测量
 **创建:** 2026-05-18
@@ -119,3 +119,15 @@ RIP = `ss_arrayPush+0x48`(`mov %r14,(%rax,%r15,8)`),`rax=0`(`array.data` NULL)�
 ### E. 衍生 issue
 
 `tests/phase5/generic_multi_constraint.ss` 在 d062c18 干净基线即 standalone 确定性 fail —— 既存 broken 测试(`bin/ss test` runner 偶计 pass 掩盖之),按 MNK §衍生 issue 独立立项。
+
+---
+
+## 2026-05-18(Execute 完成)—— Candidate A 落地,d095 RED→GREEN
+
+用户裁决「本轮落 Candidate A」。Execute 完成 —— commit `dac2258`:
+
+- **修法**:`gen_rc.ss emitReleaseVarList` 撤销 type-aware `Array→ss_release` 分派、一律 `ss_rc_release`(= d062c18 经全测验证行为);删 orphaned `rcEntryType`;`gen_decls.ss` 清 f21271d 经撤销后 stale/误标的 §C.9 注释(751→745 回 `reflection_health_linter` budget 内)。
+- **VCM**:`d095_setter_mixed` / `d095_setter` `build`+运行 exit 139→0;`d095_getter*` 不回归;bootstrap 三阶段 Stage2=Stage3 `cmp` 固定点;`bin/ss test tests/` 323/5 —— **0 真实 regression**(5 fail 全既存:`d096_p4_l2_reactive`/`harness_bug`/`harness_task`/`spring_web_params` 在 f21271d baseline,`generic_multi_constraint` 并发 flaky 且新 `bin/ss` build-once-run-12× standalone 全 PASS、d062c18 反而 12/12 fail);`reflection_health_linter` GATE PASS;`.bugfix`(`tools/bugfix_reports/2026-05-18-d095-array-rc-release-uaf.bugfix`)6/6 ALL GATES PASSED。
+- **残留**:借入 `Array<T>` `let` 局部 retain 走新系统 `ss_retain`、释放侧统一 `ss_rc_release` 不配对 → 有界编译期 over-retain(非崩溃、非错值、测试观测不到)。归账 D168 §C.9-exec 子步 P2.3c,待数组 RC 全栈迁移平衡。
+- **I023 解锁**:d095 已修、干净 baseline 还原 → I023 可对原版候选 A 跑全测对照测真实 regression delta(见 I023 §状态)。
+- **衍生 issue 待立**:`generic_multi_constraint.ss` 按 MNK §衍生 issue 独立立项(下轮)。
