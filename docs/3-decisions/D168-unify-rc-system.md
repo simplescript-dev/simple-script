@@ -1,6 +1,6 @@
 # D168: 统一双 RC 系统为 Perceus 主线
 
-**Status:** Phase 1 String 切轨 closed at 2026-05-10(P1.1 cd72998 + P1.2 9edf09b + P1.3 0583e6a,全测 310/17/327 0 regression);§C Phase 2 Array 切轨子设计已锁定,P2.1 待启动
+**Status:** Phase 1 String 切轨 closed 2026-05-10;Phase 2 P2.1(`daa40e8`)+ P2.2(`d062c18`)closed;**P2.3 进行中** —— `f21271d`("add",un-MNK 巨型 commit)是 P2.3 的半成品尝试且 mislabel,已于 2026-05-18 归账(见 §C.9-exec),P2.3 正式执行规划已锁定待实施;d095 编译器 segfault(`docs/4-issues/I024`)是 P2.3 未完成的直接症状
 **Depends on:** axiom C2/C4/V4(`docs/1-axioms.md:8,10,19`);相关 D164(PIR liveness 落地证据)
 **Date:** 2026-05-10
 **Last Updated:** 2026-05-10
@@ -552,7 +552,7 @@ dealloc:
 |---|---|---|---|
 | **P2.1** | §C.3 emitArrayTypeInfo 双份 dead-code(scalar + ref TypeInfo + 6 per-type 函数 + typename 常量)+ §C.4 ss_alloc_array helper(dead-code,P2.2 才连接到字面量)| gen_runtime.ss(emitArrayTypeInfo +~150 行 IR) | [x] commit `daa40e8` 2026-05-10 |
 | **P2.2** | §C.1 字面量 runtime 创建路径切到 ss_alloc_array(emitNewArrayFn 内部转发,所有调用方零改动)+ §C.6 gen_rt_array.ss 17 函数 GEP +3 全栈修正(len@3 / cap@4 / buffer@2 ptr load 直接,irLoadArrayData helper 归一化)+ §C.5 emitRetainForType isArrayType dispatch + ss_arraySlice/Concat TypeInfo 替代 tag 分派 + scalar Array 切轨完成 | gen_rt_array.ss / class.ss / ir_builder.ss / gen_runtime.ss(mi_realloc declare)/ codegen.ss(%Array prepend) | [x] 本 commit 2026-05-10(bootstrap stage2==stage3 PASS;全测 307/20/327 0 regression with P2.1 baseline;反射 gate PASS 无 bump 需要;失准段见下) |
-| **P2.3** | §C.9 push/pop/slice/concat 元素 retain/release 切 dispatch + ref Array 切轨(Array<string>/Array<class>)+ §C.10 ss_drop_Array_ref 循环 vtable 调用启用 | gen_rt_array.ss + 调用方扩散 + Array<class> 测试用例 | [ ] Planned |
+| **P2.3** | §C.9 push/pop/slice/concat 元素 retain/release 切 dispatch + ref Array 切轨(Array<string>/Array<class>)+ §C.10 ss_drop_Array_ref 循环 vtable 调用启用 | gen_rt_array.ss + 调用方扩散 + Array<class> 测试用例 | [/] 进行中 —— 执行规划见 §C.9-exec(f21271d 半成品归账 + 子步 P2.3a-d);I024 d095 segfault 是本子阶段未完成的直接症状 |
 | **P2.4** | 综合大测 + Array<嵌套泛型> 验证(Array<Map<K,V>> / Array<Array<T>>)+ Phase 2 close | 全测 + 性能 micro-bench(可选)| [ ] Planned |
 
 **子阶段间硬约束**:
@@ -568,6 +568,29 @@ dealloc:
 - `grep ss_rc_calloc bootstrap/gen/rt/gen_rt_array.ss` 命中 = 0(只剩 Map 路径 Phase 3 切)
 - `emitRetainForType` 加 isArrayType dispatch ✅,Array<T> 走 ss_retain
 - `@Array_scalar_type_info` + `@Array_ref_type_info` 双份 IR 命中,`@ss_drop_Array_ref` 循环 vtable 调用命中
+
+---
+
+### §C.9-exec — P2.3 执行规划:f21271d 半成品归账(2026-05-18 锁定)
+
+**触发**:I023→I024 链路 —— `f21271d`("add",un-MNK 巨型 commit)introduced d095 编译器 SIGSEGV;I024 Execute 轮 within-commit bisect 收敛、用户裁决「路径 1 = 完成 P2.3」。详证:`docs/4-issues/I024-double-comptime-annotation-codegen-segfault.md §2026-05-18(Execute)` + repo root `d095_setter_mixed.options.md`。
+
+**f21271d 归账(核对)**:`f21271d` 把一处 **codegen 局部变量 RC tracking** 改动(`gen_rc.ss` `emitReleaseVarList` type-aware `Array→ss_release` 分派 + `localPtrVars` `name:type` schema + `gen_decls.ss` `genVarDecl` Array retain 分派 + `gen_arrows/gen_builtins` dispatch)**自行 mislabel 为「§C.9」并 un-MNK 落地**。但本 D **§C.9 的设计是 `gen_rt_array.ss` 运行时数组函数(push/pop/slice/concat)的元素 RC + §C.10 `ss_drop_Array_ref`** —— 与 codegen 局部变量 RC tracking 无关。`f21271d` 实为 P2.3 的 **un-MNK 半成品**:做了 codegen-local 释放侧(`emitReleaseVarList→ss_release`)、**未做** runtime 侧(§C.9/§C.10 仍是 P2.1 emit 的 dead-code)→ 数组 RC **半迁移不平衡** → 借入数组局部 `ss_release` over-free → d095 use-after-free(崩 `ss_arrayPush`,core 实证)。f21271d 同时把全测从 d062c18 的 307/20/327 劣化到 282/46/328。
+
+**实测约束(I024 Execute 轮,各候选已建编译器全测对照)**:`f21271d` 的 4 个 RC 文件**部分 revert 必产生半迁移不一致并 regress**(revert `emitReleaseVarList` 单 hunk → 留借入数组局部泄漏;双侧 revert → regress `generic_constraint_basic`;整体 revert {gen_rc,gen_decls} → 与 gen_arrows/gen_builtins 不一致)。故 P2.3 须**整体推进到新系统一致态**,不可半留半 revert;且 `gen_builtins:140-143` 的 `emitRetainForType`(SS-LIM-6 §E corruption 闭合修法,见 I023 §备注)须保留。
+
+**P2.3 子步分解**(每子步独立 commit + bootstrap 三阶段 Stage2=Stage3 + 全测 0 regression + 反射 gate):
+
+| 子步 | 范围 | 验收 |
+|---|---|---|
+| **P2.3a** | 实施真 §C.9/§C.10:`gen_rt_array.ss` `ss_arrayPush/Pop/Slice/Concat` 元素 retain/release 走 `emitRetainForType`/`emitReleaseForType` dispatch;wire P2.1 dead-code `ss_drop_Array_ref` 到 `@Array_ref_type_info.drop_fn` | §C.7 RED (c)(d);`@ss_drop_Array_ref` 循环 vtable 调用命中 |
+| **P2.3b** | ref Array 切轨:`Array<string>`/`Array<class>` 字面量 + 局部 emit 选 `@Array_ref_type_info`;codegen-local 释放(`emitReleaseVarList`)与 runtime 侧对齐为**一致**新系统 | d095 RED→GREEN(`bin/ss build tests/phase5/d095_setter_mixed.ss` + 运行 exit 0) |
+| **P2.3c** | f21271d 残留归正:借入/owned 数组局部 retain/release 平衡核验(与 I023 `isOwnedExpr` METHOD_CALL 协议对齐,避免 over-release) | 全测 fail 数 ≤ d062c18 baseline(20),0 新 regression |
+| **P2.3d** | 综合:bootstrap 三阶段 bit-identical + `reflection_health_linter` GATE + §C.9/§C.10 + Phase 2 close 判据全过 | Phase 2 P2.3 close |
+
+**衍生 issue**:`tests/phase5/generic_multi_constraint.ss` 在 d062c18 干净基线即 standalone 确定性 fail —— 既存 broken 测试,按 MNK §衍生 issue 独立立项,不混入 P2.3 regression 计数。
+
+**与 I023 链路**:P2.3 完成、d095 修复、干净 baseline 还原后,I023 才可对原版候选 A 测真实 regression delta(I023 §状态)。
 
 ---
 
