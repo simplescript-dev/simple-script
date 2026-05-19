@@ -8,6 +8,7 @@
 //   C3 含 ≥ 3 个层次标识(数据 / 接口 / 架构 任一字面值)
 //   C4 含决策行(`选 [A-Z]` + `因` 关键字共存)
 //   C5 含"假设破裂"标识(消除 假设 X 在 Y 状态下破裂 / 假设破裂入口 等表述)
+//   C6 含 §实证 段(MNK §字段 12):根因定位 grep 证据 + 最危险假设的最小 spike 结果
 //
 // linter 仅查"形式存在",不查"内容深度";内容深度由用户抽查兜底(轨 2 留下轮)。
 
@@ -73,6 +74,15 @@ function hasAssumptionBreak(content: string): int {
     return 0
 }
 
+// C6 — §实证 段:根因定位 grep 证据 + 最危险假设的最小 spike 结果(MNK §字段 12)。
+// 机械查"字样存在":实证段标记 + grep 证据 + spike/试切。
+function hasEvidenceSection(content: string): int {
+    if (content.indexOf("实证") < 0) { return 0 }
+    if (content.indexOf("grep") < 0) { return 0 }
+    if (content.indexOf("spike") < 0 && content.indexOf("试切") < 0) { return 0 }
+    return 1
+}
+
 function main() {
     if (args() < 2) {
         println("usage: bin/ss build tools/bug_options_linter.ss -o /tmp/bug_options_linter")
@@ -122,10 +132,17 @@ function main() {
         pass = 0
     }
 
+    if (hasEvidenceSection(content) == 1) {
+        println("  C6 PASS: evidence section present (实证 + grep + spike/试切)")
+    } else {
+        println("  C6 FAIL: evidence section missing (MNK §字段 12 — need '实证' section + 'grep' proof + 'spike'/'试切')")
+        pass = 0
+    }
+
     println("")
     println("=======================================")
     if (pass == 1) {
-        println("PASS: 5/5")
+        println("PASS: 6/6")
         println("GATE OK — bug-fix Execute 可启动")
     } else {
         println("GATE BLOCKED — options.md 形式不合规,补全后重跑")
