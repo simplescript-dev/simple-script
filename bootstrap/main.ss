@@ -380,8 +380,13 @@ function cmdRun() {
     compile(inputFile, outBin, release, 0)
     let cmd = outBin
     if (runArgs != "") { cmd = cmd + " " + runArgs }
+    // system() 返 C raw wait-status:正常退出码在 bits 8-15(WEXITSTATUS),
+    // 信号终止时低 7 位是信号号。直接 exit(wait-status) 会被 exit() 的
+    // mod-256 截断使 1-255 全归 0;须解码后再退出,令 $? 与直接运行二进制一致。
     const rc = system(cmd)
-    exit(rc)
+    const sig = rc % 128
+    if (sig == 0) { exit(rc / 256) }
+    exit(128 + sig)
 }
 
 // ── ss test ───────────────────────────────────────────────────

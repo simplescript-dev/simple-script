@@ -1,0 +1,34 @@
+[meta]
+type = bugfix
+title = bin/ss run 退出码截断 — cmdRun exit(rc) 把 system() 的 C raw wait-status(退出码<<8)直接喂 exit(),exit() mod-256 截断使被运行程序退出码 1-255 全归 0;改为内联解码 wait-status 后退出
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = 程序体为 exit(7) 的 .ss 经 `bin/ss run` 运行后 `echo $?` 输出 0(应为 7);直接运行编译二进制 $? 正确为 7。被运行程序退出码 1-255 经 bin/ss run 后全归 0,bin/ss run 无法反映程序失败,且弱化 tools/bugfix_linter.ss:64 G2a 因果校验(它用 system("bin/ss run <test>") 退出码判定测试通过 —— bin/ss run 恒退 0 时 G2a 对任意测试恒判 PASS)
+
+[isolate]
+# 测量法:回归测试 tests/phase5/run_exitcode_truncation.ss 直接编译成二进制运行取 $?。
+# 该测试内层用 system("bin/ss run <fixture>") 观测 bin/ss run 透传出的退出码。
+# stash_exit 量于本轮 cmdRun 改动 bootstrap 之前(当时 bin/ss 仍为旧未修复版):
+# bin/ss build tests/phase5/run_exitcode_truncation.ss -o /tmp/run_ec_stash && /tmp/run_ec_stash → exit 1。
+test_file = tests/phase5/run_exitcode_truncation.ss
+stash_exit = 1
+
+[analyze]
+broken = cmdRun(bootstrap/main.ss:383-388 改前为 :383-384)末两行 `const rc = system(cmd)` / `exit(rc)`。system() 是 POSIX system(3) 的 1:1 镜像(ss_system 即 call i32 @system),返回 wait(2) 格式的 C raw wait-status —— 子进程正常退出时退出码在 bits 8-15(WEXITSTATUS = status>>8)。cmdRun 把该 wait-status 直接交给 exit(),exit() 走 C exit()、进程退出码 = 参数 & 0xFF;system() 的 N<<8(N≠0)必 ≥ 256、低 8 位恒 0,故被运行程序任何非零退出码经 bin/ss run 后 $? 恒为 0(退出码 0 因 system() 返 0、exit(0) 巧合正确)
+why = exit(rc) 隐含两个未校验假设并叠加破裂:A「system() 返回值即子进程退出码」(实为 wait-status,退出码在高 8 位)、B「exit(n) 令进程以整数 n 退出」(实为 n & 0xFF,n ≥ 256 被 mod-256 截断)。wait-status 与 exit-code 是两套语义,cmdRun 当同一个 int 处理 —— 把一个高 8 位编码的值喂给只取低 8 位的 exit(),信息全丢。设计缺口:cmdRun 在 system() 结果流入 exit() 的边界处缺 wait-status 解码
+fix = cmdRun 在 system() 结果流入 exit() 的边界内联解码 wait-status:sig = rc % 128(低 7 位 = 信号号);sig==0(WIFEXITED —— system()/dash 把子进程信号死亡归一为自身正常 exit(128+S) 后的常态)→ exit(rc / 256) 取 WEXITSTATUS;sig!=0(child shell 自身被信号终止)→ exit(128 + sig)。令 bin/ss run <prog> 的 $? 与直接运行编译二进制一致。新增回归测试 tests/phase5/run_exitcode_truncation.ss 覆盖 exit 7/255/0/1 + 信号终止(整数除零 SIGFPE → 透传为 136)。方案对比见 run_exitcode_truncation.options.md(bug_options_linter 6/6 GATE OK)
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 1
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 327
+test_failed = 4
+test_known_fail = 4
