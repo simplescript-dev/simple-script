@@ -228,6 +228,32 @@ function emitRuntimeHelpers() {
 //                ^raw ptr (malloc'd)          ^user ptr (returned, +16)
 // Tags: 0=string, 1=array(scalar), 2=map, 3=class(no dtor), 5=array(ptr), >=10=class(with dtor)
 
+// emitAnyRcDispatch — D168 §C.10-map: emit 一个 magic@-4 守卫的通用 RC 分派函数。
+// OLD 对象(ss_rc_alloc'd,带 magic 1397969747)→ oldFn;NEW 对象(ObjHeader,
+// 无 magic)→ newFn。ss_retain_any / ss_release_any 共用此模板,保证 Map value
+// retain/release 同按运行时 magic 分派,不依赖编译期类型名精度。
+function emitAnyRcDispatch(fnName: string, oldFn: string, newFn: string) {
+    emitIR(`define void @${fnName}(ptr %p) {`)
+    irLabel("entry")
+    irICmp("isnull", "eq", "ptr", "%p", "null")
+    irBrCond("isnull", "done", "guard")
+    irLabel("guard")
+    irGEP("magp", "i8", "%p", "-4")
+    irLoad("mag", "i32", "%magp")
+    irICmp("isold", "eq", "i32", "%mag", "1397969747")
+    irBrCond("isold", "old", "new")
+    irLabel("old")
+    irCallVoid(oldFn, "ptr %p")
+    irBr("done")
+    irLabel("new")
+    irCallVoid(newFn, "ptr %p")
+    irBr("done")
+    irLabel("done")
+    irRetVoid()
+    emitIR("}")
+    emitIR("")
+}
+
 function emitRuntimeRC() {
     // ss_rc_alloc(size, tag) → user ptr with rc=1
     emitIR("define ptr @ss_rc_alloc(i64 %size, i32 %tag) {")
@@ -434,7 +460,7 @@ function emitRuntimeRC() {
     irGEP("vp2", "i8", "%e", "8")
     irLoad("vi", "i64", "%vp2")
     irIntToPtr("vptr", "i64", "%vi")
-    irCallVoid("ss_rc_release", "ptr %vptr")
+    irCallVoid("ss_release_any", "ptr %vptr")
     irBr("free.entry")
     irLabel("free.entry")
     emitIR("  ; Free entry node (plain malloc)")
@@ -558,6 +584,13 @@ function emitRuntimeRC() {
     irRetVoid()
     emitIR("}")
     emitIR("")
+
+    // ss_retain_any / ss_release_any — D168 §C.10-map: magic@-4 守卫的通用 RC 分派
+    // (见 emitAnyRcDispatch)。Map 借入 value retain + Map-death value-release 同按
+    // 运行时 magic 分派,不依赖编译期类型名精度 —— emitRetainForType 对泛型/nullable/
+    // 推断缺口的 NEW value 误落 ss_rc_retain,与 ss_release_any 失配 → over-release。
+    emitAnyRcDispatch("ss_retain_any", "ss_rc_retain", "ss_retain")
+    emitAnyRcDispatch("ss_release_any", "ss_rc_release", "ss_release")
 
     // ss_alloc(size) — allocate zeroed memory for class instance (mimalloc)
     emitIR("define ptr @ss_alloc(i64 %size) {")

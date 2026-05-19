@@ -91,6 +91,9 @@ function emitRuntimeMap() {
     irLabel("rel.old")
     irLoad("oldv", "i64", "%vp")
     irIntToPtr("oldp", "i64", "%oldv")
+    // D168 §C.10-map: update 覆写旧值暂留 ss_rc_release(对 NEW value no-op = 泄漏)。
+    // 真实释放(ss_release_any)依赖 §C.11 get 侧 retain —— map.get(string) 不 retain,
+    // 旧值真释放会让 borrow-then-update 的借入引用悬空 UAF(实测全测 318/10)。
     irCallVoid("ss_rc_release", "ptr %oldp")
     irBr("do.store")
     irLabel("do.store")
@@ -231,6 +234,8 @@ function emitRuntimeMap() {
     irGEP("dvp", "i8", "%e", "8")
     irLoad("dvi", "i64", "%dvp")
     irIntToPtr("dvptr", "i64", "%dvi")
+    // D168 §C.10-map: delete value 释放暂留 ss_rc_release(同 ss_mapSet update —
+    // 真实释放依赖 §C.11 get 侧 retain,否则 borrow-then-delete UAF)。
     irCallVoid("ss_rc_release", "ptr %dvptr")
     irBr("del.free")
     irLabel("del.free")

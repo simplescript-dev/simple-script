@@ -74,3 +74,13 @@ I024 Candidate A 仅撤销 `emitReleaseVarList` 的 `Array→ss_release` 单 hun
 
 - `f21271d` un-MNK 巨型 commit("add" 单词 message、396 insertion)一次性引入 d095 segfault(I024)+ generic miscompile(本 issue)+ SS-LIM-6 §E 修法,三者纠缠;任何**部分** revert 都 regress(I024 §C 实证)。根因之一是 un-MNK commit 绕过档位 / VCM / 全测 gate。
 - 本 issue 立项前,`generic_multi_constraint` 仅以「broken test」出现在 I024 §C/§E 与 next_prompt 的散述中,且描述不精确(「确定性 fail」实为版本 + 形态依赖)。MNK §衍生 issue 归档要求「非阻挡 → 必写 issue 文件,不许只对话 / commit msg / memory 记」—— 本文件兑现并订正之。
+
+---
+
+## 2026-05-19 补记(D168 Phase 3 Map RC 落地观察)
+
+D168 §C.10-map(Map value RC,`gen_runtime`/`gen_builtins`/`gen_rt_map`)落地后,`bin/ss test` 并发 runner 下 generic 族(`generic_constraint_multi`/`generic_constraint_basic`/`generic_multi_constraint` 等)**非确定 flap** —— 逐 run 命中项与计数变(322/6 ~ 323/5),稳定失败的 4 项非 generic 测试恒定。
+
+**新观察 —— 路径 / build-上下文 敏感**:`generic_constraint_multi` standalone(`bin/ss build tests/phase5/...` 单斜杠)实测一个 15/15 PASS streak、binary run 50/50 exit 0;`bin/ss build tests//phase5/...`(**双斜杠**,`bin/ss test` harness 用 `testDir + "/" + entry` 拼出)实测一个 12/12 exit-1 streak —— 但其后 `bin/ss test` run 又见 `generic_constraint_multi` PASS。即 codegen 输出对**源路径字符串 + build 上下文(顺序/并发堆状态)** 敏感,跨上下文非确定(印证 §C.9-exec「codegen 非确定」=读到未初始化/UAF 内存,堆状态决定结果)。关闭判据(§步骤)须补**双斜杠路径形态**。
+
+**与 D168 的关系**:本 issue 根因 = D168 RC 半迁移;每个 RC 迁移子步(P2.3 数组、Phase 3 Map)扰动编译器堆分配 → I025 触发面翻面。`generic_constraint_multi` 翻 fail **不计入** D168 Phase 3 regression(§C.9-exec「I025 不混入 regression 计数」+ bootstrap stage2==stage3 bit-identical 证编译器确定且正确)。

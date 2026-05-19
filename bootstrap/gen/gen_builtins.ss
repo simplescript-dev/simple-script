@@ -227,12 +227,28 @@ function genMapMethod(method: string, objVal: string, objType: string, argList: 
             emitIR(`  ${kR} = inttoptr i64 ${key} to ptr`)
             key = kR
         }
-        const val = genExpr(parseInt(argParts[1]))
-        const valType = inferType(parseInt(argParts[1]))
+        const valArgId = parseInt(argParts[1])
+        const val = genExpr(valArgId)
+        const valType = inferType(valArgId)
         let val64 = val
         const llValType = ssTypeToLLVM(valType)
         if (llValType == "ptr") {
-            emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+            // D168 Phase 3 §C.10-map: ptr value retain — Map 持有 value 一份引用。
+            // 走 ss_retain_any(magic@-4 分派 OLD/NEW),与 ss_mapSet/Delete/destroy_map
+            // 的 ss_release_any 释放对称 —— retain/release 同按运行时 magic 分派,不依赖
+            // 编译期类型名精度(emitRetainForType 对泛型/nullable/推断缺口的 NEW value
+            // 误落 ss_rc_retain,与 ss_release_any 失配 → 半边 no-op → over-release UAF)。
+            // owned 元素(new/字面量/返回 owned 的调用)自带 +1 转移,不再 retain —
+            // 与 array push gen_builtins.ss:140 同走 isOwnedExpr。
+            if (pushNonOwning == 0 && isOwnedExpr(valArgId) == 0) {
+                emitIR(`  call void @ss_retain_any(ptr ${val})`)
+            }
+            pushNonOwning = 0
+            // val_type flag @offset 516 = 1 标记 ptr value(typed + 无注解 Map() 统一覆盖);
+            // ss_mapSet update / ss_mapDelete / ss_rc_destroy_map 据此走 ss_release_any。
+            const vtGep = nextReg()
+            emitIR(`  ${vtGep} = getelementptr i8, ptr ${objVal}, i64 516`)
+            emitIR(`  store i32 1, ptr ${vtGep}, align 4`)
             const castR = nextReg()
             emitIR(`  ${castR} = ptrtoint ptr ${val} to i64`)
             val64 = castR

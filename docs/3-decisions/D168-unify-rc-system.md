@@ -1,6 +1,6 @@
 # D168: 统一双 RC 系统为 Perceus 主线
 
-**Status:** Phase 1 String 切轨 closed 2026-05-10;Phase 2 P2.1(`daa40e8`)+ P2.2(`d062c18`)closed;**P2.3 进行中** —— `f21271d`("add",un-MNK 巨型 commit)是 P2.3 的半成品尝试且 mislabel,已于 2026-05-18 归账(见 §C.9-exec),P2.3 正式执行规划已锁定待实施;d095 编译器 segfault(`docs/4-issues/I024`)是 P2.3 未完成的直接症状
+**Status:** Phase 1 String closed 2026-05-10;Phase 2 P2.1/P2.2 + P2.3(数组内部 RC,`c95797a`)closed;**Phase 3 进行中** —— Map value RC 子步 close 2026-05-19(§C.10-map:value retain + Map-death release);`ss_mapSet`-update/`ss_mapDelete` 真实 release + Map header→ObjHeader 留 §C.11/后续。d095(`docs/4-issues/I024`)/I025 根因随 §C.11 消除
 **Depends on:** axiom C2/C4/V4(`docs/1-axioms.md:8,10,19`);相关 D164(PIR liveness 落地证据)
 **Date:** 2026-05-10
 **Last Updated:** 2026-05-10
@@ -105,7 +105,7 @@
 | **Phase 0.5** | 用户 close §未决策 D1/D2/D3 → §A.3 锁定(D1=A / D2=c / D3=ii) | [x] 2026-05-10 | 本对话 ultrathink 业界对标轮 + 用户 "全部接受推荐" |
 | **Phase 1** | **String 切轨** — `[rc:i64 \| TypeInfo*]` ObjHeader + mimalloc + `@String_type_info` + 字面量 boxed immortal(D1=A) + 全栈 string GEP 偏移修正(§B 9 节子设计落地) | [x] 2026-05-10 | P1.1 `cd72998` + P1.2 `9edf09b` + P1.3 `0583e6a`;bootstrap stage2==stage3 PASS;全测 310/17/327 0 regression;P1.4 (b)(c) 路径全测隐式覆盖,性能 bench 推 Phase 5 |
 | **Phase 2** | **Array 切轨** — `Array<T>` 双份 TypeInfo(D2=c scalar/ref)+ 元素 retain/release 走元素 vtable + Array slice/concat 适配(§C 10 节子设计 + P2.1-P2.4 子分阶段) | [ ] Planned | bootstrap + Array 测试 |
-| **Phase 3** | **Map 切轨** — `Map<K,V>` TypeInfo + key/value 双侧统一 + bucket 链表元素 retain/release 适配 | [ ] Planned | bootstrap + Map 测试 |
+| **Phase 3** | **Map 切轨** — value retain + Map-death release(§C.10-map,2026-05-19 落地)/ update·delete 真实 release → §C.11 / Map header→ObjHeader 留后续子步 | [~] 进行中 | bootstrap 固定点 ✓ + 全测稳定集 = baseline |
 | **Phase 4** | **删除旧系统** — 移除 `ss_rc_retain/release/release_no_children/destroy_array_ptrs/destroy_map`,`emitRetainForType` 退化为单一 `call @ss_retain` | [ ] Planned | bootstrap + grep `ss_rc_*` 命中 = 0 |
 | **Phase 5** | **PIR 全覆盖** — pir_lower/pir_opt 把 string/Array/Map 纳入 liveness,删除 codegen 路径手工 emit retain/release(消除 30+ 调用点) | [ ] Planned | bootstrap + 性能 micro-bench(可选) |
 
@@ -348,6 +348,17 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 **对账(预估 vs 实测)**:**预估极度悲观**(M2 +1600 实测 -72 / M3a +400 实测 -8 / N2 +9000 实测 -360 / N3 +10000 实测 -137)。**预估偏差 -100% 以上 — 写入 §扩容申报失准段**。根因:本 prompt §扩容申报-P2.2 预估按 P1.3 String ABI 切轨实测 +1300/+264 同等扩散面外推(且加 buffer),未实测 P2.2 与 P1.3 的本质区别 — **P1.3 是"新增 emit + 容器 / 表达式 / codegen 拼装顺序连锁修"(实测 +520/-256 净 +264 行),P2.2 是"emit 模式替换"(行数等量替换)**。下次 ABI 切轨预估必区分:
 - **新增 emit 类型**(P1.2 String type-info dead-code 元数据 / P2.1 Array type-info dead-code)→ 按 emit IR 行数线性估算
 - **替换 emit 类型**(P1.3 字面量 + dispatch + GEP 全栈 / P2.2 GEP +3 + emit 转发)→ **行数等量替换,反射指标几乎不变,M2/M3a/N2/N3 预估 ±0**
+
+---
+
+## §扩容申报-Phase3-map
+
+| metric | bm_old | bm_new | delta | 业务理由 |
+|---|---|---|---|---|
+| F1:bootstrap/gen/gen_runtime.ss | 985 | 1000 | +15 | §C.10-map:`ss_retain_any`/`ss_release_any` 通用 RC 分派(`emitAnyRcDispatch` helper + 2 调用)+ `ss_rc_destroy_map` swap;cur 991。已 DRY-factored(原拟 2 内联函数 ~48 行 → helper 24 + 调用 6),emit IR 是 RC 基础设施不可压缩底座,与 P1.2 `emitStringTypeInfo` / P2.1 `emitArrayTypeInfo` 同模式。 |
+| F1:bootstrap/gen/gen_calls.ss | 740 | 750 | +10 | **P2.3a(`c95797a`)遗留未申报** —— `genArrayLit` 固定/spread retain 补丁致 cur 746 > 旧 bm 740(`git diff HEAD -- gen_calls.ss` 证本轮 diff 不触此文件);D168 同族 RC 续作一并 regularize budget 登记,非本轮新增代码。 |
+
+**根因解决度**:gen_runtime 扩容是 §C.10-map RC 分派基础设施落地的直接副作用,`emitAnyRcDispatch` DRY-factor 后已压到不可再降;gen_calls 是 P2.3a 历史 budget 登记遗漏的补全(代码本身 P2.3a 已 commit)。本轮 `map_rc.options.md` 未预估反射指标(value RC 改动以行为正确为主目标),无预估对账基线。
 
 ---
 
@@ -610,6 +621,33 @@ dealloc:
   - **根因**:`emitReleaseVarList` 切真实 release 让所有局部容器真实死,牵动整个 RC 协议网 —— **Map 必须先参与新系统 RC**(string/Array/class 都能存进 Map,Map 是值的汇容器),否则 X-in-Map 必悬空。这是 **Phase 顺序问题**:`emitReleaseVarList` 局部变量真实 RC 切换依赖 **Phase 3(Map RC)**,而 §C.9-exec 把它放在 P2.3b(Phase 2)= 依赖反置。`f21271d`「部分推进必 regress」实测约束是同一根因的另一面(此前未识别为「依赖 Phase 3」)。
   - **决策(2026-05-19 自定,不另裁决)**:`emitReleaseVarList` 是**所有类型局部变量的统一释放出口**,切真实 `ss_release` 是「全或无」全局原子操作 —— 不能按容器类型分 Phase(切了就对 string/Array/Map/class 一切局部生效,而这些可被 Map 持有)。**P2.3 重定义 = 数组内部 RC**(元素 retain/release owned/borrowed 协议 + §C.9/§C.10 runtime),P2.3a(`c95797a`)+ P2.1/P2.2 已落地 → **P2.3 close**。`f21271d`「部分推进必 regress」= 同一根因(`emitReleaseVarList` 全或无)的另一面。
   - **§C.11(新增,Phase 3 之后)— `emitReleaseVarList` 收口**:局部变量真实释放切换独立成阶段。前置 = String(P1 ✓)+ Array(P2 ✓)+ **Map(Phase 3)** 三容器 retain 侧全切完 —— 否则 Array/string 局部真回收后存进未切的 Map 即 value 悬空 UAF(本轮实测全测 303/25)。Map RC 完成后:`emitReleaseVarList` 按类型全切 `ss_release` + 所有 retain 侧(`genVarDecl`/`genAssign`/构造函数/容器 `set`)对齐。消 Array/string 局部泄漏、d095(I024)/I025 根因消除 = §C.11 判据。options.md §5-2/5 作废(随 P2.3 重定义)。
+
+### §C.10-map — Phase 3 执行规划:Map value RC(2026-05-19 落地)
+
+**触发**:`next_prompt` 启动「D168 Phase 3 Map RC」—— §C.11 `emitReleaseVarList` 收口的 hard 前置(§C.11 明示「前置 = String✓ + Array✓ + Map(Phase 3)retain 侧全切完」)。蓝图 = repo root `map_rc.options.md`(`bug_options_linter` 6/6 GATE OK,选候选 B 接口层)。
+
+**RED**:`grep -n ss_rc_retain bootstrap/gen/gen_builtins.ss` → 235(`genMapMethod("set")` ptr value retain 硬编码 OLD `ss_rc_retain`);Map value-release 三处硬编码 OLD `ss_rc_release`。OLD RC 函数靠 magic@-4 守卫,对 NEW-系统 value(string/Array/class,P1/P2 后)magic 不匹配 → 静默 no-op → Map 既不真 retain 也不真 release NEW value。
+
+**本轮(2026-05-19)落地 = Map value retain + Map-death release**:
+
+| 子项 | 改动 | 文件 |
+|---|---|---|
+| 通用 RC 分派 | 新增 `ss_retain_any` / `ss_release_any`(`emitAnyRcDispatch` helper):magic@-4 守卫 → OLD 对象走 `ss_rc_*` / NEW 对象走 `ss_*`。retain/release 同按**运行时 magic** 分派,不依赖编译期类型名精度 | `gen_runtime.ss` |
+| value retain | `genMapMethod("set")` ptr value retain `ss_rc_retain` → `ss_retain_any`,加 `isOwnedExpr`/`pushNonOwning` 门(borrowed 才 retain、owned +1 转移)— 与 array push `gen_builtins.ss:140` 同协议 | `gen_builtins.ss` |
+| val_type 推断 | `.set()` 处按实际 value LLVM 类型 emit val_type flag@516 —— 覆盖无类型注解 `Map()`(`mapValueIsPtr` 仅认 `Map<K,V>` 注解的推断缺口) | `gen_builtins.ss` |
+| Map-death release | `ss_rc_destroy_map` value-release `ss_rc_release` → `ss_release_any` | `gen_runtime.ss` |
+
+**`ss_mapSet`-update + `ss_mapDelete` value-release 移出本轮 → §C.11**(实证驱动范围修正):
+
+- 实测:三处 value-release 全切真实 release → 全测 318/10,`d095_*`(I024)standalone 编译器 SIGSEGV。
+- **根因**:`map.get`(string)走 `ss_mapGetString` **不 retain** → map value 是无 RC 保护的 borrowed 引用。`ss_mapSet`-update / `ss_mapDelete` 真实 release 在 **scope 中段** free 旧值 → borrow-then-mutate(编译器 `nGetS1` 借出字符串 → `nStr1.set` 覆写)的借入引用悬空 → UAF。`ss_rc_destroy_map` 安全(scope 末尾,借用者已结束)—— 故 retain + destroy 安全、update/delete 不安全。
+- update/delete 真实 release **hard-depends on §C.11 get 侧 retain**(owned/borrowed 协议)—— 与 §C.9-exec「§C.11 依赖 Phase 3」对称的依赖发现。本轮不做,留 §C.11。`gen_rt_map.ss` 两处保留 `ss_rc_release` + 注释锚 §C.11。
+
+**§C.11 前置达成**:§C.11 需「Map retain 侧切完」+「Map-death 释放 value」。本轮 retain(`ss_retain_any`)+ destroy(`ss_release_any`)精确交付二者 → **§C.11 Map 前置 ✓**。§C.11 自身 scope 含 get 侧 retain + update/delete 真实 release 对齐。
+
+**验收**:bootstrap 三阶段 Stage2==Stage3 bit-identical(本轮多次重建均 PASS);全测**稳定**失败集 = baseline(`harness_bug`/`d096_p4_l2_reactive`/`harness_task`/`spring_web_params` 4 项 pre-existing,~10 次 run 恒定)。`bin/ss test` 并发下 generic 族(`generic_constraint_multi`/`generic_constraint_basic` 等)**非确定 flap**(逐 run 命中项与计数变,322/6 ~ 323/5)= I025(§C.9-exec「codegen 非确定」+「不混入 regression 计数」):standalone 15/15 + binary 50/50 PASS、bootstrap stage2==stage3 bit-identical 证编译器确定且正确 → 非本轮 codegen regression。观察:I025 对源路径 `//` vs `/`、build 上下文敏感(补记 `docs/4-issues/I025`)。
+
+**§实证回填**(`map_rc.options.md §实证 (c)` spike):spike(retain + destroy_map)= 全测 324/4 0 regression → 「retain + Map-death release」假设成立;全量(+ update/delete)= 318/10 d095 SIGSEGV → 「update/delete 真实 release」假设破裂,回方案层 → update/delete 移 §C.11。
 
 ---
 
