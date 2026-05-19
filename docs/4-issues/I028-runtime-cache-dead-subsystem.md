@@ -1,7 +1,7 @@
 # I028 — 运行时 IR 缓存子系统死代码:`buildRuntimeCache` 确定性 llc 失败 + 无消费者
 
 **父决策:** 无(独立 root cause —— `gen_rt_cache.ss` 缓存子系统缺陷;与 I026/I027 **不同 bug 类**:I026/I027 是「固定共享 `/tmp` 路径并发 race」,本 issue 经实测**证伪并发假设**,真根因是「确定性 llc 失败 + 子系统无消费者」)
-**状态:** Planned(2026-05-19 立项,未修复)
+**状态:** Resolved at 8578b0e(2026-05-19 — Execute 轮按 bug 修复 harness 选候选 C 架构层「删整个 dead 缓存子系统」修复;RED→GREEN + bootstrap 三阶段固定点 + 回归测试 tests/phase5/i028_runtime_cache_dead_subsystem.ss;bug_options_linter 6/6 + bugfix_linter 6/6)
 **颗粒度:** 立项轮 = 纯文档(本文件);修复 = Execute 轮按 bug 修复 harness,档位视候选(删整个 dead 子系统 标准改 / 补 typedecl 微改 / 接活缓存 大改)
 **依赖:** 无。修复若走「删子系统」零依赖
 **创建:** 2026-05-19
