@@ -1,7 +1,7 @@
 # I027 — comptime `shellOutput` 硬编码 `/tmp/ss_comptime_exec.tmp` 临时路径非并发安全
 
 **父决策:** 无(独立 root cause —— comptime intrinsic `shellOutput` 的实现缺陷,与 I026 `cmdRun` 同 bug 类「编译期固定共享 `/tmp` 路径」但不同函数、不同子系统)
-**状态:** Planned —— 休眠隐患,当前 **0 usage**(全 repo 无任何 `.ss` 调用 `shellOutput`,grep 实证见 §现象)
+**状态:** Resolved at `b0e272c` —— comptime `shellOutput` 分支 delegate 到既有 `shell` builtin(`popen` 直捕 stdout),零 /tmp 中转文件;回归测试 `tests/phase5/i027_shelloutput_comptime_tmp_path.ss`
 **颗粒度:** 立项轮 = 纯文档(本文件);修复 = `ctCallDispatch` 的 `shellOutput` 分支单点把 `soTmp` 改为进程唯一路径,对标 I026,标准改档
 **依赖:** 无。`shell` builtin 现成(I026 已实证 `shell` 经 popen 捕获 stdout),修复不依赖未落地能力
 **创建:** 2026-05-19
@@ -31,9 +31,13 @@ return ctVal(interpNewString(readFile(soTmp)))
 
 与 I026 同 bug 类:编译期辅助逻辑用进程间共享的固定 `/tmp` 路径做中转,无进程隔离。`shellOutput` 在 comptime 子系统、`cmdRun` 在 run 驱动 —— 不同函数、不同子系统,故独立立项而非 I026 的 `same_pattern` 残留。业界对标同 I026:每次调用用唯一临时路径(`mktemp` 风格)。
 
-## 修复方向(Execute 轮坐实)
+## 修复(Execute 轮已坐实 —— commit `b0e272c`)
 
-`shellOutput` 分支的 `soTmp` 由固定 `/tmp/ss_comptime_exec.tmp` 改为进程唯一(`shell("mktemp /tmp/ss_comptime_exec.XXXXXX").trim()` + 空值 guard,对标 I026 commit `fc3b35d` 的 `cmdRun` 修复)+ 读毕清理。`shell` builtin 现成。Execute 轮按 bug 修复 harness 走 `<bug>.options.md` + `bug_options_linter` GATE + `.bugfix` 6 gate + 新增 `tests/phase5` 回归测试。
+立项轮 prescription 为「`soTmp` 改 `mktemp` 进程唯一路径,对标 I026 `fc3b35d`」。Execute 轮按 MNK §字段 11 ladder 上推一格修正:`mktemp` 仅令中转路径唯一、**仍保留 temp-file 中转**,非最根。
+
+**实际修复(更深根因层)**:`shellOutput` 分支直接 delegate 到既有 `shell` builtin —— body 由 `soTmp` + `system(cmd>tmp)` + `readFile(tmp)` 三步改为单行 `return ctVal(interpNewString(shell(`${soCmd} 2>/dev/null`)))`。`shell`(`bootstrap/gen/rt/gen_rt_shell.ss`)用 `popen` + 动态扩 buffer 直接捕获子进程 stdout,**零中转文件 → 无路径 → 无 race → 无清理 → 无 guard**。`2>/dev/null` 在命令串补回,保留原 `shellOutput` 丢弃 stderr 的语义。
+
+**为何不照搬 I026 的 `mktemp`**:I026 `cmdRun` 的 `.ll`/`.o`/二进制是 `llc`/`musl-gcc` 物理必需的磁盘文件、不可消除(`mktemp` 是其最深可达层);I027 的 stdout 捕获缓冲 `popen` 可直接消除 —— 同为「固定 /tmp 路径 race」表象,最深可达层不同。方案对比见 `i027_shelloutput_comptime_tmp_path.options.md`(`bug_options_linter` 6/6),因果证据见 `tools/bugfix_reports/2026-05-19-i027-shelloutput-comptime-tmp-path.bugfix`(`bugfix_linter` 6/6)。
 
 ## 反向
 
