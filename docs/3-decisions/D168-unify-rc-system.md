@@ -552,7 +552,7 @@ dealloc:
 |---|---|---|---|
 | **P2.1** | §C.3 emitArrayTypeInfo 双份 dead-code(scalar + ref TypeInfo + 6 per-type 函数 + typename 常量)+ §C.4 ss_alloc_array helper(dead-code,P2.2 才连接到字面量)| gen_runtime.ss(emitArrayTypeInfo +~150 行 IR) | [x] commit `daa40e8` 2026-05-10 |
 | **P2.2** | §C.1 字面量 runtime 创建路径切到 ss_alloc_array(emitNewArrayFn 内部转发,所有调用方零改动)+ §C.6 gen_rt_array.ss 17 函数 GEP +3 全栈修正(len@3 / cap@4 / buffer@2 ptr load 直接,irLoadArrayData helper 归一化)+ §C.5 emitRetainForType isArrayType dispatch + ss_arraySlice/Concat TypeInfo 替代 tag 分派 + scalar Array 切轨完成 | gen_rt_array.ss / class.ss / ir_builder.ss / gen_runtime.ss(mi_realloc declare)/ codegen.ss(%Array prepend) | [x] 本 commit 2026-05-10(bootstrap stage2==stage3 PASS;全测 307/20/327 0 regression with P2.1 baseline;反射 gate PASS 无 bump 需要;失准段见下) |
-| **P2.3** | §C.9 push/pop/slice/concat 元素 retain/release 切 dispatch + ref Array 切轨(Array<string>/Array<class>)+ §C.10 ss_drop_Array_ref 循环 vtable 调用启用 | gen_rt_array.ss + 调用方扩散 + Array<class> 测试用例 | [/] 进行中 —— 执行规划见 §C.9-exec(f21271d 半成品归账 + 子步 P2.3a-d);I024 d095 segfault 是本子阶段未完成的直接症状 |
+| **P2.3** | **数组内部 RC**(2026-05-19 范围重定义,见 §C.9-exec):§C.9 push/slice/concat 元素 retain/release + §C.10 ss_drop_Array_ref vtable + ref 数组元素 retain owned/borrowed 协议(codegen 调用点)。`emitReleaseVarList` 局部变量释放切换**移出本阶段** → 独立 §C.11 收口(全局总出口,前置 Phase 3)| gen_rt_array.ss + gen_builtins/gen_calls 元素协议 | [x] close 2026-05-19(P2.3a `c95797a` + P2.1/P2.2 runtime;bootstrap 固定点 + 全测 323/5 0 regression)|
 | **P2.4** | 综合大测 + Array<嵌套泛型> 验证(Array<Map<K,V>> / Array<Array<T>>)+ Phase 2 close | 全测 + 性能 micro-bench(可选)| [ ] Planned |
 
 **子阶段间硬约束**:
@@ -608,7 +608,8 @@ dealloc:
   - **障碍 1(切 string → string-in-Map UAF)**:`emitReleaseVarList` 把 string 局部切真实 `ss_release` 后,string 存进无类型注解 `Map()`(`mapValueIsPtr` 仅认 `Map<K,V>` 注解 → val_type=0 → `ss_mapSet` 不 retain value、`ss_drop_Map` 用旧 `ss_rc_release`)时,string 局部 release → Map value 悬空 → UAF。全测 303/25(`stdlib_json/ini/url`、`i021_requestbody_nested_*`、`d096_reactive` 等 ~20 个 string-in-Map 崩)。
   - **障碍 2(收窄只切 Array 仍 over-release)**:`emitReleaseVarList` 只对 `isArrayType` 切 `ss_release`(string/Map 留旧)→ 全测 322/6,`stdlib_sort`(纯 scalar `Array<int>`)mimalloc corrupted-free-list、形态敏感非确定崩 —— Array 局部真实 release 后仍有未平衡持有点。
   - **根因**:`emitReleaseVarList` 切真实 release 让所有局部容器真实死,牵动整个 RC 协议网 —— **Map 必须先参与新系统 RC**(string/Array/class 都能存进 Map,Map 是值的汇容器),否则 X-in-Map 必悬空。这是 **Phase 顺序问题**:`emitReleaseVarList` 局部变量真实 RC 切换依赖 **Phase 3(Map RC)**,而 §C.9-exec 把它放在 P2.3b(Phase 2)= 依赖反置。`f21271d`「部分推进必 regress」实测约束是同一根因的另一面(此前未识别为「依赖 Phase 3」)。
-  - **待裁决**:`emitReleaseVarList` 局部变量真实 release 切换从 P2.3b 移出 —— P2.3 收敛为「数组内部 RC」(P2.3a 元素协议 已 commit;§C.9/§C.10 runtime push/slice/concat/drop 元素 RC 已 P2.1/P2.2 落地);**消 Array/string 局部泄漏 + d095(I024)/ I025 根因消除** 顺延到 Phase 3(Map RC)之后。options.md §5-2/5(`emitReleaseVarList` 切换 + string 连带)实测不可行,待 Phase 重排裁决后整体重订。
+  - **决策(2026-05-19 自定,不另裁决)**:`emitReleaseVarList` 是**所有类型局部变量的统一释放出口**,切真实 `ss_release` 是「全或无」全局原子操作 —— 不能按容器类型分 Phase(切了就对 string/Array/Map/class 一切局部生效,而这些可被 Map 持有)。**P2.3 重定义 = 数组内部 RC**(元素 retain/release owned/borrowed 协议 + §C.9/§C.10 runtime),P2.3a(`c95797a`)+ P2.1/P2.2 已落地 → **P2.3 close**。`f21271d`「部分推进必 regress」= 同一根因(`emitReleaseVarList` 全或无)的另一面。
+  - **§C.11(新增,Phase 3 之后)— `emitReleaseVarList` 收口**:局部变量真实释放切换独立成阶段。前置 = String(P1 ✓)+ Array(P2 ✓)+ **Map(Phase 3)** 三容器 retain 侧全切完 —— 否则 Array/string 局部真回收后存进未切的 Map 即 value 悬空 UAF(本轮实测全测 303/25)。Map RC 完成后:`emitReleaseVarList` 按类型全切 `ss_release` + 所有 retain 侧(`genVarDecl`/`genAssign`/构造函数/容器 `set`)对齐。消 Array/string 局部泄漏、d095(I024)/I025 根因消除 = §C.11 判据。options.md §5-2/5 作废(随 P2.3 重定义)。
 
 ---
 
