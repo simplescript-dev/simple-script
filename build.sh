@@ -24,7 +24,7 @@ if [ "$1" == "bootstrap" ]; then
     /tmp/ss_stage1 bootstrap/main.ss -o /tmp/ss_stage2
     echo "Stage 3: stage2 → stage3 (verify fixed point)"
     /tmp/ss_stage2 bootstrap/main.ss -o /tmp/ss_stage3
-    if diff <(xxd /tmp/ss_stage2) <(xxd /tmp/ss_stage3) > /dev/null 2>&1; then
+    if cmp -s /tmp/ss_stage2 /tmp/ss_stage3; then
         echo "Fixed point verified! Stage 2 = Stage 3"
         cp /tmp/ss_stage2 $OUT
         echo "Updated $OUT"

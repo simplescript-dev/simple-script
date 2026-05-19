@@ -1,0 +1,31 @@
+[meta]
+type = bugfix
+title = build.sh 三阶段固定点校验假阳性 — diff <(xxd …) 在 xxd 缺失环境退化为比较两空流恒真,改 cmp -s 直接字节比较
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = ./build.sh bootstrap 在 xxd 缺失环境恒打印 "Fixed point verified! Stage 2 = Stage 3" 且 exit 0,即使 stage2 与 stage3 字节不同。实证:对两个内容不同的文件跑 diff <(xxd a) <(xxd b) >/dev/null 2>&1 返回 exit 0(stderr 两行 "xxd: command not found",process substitution 退化为两个空流),固定点校验静默降级为恒真、违反 docs/1-axioms.md §C1「stage2 == stage3 byte-identical」
+
+[isolate]
+# 测量法:bin/ss run 经 cmdRun(bootstrap/main.ss:384) exit(rc),rc 为 system() 返回的 C raw wait-status(退出码 << 8),exit() mod-256 截断使程序退出码 1-255 全归 0 — 这是 bin/ss run 自身独立 bug(本轮 scope 外,报告中标注)。故 stash/fix exit 以「直接编译二进制」为准:bin/ss build <test> -o <bin> 后直接运行 <bin> 取 $?。bin/ss test tests/(cmdTest:433 直接跑二进制取 $?)正确反映真实退出码,是回归测试的有效 guard 路径。
+test_file = tests/phase5/build_xxd_fixed_point.ss
+stash_exit = 1
+
+[analyze]
+broken = build.sh:27 三阶段自举固定点校验用 diff <(xxd /tmp/ss_stage2) <(xxd /tmp/ss_stage3) >/dev/null 2>&1;xxd 缺失时 bash process substitution 内子命令失败不传播、退化为合法空 FIFO 流,diff 比较两个空流恒返 0,if 取真 → 无条件打印 "Fixed point verified" 并 cp stage2 到 bin/ss;stage2 与 stage3 字节不同的非确定 miscompilation 无法被发现
+why = diff <(xxd a) <(xxd b) 隐含两个未校验假设:A「xxd 在构建环境存在」(xxd 属 vim-common 包,非 POSIX/coreutils 基础工具,默认不保证),B「process substitution 内子命令失败会令外层命令失败」(bash 语义恰相反,<(失败cmd) 产出合法空流)。两假设同时破裂时校验从字节比较静默降级为空流恒等比较、且打印的是成功信息无任何报错。xxd 的 hex 文本输出本就被 >/dev/null 丢弃 — 该 hex 转换自始零收益,纯粹引入一个脆弱外部依赖
+fix = build.sh:27 整段 diff <(xxd /tmp/ss_stage2) <(xxd /tmp/ss_stage3) >/dev/null 2>&1 替换为 cmp -s /tmp/ss_stage2 /tmp/ss_stage3。cmp 是 POSIX/coreutils 基础工具(which cmp 输出 /usr/bin/cmp,40+ 年稳定),逐字节直接比较二进制,无文本 transform、无 process substitution、无非必需依赖,同时消除假设破裂 A(无依赖可缺失)与 B(无 PS 吞错);-s 静默仅返 exit code(0 相同 / 1 不同),与 if 直接配合。新增回归测试 tests/phase5/build_xxd_fixed_point.ss 把该保证纳入 bin/ss test 套件
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 0
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 326
+test_failed = 4
+test_known_fail = 4
