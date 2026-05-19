@@ -650,13 +650,10 @@ function genVarDecl(id: int) {
             let trackType = initType
             if (typeAnn != "" && typeAnn.contains("<") == 1) { trackType = typeAnn }
             trackPtrVar(llName, trackType)
-            if (isOwnedExpr(initId) == 0) {
-                // I024: 借入 Array 局部此 retain 与 emitReleaseVarList 释放不配对 → 已知 over-retain,待 D168 P2.3 全栈 RC 平衡
-                if (isArrayType(trackType) == 1) {
-                    emitRetainForType(val, trackType)
-                } else {
-                    emitIR(`  call void @ss_rc_retain(ptr ${val})`)
-                }
+            if (isOwnedExpr(initId) == 0 && isRcManaged(trackType) == 1) {
+                // D168 §C.11: borrowed RC-managed 局部 binding-retain 走 ss_retain_any
+                // (magic 分派),与 emitReleaseVarList 的 ss_release_any 出口对称。
+                emitIR(`  call void @ss_retain_any(ptr ${val})`)
             }
         }
     }
@@ -709,11 +706,12 @@ function genReturn(id: int) {
         let val = genExpr(valId)
         const vType = inferType(valId)
         const retLLType = ssTypeToLLVM(vType)
-        // Get declared return type
+        // Get declared return type (retSSType 复用于下方 D168 §C.11 RC 分派)
+        let retSSType = ""
+        const hasRetType = funcRetTypes.has(currentFunc)
+        if (hasRetType == 1) { retSSType = funcRetTypes.getString(currentFunc) }
         let declRet = "i32"
-        if (funcRetTypes.has(currentFunc) == 1) {
-            declRet = ssTypeToLLVM(funcRetTypes.getString(currentFunc))
-        }
+        if (hasRetType == 1) { declRet = ssTypeToLLVM(retSSType) }
         if (currentFunc == "main") { declRet = "i32" }
         // Convert type if needed
         if (retLLType == "i64" && declRet == "i32") {
@@ -729,9 +727,11 @@ function genReturn(id: int) {
             const siR = nextReg(); emitIR(`  ${siR} = sitofp i32 ${val} to double`)
             val = siR
         }
-        // RC: retain borrowed ptr before releasing locals
-        if (declRet == "ptr" && isOwnedExpr(valId) == 0) {
-            emitRetainForType(val, vType)
+        // RC: retain borrowed RC-managed ptr before releasing locals。按声明返回类型
+        // retSSType(精确)判 isRcManaged —— inferType(valId) 对 method-call 返回式不
+        // 精确会误判;Ref/Channel 等非 RC-managed 返回跳过(ss_*_any 不支持其布局)。
+        if (declRet == "ptr" && isOwnedExpr(valId) == 0 && isRcManaged(retSSType) == 1) {
+            emitIR(`  call void @ss_retain_any(ptr ${val})`)
         }
         pirEmitReturnCleanup()
         emitReleaseAllBlockVars()

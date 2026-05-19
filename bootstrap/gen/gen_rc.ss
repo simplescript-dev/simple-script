@@ -4,8 +4,8 @@
 // ── RC global state ──────────────────────────────────────────
 // localPtrVars / blockPtrVarStack schema — "name:type" entries 用 ";" 分隔,
 // "|" 分隔 block(type 内 "," 不冲突,Map<K,V> 嵌套泛型安全)。
-// I024: emitReleaseVarList 一律 ss_rc_release(见其注释),只读 entry 的 name
-// 段;type 段暂存而不读,待 D168 P2.3 数组 RC 全栈迁移重启类型分派时再加 reader。
+// D168 §C.11: emitReleaseVarList 经 isRcManaged(读 type 段)判定后对 RC-managed
+// 局部发 ss_release_any(magic@-4 运行时分派);Ref/Channel 等第三类对象跳过。
 
 let localPtrVars = ""        // "name1:type1;name2:type2;..."
 let localFnVars = ""         // fn-typed locals holding closures (released via ss_release)
@@ -41,10 +41,31 @@ function rcEntryName(entry: string): string {
     return entry.substring(0, ci)
 }
 
+// Extract the type segment of a "name:type" entry (D168 §C.11 isRcManaged 判定)。
+function rcEntryType(entry: string): string {
+    const ci = entry.indexOf(":")
+    if (ci < 0) { return "" }
+    return entry.substring(ci + 1, entry.length())
+}
+
+// D168 §C.11: 该 SS 类型是否由 OLD(Map/Set)或 NEW(string/Array/class)RC 系统管理
+// —— 仅此二类的对象头能被 ss_*_any 的 magic@-4 分派正确识别。Ref/Channel 等 calloc'd
+// 第三类对象(无 magic 亦非 ObjHeader)返 0,codegen-local RC 跳过(D082 自管生命周期);
+// 类型不精确(""/泛型 T)亦返 0 → 保守跳过(泄漏不崩,优于误 ss_release 致 UAF)。
+function isRcManaged(ssType: string): int {
+    const t = stripNullableCG(ssType)
+    if (t == "string") { return 1 }
+    if (isArrayType(t) == 1) { return 1 }
+    if (t == "Map" || t.startsWith("Map<") == 1) { return 1 }
+    if (t == "Set" || t.startsWith("Set<") == 1) { return 1 }
+    if (isUserClass(t) == 1) { return 1 }
+    return 0
+}
+
 // ── Ptr var tracking ─────────────────────────────────────────
 
 // Track a ptr var for RC release — adds to function-level or block-level list.
-// ssType 存入 entry 的 type 段(I024 起 emitReleaseVarList 暂不读,D168 P2.3 重启类型分派时用)。
+// ssType 存入 entry type 段 —— emitReleaseVarList 的 isRcManaged 据此分派(D168 §C.11)。
 function trackPtrVar(llName: string, ssType: string) {
     if (rcBlockDepth == 0) {
         // Function-level: track in localPtrVars (released at function exit)
@@ -101,10 +122,11 @@ function popBlockScope() {
 // ── Release helpers ──────────────────────────────────────────
 
 // Emit release for a ";"-separated entry list ("name:type;name:type;...").
-// I024: 一律 ss_rc_release。f21271d 曾按 type 把 Array 局部切 ss_release(误标
-// D168 §C.9),但数组 RC 全栈迁移(D168 P2.3)未完成时,借入数组局部的
-// ss_release 会 over-free → d095 use-after-free(崩 ss_arrayPush);故撤销,
-// 待 D168 P2.3 数组 RC 全栈一致后按 §C.9-exec 设计重做类型分派。
+// D168 §C.11: RC-managed 局部(isRcManaged: OLD Map/Set + NEW string/Array/class)
+// 经 ss_release_any 按运行时 magic@-4 分派 —— NEW 走 ss_release / OLD 走 ss_rc_release,
+// 与 genVarDecl/genAssign/genReturn 的 ss_retain_any 配对侧对称。Ref/Channel 等第三类
+// calloc'd 对象(无 OLD magic 亦非 NEW ObjHeader)isRcManaged=0 跳过 —— ss_*_any 会误
+// 读其布局致 UAF,其生命周期由 D082 自管;type 不精确亦跳过(保守泄漏不崩)。
 function emitReleaseVarList(varList: string) {
     if (varList == "") { return }
     const parts = varList.split(";")
@@ -112,9 +134,10 @@ function emitReleaseVarList(varList: string) {
         if (p == "") { continue }
         const name = rcEntryName(p)
         if (name == "") { continue }
+        if (isRcManaged(rcEntryType(p)) == 0) { continue }
         const r = nextReg()
         emitIR(`  ${r} = load ptr, ptr %${name}, align 8`)
-        emitIR(`  call void @ss_rc_release(ptr ${r})`)
+        emitIR(`  call void @ss_release_any(ptr ${r})`)
     }
 }
 

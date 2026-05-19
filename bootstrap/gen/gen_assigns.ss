@@ -226,7 +226,7 @@ function genMemberAssign(id: int) {
         emitIR(`  store ${llType} ${r3}, ptr ${gepReg}, align 8`)
         // RC: for string +=, release old value
         if (op == "PLUS_ASSIGN" && fType == "string") {
-            emitIR(`  call void @ss_rc_release(ptr ${r1})`)
+            emitIR(`  call void @ss_release_any(ptr ${r1})`)
         }
     }
 }
@@ -337,11 +337,16 @@ function genAssign(id: int) {
         if (llType == "ptr" && currentFunc != "" && (isTrackedPtrVar(assignLLName) == 1 || isGlobalPtr == 1) && skipRelease == 0) {
             const oldVal = nextReg()
             emitIR(`  ${oldVal} = load ptr, ptr ${varRef(name)}, align 8`)
-            if (isOwnedExpr(valId) == 0) {
-                emitIR(`  call void @ss_rc_retain(ptr ${val})`)
+            const vRcManaged = isRcManaged(vType)
+            if (isOwnedExpr(valId) == 0 && vRcManaged == 1) {
+                // D168 §C.11: tracked RC-managed ptr 重赋值 retain/release 走 ss_*_any,
+                // 与 emitReleaseVarList 出口对称(vType = 变量 tracked type)。
+                emitIR(`  call void @ss_retain_any(ptr ${val})`)
             }
             emitIR(`  store ptr ${val}, ptr ${varRef(name)}, align 8`)
-            emitIR(`  call void @ss_rc_release(ptr ${oldVal})`)
+            if (vRcManaged == 1) {
+                emitIR(`  call void @ss_release_any(ptr ${oldVal})`)
+            }
         } else {
             emitIR(`  store ${llType} ${val}, ptr ${varRef(name)}, align 8`)
         }
@@ -390,7 +395,7 @@ function genAssign(id: int) {
         emitIR(`  store ${llType} ${r3}, ptr ${lnRef}, align 8`)
         // RC: for string +=, release old value (concat result is new owned)
         if (op == "PLUS_ASSIGN" && vType == "string" && currentFunc != "" && isTrackedPtrVar(llVarName(name)) == 1) {
-            emitIR(`  call void @ss_rc_release(ptr ${r1})`)
+            emitIR(`  call void @ss_release_any(ptr ${r1})`)
         }
     }
 }
@@ -455,7 +460,7 @@ function genStaticFieldAssign(sfKey: string, op: string, valExpr: int) {
         const r3 = emitCompoundArith(op, r1, r2, fType, llType)
         emitIR(`  store ${llType} ${r3}, ptr ${globalName}, align 8`)
         if (op == "PLUS_ASSIGN" && fType == "string") {
-            emitIR(`  call void @ss_rc_release(ptr ${r1})`)
+            emitIR(`  call void @ss_release_any(ptr ${r1})`)
         }
     }
 }
