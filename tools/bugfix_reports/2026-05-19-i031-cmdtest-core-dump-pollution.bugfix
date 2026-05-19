@@ -1,0 +1,35 @@
+[meta]
+type = bugfix
+title = bin/ss test 把崩溃测试子进程的 core 转储抛到 repo 根 — cmdTest 拼并行测试脚本只设 MAX_JOBS 并发度不收束 RLIMIT_CORE,默认 unlimited 被子进程树继承致崩溃写约 1GB core.PID 到 repo 根;修复在 par.sh 的 bash shebang 之后加 ulimit -c 0
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = cmdTest(bootstrap/main.ss:437)拼 par.sh 脚本字符串只规约并发度 MAX_JOBS,不收束子进程树资源限界。RLIMIT_CORE 默认 unlimited 跨 fork+exec 继承 → 测试二进制 / 嵌套 bin/ss run / ss_run_output.* 孙进程全继承;OS core dump 落崩溃进程 CWD,进程链全程不改 CWD = 继承自 bin/ss test 的 repo 根 → 每轮 bin/ss test 后 repo 根多出约 1GB core.PID(上轮实测 core.2004626 = 1073979392 字节)。触发者 tests/phase5/run_exitcode_truncation.ss:22 为验证 bin/ss run 信号透传有意经嵌套 bin/ss run 跑除零 fixture 致 SIGFPE。core 不在 .gitignore → 污染 git status + 磁盘累积
+
+[isolate]
+# 回归测试 tests/phase5/i031_cmdtest_core_dump_pollution.ss:确定性源码核对法(无 race ——
+# 对标 I028/I029,cmdTest 的行为驱动测试会在 bin/ss test 内嵌套 bin/ss test 与外层并行 runner race)。
+# 提取 bootstrap/main.ss 的 cmdTest 函数体,断言其含 ulimit -c 0;未含则 exit 2。
+# stash_exit 量于 cmdTest 改动之前(main.ss 仍为旧未修复版):
+# bin/ss build tests/phase5/i031_cmdtest_core_dump_pollution.ss -o /tmp/i031_test && /tmp/i031_test → exit 2
+test_file = tests/phase5/i031_cmdtest_core_dump_pollution.ss
+stash_exit = 2
+
+[analyze]
+broken = cmdTest(bootstrap/main.ss:437)生成的并行测试脚本字面值只规约并发度 MAX_JOBS,不收束子进程树资源限界 RLIMIT_CORE —— 脚本不携带任何对崩溃副产物的约束
+why = 隐含未校验假设「测试子进程树除退出码外不产生需落盘副产物 / RLIMIT_CORE 无需在测试驱动层收束」破裂:测试套件本就含故意崩溃的测试(run_exitcode_truncation 为验证 bin/ss run 信号透传必须 SIGFPE 一个子程序),任意测试真实 SIGSEGV 亦同;RLIMIT_CORE 默认 unlimited 跨 fork+exec 继承,崩溃即落约 1GB core 到 CWD=repo 根。设计缺口:cmdTest 在生成并行测试运行脚本这一步只规约了并发度一个进程树属性,漏掉资源限界
+fix = cmdTest 在拼 par.sh 的 script 字面值处(脚本被生成的确切点)bash shebang 之后加一行 ulimit -c 0。ulimit -c 0 是 bash 内建、映射 setrlimit(RLIMIT_CORE 软硬限 0),跨 fork+exec 继承 → 整棵测试子进程树(测试二进制 / 嵌套 bin/ss build 与 bin/ss run / ss_run_output.* 孙进程)RLIMIT_CORE=0 → 崩溃时内核零 core 写盘。信号与退出码不变 → run_exitcode_truncation 仍 PASS。零新 builtin、单 commit、seed 直接可编译。方案对比见 i031_cmdtest_core_dump_pollution.options.md(bug_options_linter 6/6 GATE OK),对标 go test / cargo test / CI 沙箱不留崩溃副产物进源码树
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 0
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 334
+test_failed = 3
+test_known_fail = 3

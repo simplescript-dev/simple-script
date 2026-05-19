@@ -433,8 +433,11 @@ function cmdTest() {
     const testRunDir = shell("mktemp -d /tmp/ss_test_run.XXXXXX").trim()
     if (testRunDir == "") { println("error: mktemp -d failed"); exit(1) }
 
-    // Generate parallel test script — limit concurrency to nproc
-    let script = "#!/bin/bash\nMAX_JOBS=$(nproc)\nRUNNING=0\n"
+    // Generate parallel test script — limit concurrency to nproc.
+    // I031: ulimit -c 0 —— 收束整棵测试子进程树(含嵌套 bin/ss run 派生的崩溃
+    // 孙进程)的 RLIMIT_CORE;否则故意崩溃的测试会把 ≈1GB core 抛进 repo 根。
+    // RLIMIT_CORE 跨 fork/exec 继承,脚本行首一次置 0 即全树生效。
+    let script = "#!/bin/bash\nulimit -c 0\nMAX_JOBS=$(nproc)\nRUNNING=0\n"
     const files = testFileList.split("\n")
     let idx = 0
     for (f in files) {
