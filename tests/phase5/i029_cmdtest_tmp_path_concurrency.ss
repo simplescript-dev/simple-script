@@ -20,20 +20,12 @@
 //            3=cmdTest 仍含 /tmp/ss_res_$(固定结果路径)   4=cmdTest 仍含 /tmp/ss_test_par(固定脚本路径)
 //            5=cmdTest 未用 mktemp -d 进程唯一目录
 
-function cmdTestBody(src: string): string {
-    const marker = "function cmdTest()"
-    const startIdx = src.indexOf(marker)
-    if (startIdx < 0) { return "" }
-    const rest = src.substring(startIdx, src.length())
-    const nextFn = rest.indexOf("\nfunction ")
-    if (nextFn < 0) { return rest }
-    return rest.substring(0, nextFn)
-}
+import { functionBody } from "./import/source_probe"
 
 function main() {
     const src = readFile("bootstrap/main.ss")
     if (src == "") { exit(1) }
-    const body = cmdTestBody(src)
+    const body = functionBody(src, "cmdTest")
     if (body == "") { exit(1) }
 
     // 核心不变量:cmdTest 不得含固定共享 /tmp 路径
