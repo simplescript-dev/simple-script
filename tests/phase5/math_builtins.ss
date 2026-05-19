@@ -1,12 +1,6 @@
 // Test: Math built-in function extensions (D037)
 
-function assertApprox(actual: double, expected: double, msg: string) {
-    const diff = Math.abs(actual - expected)
-    if (diff > 0.0001) {
-        println(`FAIL: ${msg} - expected ${expected}, got ${actual}`)
-        exit(1)
-    }
-}
+import { assertApprox } from "./import/asserts"
 
 function main() {
     // tan

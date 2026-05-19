@@ -5,12 +5,7 @@
 //   轮 2 — Ref 局部(第三类 calloc'd 对象,ss_release_any 不可施用)
 //   轮 3 — string/Array/Map 局部真实释放 + Map update/delete
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println("FAIL: " + msg)
-        exit(1)
-    }
-}
+import { assert } from "./import/asserts"
 
 // method-call 返回式:返回一份拷贝
 function copyArr(x: Array<int>): Array<int> {

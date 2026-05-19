@@ -1,18 +1,6 @@
 import { URL, UrlParts } from "@/lib/url"
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println(`FAIL: ${msg}`)
-        exit(1)
-    }
-}
-
-function assertEq(actual: string, expected: string, msg: string) {
-    if (actual != expected) {
-        println(`FAIL: ${msg} — expected "${expected}", got "${actual}"`)
-        exit(1)
-    }
-}
+import { assert, assertEq } from "./import/asserts"
 
 function main() {
     // ── Full URL parsing ─────────────────────────────────────

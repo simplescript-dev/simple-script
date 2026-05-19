@@ -1,11 +1,6 @@
 // D082: Basic ref() and watch() test
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println("FAIL: " + msg)
-        exit(1)
-    }
-}
+import { assert } from "./import/asserts"
 
 function main() {
     // ref(int) — create and read

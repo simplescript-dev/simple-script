@@ -1,11 +1,6 @@
 // Channel<T> basic tests — D082 Phase 4
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println("FAIL: " + msg)
-        exit(1)
-    }
-}
+import { assert } from "./import/asserts"
 
 function main() {
     // Basic send and receive

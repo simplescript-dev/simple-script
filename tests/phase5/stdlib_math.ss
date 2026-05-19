@@ -2,27 +2,7 @@
 
 import { MathUtil } from "@/lib/math"
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println(`FAIL: ${msg}`)
-        exit(1)
-    }
-}
-
-function assertApprox(actual: double, expected: double, msg: string) {
-    const diff = Math.abs(actual - expected)
-    if (diff > 0.0001) {
-        println(`FAIL: ${msg} - expected ${expected}, got ${actual}`)
-        exit(1)
-    }
-}
-
-function assertEq(actual: int, expected: int, msg: string) {
-    if (actual != expected) {
-        println(`FAIL: ${msg} - expected ${expected}, got ${actual}`)
-        exit(1)
-    }
-}
+import { assertApprox, assertEq } from "./import/asserts"
 
 function main() {
     // ── Constants ────────────────────────────────────────────

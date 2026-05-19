@@ -1,11 +1,6 @@
 // Channel<T> bounded channel tests — D082 bounded enhancement
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println("FAIL: " + msg)
-        exit(1)
-    }
-}
+import { assert } from "./import/asserts"
 
 function main() {
     // Test 1: Unbounded still works (regression)

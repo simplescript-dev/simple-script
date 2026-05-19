@@ -2,26 +2,7 @@
 
 import { DateTime } from "@/lib/datetime"
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println(`FAIL: ${msg}`)
-        exit(1)
-    }
-}
-
-function assertEq(actual: int, expected: int, msg: string) {
-    if (actual != expected) {
-        println(`FAIL: ${msg} - expected ${expected}, got ${actual}`)
-        exit(1)
-    }
-}
-
-function assertStr(actual: string, expected: string, msg: string) {
-    if (actual != expected) {
-        println(`FAIL: ${msg} - expected "${expected}", got "${actual}"`)
-        exit(1)
-    }
-}
+import { assertEq, assertStr } from "./import/asserts"
 
 function main() {
     // ── epoch (1970-01-01 00:00:00 UTC) ─────────────────────

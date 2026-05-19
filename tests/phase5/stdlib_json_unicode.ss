@@ -1,25 +1,6 @@
 import { JSON, JsonNode } from "@/lib/json"
 
-function assert(cond: int, msg: string) {
-    if (cond == 0) {
-        println(`FAIL: ${msg}`)
-        exit(1)
-    }
-}
-
-function assertEq(actual: string, expected: string, msg: string) {
-    if (actual != expected) {
-        println(`FAIL: ${msg} — expected "${expected}", got "${actual}"`)
-        exit(1)
-    }
-}
-
-function assertInt(actual: int, expected: int, msg: string) {
-    if (actual != expected) {
-        println(`FAIL: ${msg} — expected ${expected}, got ${actual}`)
-        exit(1)
-    }
-}
+import { assert, assertEq, assertInt } from "./import/asserts"
 
 function main() {
     // ── Basic ASCII via \uXXXX ──────────────────────────────
