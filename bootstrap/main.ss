@@ -427,22 +427,29 @@ function cmdTest() {
     const selfBin = arg(0)
     const startTime = timeMs()
 
+    // I029: 进程唯一临时目录 —— 并发 bin/ss test 不得共享固定 /tmp 路径(并行
+    // 脚本 / 每测试二进制 / 结果文件),改由 mktemp -d 原子创建私有目录承载全部
+    // 产物(对标 I026 cmdRun;go test 同样 per-invocation 唯一临时目录)。
+    const testRunDir = shell("mktemp -d /tmp/ss_test_run.XXXXXX").trim()
+    if (testRunDir == "") { println("error: mktemp -d failed"); exit(1) }
+
     // Generate parallel test script — limit concurrency to nproc
     let script = "#!/bin/bash\nMAX_JOBS=$(nproc)\nRUNNING=0\n"
     const files = testFileList.split("\n")
     let idx = 0
     for (f in files) {
         if (f == "") { continue }
-        const outBin = `/tmp/ss_test_${idx}`
-        const resFile = `/tmp/ss_res_${idx}`
+        const outBin = `${testRunDir}/test_${idx}`
+        const resFile = `${testRunDir}/res_${idx}`
         script = script + `(${selfBin} build ${f} -o ${outBin} >/dev/null 2>&1 && timeout 5 ${outBin} >/dev/null 2>&1; echo $? > ${resFile}) &\n`
         script = script + "RUNNING=$((RUNNING+1)); if [ $RUNNING -ge $MAX_JOBS ]; then wait -n; RUNNING=$((RUNNING-1)); fi\n"
         idx = idx + 1
     }
     script = script + "wait\n"
 
-    writeFile("/tmp/ss_test_par.sh", script)
-    system("bash /tmp/ss_test_par.sh")
+    const scriptPath = `${testRunDir}/par.sh`
+    writeFile(scriptPath, script)
+    system(`bash ${scriptPath}`)
 
     // Collect results
     let passed = 0
@@ -450,7 +457,7 @@ function cmdTest() {
     let i = 0
     for (tf in files) {
         if (tf == "") { continue }
-        const resFile = `/tmp/ss_res_${i}`
+        const resFile = `${testRunDir}/res_${i}`
         const res = readFile(resFile).trim()
         if (res == "0") {
             passed = passed + 1
@@ -461,8 +468,8 @@ function cmdTest() {
         i = i + 1
     }
 
-    // Cleanup
-    system(`rm -f /tmp/ss_test_par.sh /tmp/ss_test_* /tmp/ss_res_*`)
+    // Cleanup —— 只删本进程私有目录,不 glob /tmp 触他进程文件(I029)
+    system(`rm -rf ${testRunDir}`)
 
     println("")
     const elapsed = timeMs() - startTime
@@ -588,7 +595,7 @@ function cmdPublish() {
 // ── ss clean ──────────────────────────────────────────────────
 
 function cmdClean() {
-    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output* /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh")
+    system("rm -rf /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output* /tmp/ss_test_run.*")
     println("cleaned /tmp/ss_* build artifacts")
 }
 

@@ -1,0 +1,38 @@
+[meta]
+type = bugfix
+title = bin/ss test 的 cmdTest 固定共享 /tmp 路径非并发安全 — /tmp/ss_test_<idx>(idx 每次从 0 重数)、/tmp/ss_res_<idx>、/tmp/ss_test_par.sh 三类跨进程固定路径,并发 bin/ss test 在其上 race(build 覆写撕裂二进制致段错误、cleanup glob 跨进程销毁);cmdTest 起手改 mktemp -d 进程唯一目录承载全部产物 + rm -rf 自有目录
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = cmdTest(bootstrap/main.ss:420)拼并行 test 脚本用三类跨进程固定路径:/tmp/ss_test_${idx} 每测试二进制、/tmp/ss_res_${idx} 退出码结果文件、/tmp/ss_test_par.sh 并行脚本;${idx} 每次 cmdTest 调用从 0 重数(:433 let idx = 0)。bin/ss test 是无互斥的普通 CLI,任意两个并发执行 → 在这些路径 race:一方 bin/ss build 写 /tmp/ss_test_5 时另一方覆写 → timeout 5 exec 撕裂半截二进制 → 段错误;一方 cleanup rm -f /tmp/ss_test_* /tmp/ss_res_* 删另一方在跑的二进制与结果文件 → readFile(resFile) 读空误判 FAIL;writeFile /tmp/ss_test_par.sh 互相覆写 → 非确定 test 失败 / 段错误 / flaky,易误判为 codegen 非确定(I025/I026/I027 同类误诊史)。I028 §关联观察 明列为下游 issue 候选
+
+[isolate]
+# 回归测试 tests/phase5/i029_cmdtest_tmp_path_concurrency.ss:确定性、无 race、零嵌套 ——
+# cmdTest 的行为驱动测试会在 bin/ss test 内嵌套 bin/ss test、与外层并行 runner race
+# (I028 §isolate 同款约束),故核对编译器源码:提取 bootstrap/main.ss 的 cmdTest 函数体,
+# 断言不含固定共享路径字面值 /tmp/ss_test_$ /tmp/ss_res_$ /tmp/ss_test_par、且含 mktemp -d。
+# 修复前 cmdTest 含 /tmp/ss_test_${idx} → exit 2;修复后改 mktemp -d 进程唯一目录 → exit 0。
+# stash_exit 量于 cmdTest 改动 + bootstrap 之前(main.ss 仍为旧未修复版):
+# bin/ss build tests/phase5/i029_cmdtest_tmp_path_concurrency.ss -o /tmp/i029_stash && /tmp/i029_stash → exit 2
+test_file = tests/phase5/i029_cmdtest_tmp_path_concurrency.ss
+stash_exit = 2
+
+[analyze]
+broken = cmdTest(bootstrap/main.ss,改前 :436/:437/:444/:453/:465)用三类跨进程固定 /tmp 路径承载并行 test 构建中间态:outBin = `/tmp/ss_test_${idx}`、resFile = `/tmp/ss_res_${idx}`、并行脚本 /tmp/ss_test_par.sh。${idx} 是 per-index 但 :433 let idx = 0 每次 cmdTest 调用从 0 重数 → 跨进程必复用同一组 0..N-1;脚本路径是跨进程固定常量。bin/ss test 是无文件锁 / 无 PID 命名空间 / 无任何互斥的普通 CLI;cleanup rm -f /tmp/ss_test_* /tmp/ss_res_*(:465)又以 glob 跨进程销毁他进程文件
+why = const outBin = `/tmp/ss_test_${idx}`(及 resFile / /tmp/ss_test_par.sh 两个同族)隐含未校验假设「同一时刻至多一个 bin/ss test 进程占用 /tmp/ss_test_* / /tmp/ss_res_* / /tmp/ss_test_par.sh 这组路径」—— 破裂:CI 矩阵并行 / 开发者多终端 / 测试内 system("bin/ss test …") 嵌套 → 多个 bin/ss test 天然并发。${idx} 从 0 重数把「进程私有的测试构建中间态」误当「全局单例资源」。设计缺口:cmdTest 在「为本次 test run 选择编译输出 / 结果 / 脚本路径」这步选了与进程身份无关的常量与每次从 0 重数的索引,路径不携带任何 per-invocation 唯一性;cleanup 又用 glob 跨进程销毁
+fix = cmdTest 起手(testRunDir 诞生点)由 OS race-free 唯一目录原语生成进程私有命名空间:const testRunDir = shell("mktemp -d /tmp/ss_test_run.XXXXXX").trim() + 空值 guard。三类产物改 ${testRunDir}/test_${idx} / ${testRunDir}/res_${idx} / ${testRunDir}/par.sh,bin/ss build 派生的 .ll/.o/.ll.str 亦全落目录内 → 整个 test run 磁盘态进程私有;cleanup rm -f /tmp/ss_test_* /tmp/ss_res_* 改 rm -rf ${testRunDir}(仅删本进程目录、glob-free、不触他进程)—— 同时根治 cleanup 跨进程销毁。cmdClean glob /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh → /tmp/ss_test_run.*(rm -f → rm -rf 删目录)。对标 I026 cmdRun / go test 的 per-invocation 唯一临时目录。方案对比 i029_cmdtest_tmp_path_concurrency.options.md(bug_options_linter 6/6 GATE OK):候选 C 架构层 mktemp -d 单目录比 next_prompt prescription「逐路径 mktemp」上推一格 —— 消除共享命名空间本身(非仅去重名字)、一次 mktemp、cleanup glob-free
+# same_pattern 排查:grep -rn '/tmp/' bootstrap/ —— cmdRun(:381)已 I026 mktemp、cmdBuild 实测 -o 由调用方传无硬编码、gen_rt_cache 已 I028 整删;cmdTest 三类固定路径本轮一次全改 mktemp -d 目录,无残留实例 → same_pattern_count = 0
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 1
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 331
+test_failed = 4
+test_known_fail = 4
