@@ -344,11 +344,12 @@ function generateToFile(rootId: int, outFile: string) {
     emitPendingDeserializers()
     irOutFile = ""
     const body = readFile(outFile)
-    // D168 §B.5 + §C.2: %String / %Array type forward-decl 必须在常量 initializer 之前(LLVM IR
-    // forward reference rule: opaque type 的 init 默认 0 字段会让 5 字段 init 报 "wrong # elements")。
-    // header → typeDecl → str → body 的拼装顺序确保 LLVM 解析常量初始化器时已知 %String / %Array
-    // 5 字段布局,且所有 GEP %Array 引用(P2.2 切轨后含 ss_rc_destroy_array_ptrs)都在声明之后。
-    const typeDecl = "%String = type { i64, ptr, ptr, i64, i64 }\n%Array = type { i64, ptr, ptr, i64, i64 }\n"
+    // D168 §B.5 + §C.2 + §D.1: %String / %Array / %Map type forward-decl 必须在常量 initializer 之前
+    // (LLVM IR forward reference rule: opaque type 的 init 默认 0 字段会让多字段 init 报 "wrong # elements")。
+    // header → typeDecl → str → body 的拼装顺序确保 LLVM 解析常量初始化器时已知三者布局,
+    // 且所有 GEP 引用(%Array P2.2 / %Map §D.3 @Map_type_info + ss_drop_Map)都在声明之后。
+    // %Map = inline buckets(§D.1 选项 1):{ i64 rc, ptr TypeInfo, [64 x ptr] buckets, i32 size, i32 val_type } 536B。
+    const typeDecl = "%String = type { i64, ptr, ptr, i64, i64 }\n%Array = type { i64, ptr, ptr, i64, i64 }\n%Map = type { i64, ptr, [64 x ptr], i32, i32 }\n"
     writeFile(outFile, `; ModuleID = 'simplescript'\nsource_filename = "simplescript"\n\n${typeDecl}${readFile(`${outFile}.str`)}\n${body}`)
 }
 

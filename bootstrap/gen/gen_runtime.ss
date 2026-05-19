@@ -615,6 +615,10 @@ function emitRuntimeRC() {
     // D168 §C.3: 内置 Array 双份 TypeInfo + per-type 函数 + ss_alloc_array helper
     // P2.1 dead-code 元数据;P2.2 连接字面量发射 + GEP +3 + dispatch 路由
     emitArrayTypeInfo()
+
+    // D168 §D.3: 内置 Map TypeInfo + per-type 函数(P3.1 dead-code 元数据)
+    // P3.2 才连接 ss_mapNew→mi_calloc + emitRetain/ReleaseForType isMapType dispatch
+    emitMapTypeInfo()
 }
 
 // D168 §B.5: %String = { i64 rc, ptr TypeInfo, ptr buffer, i64 len, i64 cap } 间接 buffer 布局
@@ -942,6 +946,99 @@ function emitArrayTypeInfo() {
     emitIR("  %cap_ptr = getelementptr %Array, ptr %hdr, i32 0, i32 4")
     emitIR("  store i64 %cap, ptr %cap_ptr, align 8")
     emitIR("  ret ptr %hdr")
+    emitIR("}")
+    emitIR("")
+}
+
+// D168 §D.3: %Map = { i64 rc, ptr TypeInfo, [64 x ptr] buckets, i32 size, i32 val_type } 536B
+// §D.1 选项 1 inline buckets:桶数固定 64 永不 realloc,头 16B 由 [rc|tag|magic] 换 [rc|TypeInfo]。
+// Map 引用/容器类型:deep_clone = shallow_clone = retain self(对称 ss_shallow_clone_String)。
+// P3.1 dead-code 元数据;P3.2 才连接 ss_mapNew→mi_calloc + emitRetain/ReleaseForType dispatch。
+function emitMapTypeInfo() {
+    // %Map struct type 已在 codegen.ss typeDecl prepend(与 %String/%Array 同模式),此处不 emit。
+
+    // 类型名常量
+    emitIR("@.rt.str.Map = private constant [4 x i8] c\"Map\\00\"")
+    emitIR("")
+
+    // ss_drop_Map — ss_rc_destroy_map 按 NEW 布局重写:val_type@532、buckets@16(typed GEP)、
+    // entry.key 裸 cstr free(§D.4)、val_type==1 则 ss_release_any(entry.value)、末尾 ss_dealloc(map)。
+    // NEW 体系 drop_fn 一手包办含释放对象块(对照 ss_drop_String:mi_free(buf)+ss_dealloc)。
+    emitIR("define void @ss_drop_Map(ptr %map) {")
+    emitIR("entry:")
+    emitIR("  %ia = alloca i64, align 8")
+    emitIR("  %ea = alloca ptr, align 8")
+    emitIR("  %na = alloca ptr, align 8")
+    emitIR("  %vtpp = getelementptr i8, ptr %map, i64 532")
+    emitIR("  %vtp = load i32, ptr %vtpp, align 4")
+    emitIR("  %val_is_ptr = icmp eq i32 %vtp, 1")
+    emitIR("  store i64 0, ptr %ia, align 8")
+    emitIR("  br label %bucket.loop")
+    emitIR("bucket.loop:")
+    emitIR("  %i = load i64, ptr %ia, align 8")
+    emitIR("  %done = icmp eq i64 %i, 64")
+    emitIR("  br i1 %done, label %ret, label %bucket.body")
+    emitIR("bucket.body:")
+    emitIR("  %bp = getelementptr %Map, ptr %map, i32 0, i32 2, i64 %i")
+    emitIR("  %e0 = load ptr, ptr %bp, align 8")
+    emitIR("  store ptr %e0, ptr %ea, align 8")
+    emitIR("  br label %entry.loop")
+    emitIR("entry.loop:")
+    emitIR("  %e = load ptr, ptr %ea, align 8")
+    emitIR("  %enull = icmp eq ptr %e, null")
+    emitIR("  br i1 %enull, label %bucket.next, label %entry.body")
+    emitIR("entry.body:")
+    emitIR("  %enp = getelementptr i8, ptr %e, i64 16")
+    emitIR("  %next = load ptr, ptr %enp, align 8")
+    emitIR("  store ptr %next, ptr %na, align 8")
+    emitIR("  %key = load ptr, ptr %e, align 8")
+    emitIR("  call void @free(ptr %key)")
+    emitIR("  br i1 %val_is_ptr, label %rel.val, label %free.entry")
+    emitIR("rel.val:")
+    emitIR("  %vp2 = getelementptr i8, ptr %e, i64 8")
+    emitIR("  %vi = load i64, ptr %vp2, align 8")
+    emitIR("  %vptr = inttoptr i64 %vi to ptr")
+    emitIR("  call void @ss_release_any(ptr %vptr)")
+    emitIR("  br label %free.entry")
+    emitIR("free.entry:")
+    emitIR("  call void @free(ptr %e)")
+    emitIR("  %nv = load ptr, ptr %na, align 8")
+    emitIR("  store ptr %nv, ptr %ea, align 8")
+    emitIR("  br label %entry.loop")
+    emitIR("bucket.next:")
+    emitIR("  %ni = load i64, ptr %ia, align 8")
+    emitIR("  %ni1 = add i64 %ni, 1")
+    emitIR("  store i64 %ni1, ptr %ia, align 8")
+    emitIR("  br label %bucket.loop")
+    emitIR("ret:")
+    emitIR("  call void @ss_dealloc(ptr %map)")
+    emitIR("  ret void")
+    emitIR("}")
+    emitIR("")
+
+    // ss_deep_clone_Map / ss_shallow_clone_Map — Map 引用类型,clone = retain self + 返 self
+    emitIR("define ptr @ss_deep_clone_Map(ptr %p) {")
+    emitIR("entry:")
+    emitIR("  call void @ss_retain(ptr %p)")
+    emitIR("  ret ptr %p")
+    emitIR("}")
+    emitIR("")
+    emitIR("define ptr @ss_shallow_clone_Map(ptr %p) {")
+    emitIR("entry:")
+    emitIR("  call void @ss_retain(ptr %p)")
+    emitIR("  ret ptr %p")
+    emitIR("}")
+    emitIR("")
+
+    // @Map_type_info(class_id=-4;Set 共用此 TypeInfo);size = sizeof(%Map) = 536
+    emitIR("@Map_type_info = constant %TypeInfo {")
+    emitIR("  ptr @ss_drop_Map,")
+    emitIR("  ptr @ss_deep_clone_Map,")
+    emitIR("  ptr @ss_shallow_clone_Map,")
+    emitIR("  i64 ptrtoint (ptr getelementptr (%Map, ptr null, i32 1) to i64),")
+    emitIR("  ptr @.rt.str.Map,")
+    emitIR("  i32 -4,")
+    emitIR("  ptr null")
     emitIR("}")
     emitIR("")
 }

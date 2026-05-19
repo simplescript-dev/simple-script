@@ -34,24 +34,25 @@
 # bump-group M3a=13559/13700 M3b=2405/2470 F1:bootstrap/gen/gen_runtime.ss=958/985 trail=D168#扩容申报-P2.1-emitArrayTypeInfo date=2026-05-10
 # bump F1:bootstrap/gen/gen_runtime.ss 985→1000 trail=D168#扩容申报-Phase3-map date=2026-04-22
 # bump F1:bootstrap/gen/gen_calls.ss 740→750 trail=D168#扩容申报-Phase3-map date=2026-04-22
+# bump-group M2=86400 M3b=2540 N2=432000 F1:bootstrap/gen/gen_runtime.ss=1100 trail=D168#扩容申报-P3.1-emitMapTypeInfo date=2026-04-22
 M1=5731:5750
-M2=85203:84600
+M2=85203:86400
 M3a=13584:13700
-M3b=2426:2470
+M3b=2426:2540
 M4=3326:3400
 M5=1917:1900
 M6=38:40
 M7a=27:27
 M7b=728:750
 N1=35:35
-N2=426015:423000
+N2=426015:432000
 N3=586108:584000
 N4=352:350
 N5=0:0
 F1:bootstrap/parse/parser.ss=884:885
 F1:bootstrap/parse/parse_stmts.ss=616:616
 F1:bootstrap/main.ss=640:645
-F1:bootstrap/gen/gen_runtime.ss=991:1000
+F1:bootstrap/gen/gen_runtime.ss=991:1100
 F1:bootstrap/gen/methods/gen_methods.ss=707:730
 F1:bootstrap/gen/gen_calls.ss=746:750
 F1:bootstrap/gen/gen_decls.ss=745:745

@@ -1,6 +1,6 @@
 # D168: 统一双 RC 系统为 Perceus 主线
 
-**Status:** Phase 1 String closed 2026-05-10;Phase 2 closed;**Phase 3 进行中** —— Map value RC(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(2026-05-19:codegen-local RC 全栈 magic 分派 `ss_*_any` + `isRcManaged` 门;`ss_mapSet`-update/`ss_mapDelete` 真实 release)closed;Map header→ObjHeader 子设计见 §D(P3.1-P3.3,2026-05-19 drafted)。d095(`docs/4-issues/I024`)/I025「半迁移不平衡」根因经 §C.11 消除
+**Status:** Phase 1 String closed 2026-05-10;Phase 2 closed;**Phase 3 进行中** —— Map value RC(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(2026-05-19:codegen-local RC 全栈 magic 分派 `ss_*_any` + `isRcManaged` 门;`ss_mapSet`-update/`ss_mapDelete` 真实 release)closed;Map header→ObjHeader 子设计见 §D(2026-05-19 drafted);P3.1 `emitMapTypeInfo` dead-code 元数据 closed 2026-05-19(§扩容申报-P3.1),P3.2-P3.3 Planned。d095(`docs/4-issues/I024`)/I025「半迁移不平衡」根因经 §C.11 消除
 **Depends on:** axiom C2/C4/V4(`docs/1-axioms.md:8,10,19`);相关 D164(PIR liveness 落地证据)
 **Date:** 2026-05-10
 **Last Updated:** 2026-05-19
@@ -105,7 +105,7 @@
 | **Phase 0.5** | 用户 close §未决策 D1/D2/D3 → §A.3 锁定(D1=A / D2=c / D3=ii) | [x] 2026-05-10 | 本对话 ultrathink 业界对标轮 + 用户 "全部接受推荐" |
 | **Phase 1** | **String 切轨** — `[rc:i64 \| TypeInfo*]` ObjHeader + mimalloc + `@String_type_info` + 字面量 boxed immortal(D1=A) + 全栈 string GEP 偏移修正(§B 9 节子设计落地) | [x] 2026-05-10 | P1.1 `cd72998` + P1.2 `9edf09b` + P1.3 `0583e6a`;bootstrap stage2==stage3 PASS;全测 310/17/327 0 regression;P1.4 (b)(c) 路径全测隐式覆盖,性能 bench 推 Phase 5 |
 | **Phase 2** | **Array 切轨** — `Array<T>` 双份 TypeInfo(D2=c scalar/ref)+ 元素 retain/release 走元素 vtable + Array slice/concat 适配(§C 10 节子设计 + P2.1-P2.4 子分阶段) | [ ] Planned | bootstrap + Array 测试 |
-| **Phase 3** | **Map 切轨** — value retain + Map-death release(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(codegen-local RC magic 分派 + update/delete 真实 release)落地 2026-05-19;Map header→ObjHeader 子设计 §D(P3.1-P3.3) | [~] value-RC 半 done(§C.10-map+§C.11);header 迁移半 §D drafted,P3.1-P3.3 Planned | bootstrap 三阶段 bit-identical ✓ + 全测 324/4 = baseline 0 regression |
+| **Phase 3** | **Map 切轨** — value retain + Map-death release(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(codegen-local RC magic 分派 + update/delete 真实 release)落地 2026-05-19;Map header→ObjHeader 子设计 §D(P3.1-P3.3) | [~] value-RC 半 done(§C.10-map+§C.11);header 迁移半 §D:P3.1 done 2026-05-19,P3.2-P3.3 Planned | bootstrap 三阶段 bit-identical ✓ + 全测 325/4 = baseline 0 regression |
 | **Phase 4** | **删除旧系统** — 移除 `ss_rc_retain/release/release_no_children/destroy_array_ptrs/destroy_map`,`emitRetainForType` 退化为单一 `call @ss_retain` | [ ] Planned | bootstrap + grep `ss_rc_*` 命中 = 0 |
 | **Phase 5** | **PIR 全覆盖** — pir_lower/pir_opt 把 string/Array/Map 纳入 liveness,删除 codegen 路径手工 emit retain/release(消除 30+ 调用点) | [ ] Planned | bootstrap + 性能 micro-bench(可选) |
 
@@ -359,6 +359,23 @@ memory `project_perceus_design.md` "Plan A: freeze seed compiler" **不复用**,
 | F1:bootstrap/gen/gen_calls.ss | 740 | 750 | +10 | **P2.3a(`c95797a`)遗留未申报** —— `genArrayLit` 固定/spread retain 补丁致 cur 746 > 旧 bm 740(`git diff HEAD -- gen_calls.ss` 证本轮 diff 不触此文件);D168 同族 RC 续作一并 regularize budget 登记,非本轮新增代码。 |
 
 **根因解决度**:gen_runtime 扩容是 §C.10-map RC 分派基础设施落地的直接副作用,`emitAnyRcDispatch` DRY-factor 后已压到不可再降;gen_calls 是 P2.3a 历史 budget 登记遗漏的补全(代码本身 P2.3a 已 commit)。本轮 `map_rc.options.md` 未预估反射指标(value RC 改动以行为正确为主目标),无预估对账基线。
+
+---
+
+## §扩容申报-P3.1-emitMapTypeInfo
+
+| metric | bm_old | bm_new | delta | 业务理由 |
+|---|---|---|---|---|
+| M2 | 84600 | 86400 | +1800 | `emitMapTypeInfo()` ~97 行 SS + ~60 行 `emitIR` 字符串字面量 → 反射调用图节点/边累增;cur 85537、bv 85203 已 AUTO-DRIFT 软债(bv > bm_old,1% 带内),P3.1 形态升级 delta 把 cur 顶过 1% 容忍 → bm_new = cur + ~1% buffer。含 `4349eb7`(已 commit generic-mono fix,gen_calls.ss)残留 regularize(对称 §扩容申报-Phase3-map 的 P2.3a 残留登记)。 |
+| M3b | 2470 | 2540 | +70 | 反射可见 IR 行数:`ss_drop_Map`(bucket loop + entry walk ~40 行)+ `ss_deep/shallow_clone_Map` + `@Map_type_info`/`@.rt.str.Map` 常量;cur 2502。同 §扩容申报-P2.1 emitArrayTypeInfo 模式(P3.1 单份 TypeInfo + 3 函数 < P2.1 双份 + 6 函数 → delta 远小)。 |
+| N2 | 423000 | 432000 | +9000 | `emitMapTypeInfo` 全文 AST 节点(~97 行 SS 源,每 `emitIR` 调用含 1 长字符串字面量 arg → 字面量节点密集);cur 427685、bv 426015 同 AUTO-DRIFT 软债顶过 1%。 |
+| F1:bootstrap/gen/gen_runtime.ss | 1000 | 1100 | +100 | `emitMapTypeInfo()` 函数定义 +97 行(文件 991→1088);delta 100% P3.1(`git diff` 证 gen_runtime.ss 唯一改动 = 本函数,`4349eb7` 不触此文件);bm_new = cur 1088 + 12 buffer。同 §扩容申报-P2.1(958→985)/ Phase3-map(985→1000)的 emitXxxTypeInfo 累积模式。 |
+
+**AUTO-DRIFT(列出不 bump — 软债 1% 带内可见跟踪,D097 设计)**:M5 cur=1918/bm=1900、N3 cur=587564/bm=584000、N4 cur=352/bm=350 —— 均 ≤ bm×1.01,gate 不阻,P3.1 不专门 bump。
+
+**根因解决度**:P3.1 是 D168 §D.3 子决策落地(emit Map per-type 元数据 dead-code 占位 SSoT;P3.2 才连接 `ss_mapNew`→`mi_calloc` + dispatch 路由)—— 本扩容是「形态升级:容器 Array→Map per-type 元数据」的直接副作用、非冗余实现:`emitMapTypeInfo` 与 `emitStringTypeInfo`/`emitArrayTypeInfo` 同模式,3 个 simplify agent 实证无可压缩冗余(reuse/quality/efficiency 均匹配 sibling idiom)。本地抵消不适用(emit IR 是 RC 元数据不可压缩底座);拆 commit 不适用(P3.1 已是 §D.9 最小原子子阶段)。MNK §反射 gate B 路径三选一锁定 (b) 升 baseline + §扩容申报。
+
+**对账(预估 vs 实测)**:next_prompt 蓝图未含反射指标预估(P3.1「commit 暂泊死代码」收尾轮蓝图聚焦 bootstrap + test)→ 无预估对账基线(对称 §扩容申报-Phase3-map)。实测 cur:M2 85537 / M3b 2502 / N2 427685 / F1 gen_runtime.ss 1088。下轮 P3.2 §扩容申报 预估前置:P3.2 是「替换 emit 类型」(`ss_mapNew` alloc 切 + 全栈 GEP 偏移替换,§扩容申报-P2.2 模式)→ 反射指标预估 ±0(行数等量替换)。
 
 ---
 
@@ -846,7 +863,7 @@ grep -c 'ss_rc_calloc' bootstrap/gen/rt/gen_rt_map.ss
 
 | 子阶段 | 范围 | 触达 | Status |
 |---|---|---|---|
-| **P3.1** | §D.3 `emitMapTypeInfo` dead-code 元数据(`%Map` type 入 `codegen.ss` typeDecl + `@Map_type_info` + `ss_drop_Map` + `ss_deep_clone_Map`/`ss_shallow_clone_Map`;P3.2 才连接到 `ss_mapNew` + dispatch)| gen_runtime.ss(`emitMapTypeInfo`)/ codegen.ss(`%Map` prepend) | [ ] Planned |
+| **P3.1** | §D.3 `emitMapTypeInfo` dead-code 元数据(`%Map` type 入 `codegen.ss` typeDecl + `@Map_type_info` + `ss_drop_Map` + `ss_deep_clone_Map`/`ss_shallow_clone_Map`;P3.2 才连接到 `ss_mapNew` + dispatch)| gen_runtime.ss(`emitMapTypeInfo`)/ codegen.ss(`%Map` prepend) | [x] 2026-05-19 落地(bootstrap 三阶段 stage2==stage3 bit-identical + 全测 325/4 0 regression + §D.7 RED 0→6 符号;reflection bump 见 §扩容申报-P3.1) |
 | **P3.2** | **全或无原子大改**:§D.2 `ss_mapNew`→`mi_calloc` ObjHeader + §D.6 全栈 GEP(6 桶 GEP 经 `irMapBucketPtr` / size 512→528 / val_type 516→532 runtime+codegen 6 处)+ §D.4 entry.key `ss_rc_strdup`→`strdup` + §D.5 `emitRetain/ReleaseForType` 加 `isMapType`。任何中间态即崩(§C.9-exec/§C.11「全或无」实证)| gen_rt_map.ss / ir_builder.ss(`irMapBucketPtr`)/ gen_builtins.ss / gen_decls.ss / gen_deserialize.ss / class/class.ss | [ ] Planned |
 | **P3.3** | 综合大测 + `Map<嵌套>` / `Set` / Map-as-class-field / `Array<Map>` 验证 + Phase 3 close | 全测 + bootstrap | [ ] Planned |
 
