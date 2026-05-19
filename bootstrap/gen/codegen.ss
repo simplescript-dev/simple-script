@@ -8,7 +8,6 @@ import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenC
 import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { internPoolGetOrInsert } from "../lexer/intern_pool"
 import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./ir_builder"
-import { buildRuntimeCache, runtimeCacheObj, runtimeCacheDecls, useRuntimeCache } from "./rt/gen_rt_cache"
 import { initVarAliases, varCounter, varAliasReady } from "./gen_var_alias"
 import { emitIR, nextReg, nextLabel, addStringConst, irBuf, strConsts, strCount, irOutFile, strOutFile, regCount, regTable, labelCount } from "./gen_emit"
 import { emitPendingDeserializers, deserializerTargets } from "./gen_deserialize"
@@ -329,12 +328,7 @@ function generateToFile(rootId: int, outFile: string) {
     irOutFile = outFile
     writeFile(outFile, "")
     writeFile(`${outFile}.str`, "")
-    if (useRuntimeCache == 1 && fileExists(runtimeCacheDecls) == 1 && fileExists(runtimeCacheObj) == 1) {
-        appendFile(outFile, readFile(runtimeCacheDecls))
-    } else {
-        emitRuntimeDefs()
-        useRuntimeCache = 0
-    }
+    emitRuntimeDefs()
     registerAllDecls(rootId)
     emitGlobalsAndCode(rootId)
     flushPendingCtClasses()

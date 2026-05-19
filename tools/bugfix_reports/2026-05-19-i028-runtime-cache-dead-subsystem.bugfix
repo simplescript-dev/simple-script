@@ -1,0 +1,41 @@
+[meta]
+type = bugfix
+title = 运行时 IR 缓存子系统(gen_rt_cache.ss / buildRuntimeCache)是死代码 —— 确定性 llc 失败 + 无消费者,删整个 dead 子系统
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = 每次 bin/ss test 起手把 "llc-18: error: /tmp/ss_rt_cache.ll:NNN: base element of getelementptr must be sized" 喷到终端。错误被 buildRuntimeCache 的 llc 失败路径(llc 非零 → rm -f + return)吞掉、非阻挡测试,但每轮 bin/ss test 都污染终端;且该确定性错误已误导一次 —— I027 收尾把它当 concurrency race 误判。单进程零并发 "rm -f /tmp/ss_rt_cache.*; bin/ss test <dir>" 即确定性重现,与并发无关。
+
+[isolate]
+# 回归测试 tests/phase5/i028_runtime_cache_dead_subsystem.ss:确定性、无 race、零嵌套 bin/ss test ——
+# 死缓存子系统由编译器源码本身坐实,直接核对 bootstrap/ 源码:(a) gen_rt_cache.ss 文件不存在;
+# (b) 该子系统四个缓存符号在 bootstrap/ 全删干净。修复前 buggy 源码该文件在 → exit 2;修复后整体删 → exit 0。
+# 为何不行为驱动:bug 由 cmdTest 触发,嵌套 bin/ss test 会与外层 tests/ 并行 runner 在固定路径
+# /tmp/ss_test_par.sh /tmp/ss_test_<idx> 上 race(I028 §关联观察 明列的独立 bug)—— 死代码已删 即 llc
+# 噪音已除,源码核对是该死子系统不复现的精确、无 race 守卫;行为层 RED→GREEN 由 [verify] 单进程实测。
+# stash_exit 量于源码删除 + bootstrap 之前(gen_rt_cache.ss 仍在):
+# bin/ss run tests/phase5/i028_runtime_cache_dead_subsystem.ss → exit 2
+test_file = tests/phase5/i028_runtime_cache_dead_subsystem.ss
+stash_exit = 2
+
+[analyze]
+broken = gen_rt_cache.ss 的 buildRuntimeCache() 在 cmdTest(main.ss:428)起手构建运行时 IR 缓存 /tmp/ss_rt_cache.{o,decls},子系统双重失效。层 1:它把 emitRuntimeDefs() 输出加 ; ModuleID 头直接喂 llc-18 -filetype=obj,但 emitRuntimeDefs 只定义 %TypeInfo/%ObjHeader,不定义 %String/%Array/%Map(后三者唯一定义点是 generateToFile 的 typeDecl 常量 codegen.ss:352,buildRuntimeCache 不 prepend)→ 运行时 IR 含 getelementptr %Array 引用未定义类型 → llc verifier base element of getelementptr must be sized 确定性失败。层 2:即使层 1 修好,产出的 .o/.decls 也无消费者 —— 读取分支 codegen.ss:332 与 main.ss:640 全部 gated on useRuntimeCache 旗标。
+why = 两条未校验假设均破裂。假设① emitRuntimeDefs 的 IR 自包含、可独立喂 llc 破裂:运行时 IR 对 %String/%Array/%Map 的 GEP 引用依赖 generateToFile 才 prepend 的 typeDecl,buildRuntimeCache 独立成模块时缺这三个 typedecl。假设② 构建出的缓存会被某编译路径消费 破裂:消费者全部 gated on 缓存旗标==1,而该旗标只在不执行 compile() 的 cmdTest 父进程(main.ss:429)置 1,执行 compile() 的 bin/ss build 子进程恒 0 —— 生产者与消费者永不在同一进程。注释提的 CLI --rt-cache driver 全仓不存在(grep -rn -- --rt-cache 仅命中该注释自身)。∴ 缓存每次构建、从未被读、且当前还构建失败 —— 整子系统 broken + dead。
+fix = 删整个 dead 运行时 IR 缓存子系统(架构层,对标 I027 b0e272c 删多余机制根层手法):删 bootstrap/gen/rt/gen_rt_cache.ss 整文件;删 codegen.ss:11 对它的 import;codegen.ss generateToFile 里 if(缓存旗标...){appendFile...}else{emitRuntimeDefs...} 整 if/else 退化为单行 emitRuntimeDefs();删 main.ss cmdTest 的 buildRuntimeCache 调用 + 旗标置位;删 compile() 链接步的 rtObj 变量与 if 分支(rtObj 恒空,musl-gcc 命令去掉 ${rtObj});删 cmdClean glob 里 /tmp/ss_rt_cache.*。行为等价坐实:generateToFile 唯一调用方 compile(),三条 compile 路径(cmdBuild/cmdRun/cmdBuildLegacy)均不置缓存旗标 → else 分支恒被取 → 替换为 emitRuntimeDefs() 对每条真实路径逐字节等价,bootstrap 三阶段固定点保持。方案对比见 I028.options.md(bug_options_linter 6/6 GATE OK):A 数据层补 typeDecl 只让死功能能 build 属表面、B 接口层接活缓存倒置依赖链(为死代码造消费者),选架构层 C 删整个子系统。
+# same_pattern 排查:全 bootstrap/「死缓存子系统」形态仅 gen_rt_cache.ss 一处(已整体删除)。
+# cmdTest 自身 /tmp/ss_test_par.sh /tmp/ss_test_<idx> 固定路径是「活代码并发 race」另一 bug 类
+# (I028 §关联观察 明列、留下游 issue),非「死子系统」同模式 → same_pattern_count = 0。
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 0
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 330
+test_failed = 4
+test_known_fail = 4

@@ -424,10 +424,6 @@ function cmdTest() {
     collectTestFiles(testDir)
     if (testFileCount == 0) { println("no test files found in " + testDir); exit(1) }
 
-    // Build runtime cache for faster compilation
-    if (fileExists(runtimeCacheObj) == 0) { buildRuntimeCache() }
-    useRuntimeCache = 1
-
     const selfBin = arg(0)
     const startTime = timeMs()
 
@@ -592,7 +588,7 @@ function cmdPublish() {
 // ── ss clean ──────────────────────────────────────────────────
 
 function cmdClean() {
-    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output* /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh /tmp/ss_rt_cache.*")
+    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output* /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh")
     println("cleaned /tmp/ss_* build artifacts")
 }
 
@@ -636,9 +632,7 @@ function compile(inputFile: string, outputFile: string, release: int, emitIr: in
     let linkFlags = "-static"
     if (release == 1) { linkFlags = "-static -O2 -s" }
     const mimallocObj = resolveRepoFile("vendor/mimalloc.o")
-    let rtObj = ""
-    if (useRuntimeCache == 1) { rtObj = runtimeCacheObj }
-    if (system(`musl-gcc ${linkFlags} ${objFile} ${rtObj} ${mimallocObj} -o ${outputFile} -lm`) != 0) {
+    if (system(`musl-gcc ${linkFlags} ${objFile} ${mimallocObj} -o ${outputFile} -lm`) != 0) {
         println("error: linking failed")
         exit(1)
     }
