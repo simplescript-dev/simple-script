@@ -1,0 +1,35 @@
+[meta]
+type = bugfix
+title = bin/ss run 编译输出路径非并发安全 — cmdRun 硬编码 outBin = "/tmp/ss_run_output" 共享固定常量,并发 bin/ss run 在该路径派生的 .ll/.ll.str/.o/二进制上 race;改为 shell(mktemp) 进程唯一路径 + run 毕清理
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = cmdRun(bootstrap/main.ss:379)const outBin = "/tmp/ss_run_output" 为跨进程固定常量;compile() 由它派生 /tmp/ss_run_output{.ll,.ll.str,.o}。任意两个 bin/ss run 并发执行 → 在这组路径上 race(musl-gcc 并发写同一二进制、一方 system() exec 运行中二进制时另一方 musl-gcc 覆写触 ETXTBSY/半截二进制、一方 llc 读 .ll 时另一方 generateToFile 覆写、一方 rm .o 时另一方 musl-gcc 仍需)→ 非确定编译失败 / 错误二进制 / flaky 测试,易误判为 codegen 非确定(I025 同类误判史)
+
+[isolate]
+# 回归测试 tests/phase5/i026_cmdrun_tmp_output_path.ss:确定性手法(无 race)——
+# bin/ss run 编译时 println("compiled: <outBin>"),连跑两次解析该路径;
+# 修复前两次恒为旧硬编码 "/tmp/ss_run_output"(p1 == 旧常量 → exit 3)。
+# stash_exit 量于 cmdRun 改动 + bootstrap 之前(bin/ss 仍为旧未修复版):
+# bin/ss build tests/phase5/i026_cmdrun_tmp_output_path.ss -o /tmp/i026_stash && /tmp/i026_stash → exit 3
+test_file = tests/phase5/i026_cmdrun_tmp_output_path.ss
+stash_exit = 3
+
+[analyze]
+broken = cmdRun(bootstrap/main.ss,改前 :379)const outBin = "/tmp/ss_run_output" —— 硬编码进程间共享常量路径。compile(inputFile, outBin, …) 由形参 outputFile 派生全部编译中间产物:generateToFile 写 outBin.ll(+ .ll.str)、llc-18 写 outBin.o、musl-gcc 链接出 outBin 二进制。四条路径 /tmp/ss_run_output{,.ll,.ll.str,.o} 全为跨进程固定常量,而 bin/ss run 是无任何互斥(无文件锁 / 无 PID 命名空间)的普通 CLI
+why = const outBin = "/tmp/ss_run_output" 隐含一个未校验假设「同一时刻至多一个 bin/ss run 进程占用这组路径」—— 破裂:CI 流水线 / 并行 test runner(bin/ss test 的 MAX_JOBS=nproc 并发)/ 开发者多终端 → 多个 bin/ss run 天然并发。固定常量路径把「进程私有的编译中间态」误当「全局单例资源」。设计缺口:cmdRun 在「为本次 run 选择编译输出路径」这一步选了一个与进程身份无关的常量,路径不携带任何 per-invocation 唯一性
+fix = cmdRun 在 outBin 赋值处(共享固定路径诞生的确切点)改由 OS 的 race-free 唯一临时文件原语生成路径:outBin = shell("mktemp /tmp/ss_run_output.XXXXXX").trim() + 空值 guard(mktemp 原子 O_EXCL 创建唯一文件,shell 经 popen 捕获其 stdout)。outBin 唯一 → compile() 派生的 .ll/.ll.str/.o 全唯一,compile() 签名与契约不动。cmdRun 在 run 毕 system(rm -f ${outBin}*) 清理本进程唯一产物(避免 mktemp 唯一化引入 /tmp 累积,glob 锚定本进程随机后缀不触他进程文件);cmdClean glob 同步 /tmp/ss_run_output → /tmp/ss_run_output*。对标 go run / cargo run 的 per-invocation 唯一临时路径。方案对比见 i026_cmdrun_tmp_output_path.options.md(bug_options_linter 6/6 GATE OK)
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 1
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 328
+test_failed = 4
+test_known_fail = 4

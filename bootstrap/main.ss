@@ -376,7 +376,10 @@ function cmdRun() {
         i = i + 1
     }
     if (inputFile == "") { println("error: no input file"); exit(1) }
-    const outBin = "/tmp/ss_run_output"
+    // I026: 进程唯一编译输出路径 —— 并发 bin/ss run 不得共享固定 /tmp 路径,
+    // 改由 mktemp 原子创建唯一文件(对标 go run / cargo run 的 per-invocation 临时路径)。
+    const outBin = shell("mktemp /tmp/ss_run_output.XXXXXX").trim()
+    if (outBin == "") { println("error: mktemp failed"); exit(1) }
     compile(inputFile, outBin, release, 0)
     let cmd = outBin
     if (runArgs != "") { cmd = cmd + " " + runArgs }
@@ -384,6 +387,7 @@ function cmdRun() {
     // 信号终止时低 7 位是信号号。直接 exit(wait-status) 会被 exit() 的
     // mod-256 截断使 1-255 全归 0;须解码后再退出,令 $? 与直接运行二进制一致。
     const rc = system(cmd)
+    system(`rm -f ${outBin}*`)  // I026: 清理本进程唯一编译产物,不留 /tmp 累积
     const sig = rc % 128
     if (sig == 0) { exit(rc / 256) }
     exit(128 + sig)
@@ -588,7 +592,7 @@ function cmdPublish() {
 // ── ss clean ──────────────────────────────────────────────────
 
 function cmdClean() {
-    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh /tmp/ss_rt_cache.*")
+    system("rm -f /tmp/ss_*.o /tmp/ss_*.ll /tmp/ss_*.ll.str /tmp/ss_run_output* /tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh /tmp/ss_rt_cache.*")
     println("cleaned /tmp/ss_* build artifacts")
 }
 
