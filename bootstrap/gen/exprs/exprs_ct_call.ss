@@ -114,9 +114,9 @@ function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamed
     if (name == "shellOutput") {
         if (ctArgVals.length() >= 1) {
             const soCmd = interpAsStr(parseInt(ctArgVals[0]))
-            const soTmp = "/tmp/ss_comptime_exec.tmp"
-            system(`${soCmd} > ${soTmp} 2>/dev/null`)
-            return ctVal(interpNewString(readFile(soTmp)))
+            // I027: 经 shell()(popen 直捕子进程 stdout)取命令输出,不落任何 /tmp 中转文件 ——
+            // 无中转路径即无并发编译进程的 race。2>/dev/null 保留原 shellOutput 丢弃 stderr 的语义。
+            return ctVal(interpNewString(shell(`${soCmd} 2>/dev/null`)))
         }
         return ctVal(interpNewString(""))
     }

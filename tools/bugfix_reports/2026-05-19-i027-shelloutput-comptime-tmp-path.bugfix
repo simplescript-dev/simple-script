@@ -1,0 +1,39 @@
+[meta]
+type = bugfix
+title = comptime intrinsic shellOutput 硬编码 /tmp/ss_comptime_exec.tmp 中转路径非并发安全 — 改为 delegate 到 shell builtin(popen 直捕 stdout,零中转文件)
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = ctCallDispatch(bootstrap/gen/exprs/exprs_ct_call.ss:114-122)的 shellOutput comptime intrinsic 把命令 stdout 经硬编码固定路径 /tmp/ss_comptime_exec.tmp 中转:const soTmp = "/tmp/ss_comptime_exec.tmp";system(cmd > soTmp 2>/dev/null) 落盘;readFile(soTmp) 读回。该路径是跨进程固定常量,comptime shellOutput 随每次含该 intrinsic 的 .ss 编译被透明触发。两个并发编译进程(bin/ss test 的 MAX_JOBS=nproc 并行 runner)各自 comptime 调 shellOutput 时在 /tmp/ss_comptime_exec.tmp 上 race —— 一方 system(cmd>tmp) 覆写时另一方 readFile(tmp) 读到撕裂内容 / 他命令 stdout → 非确定 comptime 求值结果,易误判为 codegen 非确定 bug(I025 同类误判史)。当前 shellOutput 全 repo 0 usage,隐患休眠但属真实缺陷(I026 同 bug 类已实证并修复)。
+
+[isolate]
+# 回归测试 tests/phase5/i027_shelloutput_comptime_tmp_path.ss:确定性手法(无 race)——
+# rm 固定路径 /tmp/ss_comptime_exec.tmp → bin/ss build 一个含 comptime { shellOutput(...) }
+# 块的 fixture → 断言该固定路径未被创建。buggy 编译器 system(cmd > 该路径) 创建并遗留它(exit 2);
+# 修复后 shell() popen 直捕、零中转文件 → 该路径永不出现(exit 0)。
+# stash_exit 量于 exprs_ct_call.ss 改动 + bootstrap 之前(bin/ss 仍为旧未修复版):
+# bin/ss build tests/phase5/i027_shelloutput_comptime_tmp_path.ss -o /tmp/i027_stash && /tmp/i027_stash → exit 2
+test_file = tests/phase5/i027_shelloutput_comptime_tmp_path.ss
+stash_exit = 2
+
+[analyze]
+broken = ctCallDispatch(bootstrap/gen/exprs/exprs_ct_call.ss,改前 :114-122)的 shellOutput 分支:const soTmp = "/tmp/ss_comptime_exec.tmp" 硬编码跨进程固定常量,system(`${soCmd} > ${soTmp} 2>/dev/null`) 把命令 stdout 重定向到该固定文件,再 readFile(soTmp) 读回。固定共享路径无进程隔离,而 comptime shellOutput 随每次编译被透明触发、编译进程间无任何互斥。
+why = 第一层假设破裂:const soTmp = "/tmp/ss_comptime_exec.tmp" 隐含「同一时刻至多一个进程在用这条 comptime stdout 中转路径」—— 破裂:并行 test runner / CI / 多终端使多个编译进程天然并发,各自 comptime 在同一固定路径写读。更深一层假设破裂(本修复消除的真根因):「捕获子进程 stdout 必须经磁盘中转文件」—— 破裂:shell builtin(gen_rt_shell.ss)用 popen + 动态扩 buffer 直接捕获子进程 stdout,根本不落磁盘;shellOutput 的 temp-file 中转是对「捕获 stdout」需求的劣质重实现,固定共享路径只是这个多余机制的副产物。
+fix = shellOutput 分支在「如何捕获命令 stdout」这一根因点改用业界标准原语 popen(经既有 shell builtin):body 由 const soTmp + system(cmd>tmp) + readFile(tmp) 三步,改为单行 return ctVal(interpNewString(shell(`${soCmd} 2>/dev/null`)))。shell(gen_rt_shell.ss)popen 直捕子进程 stdout 为 RC string(动态扩 buffer 任意大小、不写 exit code、不 trim),与 system(cmd>tmp)+readFile 行为等价;2>/dev/null 在命令串补回,保留原 shellOutput 丢弃 stderr 的语义。零中转文件 → 无路径 → 无并发 race → 无清理 → 无 guard 分支。shell 是既有 builtin(gen_registry.ss 注册、main.ss cmdRun 已用),零新 builtin、单 commit、seed 直接可编译。方案对比见 i027_shelloutput_comptime_tmp_path.options.md(bug_options_linter 6/6 GATE OK):next_prompt prescription 为 mktemp 进程唯一路径(候选 B,对标 I026 fc3b35d),MNK §字段 11 ladder 上推一格证 B 仍保留 temp-file 中转非最根 —— 选架构层候选 C(delegate to shell)直接消除中转文件。I026 vs I027 差异:I026 cmdRun 的 .ll/.o/二进制是 llc/musl-gcc 物理必需的磁盘文件不可消除(mktemp 是其最深可达),I027 的 stdout 捕获缓冲 popen 可直接消除。
+# same_pattern 排查:grep -rn '/tmp/ss_' bootstrap/gen/ 另命中 gen_rt_cache.ss(/tmp/ss_rt_cache.{o,decls,ll})——
+# 那是 --rt-cache 一次性 driver 的 write-once 共享缓存子系统(缓存按设计即共享资源),与 shellOutput
+# 「把进程私有 stdout 中转缓冲误用为共享固定路径」语义不同,非同一 bug 模式 → same_pattern_count = 0。
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 0
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 329
+test_failed = 4
+test_known_fail = 4
