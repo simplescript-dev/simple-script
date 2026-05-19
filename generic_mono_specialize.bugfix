@@ -1,0 +1,41 @@
+# generic_mono_specialize.bugfix — bug fix evidence (MNK §Bug 修复 Harness)
+# Companion: generic_mono_specialize.options.md (3-candidate gate, GATE OK 6/6)
+
+title = generic monomorphization non-deterministic missed specialization
+test_file = tests/phase5/generic_multi_constraint.ss
+stash_exit = 1
+fix_exit = 0
+broken = genGenericCall step-1 type-param inference (bootstrap/gen/gen_calls.ss) was non-deterministically skipped, emitting `define @fullInfo_T` / `@extract_T_U` stubs with `; TODO: method call` bodies instead of `@fullInfo_Hero`, producing crippled codegen and runtime exit(1)
+why = the guard `if (aParts != "")` compared aParts (an Array<string> from argList.split) against the string "". codegen emits ss_string_ne, which reinterprets the Array header as a %String and strcmps the array's data pointer (treated as a C-string) — so the result depends on whether that heap pointer's low byte is 0x00 (mimalloc 16-byte aligned, layout/ASLR-sensitive). low byte 0x00 makes the guard false, the whole inference block is skipped, the subs Map stays empty, and the mangled name keeps the raw type-param name
+fix = gen_calls.ss step 1: drop the union-typed ternary `argList != "" ? argList.split(",") : ""` so aParts is always Array<string>, and discriminate the no-arg case on argList (a plain string parameter) via `if (argList != "")`. this removes the Array-vs-string type-confused comparison entirely
+same_pattern_count = 0
+net_new_ifs = 0
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 325
+test_failed = 4
+test_known_fail = 4
+
+# ── non-determinism note ───────────────────────────────────────
+# The bug is layout-sensitive: a single `bin/ss run` of one file may pass even
+# without the fix (that command form / heap layout happens to dodge it). The
+# reliable trigger is the parallel build harness (`bin/ss test tests/`) and a
+# parallel-build reproducer. stash_exit=1 is the test's exit code under the
+# bug-active condition (it does exit(1) on assertion failure).
+#
+# ── A/B causal proof (VCM §3 reverse-test) ─────────────────────
+# Two single-stage compilers built from identical source except gen_calls.ss,
+# each run through a 240x parallel-build reproducer (double-slash path, as
+# `bin/ss test` uses):
+#   no-fix  compiler: generic_multi_constraint 240/240 buggy, generic_constraint_multi 240/240 buggy
+#   fixed   compiler: generic_multi_constraint   0/240 buggy, generic_constraint_multi   0/240 buggy
+# Root-cause spike (instrumented genGenericCall, 500x parallel): 500/500 buggy,
+# probe `XGGCa apNE=0` with `aL=[785]` (non-empty argList) — i.e. `aParts != ""`
+# evaluated false despite argList being non-empty: the sole deviation point.
+#
+# ── full-suite RED -> GREEN ────────────────────────────────────
+# RED  (pre-fix):  bin/ss test tests/ -> 323 passed, 6 failed
+#                  (generic_multi_constraint.ss + generic_constraint_multi.ss FAIL)
+# GREEN (post-fix): bin/ss test tests/ -> 325 passed, 4 failed, stable across 3 runs
+# test_known_fail=4: harness_bug, harness_task, d096_p4_l2_reactive, spring_web_params
+#   — pre-existing failures, independent of this fix (clean-compiler baseline).

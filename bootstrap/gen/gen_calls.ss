@@ -351,13 +351,17 @@ function genGenericCall(id: int, callee: string, argList: string): string {
         }
     } else if (declParams != "") {
         const dParts = declParams.split(",")
-        const aParts = argList != "" ? argList.split(",") : ""
+        // aParts is always Array<string> (arg node-ids). The no-arg case is guarded
+        // on argList (a string) below, never on aParts: `Array != ""` type-confuses —
+        // codegen emits ss_string_ne, reading the Array header as a string, so the
+        // result is heap-layout-dependent. (An empty argList still splits to [""].)
+        const aParts = argList.split(",")
         let argIdx = 0
         for (dp in dParts) {
             const pId = parseInt(dp)
             if (pId <= 0 || nGetKind(pId) != "PARAM") { continue }
             const pType = nGetS2(pId)
-            if (aParts != "") {
+            if (argList != "") {
                 let isTP = 0
                 for (tp in typeParamList) {
                     if (tp == pType) { isTP = 1 }
