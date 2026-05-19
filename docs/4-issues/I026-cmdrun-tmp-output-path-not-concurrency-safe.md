@@ -1,7 +1,7 @@
 # I026 — `cmdRun` 硬编码 `/tmp/ss_run_output` 输出路径非并发安全
 
 **父决策:** 无(独立 root cause —— `bin/ss run` driver 缺陷,与 `run_exitcode_truncation` 退出码截断同函数 `cmdRun` 不同根)
-**状态:** Planned —— 休眠隐患,当前未触发(全测套件中仅 `tests/phase5/run_exitcode_truncation.ss` 一个测试在运行时 `system("bin/ss run ...")`,其 5 次调用串行、无自竞争;无第二个并发 `bin/ss run` 测试)
+**状态:** Resolved(2026-05-19,commit `fc3b35d`)—— `cmdRun` 的 `outBin` 由硬编码 `/tmp/ss_run_output` 改为 `shell("mktemp /tmp/ss_run_output.XXXXXX").trim()` 进程唯一路径(+ 空值 guard + run 毕 `rm -f ${outBin}*` 清理),`cmdClean` glob 同步 `/tmp/ss_run_output` → `/tmp/ss_run_output*`。RED(`grep 'outBin = "/tmp/ss_run_output"' bootstrap/main.ss` 命中 :379)→ GREEN(grep 空)+ `./build.sh bootstrap` 三阶段固定点真实成立 + `bin/ss test` 328 passed/4 known fail(0 新增 regression)+ 8 并发 `bin/ss run` 全 exit 0 + `bug_options_linter` 6/6 + `bugfix_linter` 6/6 ALL GATES PASSED。回归测试 `tests/phase5/i026_cmdrun_tmp_output_path.ss`、方案对比 `i026_cmdrun_tmp_output_path.options.md`、证据 `tools/bugfix_reports/2026-05-19-i026-cmdrun-tmp-output-path.bugfix`
 **颗粒度:** 立项轮 = 纯文档(本文件);修复 = `cmdRun` 单函数把 `outBin` 改为进程唯一路径,标准改档
 **依赖:** 无强依赖。若改用 `getpid()` 唯一化而 SS 运行时无此 builtin,则须先补 —— 立项未核实,Execute 轮 PSM §字段 12 实证
 **创建:** 2026-05-19
