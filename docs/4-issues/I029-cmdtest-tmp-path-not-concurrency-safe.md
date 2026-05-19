@@ -1,7 +1,7 @@
 # I029 — `cmdTest` 固定共享 `/tmp` 路径(脚本 / 每测试二进制 / 结果文件)非并发安全
 
 **父决策:** 无(独立 root cause —— `bin/ss test` 测试驱动 `cmdTest` 的缺陷,与 I026 `cmdRun` / I027 comptime `shellOutput` 同 bug 类「固定共享 `/tmp` 路径 race」但不同函数、不同子系统)
-**状态:** Planned
+**状态:** Resolved at `9bb918e` —— cmdTest 三类固定共享 /tmp 路径(脚本 / 二进制 / 结果文件)改 `mktemp -d` 进程唯一目录承载,cleanup `rm -rf` 自有目录;回归测试 `tests/phase5/i029_cmdtest_tmp_path_concurrency.ss`
 **颗粒度:** 立项 + 修复同轮(用户 next_prompt 授权);修复 = `cmdTest` 把三类固定共享路径改为 `mktemp -d` 进程唯一目录承载 + `cmdClean` glob 同步,大改档
 **依赖:** 无。`shell` builtin 现成(I026 已实证 `shell("mktemp …")` 经 popen 捕获 stdout),`mktemp -d` 是 coreutils 现成原语;修复不依赖未落地能力
 **创建:** 2026-05-19
@@ -36,9 +36,15 @@
 
 与 I026/I027 同 bug 类:`cmdTest` 把「进程私有的测试构建中间态」用进程间共享的固定 `/tmp` 路径承载,无进程隔离。`${idx}` 是 per-index 但每次调用从 0 重数 → 跨进程必碰撞;固定脚本路径 `/tmp/ss_test_par.sh` 跨进程直接覆写。业界对标 `docs/1-axioms.md §V3`:`go test` / `cargo test` 用每次调用唯一的临时目录。
 
-## 修复方向(Execute 轮 options.md 坐实)
+## 修复(Execute 轮坐实 —— commit `9bb918e`)
 
-按 bug 修复 harness,`i029_cmdtest_tmp_path_concurrency.options.md` 对比 ≥3 候选含层次标:A 数据层随机后缀(`srand` 秒级播种,同秒并发碰撞)、B 接口层逐路径 `mktemp`(next_prompt 字面建议 —— 共享命名空间未消除、cleanup glob 跨进程销毁残留)、C 架构层 `mktemp -d` 单进程唯一目录、D 架构层消 IPC 文件。研究指向最深可达层 = **架构层 C:一次 `mktemp -d` 取进程唯一目录,三类产物 + `bin/ss build` 派生的 `.ll`/`.o`/`.ll.str` 全落其中,cleanup `rm -rf` 自有目录**。比 next_prompt prescription「逐路径 mktemp」上推一格(同 I027 §字段 11 ladder 手法):逐路径 mktemp 只去重名字、共享命名空间仍在;`mktemp -d` 消除命名空间本身。`cmdClean` glob 连带同步。最深层由 Execute 轮 PSM §字段 10/11 按根因解决度决策。
+按 bug 修复 harness,`i029_cmdtest_tmp_path_concurrency.options.md`(`bug_options_linter` 6/6 GATE OK)对比 4 候选:A 数据层随机后缀(`srand` 秒级播种,同秒并发碰撞)、B 接口层逐路径 `mktemp`(next_prompt 字面建议 —— 共享命名空间未消除、cleanup glob 跨进程销毁残留)、C 架构层 `mktemp -d` 单进程唯一目录、D 架构层消 IPC 文件。
+
+**实际修复(候选 C —— 比 next_prompt prescription 上推一格)**:`cmdTest` 起手 `const testRunDir = shell("mktemp -d /tmp/ss_test_run.XXXXXX").trim()`(+ 空值 guard)取进程唯一目录,三类产物(`${testRunDir}/test_${idx}` / `res_${idx}` / `par.sh`)+ `bin/ss build` 派生的 `.ll`/`.o`/`.ll.str` 全落其中;cleanup 由 `rm -f /tmp/ss_test_*`(glob 跨进程销毁)改为 `rm -rf ${testRunDir}`(仅删本进程目录)。`cmdClean` glob 同步:`/tmp/ss_test_* /tmp/ss_res_* /tmp/ss_test_par.sh` → `/tmp/ss_test_run.*`(`rm -f` → `rm -rf`)。
+
+**为何不照搬 next_prompt 的「逐路径 mktemp」**:逐路径 `mktemp`(候选 B)只把固定名换成随机名,共享 `/tmp` 命名空间仍在 → cleanup 无法安全 glob、loop 内 2N 次 mktemp 子进程;`mktemp -d` 单目录消除命名空间本身,一次 mktemp、`rm -rf` 自有目录 glob-free —— 同 I027「Execute 轮按 §字段 11 ladder 上推一格」手法。I026 拒「目录隔离」候选 D 是因 `cmdRun` 走 `compile()`、改路径派生契约会外溢 `cmdBuild`;`cmdTest` 是 `system()` 出 `bin/ss build` 子进程、路径仅是脚本里的字符串,无 `compile()` 契约 → 该反对意见不成立。
+
+验证:RED grep 命中 7 行 → GREEN 空;`./build.sh bootstrap` 三阶段固定点(stage2==stage3);`bin/ss test` 331 passed / 4 failed(0 新增 regression);8 并发 `bin/ss test tests/phase2/` 全 rc=0 / 0 segfault;`bug_options_linter` 6/6 + `bugfix_linter` 6/6 ALL GATES PASSED。因果证据 `tools/bugfix_reports/2026-05-19-i029-cmdtest-tmp-path-concurrency.bugfix`,回归测试 `tests/phase5/i029_cmdtest_tmp_path_concurrency.ss`(源码核对法,无 race —— 对标 I028)。
 
 ## 反向
 
