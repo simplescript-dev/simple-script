@@ -288,35 +288,10 @@ function genNewExpr(id: int): string {
     pirPendingReuseReg = ""
     pirPendingReuseClass = ""
 
+    // I030/D149: named, positional and empty construction all route through the
+    // one arity-safe builder so `call @ClassName_new` always carries every field.
     const argList = nGetList(id)
-    let args = ""
-    // Check if first arg is NAMED_ARG
-    let hasNamed = 0
-    if (argList != "") {
-        const ci = argList.indexOf(",")
-        const firstArgId = parseInt(ci >= 0 ? argList.substring(0, ci) : argList)
-        if (firstArgId > 0 && nGetKind(firstArgId) == "NAMED_ARG") { hasNamed = 1 }
-    }
-    if (hasNamed == 1) {
-        args = genNamedConstructorArgs(className, argList)
-    } else if (argList == "" && classFields.has(className) == 1) {
-        // D149: 全 default 空 ctor — fields with default expr use that expr;
-        // remaining fields fall back to LLVM zero. Unified with partial path via helper.
-        args = genCtorArgsWithDefaults(className, Map(), Map())
-    } else if (argList != "") {
-        const parts = argList.split(",")
-        let first = 1
-        for (p in parts) {
-            const argId = parseInt(p)
-            if (argId > 0) {
-                const val = genExpr(argId)
-                const vType = inferType(argId)
-                const llType = ssTypeToLLVM(vType)
-                if (first == 1) { first = 0 } else { args = args + ", " }
-                args = `${args}${llType} ${val}`
-            }
-        }
-    }
+    const args = genCtorCallArgs(className, argList)
     // PIR REUSE: use reuse constructor if memory is available from a previous drop
     if (reuseReg != "") {
         const r = nextReg()

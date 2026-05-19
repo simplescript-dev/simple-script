@@ -1,0 +1,36 @@
+[meta]
+type = bugfix
+title = I030 — genNewExpr/genGenericNewExpr positional-partial 构造调用未补齐到构造函数 arity:new Bug("name") 对 7 字段类只传 1 实参,call @Bug_new 实参数 < 形参数,被调函数从未初始化 ABI 寄存器读缺失实参,可选 fn 字段被垃圾初始化、!= 0 守卫被骗过、call 垃圾地址 → SIGSEGV(test_121)
+date = 2026-05-19
+commit = uncommitted
+
+[found]
+symptom = bin/ss test 的 test_121(tests/phase5/harness_bug/main.ss)单进程零并发每次段错误 exit 139 + 抛 core.<pid> 污染 repo 根。harness_bug 编译成功,运行时 Bug_detected 内间接 call 跳进非法地址 0x200(gdb 仅 3 帧 ?? <- Bug_detected <- main,非栈溢出),崩在 bug2 = new Bug("no-callbacks") 的 detected() —— detectedCb 字段是垃圾 0x200 而非 0,!= 0 守卫被骗过 call *0x200
+
+[isolate]
+# 回归测试 tests/phase5/i030_positional_ctor_arg_arity.ss:Holder(非泛型)+ Box<T>(泛型)各做 positional-partial
+# 构造,断言未提供的可选 int/fn 字段为 0;pre-fix 编译器未补齐 arity → 字段读垃圾 → 断言 exit 1,fixed → 全 0 → exit 0。
+# stash_exit 量于修复 + bootstrap 之前的编译器(git show HEAD:bin/ss > /tmp/ss_prefix,即修复前 bin/ss):
+# /tmp/ss_prefix run tests/phase5/i030_positional_ctor_arg_arity.ss → exit 1(断言捕获垃圾字段)
+test_file = tests/phase5/i030_positional_ctor_arg_arity.ss
+stash_exit = 1
+
+[analyze]
+broken = genNewExpr(bootstrap/gen/class/class.ss:251)拼构造调用实参的位置分支(改前 :306-318)与 genGenericNewExpr(gen_generic_class.ss:238)的实参循环(改前 :336-350)用自有 for 裸循环,只对每个已提供位置实参发射 ${llType} ${val},不补齐到构造函数声明的全字段 arity。genNewExpr 的 named 分支(genNamedConstructorArgs)与 empty 分支早已经统一 helper genCtorArgsWithDefaults 补齐全字段,唯 positional 分支不经它
+why = 位置分支隐含未校验假设「位置实参个数 == 构造函数形参个数」(用户总提供全部字段)。类带可选(?)/默认值字段时位置构造允许只给前缀 —— checker check_exprs.ss:254 checkArgCount 以 [min,max] 放行 argCount < 字段数。于是 new Bug("test-bug")(7 字段给 1)生成 call @Bug_new 仅 1 实参 vs Bug_new 7 形参;被调函数从未初始化 ABI 寄存器(%esi/%edx/%ecx/%r8d/%r9)与栈槽读取缺失实参,对象未提供字段被垃圾初始化。可选 fn 字段 detectedCb 拿到垃圾 0x200,!= 0 守卫被骗过 call *0x200 → SIGSEGV
+fix = 候选 C 架构层(i030_positional_ctor_arg_arity.options.md bug_options_linter 6/6 GATE OK):新增统一 helper genCtorCallArgs(class_method.ss)—— 单一 arity-安全的构造调用实参构建器,named 实参委托 genNamedConstructorArgs,positional 实参按位置 i 对 classFields 字段 i 映射后(同 empty 构造)经 genCtorArgsWithDefaults 把每个未提供字段补类型正确零值/默认值。genNewExpr 与 genGenericNewExpr 的实参拼装(原各自裸循环只发射已提供实参)统一塌缩为一行 genCtorCallArgs 调用 → call @ClassName_new 恒满构造函数声明 arity,消除 positional 分支自有裸循环双轨
+# same_pattern triage:grep 'call ptr @.*_new(' 全 codegen emit 点 —— @X_new 用户构造调用仅 genNewExpr(本轮修)+ genGenericNewExpr(本轮修)两处,均已塌缩为 genCtorCallArgs;gen_calls.ss:98 call @ExecResult_new(ptr,i32) 是 2 字段 builtin 类的手写满 arity 调用、非 positional-partial 形态;class_register.ss:329 是 _new define 非 call site。无残留同形态实例
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+# net_new_ifs:本修复把 genNewExpr/genGenericNewExpr 各自的实参拼装条件逻辑塌缩进单一新 helper genCtorCallArgs,净新增条件分支为 0(整合非堆叠 —— 两处裸循环 + genNewExpr 三分支收敛为一处);genCtorCallArgs 是唯一新增函数
+fix_exit = 0
+net_new_ifs = 0
+net_new_fns = 1
+
+[verify]
+bootstrap = PASS
+test_passed = 333
+test_failed = 3
+test_known_fail = 3

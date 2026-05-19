@@ -188,3 +188,41 @@ function genNamedConstructorArgs(className: string, argList: string): string {
     }
     return genCtorArgsWithDefaults(className, namedVals, namedLLTypes)
 }
+
+// I030: single arity-safe builder for a constructor call's argument string,
+// shared by genNewExpr and genGenericNewExpr. Named args delegate to
+// genNamedConstructorArgs; positional args map index→field and (like empty
+// construction) route through genCtorArgsWithDefaults, which pads every
+// un-provided field to a type-correct zero/default. Emitting only the provided
+// args would yield `call @X_new` short of the constructor's declared field
+// arity, leaving un-provided fields reading uninitialized ABI registers.
+function genCtorCallArgs(className: string, argList: string): string {
+    let hasNamed = 0
+    if (argList != "") {
+        const ci = argList.indexOf(",")
+        const firstArgId = parseInt(ci >= 0 ? argList.substring(0, ci) : argList)
+        if (firstArgId > 0 && nGetKind(firstArgId) == "NAMED_ARG") { hasNamed = 1 }
+    }
+    if (hasNamed == 1) {
+        return genNamedConstructorArgs(className, argList)
+    }
+    let posVals = Map()
+    let posLLTypes = Map()
+    if (argList != "") {
+        const parts = argList.split(",")
+        const posFields = classFields.getString(className).split(",")
+        let posIdx = 0
+        for (p in parts) {
+            const argId = parseInt(p)
+            if (argId > 0) {
+                const val = genExpr(argId)
+                const vType = inferType(argId)
+                const fname = posFields[posIdx]
+                posVals.set(fname, val)
+                posLLTypes.set(fname, ssTypeToLLVM(vType))
+                posIdx = posIdx + 1
+            }
+        }
+    }
+    return genCtorArgsWithDefaults(className, posVals, posLLTypes)
+}

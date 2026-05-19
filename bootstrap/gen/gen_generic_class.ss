@@ -332,22 +332,11 @@ function genGenericNewExpr(id: int, className: string): string {
         specClassName = savedSpecClass
     }
 
-    // 4. Emit constructor call with mangled name
-    let args = ""
-    if (argList != "") {
-        const parts = argList.split(",")
-        let first = 1
-        for (p in parts) {
-            const argId = parseInt(p)
-            if (argId > 0) {
-                const val = genExpr(argId)
-                const vType = inferType(argId)
-                const llType = ssTypeToLLVM(vType)
-                if (first == 1) { first = 0 } else { args = args + ", " }
-                args = `${args}${llType} ${val}`
-            }
-        }
-    }
+    // 4. Emit constructor call with the mangled name. args via genCtorCallArgs —
+    // the same unified arity-safe builder genNewExpr uses (I030): a bare loop
+    // emitting only the provided args would yield call @X_new short of the
+    // specialized constructor's declared field arity.
+    const args = genCtorCallArgs(mangledName, argList)
     const r = nextReg()
     emitIR(`  ${r} = call ptr @${mangledName}_new(${args})`)
     return r
