@@ -598,6 +598,18 @@ dealloc:
 - **唯一不一致点**:`emitReleaseVarList`(gen_rc.ss:108)一律 `ss_rc_release`,与 `emitReleaseForType` 类型分派割裂;`localPtrVars` `name:type` 的 type 段已存、reader 待启用。
 - **3 个假设破裂入口**((a) 新旧布局 no-op 掩盖 / (b) `isOwnedExpr` 误判借入数组无配对 retain / (c) `genReturn` declRet 退化致 CALL 返 borrowed)+ 完整改动清单(runtime/codegen/协议)详 options.md §2/§5;Execute 前必读。
 
+**2026-05-19(P2.3 Execute — P2.3a 落地 + P2.3b 实测受阻)**:
+
+- **P2.3a 完成**(commit `c95797a`)— ref 数组元素 retain 纳入 `isOwnedExpr` owned/borrowed 协议(`gen_builtins` `.push()` 加 `isOwnedExpr` 门 + `gen_calls` `genArrayLit` 固定/spread 两路径补 retain):数组持有元素一份引用,borrowed 元素才 retain、owned 元素自带 +1 转移。bootstrap 三阶段固定点 + 全测 323/5 0 regression。
+
+- **options.md §5-1 修正**(commit `bab548c`)— 原「`ss_arrayPush` runtime 加 retain」实测错位:`.push()` 元素 retain 早在 codegen `gen_builtins.ss:140-143`(runtime 再加 = double-retain)、ARRAY_LIT 固定字面量走 `ss_arraySet` 不经 `ss_arrayPush`、owned/borrowed 是编译期 AST 信息 runtime 不可判 → 元素 retain 决策只能在 codegen 层。
+
+- **P2.3b 受阻 —— `emitReleaseVarList` 切换依赖 Phase 3(Map RC)先落地**。实测两障碍:
+  - **障碍 1(切 string → string-in-Map UAF)**:`emitReleaseVarList` 把 string 局部切真实 `ss_release` 后,string 存进无类型注解 `Map()`(`mapValueIsPtr` 仅认 `Map<K,V>` 注解 → val_type=0 → `ss_mapSet` 不 retain value、`ss_drop_Map` 用旧 `ss_rc_release`)时,string 局部 release → Map value 悬空 → UAF。全测 303/25(`stdlib_json/ini/url`、`i021_requestbody_nested_*`、`d096_reactive` 等 ~20 个 string-in-Map 崩)。
+  - **障碍 2(收窄只切 Array 仍 over-release)**:`emitReleaseVarList` 只对 `isArrayType` 切 `ss_release`(string/Map 留旧)→ 全测 322/6,`stdlib_sort`(纯 scalar `Array<int>`)mimalloc corrupted-free-list、形态敏感非确定崩 —— Array 局部真实 release 后仍有未平衡持有点。
+  - **根因**:`emitReleaseVarList` 切真实 release 让所有局部容器真实死,牵动整个 RC 协议网 —— **Map 必须先参与新系统 RC**(string/Array/class 都能存进 Map,Map 是值的汇容器),否则 X-in-Map 必悬空。这是 **Phase 顺序问题**:`emitReleaseVarList` 局部变量真实 RC 切换依赖 **Phase 3(Map RC)**,而 §C.9-exec 把它放在 P2.3b(Phase 2)= 依赖反置。`f21271d`「部分推进必 regress」实测约束是同一根因的另一面(此前未识别为「依赖 Phase 3」)。
+  - **待裁决**:`emitReleaseVarList` 局部变量真实 release 切换从 P2.3b 移出 —— P2.3 收敛为「数组内部 RC」(P2.3a 元素协议 已 commit;§C.9/§C.10 runtime push/slice/concat/drop 元素 RC 已 P2.1/P2.2 落地);**消 Array/string 局部泄漏 + d095(I024)/ I025 根因消除** 顺延到 Phase 3(Map RC)之后。options.md §5-2/5(`emitReleaseVarList` 切换 + string 连带)实测不可行,待 Phase 重排裁决后整体重订。
+
 ---
 
 ## §F 远期(本 D 范围外)
