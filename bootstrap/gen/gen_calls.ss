@@ -691,6 +691,10 @@ function genArrayLit(id: int): string {
                         const val = arrPreRegs.has(elemKey) == 1 ? arrPreRegs.getString(elemKey) : genExpr(elemId)
                         let spreadElemT = inferType(elemId)
                         if (arrLitS2 != "") { spreadElemT = arrLitS2 }
+                        // D168 P2.3a: ref Array 字面量 borrowed 元素 retain(同固定路径)。
+                        if (ssTypeToLLVM(spreadElemT) == "ptr" && isOwnedExpr(elemId) == 0) {
+                            emitRetainForType(val, spreadElemT)
+                        }
                         const val64 = emitValueToI64(val, spreadElemT)
                         const curArr = nextReg()
                         emitIR(`  ${curArr} = load ptr, ptr ${arrAlloca}, align 8`)
@@ -727,6 +731,11 @@ function genArrayLit(id: int): string {
                 const val = arrPreRegs.has(elemKey) == 1 ? arrPreRegs.getString(elemKey) : genExpr(elemId)
                 let elT = inferType(elemId)
                 if (arrLitS2 != "") { elT = arrLitS2 }
+                // D168 P2.3a: ref Array 字面量 borrowed 元素 retain — array 持有一份引用,
+                // 与 .push() / genVarDecl:653 同走 isOwnedExpr;owned 元素自带 +1 不再 retain。
+                if (ssTypeToLLVM(elT) == "ptr" && isOwnedExpr(elemId) == 0) {
+                    emitRetainForType(val, elT)
+                }
                 const val64 = emitValueToI64(val, elT)
                 emitIR(`  call void @ss_arraySet(ptr ${arrReg}, i32 ${idx}, i64 ${val64})`)
                 idx = idx + 1
