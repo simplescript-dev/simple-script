@@ -1,6 +1,6 @@
 # D168: 统一双 RC 系统为 Perceus 主线
 
-**Status:** Phase 1 String closed 2026-05-10;Phase 2 closed;**Phase 3 进行中** —— Map value RC(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(2026-05-19:codegen-local RC 全栈 magic 分派 `ss_*_any` + `isRcManaged` 门;`ss_mapSet`-update/`ss_mapDelete` 真实 release)closed;Map header→ObjHeader 留后续子步。d095(`docs/4-issues/I024`)/I025「半迁移不平衡」根因经 §C.11 消除
+**Status:** Phase 1 String closed 2026-05-10;Phase 2 closed;**Phase 3 进行中** —— Map value RC(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(2026-05-19:codegen-local RC 全栈 magic 分派 `ss_*_any` + `isRcManaged` 门;`ss_mapSet`-update/`ss_mapDelete` 真实 release)closed;Map header→ObjHeader 子设计见 §D(P3.1-P3.3,2026-05-19 drafted)。d095(`docs/4-issues/I024`)/I025「半迁移不平衡」根因经 §C.11 消除
 **Depends on:** axiom C2/C4/V4(`docs/1-axioms.md:8,10,19`);相关 D164(PIR liveness 落地证据)
 **Date:** 2026-05-10
 **Last Updated:** 2026-05-19
@@ -105,7 +105,7 @@
 | **Phase 0.5** | 用户 close §未决策 D1/D2/D3 → §A.3 锁定(D1=A / D2=c / D3=ii) | [x] 2026-05-10 | 本对话 ultrathink 业界对标轮 + 用户 "全部接受推荐" |
 | **Phase 1** | **String 切轨** — `[rc:i64 \| TypeInfo*]` ObjHeader + mimalloc + `@String_type_info` + 字面量 boxed immortal(D1=A) + 全栈 string GEP 偏移修正(§B 9 节子设计落地) | [x] 2026-05-10 | P1.1 `cd72998` + P1.2 `9edf09b` + P1.3 `0583e6a`;bootstrap stage2==stage3 PASS;全测 310/17/327 0 regression;P1.4 (b)(c) 路径全测隐式覆盖,性能 bench 推 Phase 5 |
 | **Phase 2** | **Array 切轨** — `Array<T>` 双份 TypeInfo(D2=c scalar/ref)+ 元素 retain/release 走元素 vtable + Array slice/concat 适配(§C 10 节子设计 + P2.1-P2.4 子分阶段) | [ ] Planned | bootstrap + Array 测试 |
-| **Phase 3** | **Map 切轨** — value retain + Map-death release(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(codegen-local RC magic 分派 + update/delete 真实 release)落地 2026-05-19;Map header→ObjHeader 留后续子步 | [~] §C.10-map + §C.11 done,Map header→ObjHeader 留后续 | bootstrap 三阶段 bit-identical ✓ + 全测 324/4 = baseline 0 regression |
+| **Phase 3** | **Map 切轨** — value retain + Map-death release(§C.10-map)+ §C.11 `emitReleaseVarList` 收口(codegen-local RC magic 分派 + update/delete 真实 release)落地 2026-05-19;Map header→ObjHeader 子设计 §D(P3.1-P3.3) | [~] value-RC 半 done(§C.10-map+§C.11);header 迁移半 §D drafted,P3.1-P3.3 Planned | bootstrap 三阶段 bit-identical ✓ + 全测 324/4 = baseline 0 regression |
 | **Phase 4** | **删除旧系统** — 移除 `ss_rc_retain/release/release_no_children/destroy_array_ptrs/destroy_map`,`emitRetainForType` 退化为单一 `call @ss_retain` | [ ] Planned | bootstrap + grep `ss_rc_*` 命中 = 0 |
 | **Phase 5** | **PIR 全覆盖** — pir_lower/pir_opt 把 string/Array/Map 纳入 liveness,删除 codegen 路径手工 emit retain/release(消除 30+ 调用点) | [ ] Planned | bootstrap + 性能 micro-bench(可选) |
 
@@ -677,6 +677,192 @@ dealloc:
 **判据达成**:消 string/Array 局部「emitReleaseVarList no-op」泄漏(RC-managed 局部真实 `ss_release_any`);d095(I024)/I025「半迁移不平衡」根因消除(retain/release 全栈 magic 对称,杜绝 real-noop 失配);`ss_mapSet`-update/`ss_mapDelete` 真实 release 落地。回归测试 `tests/phase5/c11_release_varlist.ss`(覆盖 return-localVar-method / Ref 局部 / Map mutation)。**§C.11 close**。
 
 **残留(非 §C.11 scope)**:`isOwnedExpr(METHOD_CALL)=0` 对返回 owned 的方法调用误判 borrowed → binding 侧双 retain → +1 计数泄漏(非崩)= `docs/4-issues/I023-methodcall-class-rc-leak.md` A 类(已立项 Planned)。§C.11 后该泄漏由「`emitReleaseVarList` no-op 不释放」形态转为「`genVarDecl`/`genReturn` 双 retain」形态,泄漏量不变,根因(`isOwnedExpr` METHOD_CALL 未按返回类型分派)留 I023 修。
+
+---
+
+## 附录 D:Phase 3 Map header→ObjHeader 切轨子设计
+
+**Status:** Drafted at 2026-05-19(§C.10-map + §C.11 close 后,Map header 迁移 spike 启动前最后子决策锁定层)
+**Scope:** D.1-D.9 子决策 + P3.1-P3.3 内部子分阶段;Map header 迁移 Execute 启动前必读
+**前置:** §A.3 ObjHeader `{i64 rc, ptr TypeInfo}` + immortal sentinel(Phase 1 落地);§C.10-map Map value RC(`ss_retain_any`/`ss_release_any` magic@-4 分派)+ §C.11 `emitReleaseVarList` 收口(codegen-local RC 全栈 `ss_*_any`)已落地 —— **Map value 的 retain/release 已就位,§D 仅迁 Map 对象头本身**,是 Phase 4 删 `ss_rc_*` 的最后 gateway。
+
+---
+
+### §D.1 Map 实例 layout 决策 — 锁定选项 1 inline buckets
+
+| 选项 | layout | 业界 | Phase 3 评估 |
+|---|---|---|---|
+| **1 inline buckets** | `%Map = { i64 rc, ptr TypeInfo, [64 x ptr] buckets, i32 size, i32 val_type }` 536B 单次 `mi_calloc` | Go `hmap` bucket 内联 / 定长开链哈希表 | ✅ **选定** — 保留 OLD 固定 64 桶 inline 设计,仅 16B 头由 `[rc\|tag\|magic]` 负偏移换 `[rc\|TypeInfo]` 正偏移;桶数固定永不 realloc → header ptr 天然稳定;改动 = 全栈 GEP 机械 +16 |
+| 2 indirect bucket buffer | `%Map = { i64 rc, ptr TypeInfo, ptr buckets, i32 size, i32 val_type }` + buckets 单独 `mi_calloc(512)` | 形式对称 §B.1/§C.2 String/Array | ⚠ §B.1/§C.2 选间接是为「扩容 realloc buffer 时 header ptr 稳定」;**Map 桶数固定 64 永不 realloc → 该理由不成立**,indirect 反在每次 hash lookup 热路径多 1 次 buckets ptr load,零收益 |
+| 3 inline + rehashing 重设计 | indirect + 动态桶数 + 负载因子 rehash | Java `HashMap` / Rust `hashbrown` | ❌ 留 §F 远期 — hashtable 算法重设计,超出「header 迁移」task scope,违反 §B.4/§C.4「RC ABI hard break 不叠加第二 hard break」 |
+
+**锁定 D.1 = 选项 1 inline buckets**(与 §B.1/§C.2 String/Array「间接 buffer」**刻意分歧**):
+- **根因**:本 §D scope = 对象头迁移,非 hashtable 重设计。选项 1 精确做头迁移,blast radius 最小。
+- **Map 桶固定 64**:§C.2 间接 buffer「扩容只 realloc buffer、header ptr 不变」对 Map **不适用**(Map 无桶增长);照搬 §B/§C 形式 = 假对称、热路径多一次 indirect load 换零收益 = 过度工程。
+- **长久演化**:唯一想要 indirect 桶的场景是 rehashing(选项 3),而 rehashing 是 §F 远期无 roadmap;届时它本身是 hashtable 算法决策、touch 所有桶逻辑,与头迁移弱耦合 → 选项 1 的 N 年返工度低。
+- **`%Map` struct**:`{ i64, ptr, [64 x ptr], i32, i32 }` = 536B(16 头 + 512 桶 + 4 size + 4 val_type),8 对齐;承 §B 衍生约束「ObjHeader 原型 [0,1] + 业务 [2,3,4]」,业务字段 [2]=桶数组、[3]=size、[4]=val_type。
+
+---
+
+### §D.2 ObjHeader 迁移核心 + mimalloc 分配切换
+
+**ABI 变更**:
+- **旧**:`ss_mapNew` → `ss_rc_calloc(520, 2)` — libc `malloc` 出 `[rc:i64@-16 \| tag:i32@-8 \| magic:i32@-4]` 16B 头 + 520B 清零体,user ptr = raw+16;`tag=2` 供 `ss_rc_release` 内部分派 `ss_rc_destroy_map`。
+- **新**:`ss_mapNew` → `mi_calloc(1, 536)` — mimalloc 出 `%Map`,user ptr = struct base+0;rc@0、`@Map_type_info`@8、桶/size/val_type 由 calloc 清零。
+
+`ss_mapNew` 升级后(`ss_mapNew` 是 Map 唯一分配点 —— `grep -rn ss_mapNew bootstrap/` 证 `class.ss:280` `new Map()/new Set()` + `gen_deserialize.ss:231` + `gen_registry.ss` 全转发此单函数):
+
+```llvm
+define ptr @ss_mapNew() {
+entry:
+  %m = call ptr @mi_calloc(i64 1, i64 ptrtoint (ptr getelementptr (%Map, ptr null, i32 1) to i64))
+  %rcp = getelementptr %Map, ptr %m, i32 0, i32 0
+  store i64 1, ptr %rcp, align 8
+  %tip = getelementptr %Map, ptr %m, i32 0, i32 1
+  store ptr @Map_type_info, ptr %tip, align 8
+  ret ptr %m
+}
+```
+
+- **不设独立 `ss_alloc_map` helper**(与 §B.4 `ss_alloc_string` / §C.4 `ss_alloc_array` 分歧):那二者多调用点(字面量路径 + …)才抽 helper;**Map 单分配点**,`ss_mapNew` 自身即分配函数,抽 helper 是空层。
+- **`%Map` 类型声明**:加入 `codegen.ss` `typeDecl` prepend 行(与 `%String`/`%Array` 同行)。Map 无字面量、不需 prepend 的 constant-initializer 排序约束,但同处声明 zero-cost 消除「`emitRuntimeTypes` 先于 `emitRuntimeMap`」的顺序耦合假设。
+- **immortal**:Map 永远 runtime 创建(无 `@.map.N` 字面量常量),rc 从 1 起永不为负 → `ss_retain`/`ss_release` 的 `slt i64 %rc,0` immortal 路径对 Map 永不触发,无需特殊处理(比 §B String 字面量 boxed immortal 简单)。
+- **MapEntry 节点**:`{ key:ptr@0, value:i64@8, next:ptr@16 }` 24B,**保持 libc `malloc`/`free`** —— entry 是内部开链节点、非 RC 对象、不调 `ss_rc_*` → 不阻 Phase 4;mimalloc 统一是 C2 纯度 §F 远期。`ss_drop_Map` 内 entry 用 `free`、Map 头用 `ss_dealloc`(mi_free)—— 各 alloc 配各自 free,不可错配。
+
+---
+
+### §D.3 Map per-type 函数生成 — `emitMapTypeInfo()`
+
+对照 `emitStringTypeInfo`(`gen_runtime.ss:622`)/ `emitArrayTypeInfo`(`:727`),新增 `emitMapTypeInfo()`,`emitRuntimeRC` 末尾(`emitArrayTypeInfo` 后)调用:
+
+```llvm
+@.rt.str.Map = private constant [4 x i8] c"Map\00"
+
+@Map_type_info = constant %TypeInfo {
+  ptr @ss_drop_Map,
+  ptr @ss_deep_clone_Map,
+  ptr @ss_shallow_clone_Map,
+  i64 ptrtoint (ptr getelementptr (%Map, ptr null, i32 1) to i64),
+  ptr @.rt.str.Map,
+  i32 -4,
+  ptr null
+}
+```
+
+- **`@ss_drop_Map(ptr %map)`** — 即 `ss_rc_destroy_map`(`gen_runtime.ss:426`)按 NEW 布局重写 + **末尾 `ss_dealloc(map)`**:读 val_type@532 → 遍历 64 桶(buckets@16,typed GEP)→ 逐 entry:存 next、`free(entry.key)`(§D.4)、val_type==1 则 `ss_release_any(entry.value)`、`free(entry)` → 全桶完后 `call void @ss_dealloc(ptr %map)`。**关键结构差异**:OLD `ss_rc_destroy_map` 只「析构内容」、Map 块由 `ss_rc_release` 的 `free(raw)` 释放;NEW 体系 `drop_fn` 一手包办**含释放对象块**(对照 `ss_drop_String`:`mi_free(buf)+ss_dealloc(p)`)。
+- **`@ss_deep_clone_Map` / `@ss_shallow_clone_Map`** — 均 = `ss_retain(self)` + 返 self(3 行 IR,对称 `ss_shallow_clone_String`)。Map 是引用/容器类型,shallow = 共享。`ss_deep_clone_Map` 经 `ss_deep_clone_Array_ref`(`gen_runtime.ss:861` 元素 vtable 分派)的 `Array<Map>` 深拷贝路径**可达** —— 现状 OLD Map 无 TypeInfo,该路径读 OLD-Map offset 8(桶[1])当 TypeInfo → 调垃圾 fn 崩;§D 给 Map 真 TypeInfo 后此路径**变安全**(retain-self 即共享内层 Map,语义为浅但不崩)。真实逐 entry 深拷贝(new map + strdup key + value vtable deep_clone)是 Map value 语义独立设计,留 §F;P3.3 / Phase 2 P2.4(`Array<Map>` 验证)轮再评估是否需升级。
+
+**单 `@Map_type_info` + val_type runtime flag,不学 §C Array 双 TypeInfo**:§C D2=c 给 Array 分 `scalar`/`ref` 两 TypeInfo,因 Array 元素类型在字面量/alloc 时**已知**(`[1,2,3]` scalar / `["a"]` ref)。Map **不可**:无类型注解 `new Map()` 在 `ss_mapNew` 时**不知** value 是否 ptr —— 延迟到首次 `.set()` 才由 codegen 写 val_type flag(`gen_builtins.ss:247`「typed + 无注解 Map() 统一覆盖」)。compile-time 选 TypeInfo 对 untyped Map 不可行 → **val_type@532 runtime flag 是 untyped Map 的根因所需**,保留(非 §C 体系遗漏)。`class_id=-4`(String -1 / Array -2,-3 / Map -4;Set 共用 `@Map_type_info` → 同 -4,与 OLD 双 tag=2 不可分同等)。
+
+---
+
+### §D.4 MapEntry.key 去 `ss_rc_strdup`
+
+**RED**:`grep -n ss_rc_strdup bootstrap/gen/rt/gen_rt_map.ss` → `ss_mapSet` insert(`:108`)`ss_rc_strdup(ikey_buf)` 出一份 **OLD-RC** 裸 cstr 存 `entry.key`;`ss_rc_destroy_map`/`ss_mapDelete` 用 `ss_rc_release(key)` 释放。
+
+`ss_rc_strdup` 内部走 `ss_rc_alloc`,`ss_rc_release` 是 Phase 4 明令删除的函数 —— **entry.key 不脱 `ss_rc_*` → Phase 4 无法删 `ss_rc_release`**(entry.key 仍是其调用点)。§D 作为 Phase 4 gateway **必须**含 entry.key 去 RC 化。
+
+**改法**:entry.key 本是哈希表内部 cstr(refcount 恒 1、entry 独占、永不共享、生命周期 = entry)—— 从来不需要 RC,`ss_rc_strdup` 是 OLD-RC 机制的偶然耦合。
+- `ss_mapSet` insert:`ss_rc_strdup(ikey_buf)` → `@strdup(ikey_buf)`(`strdup` 已 `declare`,`gen_runtime.ss:52`)。
+- `ss_drop_Map` / `ss_mapDelete`:`ss_rc_release(key)` → `free(key)`。
+- entry.key 保持**裸 cstr** 形态 → `find_entry` 的 `strcmp(ek, key_buf)` + `ss_mapKeys` 的 `strlen(ek)` + `ss_mapKeysArray` 的 `ss_string_from_cstr(ek)` **全不变**(只是 alloc/free 原语换 libc 原生)。
+
+去化后 Map 路径 `ss_rc_*` 残留仅 `ss_mapKeys` 的 newline-join scratch buffer(`ss_rc_alloc`/`ss_rt_ensure_cap`/`ss_rc_release`)—— 非 Map header、是跨运行时共享 string-build idiom(`ss_rt_ensure_cap` 多函数复用)→ **明确划归 Phase 4**,§D 不动(spike 前 `grep ss_rt_ensure_cap` 确认跨域)。
+
+---
+
+### §D.5 emitRetainForType / emitReleaseForType 路由 — 加 isMapType 分支
+
+**RED**:`class.ss:140-155` `emitRetainForType`/`emitReleaseForType` 现 `isUserClass||string||isArrayType → ss_retain` 否则 `ss_rc_retain`;`isUserClass("Map")==0`(`class.ss:124`)→ Map 落 `else` 走 `ss_rc_retain`。§D 后 Map 是 NEW 对象 —— `ss_rc_retain(NEW Map)` 读 magic@-4 = 垃圾 ≠ 1397969747 → 守卫失败 → no-op → **Map 永不释放 = 泄漏**。
+
+**改法**(P3.2):`class.ss` 加 `isMapType(t)`(对称 `isArrayType`:`t=="Map" || t.startsWith("Map<") || t=="Set" || t.startsWith("Set<")`),`emitRetainForType`/`emitReleaseForType` 条件加 `|| isMapType(ssType)==1` → Map/Set 走 `ss_retain`/`ss_release`。
+
+- `emitReleaseVarList`(§C.11)/ `genVarDecl` / `genReturn` 已用 `ss_*_any` —— `_any` 按运行时 magic 分派:§D 前 Map 有 magic→`ss_rc_*`,§D 后 Map 无 magic→`ss_*`,**自动适配,零改动**(`ss_*_any` 正是 §C.10-map 为消类型名精度依赖而建)。`isRcManaged`(`gen_rc.ss:55`)已含 Map → 不变(注释「OLD(Map/Set)」§D 后过时,P3.2 顺手订正为 NEW)。仅类型名静态分派的 `emitRetainForType`/`emitReleaseForType` 需 §D.5。
+- 触达点:Map 作 class 字段时 `ss_drop_<Class>` 经 `emitReleaseForType(field,"Map")` 释放;Map 作 class 字段 share 分支 `emitRetainForType(val,"Map")`(`gen_type_ops.ss:381`)。二者 §D.5 后正确路由 NEW。
+- Phase 4:全容器切完后 `emitRetainForType`/`emitReleaseForType` 退化为单一 `ss_retain`/`ss_release`(D168 §核心目标 + §A.3),`isMapType`/`isArrayType` 分支一并消除。
+
+---
+
+### §D.6 全栈 GEP 偏移修正清单
+
+**ABI 偏移**(inline buckets,全字段 +16):
+
+| 字段 | OLD | NEW | 访问 | 影响函数 |
+|---|---|---|---|---|
+| rc | raw-16 (i64) | **0** (i64) | `ss_retain`/`ss_release` 内部 | RC 路径 |
+| tag / magic | -8 / -4 (i32) | **删除** | — | OLD 头碎片消除 |
+| TypeInfo | (无) | **8** (ptr) | `ss_release` drop 分派 | drop 路径 |
+| buckets[64] | 0..511 | **16..527** | `irMapBucketPtr` typed 5-operand GEP | find_entry / ss_mapSet(insert) / ss_mapDelete / ss_mapKeys / ss_mapKeysArray / ss_drop_Map |
+| size | 512 (i32) | **528** (i32) | i8-offset +16 | ss_mapSet(insert) / ss_mapSize / ss_mapDelete(dec) / ss_mapKeysArray |
+| val_type | 516 (i32) | **532** (i32) | i8-offset +16 | ss_mapSet(update) / ss_mapDelete / ss_drop_Map〔runtime〕;gen_builtins.ss:250 / gen_decls.ss:673 / gen_deserialize.ss:234〔codegen〕|
+
+**桶 GEP helper**:6 处桶访问现为 `irGEP(…,"ptr","%map",idx)`(把 `%map` 当 ptr 数组基址,= `map+idx*8`)。inline 桶在字段 2 → 统一经新 helper `irMapBucketPtr(name, mapReg, idxReg)`(`ir_builder.ss`)emit `getelementptr %Map, ptr %map, i32 0, i32 2, i64 %idx`(= `map+16+idx*8`,结果同为 ptr-to-bucket)。DRY,对照 §C P2.2 `irLoadArrayData` 归一。
+
+**精确化(订正本轮 task 给定清单)**:`ss_mapGet` / `ss_mapGetString` / `ss_mapHas` 自身**无 Map-struct GEP** —— 只调 `find_entry` + 读 entry 节点(`entry+8` value);`find_entry` 桶 GEP 修好后三者**传递覆盖、零自身改动**。`find_entry` 的 `getelementptr %String,%key,…,2` 取 key buffer 是 P1 §B.7 既有(key 是 NEW String header),§D 不变。`hash_str` 纯函数无 Map 访问。
+
+**codegen 侧 val_type 写**(3 处 emit-string 字面量 516→532):`gen_builtins.ss:250`(`.set()` ptr value 标记)/ `gen_decls.ss:673`(类型注解标记)/ `gen_deserialize.ss:234`(反序列化)。**必须与 runtime 偏移同 commit** —— 否则 val_type 写进 OLD 偏移(516 落 NEW 桶[62] 内)= 桶链表损坏。
+
+**`ss_rc_destroy_map` + `ss_rc_release` tag-2 分支**:§D 后无 Map 带 tag → 二者均 dead code;§D **不删**(保持 P3.2 diff 聚焦 migration),Phase 4「删旧系统」统一 sweep。
+
+---
+
+### §D.7 RED 命令 + 最危险假设 + spike
+
+**RED**(spike 前实测):
+```bash
+cat > /tmp/d168_p3_spike.ss <<'EOF'
+function main() {
+    let m = new Map()
+    m.set("k", "v")
+    println(m.getString("k"))
+}
+EOF
+bin/ss build /tmp/d168_p3_spike.ss --emit-ir 2>&1 | grep -E '@Map_type_info|ss_drop_Map|%Map = type'
+grep -c 'ss_rc_calloc' bootstrap/gen/rt/gen_rt_map.ss
+```
+- **spike 前**:`grep` 三符号 0 命中;`ss_rc_calloc` 计数 = 1(`ss_mapNew`)。
+- **P3.1 后**:`@Map_type_info` + `ss_drop_Map` + `%Map = type` 命中(dead-code emit);`ss_rc_calloc` 仍 1。
+- **P3.2 后**:`ss_mapNew` 内 `mi_calloc` + `@Map_type_info` 写入命中;`ss_rc_calloc` 在 `gen_rt_map.ss` = **0**(单一判据)。
+
+**最危险假设**:**P3.2「全或无」可一次性原子完成不崩** —— Map 头一旦切 NEW,所有桶/size/val_type GEP + retain/release 路由必须同时正确,**无半迁移中间态**。§C.9-exec `f21271d` + §C.11 spike 三轮已实证「部分推进必 regress」;P3.2 不可拆,Execute 走 §D.8 标准三阶段、崩则整体 `git reset --soft HEAD^`。次危险假设:NEW Map 传 `ss_*_any` 时 magic@-4 OOB 读无害 —— **已被 §C.11 string/Array/class 实证**(三者全 mi_calloc'd NEW 对象、324/4 baseline);Map 同为 mi_calloc'd NEW 对象,复用同机制,非新风险。
+
+**spike**:P3.1(dead-code,bootstrap-safe)即天然 spike —— 验 `emitMapTypeInfo` emit 正确 + bootstrap 固定点;P3.2 因原子不可拆,其「spike」= 全量实施 + 三阶段,失败 reset(§M§字段12 与「一次性改完」不矛盾的特例:原子改动无 1-2 处子 spike 空间)。
+
+---
+
+### §D.8 Bootstrap hard break 策略 — 标准三阶段,不冻结 seed
+
+与 §B.9 / §C.8 同策略:RC + ABI 改动是 codegen 内部细节,seed 编译器(`bin/ss`)不受影响 —— stage1=seed 编译 bootstrap(stage1 内部旧 ABI、输出新 ABI)、stage2=stage1 编译、stage3=stage2 编译,验 stage2==stage3 bit-identical。
+
+**风险点**:P3.2 后 stage2 启动若 Map runtime 函数链有 bug → segfault;失败 `git reset --soft HEAD^` + 修。Bootstrap 单次约 55s。
+
+**与 P1/P2 落地经验对照**:P1.3 字面量 boxed 触发 codegen IR 拼装顺序连锁、P2 是 runtime 创建无此问题;**Map 同 runtime 创建(无字面量)→ 扩散面预估近 §C.8 Array 量级**。但 Map 是编译器自身重度依赖的数据结构(`nKind`/`pirKind` 等全局 Map),P3.2 崩面比 Array 更广、定位更难 → P3.1 dead-code 先行隔离 emit 正确性的价值高于 §B/§C。
+
+---
+
+### §D.9 §D 内部子分阶段(每子步 bootstrap 验证)
+
+> §C.10-map + §C.11 是 Phase 3 的 **value-RC 半**(已 close);本 §D 是 **header 迁移半**,P3.x 编号专指 header 迁移子步。
+
+| 子阶段 | 范围 | 触达 | Status |
+|---|---|---|---|
+| **P3.1** | §D.3 `emitMapTypeInfo` dead-code 元数据(`%Map` type 入 `codegen.ss` typeDecl + `@Map_type_info` + `ss_drop_Map` + `ss_deep_clone_Map`/`ss_shallow_clone_Map`;P3.2 才连接到 `ss_mapNew` + dispatch)| gen_runtime.ss(`emitMapTypeInfo`)/ codegen.ss(`%Map` prepend) | [ ] Planned |
+| **P3.2** | **全或无原子大改**:§D.2 `ss_mapNew`→`mi_calloc` ObjHeader + §D.6 全栈 GEP(6 桶 GEP 经 `irMapBucketPtr` / size 512→528 / val_type 516→532 runtime+codegen 6 处)+ §D.4 entry.key `ss_rc_strdup`→`strdup` + §D.5 `emitRetain/ReleaseForType` 加 `isMapType`。任何中间态即崩(§C.9-exec/§C.11「全或无」实证)| gen_rt_map.ss / ir_builder.ss(`irMapBucketPtr`)/ gen_builtins.ss / gen_decls.ss / gen_deserialize.ss / class/class.ss | [ ] Planned |
+| **P3.3** | 综合大测 + `Map<嵌套>` / `Set` / Map-as-class-field / `Array<Map>` 验证 + Phase 3 close | 全测 + bootstrap | [ ] Planned |
+
+**子阶段间硬约束**:
+- 任一子阶段 bootstrap 失败 → `git reset --soft HEAD^` + 修,不带失败 commit。
+- **P3.1 必须 P3.2 前完成**(类型元数据基础设施先于切换,dead-code 隔离 emit 正确性)。
+- **P3.2 原子不可再拆** —— `ss_mapNew` alloc 切换、桶/size/val_type GEP、entry.key、dispatch 路由必须同 commit;任何子集单独推进即半迁移崩溃态(§C.9-exec `f21271d` + §C.11 spike 实证)。
+- P3.3 必须 P3.1+P3.2 全 GREEN 后启动。
+
+**Phase 3 close 判据**(§D 完成 = Phase 3 全 close):
+- bootstrap 三阶段 bit-identical;
+- 全测 0 regression(基线 = §C.11 close 的 324/4);
+- `grep ss_rc_calloc bootstrap/gen/rt/gen_rt_map.ss` 命中 = 0;
+- `@Map_type_info` + `ss_drop_Map` + `%Map = type` IR 命中,`ss_mapNew` 内 `mi_calloc` 命中;
+- `emitRetainForType`/`emitReleaseForType` 加 `isMapType` 分支,Map/Set 走 `ss_retain`/`ss_release`;
+- §Phase 收关锚 Phase 3 行回写 `[x]`,Phase 4 解锁(`ss_rc_destroy_map` + tag-2 分支等成 dead code 可删)。
 
 ---
 
