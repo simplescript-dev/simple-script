@@ -1,26 +1,20 @@
 // Test: comptimeDepth dispatch vs operand ct-ness — D094 validation
 // Verifies that "comptime context" and "operand known-ness" are orthogonal
 
+import { assertEq } from "./import/asserts"
+
 function add(a: int, b: int): int { return a + b }
-
-function check(actual: int, expected: int, msg: string) {
-    if (actual != expected) { throw(msg) }
-}
-
-function checkStr(actual: string, expected: string, msg: string) {
-    if (actual != expected) { throw(msg) }
-}
 
 function main() {
     // Case 1: Pure expression auto-folds outside comptime block
     const c1 = 1 + 2
-    check(c1, 3, "case1: pure expr fold")
+    assertEq(c1, 3, "case1: pure expr fold")
 
     // Case 2: Call external function from comptime block
     const c2 = comptime {
         return add(10, 20)
     }
-    check(c2, 30, "case2: comptime external call")
+    assertEq(c2, 30, "case2: comptime external call")
 
     // Case 3: Array index assign + read in comptime
     const c3 = comptime {
@@ -28,12 +22,12 @@ function main() {
         a[1] = 42
         return a[1]
     }
-    check(c3, 42, "case3: comptime index assign")
+    assertEq(c3, 42, "case3: comptime index assign")
 
     // Case 4: Template literal auto-folds with ct operands
     const name = "world"
     const greeting = `hello ${name}`
-    checkStr(greeting, "hello world", "case4: template fold")
+    assertEq(greeting, "hello world", "case4: template fold")
 
     // Case 5: Comptime block with class instantiation
     const c5 = comptime {
@@ -41,7 +35,7 @@ function main() {
         const p = new Point(3, 4)
         return p.x + p.y
     }
-    check(c5, 7, "case5: comptime class fields")
+    assertEq(c5, 7, "case5: comptime class fields")
 
     // Case 6: Comptime throw not triggered on success path
     const c6 = comptime {
@@ -51,7 +45,7 @@ function main() {
         }
         return 42
     }
-    check(c6, 42, "case6: comptime throw skip")
+    assertEq(c6, 42, "case6: comptime throw skip")
 
     // Case 7: Comptime map index assign + read
     const c7 = comptime {
@@ -59,7 +53,7 @@ function main() {
         m["key"] = "value"
         return m["key"]
     }
-    checkStr(c7, "value", "case7: comptime map index")
+    assertEq(c7, "value", "case7: comptime map index")
 
     // Case 8: Postfix increment in comptime
     const c8 = comptime {
@@ -67,21 +61,21 @@ function main() {
         x++
         return x
     }
-    check(c8, 11, "case8: comptime postfix")
+    assertEq(c8, 11, "case8: comptime postfix")
 
     // Case 9: Nested comptime — function defined and called in comptime
     const c9 = comptime {
         function mul(a: int, b: int): int { return a * b }
         return mul(6, 7)
     }
-    check(c9, 42, "case9: comptime local func")
+    assertEq(c9, 42, "case9: comptime local func")
 
     // Case 10: Comptime enum access
     const c10 = comptime {
         enum Color { Red, Green, Blue }
         return Color.Blue
     }
-    check(c10, 2, "case10: comptime enum")
+    assertEq(c10, 2, "case10: comptime enum")
 
     println("all 10 comptime dispatch tests passed")
 }

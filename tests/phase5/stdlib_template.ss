@@ -1,22 +1,5 @@
 import { Template } from "@/lib/template"
-
-function check(label: string, actual: string, expected: string) {
-    if (actual != expected) {
-        println(`FAIL: ${label}`)
-        println(`  expected: "${expected}"`)
-        println(`  actual:   "${actual}"`)
-        exit(1)
-    }
-}
-
-function checkInt(label: string, actual: int, expected: int) {
-    if (actual != expected) {
-        println(`FAIL: ${label}`)
-        println(`  expected: ${expected}`)
-        println(`  actual:   ${actual}`)
-        exit(1)
-    }
-}
+import { assertEq } from "./import/asserts"
 
 function main() {
     let vars = new Map()
@@ -24,116 +7,116 @@ function main() {
     vars.set("greeting", "Hello")
 
     // ── Basic variable substitution ──
-    check("basic var", Template.render("{{name}}", vars), "Alice")
-    check("two vars", Template.render("{{greeting}}, {{name}}!", vars), "Hello, Alice!")
-    check("missing var", Template.render("{{unknown}}", vars), "")
-    check("no tags", Template.render("plain text", vars), "plain text")
-    check("empty template", Template.render("", vars), "")
-    check("text around var", Template.render("Hi {{name}} bye", vars), "Hi Alice bye")
+    assertEq(Template.render("{{name}}", vars), "Alice", "basic var")
+    assertEq(Template.render("{{greeting}}, {{name}}!", vars), "Hello, Alice!", "two vars")
+    assertEq(Template.render("{{unknown}}", vars), "", "missing var")
+    assertEq(Template.render("plain text", vars), "plain text", "no tags")
+    assertEq(Template.render("", vars), "", "empty template")
+    assertEq(Template.render("Hi {{name}} bye", vars), "Hi Alice bye", "text around var")
 
     // ── Whitespace in tags ──
-    check("spaces in tag", Template.render("{{ name }}", vars), "Alice")
-    check("spaces in tag 2", Template.render("{{  greeting  }}", vars), "Hello")
+    assertEq(Template.render("{{ name }}", vars), "Alice", "spaces in tag")
+    assertEq(Template.render("{{  greeting  }}", vars), "Hello", "spaces in tag 2")
 
     // ── Sections ──
     vars.set("loggedIn", "true")
-    check("section true", Template.render("{{#loggedIn}}Welcome!{{/loggedIn}}", vars), "Welcome!")
-    check("section false", Template.render("{{#admin}}Admin{{/admin}}", vars), "")
-    check("section with var", Template.render("{{#loggedIn}}Hi {{name}}{{/loggedIn}}", vars), "Hi Alice")
-    check("section mixed", Template.render("A{{#loggedIn}}B{{/loggedIn}}C", vars), "ABC")
+    assertEq(Template.render("{{#loggedIn}}Welcome!{{/loggedIn}}", vars), "Welcome!", "section true")
+    assertEq(Template.render("{{#admin}}Admin{{/admin}}", vars), "", "section false")
+    assertEq(Template.render("{{#loggedIn}}Hi {{name}}{{/loggedIn}}", vars), "Hi Alice", "section with var")
+    assertEq(Template.render("A{{#loggedIn}}B{{/loggedIn}}C", vars), "ABC", "section mixed")
 
     // ── Inverted sections ──
-    check("inverted false", Template.render("{{^admin}}Guest{{/admin}}", vars), "Guest")
-    check("inverted true", Template.render("{{^loggedIn}}Not logged in{{/loggedIn}}", vars), "")
-    check("inverted with var", Template.render("{{^admin}}Hi {{name}}{{/admin}}", vars), "Hi Alice")
+    assertEq(Template.render("{{^admin}}Guest{{/admin}}", vars), "Guest", "inverted false")
+    assertEq(Template.render("{{^loggedIn}}Not logged in{{/loggedIn}}", vars), "", "inverted true")
+    assertEq(Template.render("{{^admin}}Hi {{name}}{{/admin}}", vars), "Hi Alice", "inverted with var")
 
     // ── Truthiness ──
     vars.set("empty", "")
     vars.set("zero", "0")
     vars.set("falseVal", "false")
     vars.set("truthy", "yes")
-    check("empty not truthy", Template.render("{{#empty}}yes{{/empty}}", vars), "")
-    check("zero not truthy", Template.render("{{#zero}}yes{{/zero}}", vars), "")
-    check("false not truthy", Template.render("{{#falseVal}}yes{{/falseVal}}", vars), "")
-    check("truthy val", Template.render("{{#truthy}}yes{{/truthy}}", vars), "yes")
+    assertEq(Template.render("{{#empty}}yes{{/empty}}", vars), "", "empty not truthy")
+    assertEq(Template.render("{{#zero}}yes{{/zero}}", vars), "", "zero not truthy")
+    assertEq(Template.render("{{#falseVal}}yes{{/falseVal}}", vars), "", "false not truthy")
+    assertEq(Template.render("{{#truthy}}yes{{/truthy}}", vars), "yes", "truthy val")
 
     // ── Comments ──
-    check("comment", Template.render("Hello{{! ignored }}World", vars), "HelloWorld")
-    check("comment with spaces", Template.render("A{{!  comment  }}B", vars), "AB")
-    check("comment only", Template.render("{{! nothing }}", vars), "")
+    assertEq(Template.render("Hello{{! ignored }}World", vars), "HelloWorld", "comment")
+    assertEq(Template.render("A{{!  comment  }}B", vars), "AB", "comment with spaces")
+    assertEq(Template.render("{{! nothing }}", vars), "", "comment only")
 
     // ── Nested sections ──
     vars.set("a", "true")
     vars.set("b", "true")
-    check("nested both true", Template.render("{{#a}}X{{#b}}Y{{/b}}Z{{/a}}", vars), "XYZ")
+    assertEq(Template.render("{{#a}}X{{#b}}Y{{/b}}Z{{/a}}", vars), "XYZ", "nested both true")
 
     vars.set("b", "false")
-    check("nested inner false", Template.render("{{#a}}X{{#b}}Y{{/b}}Z{{/a}}", vars), "XZ")
+    assertEq(Template.render("{{#a}}X{{#b}}Y{{/b}}Z{{/a}}", vars), "XZ", "nested inner false")
 
     vars.set("a", "false")
     vars.set("b", "true")
-    check("nested outer false", Template.render("{{#a}}X{{#b}}Y{{/b}}Z{{/a}}", vars), "")
+    assertEq(Template.render("{{#a}}X{{#b}}Y{{/b}}Z{{/a}}", vars), "", "nested outer false")
 
     // Reset for remaining tests
     vars.set("a", "true")
     vars.set("b", "true")
 
     // ── Escaped delimiters ──
-    check("escaped tag", Template.render("\\{{name}}", vars), "{{name}}")
-    check("escaped mixed", Template.render("A\\{{B}}C", vars), "A{{B}}C")
+    assertEq(Template.render("\\{{name}}", vars), "{{name}}", "escaped tag")
+    assertEq(Template.render("A\\{{B}}C", vars), "A{{B}}C", "escaped mixed")
 
     // ── HTML escape ──
-    check("escape amp", Template.escape("a&b"), "a&amp;b")
-    check("escape lt gt", Template.escape("<div>"), "&lt;div&gt;")
-    check("escape quot", Template.escape("say \"hi\""), "say &quot;hi&quot;")
-    check("escape apos", Template.escape("it's"), "it&#39;s")
-    check("escape clean", Template.escape("hello"), "hello")
-    check("escape empty", Template.escape(""), "")
-    check("escape all", Template.escape("<b>&\"'</b>"), "&lt;b&gt;&amp;&quot;&#39;&lt;/b&gt;")
+    assertEq(Template.escape("a&b"), "a&amp;b", "escape amp")
+    assertEq(Template.escape("<div>"), "&lt;div&gt;", "escape lt gt")
+    assertEq(Template.escape("say \"hi\""), "say &quot;hi&quot;", "escape quot")
+    assertEq(Template.escape("it's"), "it&#39;s", "escape apos")
+    assertEq(Template.escape("hello"), "hello", "escape clean")
+    assertEq(Template.escape(""), "", "escape empty")
+    assertEq(Template.escape("<b>&\"'</b>"), "&lt;b&gt;&amp;&quot;&#39;&lt;/b&gt;", "escape all")
 
     // ── HTML unescape ──
-    check("unescape lt", Template.unescape("&lt;div&gt;"), "<div>")
-    check("unescape amp", Template.unescape("a&amp;b"), "a&b")
-    check("unescape quot", Template.unescape("&quot;hi&quot;"), "\"hi\"")
-    check("unescape apos", Template.unescape("&#39;s"), "'s")
-    check("unescape clean", Template.unescape("hello"), "hello")
-    check("unescape empty", Template.unescape(""), "")
-    check("unescape partial", Template.unescape("&unknown;"), "&unknown;")
-    check("roundtrip", Template.unescape(Template.escape("<b>it's \"cool\" & fun</b>")), "<b>it's \"cool\" & fun</b>")
+    assertEq(Template.unescape("&lt;div&gt;"), "<div>", "unescape lt")
+    assertEq(Template.unescape("a&amp;b"), "a&b", "unescape amp")
+    assertEq(Template.unescape("&quot;hi&quot;"), "\"hi\"", "unescape quot")
+    assertEq(Template.unescape("&#39;s"), "'s", "unescape apos")
+    assertEq(Template.unescape("hello"), "hello", "unescape clean")
+    assertEq(Template.unescape(""), "", "unescape empty")
+    assertEq(Template.unescape("&unknown;"), "&unknown;", "unescape partial")
+    assertEq(Template.unescape(Template.escape("<b>it's \"cool\" & fun</b>")), "<b>it's \"cool\" & fun</b>", "roundtrip")
 
     // ── Variables extraction ──
     const v1 = Template.variables("{{a}} and {{b}}")
-    checkInt("vars count 2", v1.length(), 2)
-    check("vars 0", v1[0], "a")
-    check("vars 1", v1[1], "b")
+    assertEq(v1.length(), 2, "vars count 2")
+    assertEq(v1[0], "a", "vars 0")
+    assertEq(v1[1], "b", "vars 1")
 
     const v2 = Template.variables("{{#x}}{{y}}{{/x}}")
-    checkInt("section vars count", v2.length(), 2)
-    check("section vars 0", v2[0], "x")
-    check("section vars 1", v2[1], "y")
+    assertEq(v2.length(), 2, "section vars count")
+    assertEq(v2[0], "x", "section vars 0")
+    assertEq(v2[1], "y", "section vars 1")
 
     const v3 = Template.variables("{{a}}{{a}}{{b}}")
-    checkInt("dedup count", v3.length(), 2)
-    check("dedup 0", v3[0], "a")
-    check("dedup 1", v3[1], "b")
+    assertEq(v3.length(), 2, "dedup count")
+    assertEq(v3[0], "a", "dedup 0")
+    assertEq(v3[1], "b", "dedup 1")
 
     const v4 = Template.variables("{{! comment }}{{x}}")
-    checkInt("skip comments", v4.length(), 1)
-    check("skip comments 0", v4[0], "x")
+    assertEq(v4.length(), 1, "skip comments")
+    assertEq(v4[0], "x", "skip comments 0")
 
     const v5 = Template.variables("no tags here")
-    checkInt("no vars", v5.length(), 0)
+    assertEq(v5.length(), 0, "no vars")
 
     // ── Strip ──
-    check("strip vars", Template.strip("Hello {{name}}, {{greeting}}!"), "Hello , !")
-    check("strip sections", Template.strip("{{#a}}content{{/a}}rest"), "contentrest")
-    check("strip clean", Template.strip("no tags"), "no tags")
-    check("strip empty", Template.strip(""), "")
-    check("strip comment", Template.strip("A{{! x }}B"), "AB")
+    assertEq(Template.strip("Hello {{name}}, {{greeting}}!"), "Hello , !", "strip vars")
+    assertEq(Template.strip("{{#a}}content{{/a}}rest"), "contentrest", "strip sections")
+    assertEq(Template.strip("no tags"), "no tags", "strip clean")
+    assertEq(Template.strip(""), "", "strip empty")
+    assertEq(Template.strip("A{{! x }}B"), "AB", "strip comment")
 
     // ── Edge cases ──
-    check("single brace", Template.render("{not a tag}", vars), "{not a tag}")
-    check("empty tag", Template.render("{{}}", vars), "")
+    assertEq(Template.render("{not a tag}", vars), "{not a tag}", "single brace")
+    assertEq(Template.render("{{}}", vars), "", "empty tag")
 
     println("All template tests passed!")
 }
