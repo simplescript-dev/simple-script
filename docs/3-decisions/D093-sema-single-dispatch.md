@@ -1,6 +1,6 @@
 # D093: SEMA 单函数 dispatch — Zig 本质一样路径
 
-**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at <本轮 commit>** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首),Phase 1.5a 起 Execute 轮
+**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at 5d36c8c** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首),Phase 1.5a 起 Execute 轮
 **Depends on:** D088(Zig 路线), D092(双轨 SEMA 实现 — 被本决策替代)
 **Spawned:** D169(MaybeVal + comptimeMustBeKnown 协议接口详设 — Phase 1.5 prereq)
 **Date:** 2026-04-15
@@ -247,7 +247,7 @@ Phase 1 拒绝准则(根因防偏 — 与 CLAUDE.md §Root Cause 优先 第一�
 
 ## Phase 1 受阻 — 三拒绝准则触发 + 升级 Phase 1.5 + D169 起首 (2026-05-20)
 
-**Status:** Blocked at <本轮 commit> — Phase 1.5a 起 Execute 接替
+**Status:** Blocked at 5d36c8c — Phase 1.5a 起 Execute 接替
 
 ### 实证
 
@@ -286,7 +286,7 @@ do-while spike 在本地 hack 的三条物理可达路径,**全部违反规约**
 ## 下一步
 
 - **[x] Done at 2983d8a** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
-- **[ ] Blocked at <本轮 commit>** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike — §拒绝准则 #1/#3 触发,详 §Phase 1 受阻;升级 Phase 1.5(D169 起首)
+- **[ ] Blocked at 5d36c8c** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike — §拒绝准则 #1/#3 触发,详 §Phase 1 受阻;升级 Phase 1.5(D169 起首)
 - **[ ] Planned** Phase 1.5a Execute: MaybeVal class + helper + comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + 1-2 callsite POC(详 D169 §子拆解)
 - **[ ] Planned** Phase 1.5b Execute: eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除
 - **[ ] Planned** Phase 1.5c Execute: bootstrap/eval/ 其他 ~10 处类 B 入口消除
