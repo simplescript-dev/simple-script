@@ -95,7 +95,16 @@ function evalExpr(astId: int): int {
     if (k == "NEW_EXPR") { return evalNewExpr(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
-    if (comptimeDepth > 0) {
+    // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — BINARY 入口双轨消除。
+    // OLD ct-depth 字面迁 `comptimeMustBeKnown == 1`(D098 §决策 1 行 92 字面规约 +
+    // D169 §B 短期 1.5a-c 并存,中期 1.5d-e callsite 迁)。**comptime 路径按 valType
+    // (genVal 后真实值类型)dispatch,禁 inferType** — comptime `let acc = ""` 注册
+    // ctVars 而非 varTypes,inferType IDENT fallback 返 "int"(`gen/gen_types.ss:331-336`),
+    // 致 `acc != ""` 走 int interpAsInt → 0 → Ne 恒 false(D169 §POC N3 实证 17 处
+    // i021/d123/spring regression)。「真单 dispatch」(eager genVal + 纯 valType dispatch
+    // + 单 leaf comptime gate)留 1.5d — 1.5c 先把 genBinary/genStringConcat/
+    // genValStringCompare 改 take pre-eval reg 才不出函数调用副作用 double-eval bug。
+    if (comptimeMustBeKnown == 1) {
         if (op == "NullCoalesce") {
             const ctNcL = genVal(nGetI1(astId))
             if (isCt(ctNcL) == 1 && valType(ctNcL) != "null") { return ctNcL }
@@ -125,22 +134,24 @@ function evalExpr(astId: int): int {
         return ctVal(interpIntOp(op, interpAsInt(ctBlp), interpAsInt(ctBrp)))
     }
     if (op == "NullCoalesce" || op == "Instanceof" || op == "As" || op == "Pow") {
-        return 0 - constVal(genBinary(astId)) - 1
+        return mvRuntime(constVal(genBinary(astId)))
     }
     const blt = inferType(nGetI1(astId))
     const brt = inferType(nGetI2(astId))
     if (blt == "string" && brt == "string" && (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge")) {
         const sc = genValStringCompare(op, astId)
-        if (isCt(sc) == 1) { return sc }
-        return 0 - sc - 1
+        return isCt(sc) == 1 ? sc : (0 - sc - 1)
     }
     if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
-        return 0 - constVal(genBinary(astId)) - 1
+        return mvRuntime(constVal(genBinary(astId)))
     }
-    const lv = genVal(nGetI1(astId))
-    const rv = genVal(nGetI2(astId))
-    if (isCt(lv) == 1 && isCt(rv) == 1) {
-        return ctVal(interpIntOp(op, interpAsInt(payload(lv)), interpAsInt(payload(rv))))
+    // int/bool runtime — eager mv 协议(genVal 桥消除留 1.5d,见上注)
+    const lRaw = genVal(nGetI1(astId))
+    const rRaw = genVal(nGetI2(astId))
+    const lMv = isCt(lRaw) == 1 ? lRaw : (0 - lRaw - 1)
+    const rMv = isCt(rRaw) == 1 ? rRaw : (0 - rRaw - 1)
+    if (mvKnownOf(lMv) == 1 && mvKnownOf(rMv) == 1) {
+        return ctVal(interpIntOp(op, interpAsInt(valOf(lMv)), interpAsInt(valOf(rMv))))
     }
-    return 0 - constVal(genIntBinary(op, reg(lv), reg(rv))) - 1
+    return mvRuntime(constVal(genIntBinary(op, reg(lRaw), reg(rRaw))))
 }
