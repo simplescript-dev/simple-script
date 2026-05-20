@@ -21,40 +21,42 @@ import { valOf, valType } from "../gen/gen_maybeval"
 function evalExpr(astId: int): int {
     const k = nGetKind(astId)
     if (k == "UNARY") {
-        // D169 Phase 1.5a POC — mvRuntime 构造器 4 处(D098 §决策 1 §Phase A 显式化):
-        //   0 - constVal(s) - 1 → mvRuntime(constVal(s))   (evalExpr 返值 mv 构造器)
-        // mvKnownOf/mvValOf 是 evalExpr 内部 mv 编码空间(符号位)协议;genVal 已对
-        // evalExpr 返值做解码(`mv >= 0 ? mv : 0 - mv - 1`,见 gen/exprs/exprs.ss:68),
-        // genVal 返 ctUv/ov 在 positive 编码空间(ctVal bit 30 set vs constVal bit 30
-        // clear),isCt+payload 是该空间权威。两空间不等价(`isCt(negative_mv) = 1` 在
-        // i32 bit 30 下),POC 不替换 isCt/payload — 1.5b 入口双轨消除后由 evalExpr
-        // 内部 mv 空间统一处理,callsite 才有契合的 mvKnownOf/mvValOf 应用点。
+        // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — UNARY 入口单 dispatch
+        // (类 B 入口双轨消除)。callsite 走 D098 §决策 1 §Phase A mv 编码协议:
+        //   genVal(child) → positive 空间 → 转 mv 空间 → mvKnownOf 判定
+        //   fold (int/bool: interpNewInt/Bool + ctVal) / runtime emit IR + mvRuntime / error
+        // genVal 已对 evalExpr 复杂 kind 返值解码(`mv >= 0 ? mv : 0 - mv - 1`,见
+        // gen/exprs/exprs.ss:68);本 case 再以 `isCt(v) == 1 ? v : 0 - v - 1` 反向
+        // 编码回 mv 空间,让 callsite 走 mvKnownOf/mvValOf 协议(D169 §POC 失败实证
+        // 锁的"mv 空间 vs positive 空间隔离"边界,Phase 1.5d genVal 桥消除后此反向
+        // 转可去除直接 `subMv = evalExpr(child)`)。
+        // comptimeMustBeKnown read callsite 首接入(D169 §B 立法 → read 协议物理推进)。
+        // 1.5c 前不能挪 double fold:`interpAsStr` 跨读 tvS1(string 列)而 double 值在
+        // tvD1(double 列)— 实测 -3.14 global init regression(D169 §POC 失败 N1)。
         const uOp = nGetS1(astId)
-        if (comptimeDepth > 0) {
-            const ctUv = genVal(nGetI1(astId))
-            if (isCt(ctUv) == 0) { return ctVal(interpNewNull()) }
-            const ctUp = valOf(ctUv)
-            const ctUt = valType(ctUv)
-            if (uOp == "Neg") {
-                if (ctUt == "double") { return ctVal(interpNewDouble(0.0 - parseDouble(interpAsStr(ctUp)))) }
-                return ctVal(interpNewInt(0 - interpAsInt(ctUp)))
-            }
-            if (uOp == "Not") { return ctVal(interpNewBool(interpTruthy(ctUp) == 1 ? 0 : 1)) }
-            if (uOp == "BitNot") { return ctVal(interpNewInt(~interpAsInt(ctUp))) }
-            return ctVal(interpNewNull())
-        }
-        const uType = inferType(nGetI1(astId))
+        const childId = nGetI1(astId)
+        const uType = inferType(childId)
         if (uType != "int" && uType != "bool") {
+            if (comptimeMustBeKnown == 1) {
+                return comptimeError(`unary '${uOp}' operand not compile-time known`, astId)
+            }
             return mvRuntime(constVal(genUnary(astId)))
         }
-        const ov = genVal(nGetI1(astId))
-        if (isCt(ov) == 1) {
-            const uVal = interpAsInt(payload(ov))
-            if (uOp == "Neg") { return ctVal(interpNewInt(0 - uVal)) }
-            if (uOp == "Not") { return ctVal(interpNewBool(uVal == 0 ? 1 : 0)) }
-            if (uOp == "BitNot") { return ctVal(interpNewInt(~uVal)) }
+        const subRaw = genVal(childId)
+        const subMv = isCt(subRaw) == 1 ? subRaw : (0 - subRaw - 1)
+        if (mvKnownOf(subMv) == 1) {
+            // known int/bool:subMv ∈ positive ctVal 空间(mv >= 0),valOf 取 payload
+            const subP = valOf(subMv)
+            if (uOp == "Neg") { return ctVal(interpNewInt(0 - interpAsInt(subP))) }
+            if (uOp == "Not") { return ctVal(interpNewBool(interpTruthy(subP) == 1 ? 0 : 1)) }
+            if (uOp == "BitNot") { return ctVal(interpNewInt(~interpAsInt(subP))) }
+            return ctVal(interpNewNull())
         }
-        const uValStr = reg(ov)
+        // runtime int/bool:mvKnownOf == 0
+        if (comptimeMustBeKnown == 1) {
+            return comptimeError(`unary '${uOp}' operand not compile-time known`, astId)
+        }
+        const uValStr = regTable[mvValOf(subMv) - 1]
         const uR = nextReg()
         if (uOp == "Neg") {
             emitIR(`  ${uR} = sub i32 0, ${uValStr}`)
