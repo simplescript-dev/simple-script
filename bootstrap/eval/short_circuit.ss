@@ -10,7 +10,7 @@ function evalShortCircuit(op: string, astId: int): int {
         const rv = genVal(nGetI2(astId))
         return isCt(rv) == 1 ? rv : 0 - rv - 1
     }
-    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+    if (comptimeMustBeKnown == 1) { return comptimeError(`short-circuit '${op}' operand not compile-time known`, astId) }
     const leftStr = reg(lv)
     const scResult = emitEntryAlloca(nextReg(), "i32", 4)
     emitIR(`  store i32 ${leftStr}, ptr ${scResult}, align 4`)
