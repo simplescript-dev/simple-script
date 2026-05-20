@@ -21,6 +21,14 @@ import { valOf, valType } from "../gen/gen_maybeval"
 function evalExpr(astId: int): int {
     const k = nGetKind(astId)
     if (k == "UNARY") {
+        // D169 Phase 1.5a POC — mvRuntime 构造器 4 处(D098 §决策 1 §Phase A 显式化):
+        //   0 - constVal(s) - 1 → mvRuntime(constVal(s))   (evalExpr 返值 mv 构造器)
+        // mvKnownOf/mvValOf 是 evalExpr 内部 mv 编码空间(符号位)协议;genVal 已对
+        // evalExpr 返值做解码(`mv >= 0 ? mv : 0 - mv - 1`,见 gen/exprs/exprs.ss:68),
+        // genVal 返 ctUv/ov 在 positive 编码空间(ctVal bit 30 set vs constVal bit 30
+        // clear),isCt+payload 是该空间权威。两空间不等价(`isCt(negative_mv) = 1` 在
+        // i32 bit 30 下),POC 不替换 isCt/payload — 1.5b 入口双轨消除后由 evalExpr
+        // 内部 mv 空间统一处理,callsite 才有契合的 mvKnownOf/mvValOf 应用点。
         const uOp = nGetS1(astId)
         if (comptimeDepth > 0) {
             const ctUv = genVal(nGetI1(astId))
@@ -37,7 +45,7 @@ function evalExpr(astId: int): int {
         }
         const uType = inferType(nGetI1(astId))
         if (uType != "int" && uType != "bool") {
-            return 0 - constVal(genUnary(astId)) - 1
+            return mvRuntime(constVal(genUnary(astId)))
         }
         const ov = genVal(nGetI1(astId))
         if (isCt(ov) == 1) {
@@ -50,16 +58,16 @@ function evalExpr(astId: int): int {
         const uR = nextReg()
         if (uOp == "Neg") {
             emitIR(`  ${uR} = sub i32 0, ${uValStr}`)
-            return 0 - constVal(uR) - 1
+            return mvRuntime(constVal(uR))
         }
         if (uOp == "BitNot") {
             emitIR(`  ${uR} = xor i32 ${uValStr}, -1`)
-            return 0 - constVal(uR) - 1
+            return mvRuntime(constVal(uR))
         }
         emitIR(`  ${uR} = icmp eq i32 ${uValStr}, 0`)
         const uR2 = nextReg()
         emitIR(`  ${uR2} = zext i1 ${uR} to i32`)
-        return 0 - constVal(uR2) - 1
+        return mvRuntime(constVal(uR2))
     }
     if (k == "TERNARY") { return evalTernary(astId) }
     if (k == "COMPTIME_EXPR") {

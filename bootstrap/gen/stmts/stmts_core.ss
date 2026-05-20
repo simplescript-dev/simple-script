@@ -58,9 +58,9 @@ function runComptimeBlockBody(bodyId: int): int {
     interpContinueFlag = 0
     terminated = 0
     interpEnsureComptimeRoot()
-    comptimeDepth = comptimeDepth + 1
+    enterComptimeBlock()
     genBlock(bodyId)
-    comptimeDepth = comptimeDepth - 1
+    exitComptimeBlock()
     terminated = savedTerminated
     ctPopScope()
     currentFunc = savedFunc

@@ -110,3 +110,11 @@ L2λ 起的反射累积路径**明确废弃**。下一轮根因路径由 D093 §
 | `genForInUnrolled` 调用点(反射专用) | cls.fields / cls.methods / m.annotations / a.args 各一份 | 1 单入口(stmts_loop_forin.ss:12 + 105 + 113),Meta 数组走通用 fold + ct-probe | D117 Execute 4-5 删 interpCollectFields / interpCtFieldsArray + 通用 fold |
 
 D088 §第一性需求"反射是 Meta 对象自然成员访问,与普通字段访问共享 evalExpr 分发,无需 kind 分支"**完整兑现**。后续若新增反射维度,走"扩 Meta class 字段 + AST 直读"模板(已建立 5 类 Meta + interpBuildTypeInfo 单入口 + InternPool dedup),不再需要新 Map / 新 sidecar / 新 hardcoded 分支。D097 双 gate(§累积方向严禁 record + §削减方向单调推进)在 D117+D118 期间持续守护无 regression。
+
+## §扩容申报 audit trail
+
+D097 §Gate 行为 + §开发流集成 行 81 规约扩容申报必绑 D 文档 §扩容申报段 + audit trail。本段记录历轮 bump 调用,单行 audit trail 由 `bump-group` / `bump` CLI 写入 `tools/linter_baseline.txt` 文件末尾,本表为 D 文档侧锚点(linter 跑时不读本表,仅为 commit 历史可读性 + reviewer 追溯)。
+
+| 日期 | metric | bm 旧→新 | trail commit | 备注 |
+|---|---|---|---|---|
+| 2026-05-20 | F1 `bootstrap/main.ss` | 645 → 660 | 02c0065 + 9bb918e + 8578b0e(三 fix 累计 +13 行)| **D169 Phase 1.5a Execute 代偿前债** — I031 ulimit -c 0(`02c0065` +5)+ cmdTest mktemp 并发安全(`9bb918e` +7)+ 删运行时 IR 缓存死代码(`8578b0e` -6)三 fix 累计 main.ss 涨至 653 未同步 bump,本轮 Phase 1.5a Execute(`bootstrap/main.ss` 本轮 0 diff,见 `git diff --stat HEAD -- bootstrap/main.ss`)被 F1 GATE 拦截,代偿 bump 645 → 660(+15 buffer 容后续微 fix)。**根因削减留 D169 Phase 1.5d / 后续 CLI scope 单独 issue**(本 Phase 1.5a scope = SEMA Q1 协议接口,不动 CLI)|

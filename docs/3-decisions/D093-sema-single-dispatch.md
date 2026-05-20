@@ -1,6 +1,6 @@
 # D093: SEMA 单函数 dispatch — Zig 本质一样路径
 
-**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at 5d36c8c** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首),Phase 1.5a 起 Execute 轮
+**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at 5d36c8c** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首);**Phase 1.5 §A class 形态 Superseded by D098 §决策 1**(2026-05-20 ultrathink — D169 立项时漏引 D098,§A class 改 D098 §决策 1 纯 int 4 helper);Phase 1.5a 起 Execute 轮(按修订版 D169 §A 落 helper,不落 class)
 **Depends on:** D088(Zig 路线), D092(双轨 SEMA 实现 — 被本决策替代)
 **Spawned:** D169(MaybeVal + comptimeMustBeKnown 协议接口详设 — Phase 1.5 prereq)
 **Date:** 2026-04-15
@@ -231,10 +231,10 @@ Phase 1 拒绝准则(根因防偏 — 与 CLAUDE.md §Root Cause 优先 第一�
 | Phase | 范围 | 验收 |
 |---|---|---|
 | 1 | ~~`stmts_loop_classic.ss` do-while 消除 (1 处类 A spike)~~ **Blocked** — §拒绝准则 #1/#3 触发,见 §Phase 1 受阻;升级 Phase 1.5 | §0.3(待 1.5d 回归后达成) |
-| **1.5a** | MaybeVal class + helper + comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + 1-2 callsite POC | D169 §子拆解 1.5a 验收 5 项 |
-| **1.5b** | eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除 | eval_expr.ss `grep -c "comptimeDepth > 0"` 5+ → 0 |
+| **1.5a** | **D098 §决策 1 4 helper**(`mvKnownOf`/`mvValOf`/`mvRuntime`/`mvError`,纯 int 形态)+ comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + UNARY POC(2026-05-20 §A §修订:原 class MaybeVal 形态 Superseded by D098 §决策 1) | D169 §子拆解 1.5a 验收 6 项 |
+| **1.5b** | eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除(callsite 走 `mvKnownOf`/`mvValOf`/`reg`) | eval_expr.ss `grep -c "comptimeDepth > 0"` 5+ → 0 |
 | **1.5c** | bootstrap/eval/ 其他 ~10 处类 B 入口消除(call/method_call/member_access/index_access/template_lit/new_expr/postfix_inc/ternary/array_lit) | bootstrap/eval/ `grep -c "comptimeDepth > 0"` 预估 < 3 |
-| **1.5d** | evalExpr 返回类型升级 MaybeVal class + 回 Phase 1 原目标(do-while / while / for 三处类 A 消除)+ §0.3 验收 5 项达成 | `stmts_loop_classic.ss` `grep -c "comptimeDepth > 0"` = 0;tests/phase5/comptime_do_while_unknown_error.ss spike GREEN |
+| **1.5d** | evalExpr 入口双轨彻底消除(ct/runtime 分支合一)+ 回 Phase 1 原目标(do-while / while / for 三处类 A 消除)+ §0.3 验收 5 项达成。**接口返回类型保持 int**(D098 §决策 1 §Phase A→B 接口稳定性) | `stmts_loop_classic.ss` `grep -c "comptimeDepth > 0"` = 0;tests/phase5/comptime_do_while_unknown_error.ss spike GREEN |
 | 2 | `stmts_loop_classic.ss` 剩余 + `stmts_loop_forin.ss` 类 A | loop 族类 A 归 0(部分已在 1.5d) |
 | 3 | `gen_decls.ss` / `gen_assigns.ss` var/assign 族 (~9 处类 A) | decl/assign 族类 A 归 0 |
 | 4 | `call.ss` + `new_expr.ss` + `method_call.ss` 等 (~15 处类 A) | call/dispatch 族类 A 归 0 |
@@ -287,11 +287,11 @@ do-while spike 在本地 hack 的三条物理可达路径,**全部违反规约**
 
 - **[x] Done at 2983d8a** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
 - **[ ] Blocked at 5d36c8c** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike — §拒绝准则 #1/#3 触发,详 §Phase 1 受阻;升级 Phase 1.5(D169 起首)
-- **[ ] Planned** Phase 1.5a Execute: MaybeVal class + helper + comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + 1-2 callsite POC(详 D169 §子拆解)
-- **[ ] Planned** Phase 1.5b Execute: eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除
+- **[ ] In Progress(2026-05-20 本轮)** Phase 1.5a Execute: **D098 §决策 1 4 helper**(`mvKnownOf`/`mvValOf`/`mvRuntime`/`mvError`,纯 int 形态 — D169 §A §修订 Superseded by D098 §决策 1)+ comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + UNARY POC(详 D169 §子拆解 修订版)
+- **[ ] Planned** Phase 1.5b Execute: eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除(callsite 走 `mvKnownOf`/`mvValOf`/`reg`)
 - **[ ] Planned** Phase 1.5c Execute: bootstrap/eval/ 其他 ~10 处类 B 入口消除
-- **[ ] Planned** Phase 1.5d Execute: evalExpr 返回类型升级 MaybeVal class + 回 Phase 1 原目标(do-while / while / for 类 A 消除)+ §0.3 验收 5 项达成
-- **[ ] Planned** D094 "MaybeVal / InternPool / Type-as-Value 详设" — MaybeVal 子集已覆盖于 D169,余 InternPool + Type-as-Value 待起(D093 §差距 #3/#4)
-- **[x] Done at 2026-05-20** 验证 D093 骨架所需的 SS 语言能力缺口 — 见 D169 §SS 语言能力前置实证(能力齐备 class bool/全局 flag/error 机制)
+- **[ ] Planned** Phase 1.5d Execute: evalExpr 入口双轨彻底消除(ct/runtime 分支合一)+ 回 Phase 1 原目标(do-while / while / for 类 A 消除)+ §0.3 验收 5 项达成。**接口返回类型保持 int**(D098 §决策 1 §Phase A→B 接口稳定性)
+- **[x] Done at D098(2026-04-18)+ D099(2026-04-18)+ D111(2026-04-18)+ D112(2026-04-20)+ D117(2026-04-21)** D093 §张力 1-3 "MaybeVal / InternPool / Type-as-Value 详设" — 由 D098 §决策 1/2/3 集中决策,各 Phase 已落地:D098 §决策 1 §Phase A 编码 → D099 落 eval_expr.ss:1-5 + gen/gen_maybeval.ss;D098 §决策 2 §Phase B Meta InternPool → D117 落;D098 §决策 3 Phase A `comptimeTypeAliases` 消除 → D112 落。**D094 由 D098 承接 supersede**,InternPool/Type-as-Value 不再另起 D094
+- **[x] Done at 2026-05-20** 验证 D093 骨架所需的 SS 语言能力缺口 — 见 D169 §SS 语言能力前置实证修订版(全局 int flag / error 机制 / 顶层 helper 函数 / int 符号位运算 全部齐备)
 
 **本节落档后,Phase 1.5a 起 Execute 轮**;每 sub-phase 完成时双轨必须**局部消除**(不保留过渡态,§张力 #4 联动)。

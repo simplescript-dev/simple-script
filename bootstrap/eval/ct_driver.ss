@@ -18,6 +18,24 @@ let ctScopeStack: Array<string> = []
 let ctCallCounter = 0
 let comptimeDepth = 0
 
+// comptimeMustBeKnown flag(D098 §决策 1 行 92 实施细化 / D169 §B Phase 1.5a 落地)
+// 0/1 渐进替代 `comptimeDepth > 0` 判定;短期与 comptimeDepth 双 flag 并存,
+// 终态(D093 §差距 #5 完成)comptimeDepth 仅作嵌套统计,known 判定全走本 flag。
+// callsite 进出 comptime 块必经 enterComptimeBlock / exitComptimeBlock 对称封装。
+// **Phase 1.5a 立法 phase**:本 flag 仅 enter/exit 写端,read callsite 接入待
+// 1.5b/c/d 渐进迁(eval_expr.ss/eval/* 30+ 处 `comptimeDepth > 0` 判定逐步切)。
+let comptimeMustBeKnown = 0
+
+function enterComptimeBlock() {
+    comptimeMustBeKnown = 1
+    comptimeDepth = comptimeDepth + 1
+}
+
+function exitComptimeBlock() {
+    comptimeDepth = comptimeDepth - 1
+    if (comptimeDepth == 0) { comptimeMustBeKnown = 0 }
+}
+
 // Flush @comptimeEmit SS source: tokenize → parse → multi-pass codegen.
 // Shared by COMPTIME_BLOCK (gen_stmts) and COMPTIME_EXPR (gen_types).
 function flushComptimeSS() {

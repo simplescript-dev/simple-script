@@ -191,3 +191,26 @@ function interpNewDouble(d: double): int {
     tvD1.set(id + "", `${d}`)
     return id
 }
+
+// ── MaybeVal helper(D098 §决策 1 §Phase A 字面规约 — D169 Phase 1.5a 显式化) ──
+// D099 commit 53066f0 已隐式落 mv 编码契约(eval_expr.ss:1-5 + valOf/valType 访问器),
+// 本节是 D098 §决策 1 4 helper 函数的显式定义;callsite 渐进迁移由 D169 §子拆解
+// Phase 1.5b/c/d 推进。class 视图(D098 行 102 + D169 §A §保留)不落 bootstrap。
+//
+// 编码契约(eval_expr.ss:1-5 头部权威):
+//   mv >= 0   → known=true,  val = mv             (Value 句柄,通常已是 ctVal tagged int)
+//   mv <= -2  → known=false, regId = -mv - 1      (regTable 1-based)
+//   mv == -1  → error 哨兵,禁止 reg()
+//
+// 构造器命名错开访问器避 SS 函数重载 int 同名 dispatch 失效(D098 §新张力 6)。
+
+function mvRuntime(regId: int): int { return 0 - regId - 1 }   // regId 1-based → mv <= -2
+function mvError(): int { return 0 - 1 }                        // -1 哨兵
+
+function mvKnownOf(mv: int): int { return mv >= 0 ? 1 : 0 }
+
+function mvValOf(mv: int): int {
+    if (mv >= 0) { return mv }              // known=true:Value 句柄(payload 等价 mv 本身,bit 30 含 ct tag)
+    if (mv == 0 - 1) { return 0 - 1 }       // error:返回 -1 哨兵
+    return 0 - mv - 1                        // runtime:decode regId
+}
