@@ -1,6 +1,6 @@
 # D169: MaybeVal helper + comptimeMustBeKnown flag — D093 §骨架 协议接口详设
 
-**Status:** §A class 形态 **Superseded by D098 §决策 1**(2026-05-20 ultrathink 实证 — 详 §A §修订)— §A 改纯 int 4 helper(`mvKnownOf` / `mvValOf` / `mvRuntime` / `mvError`),§B comptimeMustBeKnown flag + §C evalExpr 接口 + §子拆解 1.5b/c/d 路径**保留有效**;**Phase 1.5a Done at 3710016** — 4 helper 落 `bootstrap/eval/interp_value.ss:207-218` + comptimeMustBeKnown flag 落 `bootstrap/eval/ct_driver.ss:25` + enter/exit 落 `bootstrap/eval/ct_driver.ss:27-35` + `runComptimeBlockBody` 改用 enter/exit + UNARY POC 4 处 mvRuntime + §POC 失败实证 落档;**Phase 1.5b 单点起手 Done at e423591** — UNARY case 入口双轨消除(`eval_expr.ss:23-74` 单 dispatch + `genVal` 反向编码回 mv 空间 + `mvKnownOf`/`mvValOf` 协议 + `comptimeMustBeKnown` read callsite 首接入 → `comptimeError`),`grep -c "comptimeDepth > 0" eval_expr.ss` = 3 → 2;BINARY/TERNARY 4 处类 B 入口留 Phase 1.5b 后续子轮
+**Status:** §A class 形态 **Superseded by D098 §决策 1**(2026-05-20 ultrathink 实证 — 详 §A §修订)— §A 改纯 int 4 helper(`mvKnownOf` / `mvValOf` / `mvRuntime` / `mvError`),§B comptimeMustBeKnown flag + §C evalExpr 接口 + §子拆解 1.5b/c/d 路径**保留有效**;**Phase 1.5a Done at 3710016** — 4 helper 落 `bootstrap/eval/interp_value.ss:207-218` + comptimeMustBeKnown flag 落 `bootstrap/eval/ct_driver.ss:25` + enter/exit 落 `bootstrap/eval/ct_driver.ss:27-35` + `runComptimeBlockBody` 改用 enter/exit + UNARY POC 4 处 mvRuntime + §POC 失败实证 落档;**Phase 1.5b 单点起手 Done at e423591** — UNARY case 入口双轨消除(`eval_expr.ss:23-74` 单 dispatch + `genVal` 反向编码回 mv 空间 + `mvKnownOf`/`mvValOf` 协议 + `comptimeMustBeKnown` read callsite 首接入 → `comptimeError`),`grep -c "comptimeDepth > 0" eval_expr.ss` = 3 → 2;**Phase 1.5b BINARY 子轮 Done at 4573341** — BINARY case 入口 ct-depth 字面消(`eval_expr.ss:96-157` per-op pre-route + 通用 binop int/bool runtime 走 mv 协议 + `comptimeMustBeKnown == 1` read callsite 第二接入),`grep -c "comptimeDepth > 0" eval_expr.ss` 2 → 1(留 line 76 COMPTIME_EXPR 类 C);**§POC N3 实证 落档**(首版按 inferType pre-route 在 comptime 路径引入 17 处 i021/d123/spring regression — `let acc = ""` 注册 ctVars 而非 varTypes,inferType IDENT fallback "int" 致 `acc != ""` 走 int interpAsInt → 0 → Ne 恒 false;修正改 1:1 字面 rename + 内部纯 valType dispatch 保 OLD 行为);TERNARY 等 ~10 处 bootstrap/eval/ 子模块入口留 Phase 1.5c
 **Depends on:** D088(Zig 路线), D093(SEMA 单 dispatch §骨架 §SS 本质一样骨架), **D098(MaybeVal 编码 / InternPool / Type-as-Value 详设 — §决策 1 物理编码权威)**, D099(D098 §决策 1 §Phase A 编码实施 — eval_expr.ss:1-5 mv 编码契约已落)
 **Date:** 2026-05-20
 **Last Updated:** 2026-05-20(§A class 形态 Superseded by D098 §决策 1 — D169 立项时未引 D098/D099 链条,经 ultrathink D 文档对照核查发现冲突)
@@ -150,6 +150,34 @@ Phase 1.5a 首次 POC 把 UNARY ct 分支行 27 `isCt(ctUv) == 0` 和 runtime �
 
 **教训**:helper 命名空间隔离(isCt+payload positive 空间 vs mvKnownOf+mvValOf mv 空间)未在 D098 §决策 1 字面规约里明示,本 §POC 失败实证补 D098 §决策 1 行 60(`mvKnown(valId): int { return valId }` 构造器)隐含的 callsite 边界 — **构造器返值进入 mv 空间;访问器从 mv 空间读;genVal 是 mv 空间 → positive 空间的桥;桥之外的 callsite 必用 isCt+payload**。Phase 1.5b 入口双轨消除时,要先把 callsite 改走 evalExpr(raw mv) 路径(去掉 genVal 桥),mvKnownOf/mvValOf 才正确替代 isCt/payload。
 
+### §POC 失败实证 N3(Phase 1.5b BINARY 子轮 中段拦截 — 2026-05-20 commit 4573341)
+
+Phase 1.5b BINARY 子轮首版尝试**真单 dispatch** — eager `genVal(left)` + `genVal(right)` 后按 op type 用 `inferType` pre-route(string compare / Add+string / Pow / non-int-bool / int-bool 五分支),触 17 处 phase5 regression:
+- `tests/phase5/i021_requestbody*` (10+ 个文件 — RequestBody / 嵌套 array/map/optional 等 routes 注册全 fail "not found")
+- `tests/phase5/i021_pathvariable.ss` / `i021_multi_param.ss` / `i021_requestheader.ss`
+- `tests/phase5/d123_phase1_smoke.ss` (expected "AlphaController,BetaController" got "AlphaControllerBetaController" — 逗号丢失)
+- `tests/phase5/d096_p4_l2_reactive.ss`
+
+根因 grep + probe 实测(repro `comptime { let acc = ""; while ... if (acc != "") + "," ; ... }` 前 = "XXX" / 后 = "X,X,X"):
+
+- **`comptime ctVars` 与 `varTypes` 是两个独立 var 注册通道**:`let acc = ""` 在 comptime 块内通过 `ctVars.set("acc", ctVal(stringTvId))` 注册到 `ctVars` Map,**不写入** `varTypes`(后者只跟踪 runtime 命名变量)
+- **`gen/gen_types.ss:331-336 inferType IDENT`** 调用 `getVarType(name)`,对 comptime-only IDENT 返空 → fallback "int":
+  ```ss
+  if (kind == "IDENT") {
+      const vType = getVarType(nGetS1(id))
+      if (vType != "") { return vType }
+      if (funcRetTypes.has(nGetS1(id)) == 1) { return "fn" }
+      return "int"   // ← comptime IDENT fallback 致语义错配
+  }
+  ```
+- **首版 BINARY 按 inferType pre-route**:`blt = inferType(nGetI1(astId))` 对 comptime `acc` 返 "int",`brt = inferType(nGetI2(astId))` 对 `""` 返 "string"。条件 `blt == "string" && brt == "string"` 为 FALSE → **string-compare 分支不走**,落到 "non int/bool" 分支 → `interpIntOp("Ne", interpAsInt(stringTvId), interpAsInt(emptyStringTvId))` → `interpAsInt` 读 `tvI1[stringId]` = 0 → `0 != 0 ? 1 : 0` = 0 → `acc != ""` **恒 false** → 逗号永不添加 → 17 处依赖 comptime 字符串拼接的测试集体 fail
+
+**修正(commit 4573341 落地)**:放弃首版"真单 dispatch"目标,改 1:1 字面 rename `comptimeDepth > 0 → comptimeMustBeKnown == 1`,**comptime 路径走 OLD 整块结构(纯 valType dispatch)** — `valType(genVal(lhs))` 返 comptime 值真实类型 "string",string-compare 分支正确触发。**「真单 dispatch」(eager genVal + 纯 valType + 单 leaf gate)推迟到 1.5d**,prereq:
+1. **1.5c 重构 `genBinary` / `genStringConcat` / `genValStringCompare` 接口** — 改 take pre-eval reg(`(op, lReg, rReg, blt, brt) → string`),消除 BINARY 块 eager genVal 后 delegate 时的 double-eval 函数副作用 bug
+2. 或者 **1.5c 把 comptime IDENT 类型查询并入 inferType** — `gen/gen_types.ss:331-336` 改 `if (ctVars.has(name)) { return valType(ctVal(parseInt(ctVars.getString(name)))) }` 让 inferType 走 ctVars 通道(注:需先评估循环依赖 + comptime 求值在 inferType 调用栈的副作用)
+
+**教训**:`inferType` 是**静态类型查询**,只看 varTypes(runtime 命名 var)+ AST 节点 kind/literal,**不感知 comptime 求值动态值类型**。「按 inferType 路径分发 → callsite 用 valType 取值」是同函数内的**类型语义错配陷阱** — 静态 inferType 选错路 → 取 valType 时已经在错路 leaf 里。1.5d 真单 dispatch 必须先把 comptime IDENT 在 inferType 通道接通(1.5c 路径 2),或者所有 dispatch 走 eager genVal 后的 valType(1.5c 路径 1,需先接口扩),否则同一 bug 在 TERNARY/INDEX_ACCESS/MEMBER_ACCESS/CALL 等 子模块的 1.5c 推进时会**复发** — 本 N3 实证锁 1.5c/d 物理依赖链。
+
 ## SS 语言能力前置实证(2026-05-20 §A §修订后更新)
 
 D093 §下一步 第 3 条要求"验证 D093 骨架所需的 SS 语言能力缺口"。本 D169 §A §修订后**改 4 helper 不落 class**,SS 语言能力前置实证:
@@ -194,8 +222,9 @@ D093 §下一步 第 3 条要求"验证 D093 骨架所需的 SS 语言能力缺�
 - **[x] Done at 3710016** Phase 1.5a Execute(2026-05-20 本轮):**D098 §决策 1 4 helper**(`mvKnownOf`/`mvValOf`/`mvRuntime`/`mvError`)落 `interp_value.ss:207-218` + comptimeMustBeKnown flag 落 `ct_driver.ss:25` + enterComptimeBlock/exitComptimeBlock 落 `ct_driver.ss:27-35` + `runComptimeBlockBody` 改用 enter/exit + UNARY POC 4 处 mvRuntime(`eval_expr.ss:48/61/65/70`)+ §POC 失败实证 落档。RED→GREEN:`grep -c "function mvKnownOf\|function mvValOf\|function mvRuntime\|function mvError" bootstrap/eval/interp_value.ss` 0 → 4
 - **[~] In Progress** Phase 1.5b Execute:eval_expr.ss 5 处类 B 入口消除(callsite 走 `mvKnownOf`/`mvValOf`/`reg`)
   - **[x] Done at e423591** 1.5b 单点起手 — UNARY case 入口双轨消除(`bootstrap/eval/eval_expr.ss:23-74` 单 dispatch + `genVal` 反向编码 `isCt(v) == 1 ? v : 0 - v - 1` 回 mv 空间 + `mvKnownOf` 判定 fold(`interpNewInt/Bool/Null + ctVal`)/ runtime emit IR + `mvRuntime(constVal(reg))` / `comptimeMustBeKnown == 1 && mvKnownOf == 0 → comptimeError` 三路径)。known double fold 留 1.5c interp*Double 双列入口(本轮 §POC N1:跨读 tvS1 string 列 → 0.0 regression)。RED→GREEN:`grep -c "comptimeDepth > 0" bootstrap/eval/eval_expr.ss` = 3 → 2
-  - **[ ] Planned** 1.5b 后续子轮 — BINARY(`eval_expr.ss:100` 块,含 NullCoalesce/Instanceof/As/Pow/通用 binop + COMPTIME_EXPR 邻位类 C 检查不改)+ TERNARY 4 处类 B 入口消除
-- **[ ] Planned** Phase 1.5c Execute:bootstrap/eval/ 其他 ~10 处类 B 入口消除
+  - **[x] Done at 4573341** 1.5b BINARY 子轮 — BINARY case 入口 ct-depth 字面消(`bootstrap/eval/eval_expr.ss:96-157`)。架构:`if (comptimeMustBeKnown == 1) { ...内部纯 valType dispatch... }` 总块 + per-op runtime pre-route(NullCoalesce/Instanceof/As/Pow 不 eager genVal 避 delegate genBinary 后 `f()+g()` 函数副作用 emit 两次)+ 通用 binop int/bool runtime 走 mv 协议(eager genVal + mvKnownOf 判定 + genIntBinary pre-eval reg)+ string compare / 非 int-bool / Pow 走 genBinary delegate(保 OLD 语义)。RED→GREEN:`grep -c "comptimeDepth > 0" bootstrap/eval/eval_expr.ss` 2 → 1(消 BINARY line 98;留 line 76 COMPTIME_EXPR 类 C)。**§POC N3 实证 落档**(详 §POC 失败实证 N3 节):首版按 inferType pre-route 在 comptime 路径引入 17 处 i021_requestbody*/d123_phase1_smoke/spring_web_params 等 regression — comptime `let acc = ""` 注册 ctVars 而非 varTypes,inferType IDENT fallback 返 "int"(`gen/gen_types.ss:331-336`),致 `acc != ""` 走 int interpAsInt → 0 → Ne 恒 false;修正改 1:1 `comptimeDepth > 0 → comptimeMustBeKnown == 1` rename + 内部纯 valType dispatch(对齐 OLD 行为),「真单 dispatch」(eager genVal + 纯 valType + 单 leaf gate)留 1.5d
+  - **[ ] Planned** 1.5b 后续子轮 — TERNARY(bootstrap/eval/ternary.ss:10 入口)归 1.5c 同批(子模块入口统一推进)
+- **[ ] Planned** Phase 1.5c Execute:bootstrap/eval/ 其他 ~10 处类 B 入口消除(ternary/short_circuit/index_access/template_lit/array_lit/ident/member_access/postfix_inc/method_call/call/new_expr 各自子模块)+ genBinary/genStringConcat/genValStringCompare 接口扩 take pre-eval reg(消除 1.5b BINARY 中 NullCoalesce/Instanceof/As/Pow/string-compare delegate 路径的 double-eval 桥)
 - **[ ] Planned** Phase 1.5d Execute:evalExpr 入口双轨彻底消除(ct/runtime 分支合一)+ 回 Phase 1 原目标(do-while / while / for 类 A 消除)+ D093 §0.3 验收 5 项全达成。**接口返回类型保持 int**(D098 §决策 1 §Phase A→B 接口稳定性),不引 class
 
 **本 D169 §A §修订落档后,Phase 1.5a 起 Execute 轮**;每 sub-phase 完成时双轨必须**局部消除**(不保留过渡态,D093 §张力 #4 联动)。
