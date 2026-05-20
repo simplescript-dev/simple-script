@@ -18,3 +18,12 @@ function dropAllProcs(url: string, names: Array<string>) {
         i = i + 1
     }
 }
+
+function dropAllTables(url: string, names: Array<string>) {
+    const tmpl = new JdbcTemplate(url)
+    let i = 0
+    while (i < names.length()) {
+        tmpl.execute(`DROP TABLE IF EXISTS ${names[i]}`)
+        i = i + 1
+    }
+}

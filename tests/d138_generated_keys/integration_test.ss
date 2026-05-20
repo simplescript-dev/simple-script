@@ -15,6 +15,7 @@
 import { assertEqual, assertTrue } from "@/lib/test"
 import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, RETURN_GENERATED_KEYS, SQLException, SQLSyntaxErrorException } from "@/lib/java/sql"
 import { JdbcTemplate, GeneratedKeyHolder } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 
@@ -22,12 +23,6 @@ function recreateTable(): int {
     const tmpl = new JdbcTemplate(URL)
     tmpl.execute("DROP TABLE IF EXISTS d138_generated_keys")
     tmpl.execute("CREATE TABLE d138_generated_keys (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), age INT) ENGINE=InnoDB")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS d138_generated_keys")
     return 0
 }
 
@@ -159,7 +154,7 @@ function main() {
         conn.close()
     })
 
-    dropTable()
+    dropAllTables(URL, ["d138_generated_keys"])
 
     println("All D138 Phase 4 generated keys integration tests passed!")
 }

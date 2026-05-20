@@ -18,6 +18,7 @@
 import { assertEqual, assertTrue } from "@/lib/test"
 import { Connection, PreparedStatement, ResultSet, DriverManager_getConnection, SQLException } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 
@@ -27,12 +28,6 @@ function recreateTable(): int {
     tmpl.execute("CREATE TABLE users_d136 (id INT PRIMARY KEY, name VARCHAR(100), age INT) ENGINE=InnoDB")
     tmpl.update("INSERT INTO users_d136 VALUES (1, 'Alice', 30)")
     tmpl.update("INSERT INTO users_d136 VALUES (2, 'Bob', 25)")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS users_d136")
     return 0
 }
 
@@ -163,7 +158,7 @@ function main() {
         conn.close()
     })
 
-    dropTable()
+    dropAllTables(URL, ["users_d136"])
 
     println("All D136 Phase 3 prepared statement integration tests passed!")
 }

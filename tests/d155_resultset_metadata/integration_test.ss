@@ -45,6 +45,7 @@
 import { test, assertEqual, assertTrue } from "@/lib/test"
 import { Connection, Statement, PreparedStatement, ResultSet, ResultSetMetaData, DriverManager_getConnection, SQLException, columnNoNulls, columnNullable, JDBC_TYPE_BIGINT, JDBC_TYPE_VARCHAR, JDBC_TYPE_DECIMAL } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 const SCHEMA = "testdb"
@@ -56,12 +57,6 @@ function recreateTable(): int {
     tmpl.execute("CREATE TABLE integration_d155 (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(64) NOT NULL, price DECIMAL(10, 2) NOT NULL, qty INT, code BIGINT UNSIGNED NOT NULL) ENGINE=InnoDB")
     tmpl.execute("INSERT INTO integration_d155 (name, price, qty, code) VALUES ('row1', 19.99, 5, 100)")
     tmpl.execute("INSERT INTO integration_d155 (name, price, qty, code) VALUES ('row2', 29.99, NULL, 200)")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS integration_d155")
     return 0
 }
 
@@ -274,6 +269,6 @@ function main() {
         conn.close()
     })
 
-    dropTable()
+    dropAllTables(URL, [TABLE])
     println("All D155 10-shape integration tests passed!")
 }

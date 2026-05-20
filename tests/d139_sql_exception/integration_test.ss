@@ -35,6 +35,7 @@
 import { assertEqual, assertTrue } from "@/lib/test"
 import { Connection, PreparedStatement, DriverManager_getConnection, SQLException } from "@/lib/java/sql"
 import { JdbcTemplate, DataAccessException, NonTransientDataAccessException, DataIntegrityViolationException, BadSqlGrammarException, CannotGetJdbcConnectionException, DuplicateKeyException } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 const URL_WRONG_PWD = "jdbc:mysql://root:wrongpass@127.0.0.1:3307/testdb"
@@ -44,12 +45,6 @@ function recreateTable(): int {
     const tmpl = new JdbcTemplate(URL)
     tmpl.execute("DROP TABLE IF EXISTS d139_sql_exception_test")
     tmpl.execute("CREATE TABLE d139_sql_exception_test (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL) ENGINE=InnoDB")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS d139_sql_exception_test")
     return 0
 }
 
@@ -250,7 +245,7 @@ function main() {
         assertEqual(state, "28000")
     })
 
-    dropTable()
+    dropAllTables(URL, ["d139_sql_exception_test"])
 
     println("All D139 7-shape integration tests passed!")
 }

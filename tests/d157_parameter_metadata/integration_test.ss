@@ -65,6 +65,7 @@
 import { test, assertEqual, assertTrue } from "@/lib/test"
 import { Connection, PreparedStatement, ParameterMetaData, DriverManager_getConnection, SQLException, JDBC_TYPE_BIGINT, JDBC_TYPE_VARCHAR, JDBC_TYPE_DECIMAL, JDBC_TYPE_INTEGER, parameterModeIn, parameterNullableUnknown } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 const TABLE = "integration_d157"
@@ -76,12 +77,6 @@ function recreateTable(): int {
     const tmpl = new JdbcTemplate(URL)
     tmpl.execute("DROP TABLE IF EXISTS integration_d157")
     tmpl.execute("CREATE TABLE integration_d157 (id BIGINT UNSIGNED NOT NULL PRIMARY KEY, name VARCHAR(64), price DECIMAL(10,2), qty INT, binary_col BLOB) ENGINE=InnoDB")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS integration_d157")
     return 0
 }
 
@@ -250,6 +245,6 @@ function main() {
         conn.close()
     })
 
-    dropTable()
+    dropAllTables(URL, [TABLE])
     println("All D157 Phase 3 9-shape integration tests passed!")
 }

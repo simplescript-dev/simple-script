@@ -63,8 +63,10 @@
 import { assertEqual, assertTrue } from "@/lib/test"
 import { Connection, PreparedStatement, ResultSet, DriverManager_getConnection, SQLException, TYPE_FORWARD_ONLY, CONCUR_READ_ONLY, CONCUR_UPDATABLE } from "@/lib/java/sql"
 import { JdbcTemplate, SQLExceptionTranslator, DataIntegrityViolationException, NonTransientDataAccessException, DataAccessException } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
+const TABLE_NAMES: Array<string> = ["integration_d147"]
 
 function recreateTable(): int {
     const tmpl = new JdbcTemplate(URL)
@@ -76,12 +78,6 @@ function recreateTable(): int {
         tmpl.execute(sql)
         i = i + 1
     }
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS integration_d147")
     return 0
 }
 
@@ -139,7 +135,7 @@ function main() {
         rs.close()
         ps.close()
         conn.close()
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     // ── Case 2: CONCUR_UPDATABLE + setFetchSize(2) → flags=0x02 wire 实证 ────
@@ -168,7 +164,7 @@ function main() {
         rs.close()
         ps.close()
         conn.close()
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     // ── Case 3: updateRow multi-col + external SELECT 验值 + rowUpdated==1 ───
@@ -196,7 +192,7 @@ function main() {
         conn.close()
         // External SELECT confirms server-side row mutated on both columns.
         assertEqual(probeRowMatches(1, 888, "updated_3"), 1)
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     // ── Case 4: deleteRow + external SELECT COUNT == 0 + rowDeleted == 1 ────
@@ -214,7 +210,7 @@ function main() {
         // External probes confirm row 1 gone, total count = 4.
         assertEqual(probeRowExists(1), 0)
         assertEqual(probeRowCount(), 4)
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     // ── Case 5: moveToInsertRow + insertRow + rowInserted + moveToCurrentRow ─
@@ -245,7 +241,7 @@ function main() {
         // External SELECT finds inserted row + total count flips to 6.
         assertEqual(probeRowMatches(99, 777, "inserted_5"), 1)
         assertEqual(probeRowCount(), 6)
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     // ── Case 6: cancelRowUpdates (H4) + refreshRow (H5) 双重 ────────────────
@@ -266,7 +262,7 @@ function main() {
         conn1.close()
         // External SELECT confirms server-side row UNCHANGED — id=1 → val=10.
         assertEqual(probeVal(1), 10)
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
 
         // 6b — refreshRow re-fetches via fresh PS SELECT WHERE pk=? and
         // mirrors an external concurrent UPDATE back into currentRow.
@@ -288,7 +284,7 @@ function main() {
         rs2.close()
         ps2.close()
         conn2.close()
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     // ── Case 7: unique-violation INSERT → DAE catch hierarchy ───────────────
@@ -392,7 +388,7 @@ function main() {
         }
         assertEqual(caught7c, 1)
 
-        dropTable()
+        dropAllTables(URL, TABLE_NAMES)
     })
 
     println("All D147 7-shape integration tests passed!")

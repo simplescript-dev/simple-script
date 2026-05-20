@@ -17,6 +17,7 @@ import { assertEqual, assertTrue } from "@/lib/test"
 import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, SQLException } from "@/lib/java/sql"
 import { JdbcTemplate, withTransaction } from "@/lib/spring/jdbc"
 import { JpaRepository, JpaRepositoryFactory_create } from "@/lib/spring/data"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 
@@ -24,12 +25,6 @@ function recreateTable(): int {
     const tmpl = new JdbcTemplate(URL)
     tmpl.execute("DROP TABLE IF EXISTS users")
     tmpl.execute("CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100), age INT) ENGINE=InnoDB")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS users")
     return 0
 }
 
@@ -200,7 +195,7 @@ function main() {
         assertEqual(repo.count(), 0)
     })
 
-    dropTable()
+    dropAllTables(URL, ["users"])
 
     println("All D134 Phase 6 integration tests passed!")
 }

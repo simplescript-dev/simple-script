@@ -49,6 +49,7 @@ import { Connection, ResultSet, PreparedStatement, DriverManager_getConnection, 
 import { JdbcTemplate, RowCallbackHandler, INTEGER_MIN_VALUE, BadSqlGrammarException, NonTransientDataAccessException, DataAccessException } from "@/lib/spring/jdbc"
 import { mysqlConnect } from "@/lib/com/mysql/handshake"
 import { doPrepare, MysqlPreparedStatement, MysqlBinaryResultSet } from "@/lib/com/mysql/prepared"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 const ROW_COUNT = 1000
@@ -84,12 +85,6 @@ function recreateTable(): int {
         tmpl.execute("INSERT INTO d146_server_cursor_integration VALUES (" + i + ")")
         i = i + 1
     }
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS d146_server_cursor_integration")
     return 0
 }
 
@@ -370,7 +365,7 @@ function main() {
         assertEqual(caught7c, 1)
     })
 
-    dropTable()
+    dropAllTables(URL, ["d146_server_cursor_integration"])
 
     println("All D146 7-shape integration tests passed!")
 }

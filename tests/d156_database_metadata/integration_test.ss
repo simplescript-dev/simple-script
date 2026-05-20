@@ -46,6 +46,7 @@
 import { test, assertEqual, assertTrue } from "@/lib/test"
 import { Connection, ResultSet, DatabaseMetaData, DriverManager_getConnection, SQLException, TYPE_FORWARD_ONLY, TYPE_SCROLL_INSENSITIVE, TYPE_SCROLL_SENSITIVE, TRANSACTION_REPEATABLE_READ, TRANSACTION_NONE } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
+import { dropAllTables } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 const SCHEMA = "testdb"
@@ -61,13 +62,6 @@ function recreateTable(): int {
     tmpl.execute("CREATE TABLE integration_d156_child (id INT NOT NULL PRIMARY KEY, parent_id INT NOT NULL, note VARCHAR(64), CONSTRAINT fk_d156_child_parent FOREIGN KEY (parent_id) REFERENCES integration_d156_parent(id)) ENGINE=InnoDB")
     tmpl.execute("INSERT INTO integration_d156_parent (id, email, name) VALUES (1, 'p1@d156.test', 'parent1')")
     tmpl.execute("INSERT INTO integration_d156_child (id, parent_id, note) VALUES (10, 1, 'child10')")
-    return 0
-}
-
-function dropTable(): int {
-    const tmpl = new JdbcTemplate(URL)
-    tmpl.execute("DROP TABLE IF EXISTS integration_d156_child")
-    tmpl.execute("DROP TABLE IF EXISTS integration_d156_parent")
     return 0
 }
 
@@ -273,6 +267,6 @@ function main() {
         conn.close()
     })
 
-    dropTable()
+    dropAllTables(URL, [CHILD, PARENT])
     println("All D156 10-shape integration tests passed!")
 }
