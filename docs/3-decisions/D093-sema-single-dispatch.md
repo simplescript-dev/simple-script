@@ -1,6 +1,6 @@
 # D093: SEMA 单函数 dispatch — Zig 本质一样路径
 
-**Status:** Phase 0 Done at 38fc055 — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;Phase 1 起 Execute 轮
+**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;Phase 1 起 Execute 轮
 **Depends on:** D088(Zig 路线), D092(双轨 SEMA 实现 — 被本决策替代)
 **Date:** 2026-04-15
 **Last Updated:** 2026-05-20 (Phase 0)
@@ -122,7 +122,7 @@ function exitComptimeBlock()  { comptimeMustBeKnown = false }
 
 ## Phase 0: 反向倒退 audit + 分类规约 + 首批起手 spec (2026-05-20 起首)
 
-**Status**: [x] Done at 38fc055
+**Status**: [x] Done at 2983d8a
 
 ### 0.1 反向倒退 audit
 
@@ -241,7 +241,7 @@ Phase 1 拒绝准则(根因防偏 — 与 CLAUDE.md §Root Cause 优先 第一�
 
 ## 下一步(Plan 型,不触发代码改动)
 
-- **[x] Done at 38fc055** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
+- **[x] Done at 2983d8a** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
 - **[ ] Planned** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike (按 §0.3 验收 + §拒绝准则)
 - **[ ] Planned** 验证 §张力 1-3 的编码决策可行性,产出 D094 "MaybeVal / InternPool / Type-as-Value 详设"(若 Phase 1 spike 触发 MaybeVal 协议扩展则提前)
 - **[ ] Planned** 验证 D093 骨架所需的 SS 语言能力缺口(class bool 字段 / 全局 flag / error 机制),缺则补
