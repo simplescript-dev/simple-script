@@ -18,10 +18,7 @@ import { InputStream, Reader } from "@/lib/java/io"
 import { MysqlTimestamp, MysqlRowId, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
 import { MysqlBinaryStream, MysqlCharacterStream, MysqlNCharacterStream } from "@/lib/com/mysql/driver_streams"
 import { MysqlBlob, MysqlClob, MysqlNClob, MysqlSQLXML } from "@/lib/com/mysql/driver_lobs"
-
-// Matches JDK java.io.Reader default buffer size — chunked drain in
-// drainReader() loops until readN returns "" (EOF).
-const READER_CHUNK_BYTES = 8192
+import { drainReader } from "@/lib/com/mysql/prepared"
 
 // D154 §F7 sub-D: production driver class implementations replace the
 // 12 D154-scoped stub classes. Stream stubs (MemoryInputStream / Reader,
@@ -123,20 +120,6 @@ class D151TestStub : ResultSet {
     function updateNString(col: string, val: string) { this.writeCol(col, val) }
     function getMetaData(): ResultSetMetaData { return new NoopResultSetMetaData() }
     function close() {}
-}
-
-function drainReader(r: Reader): string {
-    let s = ""
-    let cont = 1
-    while (cont == 1) {
-        const chunk = r.readN(READER_CHUNK_BYTES)
-        if (chunk.length() == 0) {
-            cont = 0
-        } else {
-            s = s + chunk
-        }
-    }
-    return s
 }
 
 function newStub(): D151TestStub {

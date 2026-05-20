@@ -61,23 +61,15 @@ import { Connection, CallableStatement, ParameterMetaData, DriverManager_getConn
 import { JdbcTemplate } from "@/lib/spring/jdbc"
 import { ColumnDef } from "@/lib/com/mysql/query"
 import { buildCallableStatement } from "@/lib/com/mysql/prepared"
+import { dropAllProcs } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 
 const PROC_NAMES: Array<string> = ["proc_d165_inout", "proc_d165_three_modes"]
 
-function dropAllProcs() {
-    const tmpl = new JdbcTemplate(URL)
-    let i = 0
-    while (i < PROC_NAMES.length()) {
-        tmpl.execute(`DROP PROCEDURE IF EXISTS ${PROC_NAMES[i]}`)
-        i = i + 1
-    }
-}
-
 function recreateAllProcs() {
     const tmpl = new JdbcTemplate(URL)
-    dropAllProcs()
+    dropAllProcs(URL, PROC_NAMES)
     tmpl.execute("CREATE PROCEDURE proc_d165_inout(INOUT p1 INT) BEGIN SET p1 = p1 * 3; END")
     tmpl.execute("CREATE PROCEDURE proc_d165_three_modes(IN p1 INT, OUT p2 INT, INOUT p3 INT) BEGIN SET p2 = p1; SET p3 = p3 + p1; END")
 }
@@ -190,7 +182,7 @@ function main() {
     })
 
     if (dockerOnline != 0) {
-        dropAllProcs()
+        dropAllProcs(URL, PROC_NAMES)
     }
     println("D165 Phase 1 spike done.")
 }

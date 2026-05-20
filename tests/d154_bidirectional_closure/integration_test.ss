@@ -23,22 +23,7 @@ import { InputStream, Reader } from "@/lib/java/io"
 import { MysqlTimestamp, MysqlRowId, MysqlSqlArray, MysqlRef } from "@/lib/com/mysql/driver_types"
 import { MysqlAsciiStream, MysqlBinaryStream, MysqlCharacterStream, MysqlNCharacterStream } from "@/lib/com/mysql/driver_streams"
 import { MysqlBlob, MysqlClob, MysqlNClob, MysqlSQLXML } from "@/lib/com/mysql/driver_lobs"
-
-const READER_CHUNK_BYTES = 8192
-
-function drainReader(r: Reader): string {
-    let s = ""
-    let cont = 1
-    while (cont == 1) {
-        const chunk = r.readN(READER_CHUNK_BYTES)
-        if (chunk.length() == 0) {
-            cont = 0
-        } else {
-            s = s + chunk
-        }
-    }
-    return s
-}
+import { drainReader } from "@/lib/com/mysql/prepared"
 
 // BidirectionalStub — server-side stringify simulator. presetData maps
 // column name → predefined stringify (mocking what the wire returns);

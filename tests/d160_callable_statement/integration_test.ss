@@ -42,6 +42,7 @@
 import { test, assertEqual, assertTrue } from "@/lib/test"
 import { Connection, CallableStatement, ParameterMetaData, DriverManager_getConnection, SQLException, JDBC_TYPE_INTEGER, JDBC_TYPE_VARCHAR, JDBC_TYPE_DOUBLE, parameterModeIn, parameterModeOut, parameterModeInOut } from "@/lib/java/sql"
 import { JdbcTemplate } from "@/lib/spring/jdbc"
+import { dropAllProcs } from "@/tests/jdbc/import/jdbc_test_helpers"
 
 const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 
@@ -49,18 +50,9 @@ const URL = "jdbc:mysql://root:test@127.0.0.1:3307/testdb"
 // drops, recreate bodies stay inline since each procedure body differs.
 const PROC_NAMES: Array<string> = ["proc_d160_double", "proc_d160_inout", "proc_d160_three_modes", "proc_d160_multi_out", "proc_d160_string_out", "proc_d160_double_out", "proc_d160_null_out"]
 
-function dropAllProcs() {
-    const tmpl = new JdbcTemplate(URL)
-    let i = 0
-    while (i < PROC_NAMES.length()) {
-        tmpl.execute(`DROP PROCEDURE IF EXISTS ${PROC_NAMES[i]}`)
-        i = i + 1
-    }
-}
-
 function recreateAllProcs() {
     const tmpl = new JdbcTemplate(URL)
-    dropAllProcs()
+    dropAllProcs(URL, PROC_NAMES)
     tmpl.execute("CREATE PROCEDURE proc_d160_double(IN p1 INT, OUT p2 INT) BEGIN SET p2 = p1 * 2; END")
     tmpl.execute("CREATE PROCEDURE proc_d160_inout(INOUT p1 INT) BEGIN SET p1 = p1 * 3; END")
     tmpl.execute("CREATE PROCEDURE proc_d160_three_modes(IN p1 INT, OUT p2 INT, INOUT p3 INT) BEGIN SET p2 = p1; SET p3 = p3 + p1; END")
@@ -195,6 +187,6 @@ function main() {
         conn.close()
     })
 
-    dropAllProcs()
+    dropAllProcs(URL, PROC_NAMES)
     println("All D160 Phase 3 8-shape integration tests passed!")
 }
