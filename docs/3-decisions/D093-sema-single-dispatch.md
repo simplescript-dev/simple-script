@@ -1,8 +1,9 @@
 # D093: SEMA 单函数 dispatch — Zig 本质一样路径
 
-**Status:** Proposed
+**Status:** Phase 0 Done at 38fc055 — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;Phase 1 起 Execute 轮
 **Depends on:** D088(Zig 路线), D092(双轨 SEMA 实现 — 被本决策替代)
 **Date:** 2026-04-15
+**Last Updated:** 2026-05-20 (Phase 0)
 
 ## 第一性需求
 
@@ -119,9 +120,130 @@ function exitComptimeBlock()  { comptimeMustBeKnown = false }
 3. **Type-as-Value 的编码空间** —— 当前 tagged int `ctVal(id) = id | 1073741824` 只有一个 tag,扩展到同时容纳 int / string literal / Type 句柄 / class instance 需重新设计 payload 编码
 4. **渐进迁移还是一次性重构** —— 40 + 7 处差距是一次重构还是分批,本 D 文档不决定,下一轮单独立项。但**不允许**"保留双轨作过渡态" —— 即便分批,每批完成时双轨必须局部消除,不允许长期共存
 
+## Phase 0: 反向倒退 audit + 分类规约 + 首批起手 spec (2026-05-20 起首)
+
+**Status**: [x] Done at 38fc055
+
+### 0.1 反向倒退 audit
+
+2026-04-15 D093 立项时 baseline = 39 处 `comptimeDepth > 0` 分岔(gen_assigns 2 / gen_decls 4 / gen_exprs 18 / gen_stmts 15)。截至 2026-05-20 = **54 处**(**+15 / +38% 反向倒退**)。
+
+**关键发现**: 旧 4 扁平文件 39 处全部消失,**新 27 子目录文件 54 处全部新增** — D113 SEMA 模块拆分(commit `e3d8262`)只是把双轨分岔搬家,**根因双轨架构未消除**。
+
+| | baseline (2026-04-15) | 现在 (2026-05-20) | delta |
+|---|---|---|---|
+| 旧扁平 `gen_{exprs,stmts,decls,assigns}.ss` | 39 | 0 (文件消失) | -39 |
+| 新 `bootstrap/eval/` (11 文件) | 0 | 25 | +25 |
+| 新 `bootstrap/gen/{class,methods,stmts,exprs}/` (16 文件) | 0 | 29 | +29 |
+| **总数** | **39** | **54** | **+15** |
+
+**事件链**(2026-05-20 PSM §字段 13 + linter C5 双闸落地的触发链):
+
+```
+e3d8262 D113 SEMA 模块拆分 (末次 SEMA 主线 commit, 2025-12)
+  → D168 RC system 长线 (2026-01-04 起)
+    → SS-LIM-4/5/6 修复 (2026-04)
+      → I023-I031 CLI/build/comptime issue (2026-04-05~)
+        → Tier1-5 tests refactor (2026-05-12~19, 5 commits)
+          → next_prompt Tier 第 6 轮 (本轮被双闸 GATE BLOCKED 拦住)
+```
+
+5 个月 SEMA Q1 主线 0 commit。Phase 0 起首本身受同期落地的双闸防护,Phase 1+ 每轮 next_prompt 必含 `d092`/`sema`/`q1` 任一关键字,任何"避难性偏离"(tests cleanup / CLI fix / 工程整理 等绕开 SEMA Q1 主线)由 linter GATE BLOCKED 阻断 stop。
+
+### 0.2 三类混合 — 真双轨 vs 入口双轨 vs 合理边界
+
+54 处分岔是**三类混合**,Phase 1+ 必须按类区分,不能一刀切消除/保留。
+
+**类 A — 真双轨 callsite (~45 处, 该消除)**
+
+`comptimeDepth > 0` 分支走**完全独立 dispatch / 独立数据结构**(`ctFuncNodes` / `ctVars` / `ctScopeStack` / `ctCallDispatch` / `interp*Flag`),与 runtime 路径**几乎无共享代码**。
+
+判据(全部满足):
+- 分支体写或读独立 ct* 命名空间数据结构
+- 分支体调用 `genVal` + `isCt` + `payload` 协议(comptime 求值返 tagged ctVal)
+- 分支体不与 runtime 分支共享 helper 函数(各走各的)
+
+实证样例:
+- `gen_decls.ss:35` — comptime func decl 写 `ctFuncNodes`,runtime 走 codegen IR emit
+- `gen_decls.ss:527` — comptime var decl 写 `ctVars`,runtime 写 codegen alloca
+- `gen_decls.ss:683` — comptime return 写 `interpReturnFlag`,runtime 写 LLVM ret
+- `gen_assigns.ss:93` — comptime member assign 走 `ctObj/ctNewVal + interpType`
+- `stmts_loop_classic.ss:12/71/120` — comptime for/while/do-while 走 interp 1 万次硬限制
+- `call.ss:10` / `call.ss:77` — comptime 走独立 `ctFuncNodes`/`ctCallDispatch`
+
+Zig 等价: `Sema.resolveMaybeUndefVal` 单一 dispatch,callsite 走 `?Value` 协议(known→fold/runtime emit / unknown 在 comptime 块内触发 error)。SS 应走 `MaybeVal` 协议 + `comptimeMustBeKnown` flag,callsite 不再分岔。
+
+**类 B — evalExpr 入口双轨 (~3 处, 该彻底消除)**
+
+evalExpr 入口本身按 comptimeDepth 分岔。
+
+实证样例:
+- `eval_expr.ss:25` — `comptimeDepth>0 → ctUv = genVal(child) + isCt 检查 + payload`,runtime → `genExpr`
+- `eval_expr.ss:88` — binop comptime 路径
+- `gen/exprs/exprs.ss` 部分入口
+
+Zig 等价: evalExpr 始终走 MaybeVal 协议,**不分 comptime/runtime**。这是 D093 §决策 §Zig 原理 §2 的核心。**类 B 必须先于类 A 大规模消除**(类 A callsite 依赖 evalExpr 统一协议作为前提)。
+
+**类 C — 合理 comptime 边界检查 (~6 处, 该保留)**
+
+`comptimeDepth>0` 仅作为 error 触发条件,**不分发到独立 code path**。
+
+判据:
+- 分支体仅 `comptimeError(...)` 或 `println + exit(1)`
+- 不调 interp* / 不写 ct* 数据结构
+- 等价 Zig `comptimeMustBeKnown` flag 触发 error
+
+实证样例:
+- `eval_expr.ss:66` — `nested comptime expression` 报错
+- `call.ss:44` — comptime spread non-array error
+- `call.ss:59` — comptime spread runtime value error
+
+Zig 等价: 保留作为 comptime 块内 error gate。
+
+### 0.3 首批起手目标 spec (Phase 1)
+
+按 §张力 §4 "渐进迁移 + 每批完成时双轨必须局部消除",首批起手选**最孤立的类 A 单点** spike:
+
+**Phase 1 起手目标**: `stmts_loop_classic.ss:120` comptime do-while loop 消除(类 A 单点)
+
+理由:
+- **单点孤立** — 本文件 3 处 loop 结构互相独立,改一处不牵动两处
+- **模式纯** — comptime 块内循环本质 = "evalExpr 多次 + check flag",最适合作为 `comptimeMustBeKnown` flag spike 跑通
+- **Zig 对标** — `comptime { while ... }` 在 Sema 里走同一 dispatch,unknown 触发 error,有清晰先例
+
+Phase 1 验收:
+1. `grep -c "comptimeDepth > 0" bootstrap/gen/stmts/stmts_loop_classic.ss` 从 3 → 2 (消除 do-while 一处)
+2. **不引入新 `ct*` 数据结构 / 不打补丁**(根因防偏)
+3. bootstrap 三阶段固定点验证 GREEN
+4. 所有 phase2-phase5 测试 GREEN
+5. comptime do-while spike 测试(新增 `tests/phase5/comptime_do_while_unknown_error.ss`)验证 unknown 触发 error
+
+Phase 1 拒绝准则(根因防偏 — 与 CLAUDE.md §Root Cause 优先 第一法则联动):
+- 若 do-while 消除需要扩展 evalExpr 协议(`MaybeVal` 字段补充) → **先完成协议扩展**(回 §骨架 修订)再消除,不偏方扩 ct* 数据结构
+- 若发现类 B (`eval_expr.ss:25` 入口双轨) 是 Phase 1 prerequisite → **升级 Phase 1.5** (先 evalExpr 入口走 MaybeVal),不绕开
+- 若 spike 中发现 `MaybeVal class` 当前未充分 instance 化(D110 起步 / D113 拆模块仅起步未推进) → **先补 MaybeVal 协议接口**(回 D093 §骨架 修订 + 可能起 D169 子设计),不在 do-while 局部 hack
+
+### 0.4 Phase 后续粗规划(Phase 1 实施时按需细化)
+
+| Phase | 范围 | 验收 |
+|---|---|---|
+| 1 | `stmts_loop_classic.ss` do-while 消除 (1 处类 A spike) | §0.3 |
+| 1.5 (条件) | `eval_expr.ss:25` 入口双轨消除 (类 B) | 类 B 全消, MaybeVal 协议确立 |
+| 2 | `stmts_loop_classic.ss` for/while + `stmts_loop_forin.ss` (~5 处类 A) | loop 族类 A 归 0 |
+| 3 | `gen_decls.ss` / `gen_assigns.ss` var/assign 族 (~9 处类 A) | decl/assign 族类 A 归 0 |
+| 4 | `call.ss` + `new_expr.ss` + `method_call.ss` 等 (~15 处类 A) | call/dispatch 族类 A 归 0 |
+| 5 | 剩余 `gen/exprs/` + `class/` + `methods/` (~12 处类 A) | 类 A 全消 |
+| 6 | `exprs_ct_reflect.ss` `genValCtReflectClasses` 合入 evalExpr | §差距 #2 全 close (残 1 个 genValCt 收口) |
+| 7 | InternPool + Value/Type 拆分 (§差距 #3/#4) | §差距 #3/#4 全 close |
+| 8 | comptime 块降为 flag + 残余类 C 边界规约审计 (§差距 #5) | §差距 #5 全 close, D093 §决策 全达成 |
+
+**Phase 1 必先实证**:若 spike 中发现 do-while 真消除依赖类 B 先行,则当场升级 Phase 1.5,不绕开。
+
 ## 下一步(Plan 型,不触发代码改动)
 
-- **[ ] Planned** 验证 §张力 1-3 的编码决策可行性,产出 D094 "MaybeVal / InternPool / Type-as-Value 详设"
+- **[x] Done at 38fc055** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
+- **[ ] Planned** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike (按 §0.3 验收 + §拒绝准则)
+- **[ ] Planned** 验证 §张力 1-3 的编码决策可行性,产出 D094 "MaybeVal / InternPool / Type-as-Value 详设"(若 Phase 1 spike 触发 MaybeVal 协议扩展则提前)
 - **[ ] Planned** 验证 D093 骨架所需的 SS 语言能力缺口(class bool 字段 / 全局 flag / error 机制),缺则补
 
-**本 D 文档不触发任何 `.ss` 代码改动,不跑 bootstrap。** 代码改动从 D094 之后的 Execute 轮开始。
+**本节落档后,Phase 1 起 Execute 轮**;每批完成时双轨必须**局部消除**(不保留过渡态)。
