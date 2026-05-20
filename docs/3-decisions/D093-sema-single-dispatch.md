@@ -1,9 +1,10 @@
 # D093: SEMA 单函数 dispatch — Zig 本质一样路径
 
-**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;Phase 1 起 Execute 轮
+**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at <本轮 commit>** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首),Phase 1.5a 起 Execute 轮
 **Depends on:** D088(Zig 路线), D092(双轨 SEMA 实现 — 被本决策替代)
+**Spawned:** D169(MaybeVal + comptimeMustBeKnown 协议接口详设 — Phase 1.5 prereq)
 **Date:** 2026-04-15
-**Last Updated:** 2026-05-20 (Phase 0)
+**Last Updated:** 2026-05-20 (Phase 1 受阻 → Phase 1.5 升级 + D169 起首)
 
 ## 第一性需求
 
@@ -225,11 +226,16 @@ Phase 1 拒绝准则(根因防偏 — 与 CLAUDE.md §Root Cause 优先 第一�
 
 ### 0.4 Phase 后续粗规划(Phase 1 实施时按需细化)
 
+**2026-05-20 更新**:Phase 1 起首 ultrathink 实证 §拒绝准则 #1/#3 触发,Phase 1 受阻(详 §Phase 1 受阻段),Phase 1.5 由"条件触发"转"已触发",拆 1.5a/b/c/d 渐进路径(D169 §子拆解 表 单一事实源)。
+
 | Phase | 范围 | 验收 |
 |---|---|---|
-| 1 | `stmts_loop_classic.ss` do-while 消除 (1 处类 A spike) | §0.3 |
-| 1.5 (条件) | `eval_expr.ss:25` 入口双轨消除 (类 B) | 类 B 全消, MaybeVal 协议确立 |
-| 2 | `stmts_loop_classic.ss` for/while + `stmts_loop_forin.ss` (~5 处类 A) | loop 族类 A 归 0 |
+| 1 | ~~`stmts_loop_classic.ss` do-while 消除 (1 处类 A spike)~~ **Blocked** — §拒绝准则 #1/#3 触发,见 §Phase 1 受阻;升级 Phase 1.5 | §0.3(待 1.5d 回归后达成) |
+| **1.5a** | MaybeVal class + helper + comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + 1-2 callsite POC | D169 §子拆解 1.5a 验收 5 项 |
+| **1.5b** | eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除 | eval_expr.ss `grep -c "comptimeDepth > 0"` 5+ → 0 |
+| **1.5c** | bootstrap/eval/ 其他 ~10 处类 B 入口消除(call/method_call/member_access/index_access/template_lit/new_expr/postfix_inc/ternary/array_lit) | bootstrap/eval/ `grep -c "comptimeDepth > 0"` 预估 < 3 |
+| **1.5d** | evalExpr 返回类型升级 MaybeVal class + 回 Phase 1 原目标(do-while / while / for 三处类 A 消除)+ §0.3 验收 5 项达成 | `stmts_loop_classic.ss` `grep -c "comptimeDepth > 0"` = 0;tests/phase5/comptime_do_while_unknown_error.ss spike GREEN |
+| 2 | `stmts_loop_classic.ss` 剩余 + `stmts_loop_forin.ss` 类 A | loop 族类 A 归 0(部分已在 1.5d) |
 | 3 | `gen_decls.ss` / `gen_assigns.ss` var/assign 族 (~9 处类 A) | decl/assign 族类 A 归 0 |
 | 4 | `call.ss` + `new_expr.ss` + `method_call.ss` 等 (~15 处类 A) | call/dispatch 族类 A 归 0 |
 | 5 | 剩余 `gen/exprs/` + `class/` + `methods/` (~12 处类 A) | 类 A 全消 |
@@ -237,13 +243,55 @@ Phase 1 拒绝准则(根因防偏 — 与 CLAUDE.md §Root Cause 优先 第一�
 | 7 | InternPool + Value/Type 拆分 (§差距 #3/#4) | §差距 #3/#4 全 close |
 | 8 | comptime 块降为 flag + 残余类 C 边界规约审计 (§差距 #5) | §差距 #5 全 close, D093 §决策 全达成 |
 
-**Phase 1 必先实证**:若 spike 中发现 do-while 真消除依赖类 B 先行,则当场升级 Phase 1.5,不绕开。
+**Phase 1.5 拆解单一事实源**:D169 §子拆解 表 — 本表与 D169 不一致以 D169 为准。
 
-## 下一步(Plan 型,不触发代码改动)
+## Phase 1 受阻 — 三拒绝准则触发 + 升级 Phase 1.5 + D169 起首 (2026-05-20)
+
+**Status:** Blocked at <本轮 commit> — Phase 1.5a 起 Execute 接替
+
+### 实证
+
+2026-05-20 Phase 1 起首 ultrathink 实证 §0.3 §拒绝准则 3 条:
+
+| # | §拒绝准则 字面要求 | 本轮实证 | 触发 |
+|---|---|---|---|
+| 1 | 若 do-while 消除需扩展 evalExpr 协议(MaybeVal 字段补充)→ 先完成协议扩展,回 §骨架 修订 | do-while 真消除 = unified dispatch = 需 MaybeVal class + comptimeMustBeKnown flag,callsite 用 mvKnown/mvVal 替代 isCt/payload | ✓ |
+| 2 | 若发现类 B(`eval_expr.ss:25` 入口双轨)是 Phase 1 prerequisite → 升级 Phase 1.5 | `bootstrap/eval/` 类 B 入口双轨实证 **15+ 处**;do-while callsite 依赖 evalExpr 入口先走 MaybeVal 协议 | ✓ |
+| 3 | 若 MaybeVal class 当前未充分 instance 化 → 先补 MaybeVal 协议接口(回 §骨架 修订 + 起 D169 子设计) | `grep -rn "class MaybeVal\|mvKnown\|mvVal\|comptimeMustBeKnown" bootstrap/` = **0** | ✓ |
+
+### 物理不可达论证
+
+do-while spike 在本地 hack 的三条物理可达路径,**全部违反规约**:
+
+- **路径 α(搬家)**:把 `if (comptimeDepth > 0)` 分支体提到 stmts.ss dispatcher,分发 `genDoWhileComptime/genDoWhileRuntime` 两函数。`grep` 结果在 do-while 本文件消除,但 dispatcher 多一处,**总数不变** = D113 SEMA 模块拆分教训复发(commit `e3d8262` 同模式),违反 §第一性需求"消除双轨"
+- **路径 β(扩 ct* 数据结构)**:do-while 局部新增 ct 状态(如循环计数 / 历史值缓存)模拟 fold,**违反 §0.3 验收 #2 "不引入新 ct*"** + §拒绝准则 #1
+- **路径 γ(unified dispatch)**:让 do-while comptime / runtime 走同一 evalExpr/MaybeVal 协议,unified 后 `if (comptimeDepth > 0)` 消失 — **正确路径,但需 MaybeVal class + comptimeMustBeKnown flag 协议接口先确立**,触发 §拒绝准则 #1/#3
+
+**结论**:路径 γ 是唯一合规路径,prereq = MaybeVal/comptimeMustBeKnown 协议接口(本轮未存)+ eval_expr.ss 类 B 入口先消(本轮未做)。Phase 1 在本轮**物理不可达**,字面授权升级 Phase 1.5。
+
+### 决策
+
+按 §0.3 §拒绝准则字面授权 + CLAUDE.md §Root Cause 优先第一法则("真做不到就停手不做,绝不接受次优 / workaround / 临时绕道"):
+
+1. **本轮不改 bootstrap 代码** — do-while 局部不 hack,§拒绝准则 字面要求"先完成协议扩展再消除"
+2. **起 D169** — MaybeVal class + comptimeMustBeKnown flag 协议接口详设(§拒绝准则 #3 字面授权产出物)
+3. **升级 Phase 1.5** — §0.4 表插 1.5a/b/c/d 渐进路径,D169 §子拆解 表单一事实源
+4. **本 Phase 0/1 状态闭环** — Phase 1 标 Blocked,Phase 1.5a 起 Execute 接替(下轮 next_prompt)
+
+### 联动
+
+- D169 §下一步 §Phase 1.5a 接续(MaybeVal + comptimeMustBeKnown 接口 stub + POC)
+- 本 §下一步 表更新 — Phase 1 → Phase 1.5a;D094 / D 骨架能力前置 子项部分覆盖于 D169(余 InternPool / Type-as-Value 留 D094)
+
+## 下一步
 
 - **[x] Done at 2983d8a** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
-- **[ ] Planned** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike (按 §0.3 验收 + §拒绝准则)
-- **[ ] Planned** 验证 §张力 1-3 的编码决策可行性,产出 D094 "MaybeVal / InternPool / Type-as-Value 详设"(若 Phase 1 spike 触发 MaybeVal 协议扩展则提前)
-- **[ ] Planned** 验证 D093 骨架所需的 SS 语言能力缺口(class bool 字段 / 全局 flag / error 机制),缺则补
+- **[ ] Blocked at <本轮 commit>** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike — §拒绝准则 #1/#3 触发,详 §Phase 1 受阻;升级 Phase 1.5(D169 起首)
+- **[ ] Planned** Phase 1.5a Execute: MaybeVal class + helper + comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + 1-2 callsite POC(详 D169 §子拆解)
+- **[ ] Planned** Phase 1.5b Execute: eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除
+- **[ ] Planned** Phase 1.5c Execute: bootstrap/eval/ 其他 ~10 处类 B 入口消除
+- **[ ] Planned** Phase 1.5d Execute: evalExpr 返回类型升级 MaybeVal class + 回 Phase 1 原目标(do-while / while / for 类 A 消除)+ §0.3 验收 5 项达成
+- **[ ] Planned** D094 "MaybeVal / InternPool / Type-as-Value 详设" — MaybeVal 子集已覆盖于 D169,余 InternPool + Type-as-Value 待起(D093 §差距 #3/#4)
+- **[x] Done at 2026-05-20** 验证 D093 骨架所需的 SS 语言能力缺口 — 见 D169 §SS 语言能力前置实证(能力齐备 class bool/全局 flag/error 机制)
 
-**本节落档后,Phase 1 起 Execute 轮**;每批完成时双轨必须**局部消除**(不保留过渡态)。
+**本节落档后,Phase 1.5a 起 Execute 轮**;每 sub-phase 完成时双轨必须**局部消除**(不保留过渡态,§张力 #4 联动)。
