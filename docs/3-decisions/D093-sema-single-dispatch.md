@@ -1,6 +1,6 @@
 # D093: SEMA 单函数 dispatch — Zig 本质一样路径
 
-**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at 5d36c8c** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首);**Phase 1.5 §A class 形态 Superseded by D098 §决策 1**(2026-05-20 ultrathink — D169 立项时漏引 D098,§A class 改 D098 §决策 1 纯 int 4 helper);Phase 1.5a 起 Execute 轮(按修订版 D169 §A 落 helper,不落 class)
+**Status:** Phase 0 Done at 2983d8a — 2026-05-20 反向倒退 audit + 三类混合分类 + Phase 1 首批起手 spec 落地;**Phase 1 Blocked at 5d36c8c** — §拒绝准则 #1/#3 触发(详 §Phase 1 受阻 + D169),升级 Phase 1.5(D169 起首);**Phase 1.5 §A class 形态 Superseded by D098 §决策 1**(2026-05-20 ultrathink — D169 立项时漏引 D098,§A class 改 D098 §决策 1 纯 int 4 helper);**Phase 1.5a Done at 3710016** — D098 §决策 1 4 helper(mvKnownOf/mvValOf/mvRuntime/mvError)+ comptimeMustBeKnown flag + enter/exit + UNARY POC 4 处 mvRuntime + D169 §POC 失败实证落档;Phase 1.5b 起 Execute 轮
 **Depends on:** D088(Zig 路线), D092(双轨 SEMA 实现 — 被本决策替代)
 **Spawned:** D169(MaybeVal + comptimeMustBeKnown 协议接口详设 — Phase 1.5 prereq)
 **Date:** 2026-04-15
@@ -287,7 +287,7 @@ do-while spike 在本地 hack 的三条物理可达路径,**全部违反规约**
 
 - **[x] Done at 2983d8a** Phase 0: 反向倒退 audit + 三类混合分类 + 首批起手 spec(本节)
 - **[ ] Blocked at 5d36c8c** Phase 1 Execute: `stmts_loop_classic.ss:120` comptime do-while 消除 spike — §拒绝准则 #1/#3 触发,详 §Phase 1 受阻;升级 Phase 1.5(D169 起首)
-- **[ ] In Progress(2026-05-20 本轮)** Phase 1.5a Execute: **D098 §决策 1 4 helper**(`mvKnownOf`/`mvValOf`/`mvRuntime`/`mvError`,纯 int 形态 — D169 §A §修订 Superseded by D098 §决策 1)+ comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + UNARY POC(详 D169 §子拆解 修订版)
+- **[x] Done at 3710016** Phase 1.5a Execute: **D098 §决策 1 4 helper**(`mvKnownOf`/`mvValOf`/`mvRuntime`/`mvError`,纯 int 形态 — D169 §A §修订 Superseded by D098 §决策 1)+ comptimeMustBeKnown flag + enterComptimeBlock/exitComptimeBlock + UNARY POC 4 处 mvRuntime + D169 §POC 失败实证 落档(详 D169 §子拆解 修订版 + §POC 失败实证)
 - **[ ] Planned** Phase 1.5b Execute: eval_expr.ss UNARY/BINARY/TERNARY/NULL_COALESCE 5 处类 B 入口消除(callsite 走 `mvKnownOf`/`mvValOf`/`reg`)
 - **[ ] Planned** Phase 1.5c Execute: bootstrap/eval/ 其他 ~10 处类 B 入口消除
 - **[ ] Planned** Phase 1.5d Execute: evalExpr 入口双轨彻底消除(ct/runtime 分支合一)+ 回 Phase 1 原目标(do-while / while / for 类 A 消除)+ §0.3 验收 5 项达成。**接口返回类型保持 int**(D098 §决策 1 §Phase A→B 接口稳定性)
