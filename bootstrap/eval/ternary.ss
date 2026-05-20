@@ -7,7 +7,7 @@ function evalTernary(astId: int): int {
         const pv = genVal(interpTruthy(payload(cv)) == 1 ? nGetI2(astId) : nGetI3(astId))
         return isCt(pv) == 1 ? pv : 0 - pv - 1
     }
-    if (comptimeDepth > 0) { return ctVal(interpNewNull()) }
+    if (comptimeMustBeKnown == 1) { return comptimeError("ternary condition not compile-time known", astId) }
     const condStr = reg(cv)
     // D144 Phase 2: phi llType 优先读反推 branchType nSetS2(checker `checkerInferType`
     // TERNARY case + check_exprs.ss D144 两分支同类型回填),fallback 单 then 分支 inferType
