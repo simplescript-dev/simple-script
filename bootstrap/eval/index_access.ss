@@ -15,6 +15,6 @@ function evalIndexAccess(astId: int): int {
             return ctVal(interpNewString(i >= 0 && i < s.length() ? s.charAt(i) : ""))
         }
     }
-    if (comptimeDepth > 0) { return comptimeError("index access requires compile-time known operands", astId) }
+    if (comptimeMustBeKnown == 1) { return comptimeError("index access requires compile-time known operands", astId) }
     return 0 - constVal(genIndexAccess(astId, reg(obj), reg(idx))) - 1
 }
