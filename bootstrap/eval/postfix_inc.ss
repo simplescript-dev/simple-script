@@ -2,7 +2,7 @@
 // 对称三段式:comptime ctScopeStack/ctVars 自增 + return old;runtime genPostfixExpr
 
 function evalPostfixInc(astId: int): int {
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const piName = nGetS1(astId)
         let piKey = ""
         if (ctScopeStack.length() > 0) {
