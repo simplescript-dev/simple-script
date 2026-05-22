@@ -7,12 +7,12 @@ function evalMethodCall(astId: int): int {
     const mcObjNode = nGetI1(astId)
     if (nGetKind(mcObjNode) == "IDENT") {
         const mcObjName = nGetS1(mcObjNode)
-        if (comptimeDepth > 0 && interpEnumNodes.has(mcObjName) == 1) {
+        if (comptimeMustBeKnown == 1 && interpEnumNodes.has(mcObjName) == 1) {
             if (mcMethod == "values") { return ctVal(ctEnumListMethod(mcObjName, 0)) }
             if (mcMethod == "names") { return ctVal(ctEnumListMethod(mcObjName, 1)) }
             if (mcMethod == "valueOf") { return ctVal(ctEnumValueOfMethod(mcObjName, astId)) }
         }
-        if (comptimeDepth > 0 && mcObjName == "reflect") {
+        if (comptimeMustBeKnown == 1 && mcObjName == "reflect") {
             return ctReflectMethodDispatch(astId, mcMethod)
         }
         if (comptimeDepth == 0 && enumReady == 1 && enumDeclNodes.has(mcObjName) == 1) {
@@ -64,7 +64,7 @@ function evalMethodCall(astId: int): int {
             }
         }
     }
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         callPreRegs = mcSavedCPR
         if (isCt(mcObj) == 0) {
             return comptimeError(`cannot call method '${mcMethod}' on runtime value`, astId)
