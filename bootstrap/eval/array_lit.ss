@@ -4,7 +4,7 @@
 function evalArrayLit(astId: int): int {
     const elemList = nGetList(astId)
     if (elemList == "") {
-        if (comptimeDepth > 0) { return ctVal(interpNewArray("")) }
+        if (comptimeMustBeKnown == 1) { return ctVal(interpNewArray("")) }
         return 0 - constVal(genArrayLit(astId)) - 1
     }
     let allCt = 1
@@ -18,7 +18,7 @@ function evalArrayLit(astId: int): int {
             if (isCt(ev) != 1) { allCt = 0 }
         }
     }
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const arr = interpNewArray("")
         for (ap in arrParts) {
             const elemId = parseInt(ap)
