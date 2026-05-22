@@ -3,7 +3,7 @@
 
 function evalIdent(astId: int): int {
     const ctIdName = nGetS1(astId)
-    if (comptimeDepth > 0 && ctScopeStack.length() > 0) {
+    if (comptimeMustBeKnown == 1 && ctScopeStack.length() > 0) {
         let ctSi = ctScopeStack.length() - 1
         while (ctSi >= 0) {
             const ctScopeKey = `${ctScopeStack[ctSi]}:${ctIdName}`
@@ -28,7 +28,7 @@ function evalIdent(astId: int): int {
         const ctGlobalCt = parseInt(ctVars.getString(ctGlobalKey))
         if (isCt(ctGlobalCt) == 1) { return ctGlobalCt }
     }
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctInterpKey = interpFindScopeKey(ctIdName)
         if (ctInterpKey != "") {
             return ctVal(parseInt(interpVars.getString(ctInterpKey)))
