@@ -33,7 +33,7 @@ function evalMemberAccess(astId: int): int {
             if (member == "name") { return mpKind == "type" ? ctVal(interpNewString(clsName)) : obj }
         }
     }
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         return comptimeError(`cannot access field '${member}' on ${isCt(obj) == 1 ? interpType(payload(obj)) : "runtime"} value`, astId)
     }
     if (nGetI3(astId) > 0) { return 0 - constVal(genOptionalMemberAccess(astId, reg(obj))) - 1 }
