@@ -7,7 +7,7 @@ function evalCall(astId: int): int {
     const callName = nGetS1(astId)
     const callArgList = nGetList(astId)
     if (genericFuncNodes.has(callName) == 1) {
-        if (comptimeDepth > 0) {
+        if (comptimeMustBeKnown == 1) {
             if (ctFuncNodes.has(callName) == 0) {
                 ctFuncNodes.set(callName, genericFuncNodes.getString(callName))
             }
@@ -41,7 +41,7 @@ function evalCall(astId: int): int {
                     if (isCt(srcVal) == 1) {
                         const srcPayload = payload(srcVal)
                         if (interpType(srcPayload) != "array") {
-                            if (comptimeDepth > 0) {
+                            if (comptimeMustBeKnown == 1) {
                                 println(`error: [comptime] cannot spread non-array value at line ${nGetLine(callArgId)}:${nGetCol(callArgId)}`)
                                 exit(1)
                             }
@@ -56,7 +56,7 @@ function evalCall(astId: int): int {
                             }
                         }
                     } else {
-                        if (comptimeDepth > 0) {
+                        if (comptimeMustBeKnown == 1) {
                             println(`error: [comptime] cannot spread runtime value at line ${nGetLine(callArgId)}:${nGetCol(callArgId)}`)
                             exit(1)
                         }
@@ -74,7 +74,7 @@ function evalCall(astId: int): int {
             }
         }
     }
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         callPreRegs = savedCallPreRegs
         return ctCallDispatch(astId, callName, callCtArgVals, callCtNamedArgs, callCtHasNamed)
     }
