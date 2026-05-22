@@ -33,7 +33,7 @@ function evalTemplateLit(astId: int): int {
         }
         return ctVal(interpNewString(ctResult))
     }
-    if (comptimeDepth > 0) { return comptimeError("template literal contains runtime expression", astId) }
+    if (comptimeMustBeKnown == 1) { return comptimeError("template literal contains runtime expression", astId) }
     tmplPreRegs = new Map()
     for (tp in tmplParts) {
         const fragId = parseInt(tp)
