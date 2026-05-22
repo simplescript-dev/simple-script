@@ -4,7 +4,7 @@
 function evalNewExpr(astId: int): int {
     const newClassName = nGetS1(astId)
     if (genericClassNodes.has(newClassName) == 1) {
-        if (comptimeDepth > 0) {
+        if (comptimeMustBeKnown == 1) {
             if (interpClasses.has(newClassName) == 0) {
                 interpClasses.set(newClassName, genericClassNodes.getString(newClassName))
             }
@@ -13,7 +13,7 @@ function evalNewExpr(astId: int): int {
         }
     }
     if (newClassName == "Map" || newClassName == "Set") {
-        if (comptimeDepth > 0) { return ctVal(interpNewMap()) }
+        if (comptimeMustBeKnown == 1) { return ctVal(interpNewMap()) }
         return 0 - constVal(genNewExpr(astId)) - 1
     }
     const savedNewPreRegs = callPreRegs
@@ -48,7 +48,7 @@ function evalNewExpr(astId: int): int {
             }
         }
     }
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         callPreRegs = savedNewPreRegs
         return ctNewExprDispatch(newClassName, newCtArgVals, newCtNamedArgs)
     }
