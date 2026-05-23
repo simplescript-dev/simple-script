@@ -1,0 +1,16 @@
+// D170 sunset_linter MVP negative 测试 — D 文档死指针
+//
+// 验证 sunset_linter C2 检测 SUNSET marker 引用不存在的 D<NNN> → GATE BLOCKED + exit 1.
+//
+// 本测试用 `D999` (docs/3-decisions/ 中无 D999-*.md 实存).
+//
+// commit-time shell verify:
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_d_doc_dead.ss.txt ; echo $?  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_d_doc_dead.ss.txt 2>&1 | grep -c "GATE BLOCKED"  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_d_doc_dead.ss.txt 2>&1 | grep -c "C2 FAIL"  # 1
+
+// SUNSET(D999 §Phase X): example marker referencing non-existent D doc — should trigger C2 BLOCK
+
+function main() {
+    // empty body — doc-anchor
+}

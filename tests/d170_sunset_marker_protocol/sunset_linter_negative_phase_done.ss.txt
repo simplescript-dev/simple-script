@@ -1,0 +1,17 @@
+// D170 sunset_linter MVP negative 测试 — phase 已 [x] Done 但 marker 残留
+//
+// 验证 sunset_linter C3 检测 `[x] Done` phase 残留 marker → GATE BLOCKED + exit 1.
+//
+// 本测试用 `D093 §Phase 0` (D093 §下一步 line 288 实 [x] Done at 2983d8a — Phase 0
+// 反向倒退 audit + 三类混合分类 完结).
+//
+// commit-time shell verify:
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_phase_done.ss.txt ; echo $?  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_phase_done.ss.txt 2>&1 | grep -c "GATE BLOCKED"  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_phase_done.ss.txt 2>&1 | grep -c "C3 FAIL"  # 1
+
+// SUNSET(D093 §Phase 0): example marker referencing already-Done phase — should trigger C3 BLOCK
+
+function main() {
+    // empty body — doc-anchor
+}

@@ -1,0 +1,16 @@
+// D170 sunset_linter MVP negative 测试 — reason 空
+//
+// 验证 sunset_linter C4 检测 `):` 后 trim 后 length == 0 → GATE BLOCKED + exit 1.
+//
+// 本测试用合法 D 文档 + 合法 phase + **空 reason** (D170 §决策 A 强制 reason 必填).
+//
+// commit-time shell verify:
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_reason_empty.ss.txt ; echo $?  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_reason_empty.ss.txt 2>&1 | grep -c "GATE BLOCKED"  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_negative_reason_empty.ss.txt 2>&1 | grep -c "C4 FAIL"  # 1
+
+// SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮):
+
+function main() {
+    // empty body — doc-anchor
+}

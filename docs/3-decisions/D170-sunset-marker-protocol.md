@@ -1,6 +1,6 @@
 # D170: SUNSET marker — 过渡债漂移机械 gate 协议
 
-**Status:** Phase 0 立项 (本 commit) — D170 §决策落地;**Phase 1 起首待 step 2** (sunset_linter MVP);**Phase 2 起首待 step 5** (8 + 40 存量 backfill);**Phase Exit Gate 落地待 step 6**。
+**Status:** **Phase 0 Done at f3a93bd** — D170 §决策落地(canonical marker 模板 + linter C1-C4 + Phase Exit Gate 双轨触发 + 6 步序 + sibling D097 对标);**Phase 1 起首 In Progress at step 2** (tools/sunset_linter.ss MVP + 4 doc-anchor 测试本轮起);**Phase 2 起首待 step 5** (8 + 40 存量 backfill);**Phase Exit Gate 落地待 step 6**。
 **Depends on:** D097 (reflection_health_linter §决策 + linter 拆 commit sibling 模式), D093 (本会话 8 处过渡件实证来源 + 1.5a-d sub-round 节奏实证), D169 (sub-round 分批迁实证)
 **Spawned by:** 2026-05-23 用户对话「实现过程中有些过渡阶段,等到后期,可能忘记了发生了漂移,忘记清理过渡的逻辑」+ 同对话用户锁定候选 A+B
 **Date:** 2026-05-23
@@ -108,7 +108,7 @@ function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptim
 | # | Layer | 内容 | 档位 | commit_radius |
 |---|---|---|---|---|
 | 1 | Decision | **本 commit** — D170 §决策落地 + next_prompt 起草 step 2 | 大改 (新 D 文档) | docs/ 单子族 |
-| 2 | Implementation | `tools/sunset_linter.ss` MVP — 默认模式 C1-C4 + 测试 doc-anchor `tests/phase5/sunset_linter_*.ss.txt` | 标准改 | tools/ + tests/ 双子族 |
+| 2 | Implementation | `tools/sunset_linter.ss` MVP — 默认模式 C1-C4 + 测试 doc-anchor `tests/d170_sunset_marker_protocol/sunset_linter_*.ss.txt` (per-doc subdir 对齐 D161-D165 sibling) | 标准改 | tools/ + tests/ 双子族 |
 | 3 | Process | `docs/3-MNK.md` §特定领域 §SUNSET marker 治理 gate 段 (对称现有 §memory / §D 文档治理 gate) + §After Done §1.5 接入点 | 标准改 | docs/ 单子族 |
 | 4 | Process | `CLAUDE.md` §项目技术规则 新增「SUNSET marker (强制)」段 + 引文档 link | 标准改 | docs/ 单子族 |
 | 5a | Backfill | 8 处显式过渡件 SUNSET marker 落地 (实证表 #1-7 + #6 sibling 子轮预留) | 大改 (多文件 bootstrap/) | bootstrap/ 单子族 |
@@ -158,11 +158,11 @@ function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptim
 - (3) backfill 发现"不可清理"的过渡件 (永久存在合理) → **显式标 `// PERMANENT(reason):` 替代 SUNSET**,记入 D 文档 §出口清单;**不允许**保留 SUNSET 假装是过渡 (违 §第一性需求)
 - (4) Phase Exit Gate 实施发现某 D 文档 §下一步 无 [x] Done 终态语义 (e.g., 永久 In Progress) → 升 D170 加 §决策 §"无 exit 的 D 文档" 特例规约
 
-## Phase 0 验收 (本 commit)
+## Phase 0 验收 (Done at f3a93bd)
 
 | # | 验收项 | 实测 |
 |---|---|---|
-| 1 | `docs/3-decisions/D170-sunset-marker-protocol.md` 实存 | 本 commit Write |
+| 1 | `docs/3-decisions/D170-sunset-marker-protocol.md` 实存 | commit f3a93bd Write 184 lines |
 | 2 | §第一性需求 + §决策 (A+B+C) + §6 步序 + §关系 + §拒绝准则 + §下一步 落地 | `grep -c "^## " D170-*.md` ≥ 6 |
 | 3 | `tools/d_doc_index_linter.ss` GATE OK (D170 引用都活) | 本 commit 后跑验证 |
 | 4 | `.claude/next_prompt.md` 重写指 step 2 (sunset_linter MVP) | 本 commit Write |
@@ -173,8 +173,8 @@ function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptim
 
 ## 下一步
 
-- **[x] Phase 0 Done at <本 commit hash 回填下轮>** — D170 §决策立项 + 6 步序落档
-- **[ ] Planned Phase 1 起首 (step 2)** — `tools/sunset_linter.ss` MVP 含 C1-C4 + 测试 doc-anchor `tests/phase5/sunset_linter_*.ss.txt` (positive: marker 合法 PASS / negative: phase Done BLOCK / negative: D 文档不存死指针 BLOCK / negative: reason 空 BLOCK)
+- **[x] Phase 0 Done at f3a93bd** — D170 §决策立项 + 6 步序落档(commit f3a93bd "docs(D170): Phase 0 立项 — SUNSET marker 过渡债漂移机械 gate 协议 §决策落地",184 行 D 文档 + 与 D097/d_doc_index_linter/MNK/§下一步/memory 关系节 + 4 条拒绝准则 + Phase 0 验收 8 项)
+- **[~] In Progress Phase 1 起首 (step 2)** — `tools/sunset_linter.ss` MVP 含 C1-C4 + 4 测试 doc-anchor `tests/d170_sunset_marker_protocol/sunset_linter_{positive_legal,negative_phase_done,negative_d_doc_dead,negative_reason_empty}.ss.txt` per-doc subdir (positive: marker 合法 PASS / negative: phase Done BLOCK / negative: D 文档不存死指针 BLOCK / negative: reason 空 BLOCK)
 - **[ ] Planned Phase 1 续 (step 3)** — `docs/3-MNK.md` 新 §特定领域 §SUNSET marker 治理 gate 段 + §After Done §1.5 接入 sunset_linter
 - **[ ] Planned Phase 1 完 (step 4)** — `CLAUDE.md` §项目技术规则 新增「SUNSET marker (强制)」段 + 引 D170 + 引 MNK § link
 - **[ ] Planned Phase 2 起首 (step 5a)** — 8 处显式过渡件 backfill SUNSET marker (本 D 文档 §历史语境 表 #1-7 + #6 sibling)

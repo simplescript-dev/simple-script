@@ -1,0 +1,20 @@
+// D170 sunset_linter MVP positive 测试 doc-anchor
+//
+// 验证 sunset_linter 默认模式 (C1-C4) 对**合法** SUNSET marker 返 GATE OK + exit 0.
+//
+// 合法 marker = (a) `// SUNSET(D<NNN> §<phase>): <reason>` 形态 + (b) D<NNN> 实存
+// + (c) §<phase> 在 D 文档 §下一步 列表是 [ ] Planned / Blocked / In Progress
+// + (d) reason 非空。
+//
+// 本测试用 `D093 §1.5d 主轮收口子步 sibling 子轮` (D093 §下一步 line 316 实 [ ] Planned 项).
+//
+// commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_positive_legal.ss.txt ; echo $?  # 0
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_positive_legal.ss.txt 2>&1 | grep -c "GATE OK"  # 1
+//   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_positive_legal.ss.txt 2>&1 | grep -c "C1: 1 SUNSET"  # 1
+
+// SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮): example legal marker — for/while 入口同形 sibling 迁待下轮
+
+function main() {
+    // empty body — 本测试不需要执行,仅作 doc-anchor 给 sunset_linter 解析
+}
