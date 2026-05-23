@@ -8,14 +8,19 @@ function genFor(id: int) {
     const updateId = nGetI3(id)
     const bodyId = nGetI4(id)
 
-    // D089 Phase 3: comptime for in comptime block
-    // SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮): for 入口 ct-depth 字面 → comptimeMustBeKnown == 1 + silent || 短路拆 loud,sibling do-while (ddd327c) 完全一致
-    if (comptimeDepth > 0) {
+    // D089 Phase 3: comptime for in comptime block — ct-interp 评估 for-loop。
+    // D093/D169 1.5d sibling 子轮(sibling do-while ddd327c)— 入口字面 rename
+    // + silent `||` 拆 loud comptimeError("for condition not compile-time known", id)。
+    if (comptimeMustBeKnown == 1) {
         genStmt(initId)
         let ctForLimit = 10000
         while (ctForLimit > 0) {
             const fCondTagged = genVal(condId)
-            if (isCt(fCondTagged) == 0 || interpTruthy(payload(fCondTagged)) == 0) { break }
+            if (isCt(fCondTagged) == 0) {
+                comptimeError("for condition not compile-time known", id)
+                return
+            }
+            if (interpTruthy(payload(fCondTagged)) == 0) { break }
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
             interpContinueFlag = 0
@@ -68,13 +73,18 @@ function genWhile(id: int) {
     const condId = nGetI1(id)
     const bodyId = nGetI2(id)
 
-    // D089 Phase 3: comptime while in comptime block
-    // SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮): while 入口 ct-depth 字面 → comptimeMustBeKnown == 1 + silent || 短路拆 loud,sibling do-while (ddd327c) 完全一致
-    if (comptimeDepth > 0) {
+    // D089 Phase 3: comptime while in comptime block — ct-interp 评估 while-loop。
+    // D093/D169 1.5d sibling 子轮(sibling do-while ddd327c)— 入口字面 rename
+    // + silent `||` 拆 loud comptimeError("while condition not compile-time known", id)。
+    if (comptimeMustBeKnown == 1) {
         let ctWhileLimit = 10000
         while (ctWhileLimit > 0) {
             const wCondTagged = genVal(condId)
-            if (isCt(wCondTagged) == 0 || interpTruthy(payload(wCondTagged)) == 0) { break }
+            if (isCt(wCondTagged) == 0) {
+                comptimeError("while condition not compile-time known", id)
+                return
+            }
+            if (interpTruthy(payload(wCondTagged)) == 0) { break }
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
             interpContinueFlag = 0
@@ -126,8 +136,7 @@ function genDoWhile(id: int) {
     //   (b) OLD silent `|| interpTruthy == 0` 短路拆 loud gate(sibling `ternary.ss:10`
     //        / `short_circuit.ss:13` / `eval_expr.ss:125` 完全一致;D093 §第一性需求
     //        "comptime 块内 evalExpr known=false 即 error")
-    // statement 层无 mv 出口,真单 dispatch eager+无 gate 终态留 1.5e+;
-    // line 12 for / line 71 while 同入口边界留**后续 sibling 子轮**迁。
+    // statement 层无 mv 出口,真单 dispatch eager+无 gate 终态留 1.5e+。
     if (comptimeMustBeKnown == 1) {
         let ctDoLimit = 10000
         while (ctDoLimit > 0) {
