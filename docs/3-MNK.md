@@ -474,7 +474,34 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - 规则单一事实源 = **D170 §决策 A+B+C**;本段不复制规则定义,仅承担 trigger + 闸位 + linter 调用入口(SSoT 不分裂,sibling D097 §6 治理 gate 引法相同)
 - 不可清理的过渡件(永久存在合理)→ 标 `// PERMANENT(<reason>):` 替代 SUNSET + 记入对应 D 文档 §出口清单;**不允许**保留 SUNSET 假装是过渡(D170 §拒绝准则 #3)
 - linter 默认 project root = `pwd`,扫 `bootstrap/` + `lib/` + `tools/`;跨目录或单文件可传第 1 参数(sibling next_prompt_ultrathink_linter args() 模式)
-- 双轨触发:**默认模式 C1-C4** = 每次 commit 前必跑(sibling 三 gate 同形);**`--phase X` Phase Exit Gate** = D170 §决策 C step 6 实施留 = phase 整段 [x] Done 时强制独立 commit 跑过渡债清盘(每 marker 显式 resolve `[clean]` / `[upgrade]` / `[permanent]`)
+- 双轨触发:**默认模式 C1-C4** = 每次 commit 前必跑(sibling 三 gate 同形);**`--phase X` Phase Exit Gate** = phase 整段 [x] Done 时强制独立 commit 跑过渡债清盘(详 §Phase Exit Gate 触发流程)
+
+#### Phase Exit Gate 触发流程(D170 §决策 C 实施 — step 6 落地)
+
+**触发条件**:某 D 文档 §下一步 段下某 phase 全部 `[ ] Planned` / `[~] In Progress` 子项已转 `[x] Done`(phase 整段完结),且**全库存在引用该 phase 的 SUNSET markers** → 触发 Phase Exit verify。
+
+**双轨触发**(D170 §决策 C):
+
+| 轨道 | 触发方式 | 强度 |
+|---|---|---|
+| **Auto-detect 软提示** | `bin/ss run tools/sunset_linter.ss`(默认 commit-time)输出附带 phase 状态报告;若检测到 phase 全 [x] Done + markers 残留 → 输出 `[INFO] phase <X> 看起来可关闭了 N 个 marker 待清` | 软,不 BLOCK,allow grace window |
+| **Manual gate 硬 BLOCK** | commit message footer 显式写 `Phase X exit verify` → 强制跑 `bin/ss run tools/sunset_linter.ss --phase "<X>"` 列所有 §<X> markers,每个必显式 resolve | 硬,任一未 resolve → BLOCK commit |
+
+**Exit 动作清单**(manual gate 触发后的 commit 必走):
+
+1. **独立 commit** `docs(D<NNN>): Phase X exit verify`(commit_radius 单子族,不与 implementation 混)
+2. **D 文档 add §Phase X §出口清单 段**,每 marker 一行显式 resolve 标签:
+   - `[clean] <file:line>` — 代码已删,引 commit hash
+   - `[upgrade <Y>] <file:line>` — 标移到 `§<Y>`,引 commit hash
+   - `[permanent] <file:line>` — 永久保留,给永久理由 + 替 `// SUNSET(...)` 为 `// PERMANENT(<reason>):`(D170 §拒绝准则 #3)
+3. commit message footer:
+   - `Phase X exit verify` 一行(linter 触发锚)
+   - 标准 `去掉少什么:` footer(memory `d093-subround-backfill-needs-footer` 同协议)
+
+**linter 调用**:
+- 默认模式:`bin/ss run tools/sunset_linter.ss`(C1-C4 + auto-detect 软提示)
+- Manual gate:`bin/ss run tools/sunset_linter.ss --phase "<X>"` —— bin/ss 拆 quoted 多 token args 限制,sunset_linter `--phase` 处理已 concat 剩余 args 解决(实施于 D170 step 6)
+- 测试 doc-anchor:`tests/d170_sunset_marker_protocol/sunset_linter_phase_exit_*.ss.txt`(active phase PASS + missing phase WARN,2 spike)
 
 **自检 trigger**:看到 "这个 hack 留下轮再清" / "暂时这么写,等 Phase X 完了再说" / "先 workaround 一下" / "TODO 留给未来" 类念头时,停下问"是过渡件吗?那必带 SUNSET marker — 引哪个 D 文档 §下一步 [ ] Planned 项作清除条件?reason 一句话说清?"。把"想留过渡注释"念头当 trigger,不是把"忘清"当事后审视。**对称 memory 治理 gate / D 文档治理 gate / 反射路径根因 gate**,sibling 第四只机械化闸位 — D170 §决策落地的物理通道。
 

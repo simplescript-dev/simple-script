@@ -1,8 +1,9 @@
 // tools/sunset_linter.ss — D170 SUNSET marker 过渡债漂移机械 gate
 //
 // Usage:
-//   bin/ss run tools/sunset_linter.ss              # 默认扫 bootstrap/ lib/ tools/
-//   bin/ss run tools/sunset_linter.ss <path>       # 扫单文件或单目录(测试用)
+//   bin/ss run tools/sunset_linter.ss                    # 默认扫 bootstrap/ lib/ tools/
+//   bin/ss run tools/sunset_linter.ss <path>             # 扫单文件或单目录(测试用)
+//   bin/ss run tools/sunset_linter.ss --phase "<X>"      # Phase Exit verify 模式 (D170 §决策 C)
 //
 // 默认模式 C1-C4 (D170 §决策 B):
 //   C1 (collection): 收集所有 `// SUNSET(D<num> §<phase>): <reason>` markers,
@@ -15,7 +16,15 @@
 //                    全无                                           → 软警告 (verify phase 名)
 //   C4 (reason 非空): `):` 后 trim 后 length > 0,否则 BLOCK
 //
-// C5 (`--phase X` Phase Exit Gate) 留 D170 §下一步 step 6 实施.
+// `--phase X` 模式 (D170 §决策 C — Phase Exit Gate manual gate 触发,step 6 落地):
+//   filter markers 至匹配 phase X 子集 + 报告 file:line + reason + 按 phase 在 D 文档
+//   §下一步 状态判 verdict:
+//     [x] Done → BLOCK (phase 完结但 markers 残留,须 clean / upgrade / // PERMANENT)
+//     [ ] Planned / [ ] Blocked / [~] In Progress → PASS 软提示报告 (phase 未完结 OK)
+//     missing → WARN (verify phase name)
+//   触发方式 (D170 §决策 C 双轨):
+//     auto-detect = 默认模式 commit-time 跑时附带提示 phase 是否 ready close (留 step 7+)
+//     manual gate = commit message footer "Phase X exit verify" → 强制跑 --phase X 模式
 //
 // 任一 BLOCK → exit 1. 规则单一事实源 = D170 §决策 (本协议 commit f3a93bd 立项).
 // sibling linter 模式对齐: tools/d_doc_index_linter.ss / tools/reflection_health_linter.ss
@@ -211,8 +220,25 @@ function dDocPhaseStatus(dDocPath: string, phaseName: string): string {
 function main() {
     const root = shell("pwd").trim()
     let target = ""
+    let phaseFilter = ""
 
-    if (args() >= 2) {
+    // `--phase X` mode (D170 §决策 C Phase Exit Gate manual gate 触发):
+    //   args 1 == "--phase" + args 2.. = phase name (concat,绕 bin/ss run 拆 quoted
+    //   多 token args 限制) → 仅列匹配 phase 的 markers,按该 phase 在 D 文档 §下一步
+    //   状态判 (done → BLOCK, planned/blocked/in_progress → PASS 软提示报告,
+    //   missing → 软警告)
+    if (args() >= 3 && arg(1) == "--phase") {
+        phaseFilter = arg(2)
+        let pi = 3
+        while (pi < args()) {
+            phaseFilter = phaseFilter + " " + arg(pi)
+            pi = pi + 1
+        }
+        println(`[sunset_linter] phase exit verify mode — phase: ${phaseFilter}`)
+        scanDir(`${root}/bootstrap`)
+        scanDir(`${root}/lib`)
+        scanDir(`${root}/tools`)
+    } else if (args() >= 2) {
         target = arg(1)
         println(`[sunset_linter] target: ${target}`)
         if (target.endsWith(".ss") == 1 || target.endsWith(".md") == 1 || target.endsWith(".txt") == 1) {
@@ -307,15 +333,60 @@ function main() {
         fails = fails + c4Fail
     }
 
+    // Phase Exit verify (D170 §决策 C — manual gate via --phase X)
+    if (phaseFilter != "") {
+        println("")
+        println(`=== Phase Exit verify — phase: ${phaseFilter} ===`)
+        let phaseMatchCount = 0
+        let phaseDnum = ""
+        let mp = 0
+        while (mp < total) {
+            if (markerPhases[mp] == phaseFilter) {
+                if (phaseDnum == "") { phaseDnum = markerDnums[mp] }
+                println(`  marker: ${markerFiles[mp]}:${markerLines[mp]} [${markerDnums[mp]}]`)
+                println(`    reason: ${markerReasons[mp]}`)
+                phaseMatchCount = phaseMatchCount + 1
+            }
+            mp = mp + 1
+        }
+        if (phaseMatchCount == 0) {
+            println(`  Phase has 0 SUNSET markers (already clean or no markers for this phase)`)
+            println(`Phase Exit verdict: PASS — no cleanup needed for phase '${phaseFilter}'`)
+        } else {
+            const phaseDDocPath = findDDocPath(phaseDnum, `${root}/docs/3-decisions`)
+            const status = dDocPhaseStatus(phaseDDocPath, phaseFilter)
+            println("")
+            println(`  phase status in ${phaseDnum} §下一步: ${status}`)
+            if (status == "done") {
+                println(`Phase Exit verdict: BLOCK — phase is [x] Done but ${phaseMatchCount} marker(s) remain — clean / upgrade to later phase / replace with // PERMANENT(<reason>) each marker before declaring phase exit`)
+                fails = fails + 1
+            } else if (status == "planned") {
+                println(`Phase Exit verdict: PASS (phase active [ ] Planned, ${phaseMatchCount} marker(s) awaiting future cleanup) — auto-detect 软提示报告,phase 未完结故 markers OK to remain`)
+            } else if (status == "blocked") {
+                println(`Phase Exit verdict: PASS (phase active [ ] Blocked, ${phaseMatchCount} marker(s) awaiting future cleanup) — phase blocked but markers tracked`)
+            } else if (status == "in_progress") {
+                println(`Phase Exit verdict: PASS (phase active [~] In Progress, ${phaseMatchCount} marker(s) awaiting future cleanup) — phase in progress, markers tracked`)
+            } else {
+                println(`Phase Exit verdict: WARN — phase '${phaseFilter}' not found in ${phaseDnum} §下一步 list-item — verify phase name spelling (soft warning, not BLOCK)`)
+            }
+        }
+    }
+
     println("")
     println("=======================================")
     if (fails > 0) {
         println(`FAIL: ${fails} issue(s)`)
-        println("GATE BLOCKED — SUNSET marker references dead D doc / phase done / empty reason")
+        if (phaseFilter != "") {
+            println(`GATE BLOCKED — Phase Exit verify failed for phase '${phaseFilter}' (or baseline C1-C4 BLOCK)`)
+        } else {
+            println("GATE BLOCKED — SUNSET marker references dead D doc / phase done / empty reason")
+        }
         exit(1)
     }
     if (total == 0) {
         println("GATE OK — 0 SUNSET markers found")
+    } else if (phaseFilter != "") {
+        println(`GATE OK — Phase Exit verify '${phaseFilter}' passed + baseline ${total} markers all valid`)
     } else {
         println(`GATE OK — ${total} SUNSET marker(s), all valid`)
     }

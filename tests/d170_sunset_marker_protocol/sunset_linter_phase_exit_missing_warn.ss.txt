@@ -1,0 +1,20 @@
+// D170 sunset_linter `--phase X` mode spike test — missing phase WARN
+//
+// 验证 Phase Exit Gate manual gate (D170 §决策 C) — `--phase X` 模式当 X 不在
+// 任何 D 文档 §下一步 list-item 时 (拼写错 / 描述性 phase 名 / 协议未来 phase),
+// linter Phase Exit verdict = WARN (soft, exit 0,不 BLOCK)。
+//
+// 触发场景 (sibling step 5a 落地的真实 markers):
+//   "Phase 1.5e+" 是 D093 §决策描述性 phase 名 (eval_expr.ss UNARY 反向编码 /
+//   BINARY 混合 dispatch / pow_binary + null_coalesce eager 上移 共 4 markers
+//   引用) 但**未在 D093 §下一步 list-item 出现** (Phase 1.5e+ 是 forward-looking
+//   phase,未 [ ] Planned) → linter dDocPhaseStatus 返 "missing" → WARN。
+//
+// commit-time shell verify:
+//   bin/ss run tools/sunset_linter.ss --phase "Phase 1.5e+" ; echo $?  # 0 (WARN soft, not BLOCK)
+//   bin/ss run tools/sunset_linter.ss --phase "Phase 1.5e+" 2>&1 | grep -c "Phase Exit verdict: WARN"  # 1
+//   bin/ss run tools/sunset_linter.ss --phase "Phase 1.5e+" 2>&1 | grep -c "not found in .+ §下一步 list-item"  # 1
+
+function main() {
+    // doc-anchor only — verify --phase X 模式对未在 §下一步 的 phase 名返 WARN 软警告
+}
