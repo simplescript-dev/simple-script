@@ -11,7 +11,7 @@ function evalMemberAccess(astId: int): int {
         if (backing != "") { return ctVal(interpNewString(backing)) }
         const ord = lookupEnumOrdinal(eName, enumKey)
         if (ord >= 0) { return ctVal(interpNewInt(ord)) }
-        if (comptimeDepth == 0 && getVarType(eName) == "" && classFields.has(eName) == 1) {
+        if (comptimeMustBeKnown == 0 && getVarType(eName) == "" && classFields.has(eName) == 1) {
             return 0 - constVal(genMemberAccess(astId)) - 1
         }
     }

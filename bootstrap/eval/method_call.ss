@@ -15,17 +15,17 @@ function evalMethodCall(astId: int): int {
         if (comptimeMustBeKnown == 1 && mcObjName == "reflect") {
             return ctReflectMethodDispatch(astId, mcMethod)
         }
-        if (comptimeDepth == 0 && enumReady == 1 && enumDeclNodes.has(mcObjName) == 1) {
+        if (comptimeMustBeKnown == 0 && enumReady == 1 && enumDeclNodes.has(mcObjName) == 1) {
             if (mcMethod == "values") { return 0 - constVal(genEnumValues(mcObjName)) - 1 }
             if (mcMethod == "names") { return 0 - constVal(genEnumNames(mcObjName)) - 1 }
             if (mcMethod == "valueOf") { return 0 - constVal(genEnumValueOf(mcObjName, nGetList(astId))) - 1 }
         }
-        if (comptimeDepth == 0) {
+        if (comptimeMustBeKnown == 0) {
             if (mcObjName == "Thread" && mcMethod == "start") { return 0 - constVal(genMethodCall(astId)) - 1 }
             if (getVarType(mcObjName) == "" && classFields.has(mcObjName) == 1) { return 0 - constVal(genMethodCall(astId)) - 1 }
         }
     }
-    if (comptimeDepth == 0 && pendingSuperParent != "") { return 0 - constVal(genMethodCall(astId)) - 1 }
+    if (comptimeMustBeKnown == 0 && pendingSuperParent != "") { return 0 - constVal(genMethodCall(astId)) - 1 }
     const mcObj = genVal(mcObjNode)
     let mcObjReg = ""
     if (isCt(mcObj) == 0) { mcObjReg = reg(mcObj) }
