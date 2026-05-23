@@ -68,11 +68,7 @@ function genVal(id: int): int {
     if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL" || kind == "CALL" || kind == "NEW_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
-        // SUNSET(D093 §Phase 4): THIS/SUPER expr 入口双轨 dispatch — Phase 4 统一后消除 ct-depth 字面
-        if (comptimeDepth > 0) {
-            if (interpThisVal > 0) { return ctVal(interpThisVal) }
-            return ctVal(interpNewNull())
-        }
+        if (comptimeDepth > 0) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
         return constVal(genThisExpr())
     }
     if (kind == "ARROW_FUNC") {
