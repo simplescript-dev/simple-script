@@ -3,6 +3,7 @@
 // runtime path delegate genBinary 内 NullCoalesce case → genNullCoalesce alloca+br+load IR
 
 function evalNullCoalesce(astId: int): int {
+    // SUNSET(D093 §Phase 1.5e+): eager genVal 上移 + sibling 完全一致 (ct → 紧 loud → runtime) + 桥消除,genNullCoalesce 接口扩 lPreReg/rPreReg forward 消 lhs runtime 时 genBinary→genNullCoalesce 双 eval bug
     // 不 eager 上移避 lhs runtime 时 genBinary→genNullCoalesce 内部 genExpr(leftId)
     // 再 eval 引入 double-eval bug(genNullCoalesce 接口扩 lPreReg/rPreReg 留独立轮)。
     // NEW rv 返值补 `isCt(rv) == 1 ? rv : 0 - rv - 1` mv 编码 — 顺手修 OLD

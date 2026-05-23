@@ -46,6 +46,7 @@ function evalExpr(astId: int): int {
             return mvRuntime(constVal(genUnary(astId)))
         }
         const subRaw = genVal(childId)
+        // SUNSET(D093 §Phase 1.5e+): genVal 桥消除后此反向编码 (mv 空间 ↔ positive 空间) 可去除直接 `subMv = evalExpr(child)`,sibling UNARY/BINARY 同模式
         const subMv = isCt(subRaw) == 1 ? subRaw : (0 - subRaw - 1)
         if (mvKnownOf(subMv) == 1) {
             // known int/bool:subMv ∈ positive ctVal 空间(mv >= 0),valOf 取 payload
@@ -76,6 +77,7 @@ function evalExpr(astId: int): int {
     }
     if (k == "TERNARY") { return evalTernary(astId) }
     if (k == "COMPTIME_EXPR") {
+        // SUNSET(D093 §Phase 8): comptime 块降为 flag 后 comptimeDepth 可删,本处类 C 边界检查 (nested comptime) 切走 comptimeMustBeKnown
         if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
         const ceK = `${astId}`
         const ceTy = inferType(astId)
@@ -111,6 +113,7 @@ function evalExpr(astId: int): int {
     // 依赖 SS 数据流升级跨 phase scope 留 1.5e+。
     const lRaw = genVal(nGetI1(astId))
     const rRaw = genVal(nGetI2(astId))
+    // SUNSET(D093 §Phase 1.5e+): Air.Inst.Ref 携 type info 终态后 valType/inferType 混合 dispatch 收口为单一 valType (全空间扩展) — 跨 phase scope SS 数据流升级
     const blt = isCt(lRaw) == 1 ? valType(lRaw) : inferType(nGetI1(astId))
     const brt = isCt(rRaw) == 1 ? valType(rRaw) : inferType(nGetI2(astId))
     if (isCt(lRaw) == 1 && isCt(rRaw) == 1) {

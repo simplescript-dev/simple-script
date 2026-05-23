@@ -9,6 +9,7 @@ function genFor(id: int) {
     const bodyId = nGetI4(id)
 
     // D089 Phase 3: comptime for in comptime block
+    // SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮): for 入口 ct-depth 字面 → comptimeMustBeKnown == 1 + silent || 短路拆 loud,sibling do-while (ddd327c) 完全一致
     if (comptimeDepth > 0) {
         genStmt(initId)
         let ctForLimit = 10000
@@ -68,6 +69,7 @@ function genWhile(id: int) {
     const bodyId = nGetI2(id)
 
     // D089 Phase 3: comptime while in comptime block
+    // SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮): while 入口 ct-depth 字面 → comptimeMustBeKnown == 1 + silent || 短路拆 loud,sibling do-while (ddd327c) 完全一致
     if (comptimeDepth > 0) {
         let ctWhileLimit = 10000
         while (ctWhileLimit > 0) {

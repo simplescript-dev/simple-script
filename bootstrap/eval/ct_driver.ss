@@ -26,6 +26,7 @@ let comptimeDepth = 0
 // 1.5b/c/d 渐进迁(eval_expr.ss/eval/* 30+ 处 `comptimeDepth > 0` 判定逐步切)。
 let comptimeMustBeKnown = 0
 
+// SUNSET(D093 §Phase 8): comptime 块降为 flag 后 comptimeDepth dual-write 可消,enter/exit 单写 comptimeMustBeKnown (D093 §差距 #5 终态)
 function enterComptimeBlock() {
     comptimeMustBeKnown = 1
     comptimeDepth = comptimeDepth + 1

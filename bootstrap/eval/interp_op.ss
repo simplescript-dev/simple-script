@@ -107,7 +107,8 @@ function interpDoubleOp(op: string, a: double, b: double): int {
 }
 
 // 5 标量(int/bool/string/null/type)依赖 InternPool dedup 不变量,lid==rid 即 Value.eql
-// double 未入 InternPool(NaN/精度边界留 Phase C),保 Map 深比较
+// SUNSET(D098 §Phase C): double 入 InternPool dedup + NaN/精度边界处理 后此 Map 深比较可消 — (可选 Phase C,evalExpr 全合并后评估)
+// double 未入 InternPool,保 Map 深比较
 function interpValEquals(lid: int, rid: int): int {
     const lk = tvKindOf(lid)
     if (lk != tvKindOf(rid)) { return 0 }
