@@ -15,21 +15,20 @@
 //               indented `  - **[X]` sub-bullet 继承 parent state(D093 §下一步 sub-round
 //               范式 — sub-bullet 自身 [x] Done 不该单独覆盖 parent [~] In Progress phase scope).
 //
-// 实测精化效果(本轮 commit):
-//   C5: 222 → 43 (-81%) — Done 段 / 假设破裂段 / spec 段 false positive 大幅清零
-//        head 10 spike pre-精化 10/10 假阳 (D157/D155/D149 全在 ### Phase X [x] Done 段
-//        sub-bullet) → post-精化 head 10 多为真 commitment 候选(D149:31/268 future
-//        sub-D / D154:522 Phase 18+ hash 回填 / D170:299/301 本轮 step 9 (b) 等)
-//   C6: 6 → 0 — D170 §决策 #### A.2 / §与现有机制关系 ### 复用 段 "长期可考虑"
-//        全是 spec 引模式作示例 → 全 skip;真 forward-looking commitment 进 §下一步
-//        / §Followup 段 currently 0 (后续若有 spec 段外提及才命中)
+// 实测精化效果(b.1 → b.2 累计):
+//   b.1 commit `ef47996`:C5 222 → 43 (-81%) — Done 段 / 假设破裂段 / spec 段 false positive
+//        大幅清零 (head 10 spike pre-b.1 10/10 假阳 in ### Phase X [x] Done sub-bullet)
+//   b.2 本 commit:C5 43 → 1 (-97.7% accumulated) — D154:522 唯一真候选 (100% 真阳率).
+//        v2 五 sub-pattern 由 b.1 黑名单反转为白名单 + list-item 限定 + table cell +
+//        4-space narrative skip,详 sibling spike `sunset_linter_c5_subcontext_v2_skip.ss.txt`
+//   C6: 6 → 0 (b.1) 维持 0 (b.2 不动)
 //
 // 软警告 — 不 BLOCK,精化 audit 工具可信度(sibling D097 AUTO-DRIFT 软警告 → hard BLOCK
 // 升级路径)。
 //
 // commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
-//   # C5 精化后 candidates 数 ≪ 222 (sub-context 精化 -50%+ 验证)
-//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -oE "C5 \(D 文档反向锚[^:]+: [0-9]+" | grep -oE "[0-9]+$" | awk '$1 < 100 { print "PASS C5 sub-context 精化 (" $1 " < 100)"; exit 0 } END { exit ($1 < 100 ? 0 : 1) }'
+//   # C5 精化后 candidates 数 ≪ 222 (b.1 + b.2 累计 sub-context 精化 -95%+ 验证)
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -oE "C5 \(D 文档反向锚[^:]+: [0-9]+" | grep -oE "[0-9]+$" | awk '$1 < 10 { print "PASS C5 sub-context 精化 (" $1 " < 10)"; exit 0 } END { exit ($1 < 10 ? 0 : 1) }'
 //
 //   # 反证 1: Done 段 sub-bullet "留 Phase" skip — D157:125 (### Phase 2 [ ] Pending at commit `4adc3ef` 下 sub-bullet "留 Phase 3") 不应出现
 //   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -c "D157-parameter-metadata.md:125" | awk '$1 == 0 { print "PASS D157:125 sub-bullet skipped"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
@@ -40,8 +39,10 @@
 //   # 反证 3: 假设破裂段 skip — D154/D155 §A.2 隐藏假设 column header 不应出现 (D154:117-128 §3 Orch 表也 skip via per-line [✓ Done at)
 //   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "D15[4567]-.+\.md:(11[0-9]|12[0-9])" | awk '$1 == 0 { print "PASS §A.2 / §3 Orch 表 skip"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
 //
-//   # 正证: 真 candidate keep — D170:299/301 §下一步 wrap-up 段提及本轮 step 9 (b) 等
-//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "D170-sunset-marker-protocol.md:(299|301)" | awk '$1 >= 2 { print "PASS D170:299/301 §下一步 wrap-up kept"; exit 0 } END { exit ($1 >= 2 ? 0 : 1) }'
+//   # 正证 (b.2 update): 真 candidate keep — D154:522 (### Phase 18+:...(Planned) 段
+//   #   list-item Phase 17 commit hash 回填承诺) — b.1 时 D170:299/301 是真候选,
+//   #   b.2 v2 精化 paragraph wrap-up skip 后 D170 paragraph 都 skip,真 candidate 仅 D154:522 留
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "D154-mysql-driver-class-impl\.md:522" | awk '$1 >= 1 { print "PASS D154:522 (Phase 18+ Planned list-item) kept"; exit 0 } END { exit ($1 >= 1 ? 0 : 1) }'
 
 function main() {
     // doc-anchor only — sunset_linter --audit 精化效果通过 shell verify 对比

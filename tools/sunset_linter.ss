@@ -173,17 +173,17 @@ function scanLineC9(file: string, lineNum: int, text: string) {
     }
 }
 
-// 5 spec/narrative H2 section family detection — skip C5/C6 (协议 spec 段
-// 引"留 Phase X+" / "长期可考虑 X" 类 forward-looking pattern 作示例非真 commitment).
-// 抽 helper 避 scanFile 内 7 行 if/else if 链耦合 spec section name 列表.
-function isSpecH2Section(trimmed: string): int {
-    if (trimmed.indexOf("A.2 ") >= 0 && trimmed.indexOf("隐藏假设") >= 0) { return 1 }
-    if (trimmed.indexOf("§A.2 ") >= 0 && trimmed.indexOf("隐藏假设") >= 0) { return 1 }
-    if (trimmed.startsWith("## 决策") == 1) { return 1 }
-    if (trimmed.startsWith("## 历史语境") == 1) { return 1 }
-    if (trimmed.startsWith("## 与现有机制关系") == 1) { return 1 }
-    if (trimmed.startsWith("## 拒绝准则") == 1) { return 1 }
-    if (trimmed.startsWith("## 第一性需求") == 1) { return 1 }
+// Active commit H2 family white-list (step 9 (b.2.1) — D170 §决策 B C5 v0.2 升级路径):
+// 仅这些 H2 段下的 list-item 算 forward-looking commitment;其他 H2 (§A.X 决策 /
+// §A.3 废案 / 1.-6. numbered spec / §核心目标 §不在范畴 等) 全 skip.
+// 抽 helper 避 scanFile 内 5 行 if/else if 链耦合 H2 name 列表 (sibling step 9 (b.1)
+// 旧 isSpecH2Section 同模式 — b.2.1 v2 白名单反转黑名单严于黑名单后旧 helper 冗余删).
+function isActiveCommitH2Section(trimmed: string): int {
+    if (trimmed.startsWith("## 下一步") == 1) { return 1 }
+    if (trimmed.startsWith("## §下一步") == 1) { return 1 }
+    if (trimmed.startsWith("## Followup") == 1) { return 1 }
+    if (trimmed.startsWith("## Phase 收关锚") == 1) { return 1 }
+    if (trimmed.startsWith("## Roadmap") == 1) { return 1 }
     return 0
 }
 
@@ -279,78 +279,134 @@ function scanFile(path: string) {
             if (path.indexOf("/tests/") < 0) { isCode = 1 }
         }
     }
-    // D170 §决策 B C5/C6 step 9 (b) 精化 — 三 sub-pattern 分流 (prompt §字段 12 spike 协议)
+    // D170 §决策 B C5/C6 step 9 (b) 精化 — 五 sub-pattern 分流 (prompt §字段 12 spike 协议)
     //
-    // 头 10 candidate spike v1 (D157:125 / D155:97-158 / D149:31-232) 实证 10/10 假阳
-    // 全在 `### Phase X: ... [x] Done at hash` heading 下的 sub-bullet,
+    // step 9 (b.1) 头 10 candidate spike v1 (D157:125 / D155:97-158 / D149:31-232)
+    // 实证 10/10 假阳全在 `### Phase X: ... [x] Done at hash` heading 下的 sub-bullet,
     // 或 `- 2026-XX-XX Phase X close` Status 时间线,或表格 cell `[✓ Done at`.
     // 这些"留 X"是历史叙述里描述过去 phase 完结时留给下一 phase 的事(命中后该后继
-    // phase 也已 Done),不是当前活跃 forward-looking commitment.
+    // phase 也已 Done),不是当前活跃 forward-looking commitment. b.1 三 sub-pattern
+    // (Done 段 skip + Planned 段 keep + spec/narrative H2 skip) 缩 C5 222 → 43 / C6 6 → 0.
     //
-    // 三 sub-pattern (按 prompt §字段 12 实施):
-    //   (1) Done 段(### Phase X: ... [x] Done / [✓] Done / [ ] Pending at commit `hash` /
-    //       顶级 - **[x] Done list-item / - 2026- Status 时间线 list-item / 表格 cell
-    //       含 [✓ Done at / Done at hash / at commit `hash`)→ skip(多为已 resolve 历史叙述)
-    //   (2) Planned 段(### / 顶级 list-item [ ] Planned / [~] In Progress / [ ] Blocked)→ keep
-    //   (3) Spec/narrative 段(## A.2 / ## §A.2 隐藏假设 + ## 决策 + ## 历史语境 +
-    //       ## 与现有机制关系 + ## 拒绝准则 + ## 第一性需求)→ skip
-    //       — 协议 spec 段引"留 Phase X+" / "长期可考虑 X" 类 forward-looking pattern 作示例
-    //       (D170 §决策 A.2 / A.3 描述段 typical);非真 commitment.
-    //       (prompt §字段 12 第三 sub-context "假设破裂段" 扩 spec/narrative 同族,
-    //       因 spec 段共享同样"引模式作示例"特征,与 Done 段历史叙述 / Planned 段当前
-    //       activity 三足分流自然落到 5 段)
+    // step 9 (b.2) 头 10 candidate spike v2 (D149:31-268 / D144:98 / D154:183-522 /
+    // D135:169-213 / D152:163-183) 实证 9/10 假阳 — D154:522 唯一真候选(Phase 收关锚
+    // ### Phase 18+: ...(Planned) 段 list-item hash 回填承诺). 假阳形态:
+    //   §核心目标 §不在范畴 / §A.1 决策行 / §A.3 废案 / §A.1.1 落点 表格 cell /
+    //   1.-6. numbered H2 spec / #### Phase 0 (本轮 Plan) Plan 段 / 6. Constraints 反模式 等.
+    // 共性 = 全在非 active commit H2 + 描述/分析/历史 narrative 段. 精化策略:由 b.1
+    // 黑名单 spec H2 skip 反转为 b.2 白名单 active commit family + list-item-only
+    // (paragraph wrap-up skip) + table cell skip + Plan/paren-style H3/H4 status 扩.
+    //
+    // 五 sub-pattern (按 prompt §字段 12 实施 — non-list narrative / table cell / cross-doc ref):
+    //   (1) inActiveCommitSection (white-list non-list narrative skip — 反转 b.1 黑名单为白名单):
+    //       H2 == `## 下一步` / `## §下一步` / `## Followup` / `## Phase 收关锚` /
+    //       `## Roadmap` → 1; 其他 H2 → 0 (默认 skip,反 §A.X 决策 / §A.3 废案 / numbered
+    //       1.-6. spec H2 / §不在范畴 / §禁止 / §反模式 等描述段 enumeration 漂移)
+    //   (2) inCommitListItem (non-list narrative skip 细粒度):
+    //       `- **[` 起首 + status marker / `- 2026-` Status / `- ` 其他 top-level list-item /
+    //       `  - ` indented sub-bullet 续行 → 1; blank line / paragraph wrap-up → 0
+    //       (D170:301/303 `**回流到 ...**:` 类 wrap-up paragraph skip;
+    //        D154:522 `- **D154 Phase 17 commit hash 留 Phase 18+ 启动轮回填**` keep)
+    //   (3) isTableCell (table cell skip — prompt §字段 12 第一 sub-pattern):
+    //       `|` 起首 markdown table row → skip (D149:232 §G3 表 / D144:98 Stable Facts 表 /
+    //        D154:183 候选评估 4 维度对比表 全 sub-pattern 命中)
+    //   (4) H3/H4 Plan 段 skip (cross-doc ref skip 配套 — Plan 段是落档过程描述非 commitment):
+    //       `(本轮 Plan)` / `(Plan 型)` / `(本轮 落档)` → docSubContextDone = 1
+    //       (D135 #### Phase 0: 本文档落盘(本轮 Plan) 类典型;sibling 之间 hash 回填
+    //        话术属元规则非真过渡件)
+    //   (5) H3/H4 paren-style (Planned) 扩:
+    //       `(Planned)` / `(In Progress)` → docSubContextDone = 0
+    //       (D154 ### Phase 18+: ...(Planned) paren style;b.1 仅 catch `[X]` bracket
+    //        style 漏 paren — D 文档命名风格异构性)
     //
     // 与 C3 phase 状态 dDocPhaseStatus 同结构 invariant 复用 — list-item 起首 4 字符
     // 后的 status marker (`- **[x] Done` / `[ ] Planned` / `[~] In Progress` / `[ ] Blocked`)
     // 作 sub-context 锚. **indent-aware**: 仅 top-level `- **[` (无 indent)改 state,
     // indented `  - **[` sub-bullet 继承 parent state (D093 §下一步 sub-round 子项内 留 X
     // 与 parent [~] In Progress phase 紧耦合,sub-bullet 自身 [x] Done 不该单独改变 phase scope).
+    //
+    // b.2.1 v2 白名单严于 b.1 黑名单 (spec H2 必落非白名单段 inActiveCommitSection=0 自动 skip),
+    // 删 b.1 isSpecH2Section() helper + inSpecSection 状态 = 根因消减不冗余 (simplify Agent 2 HIGH).
     let docSubContextDone = 0
-    let inSpecSection = 0  // 1 = in spec/narrative H2 section (skip C5/C6)
+    let inActiveCommitSection = 0  // b.2 白名单 active commit family
+    let inCommitListItem = 0       // b.2 list-item 限定(paragraph wrap-up skip)
     let li = 0
     while (li < lines.length()) {
         const text = lines[li]
         parseSunsetLine(path, li + 1, text)
         if (isDoc == 1) {
             const trimmed = text.trim()
-            // (1) H2 section reset — 切换 H2 时清 docSubContextDone + 重判 spec/narrative section
+            // (1) H2 section reset — 切换 H2 时清 docSubContextDone + 重判 active commit
             if (trimmed.startsWith("## ") == 1) {
                 docSubContextDone = 0
-                inSpecSection = isSpecH2Section(trimmed)
+                inActiveCommitSection = isActiveCommitH2Section(trimmed)
+                inCommitListItem = 0  // H2 切换 reset list-item state
             } else if (trimmed.startsWith("### ") == 1 || trimmed.startsWith("#### ") == 1) {
-                // H3/H4 heading status detect
+                // H3/H4 heading status detect (含 v2 扩 Plan 段 + paren style)
                 if (trimmed.indexOf("[x] Done") >= 0) { docSubContextDone = 1 }
                 else if (trimmed.indexOf("[✓") >= 0) { docSubContextDone = 1 }
                 else if (trimmed.indexOf("Done at") >= 0) { docSubContextDone = 1 }
                 else if (trimmed.indexOf("at commit `") >= 0) { docSubContextDone = 1 }
+                // v2 (4) Plan 段:落档过程描述非 commitment
+                else if (trimmed.indexOf("(本轮 Plan)") >= 0) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("(Plan 型") >= 0) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("(本轮 落档)") >= 0) { docSubContextDone = 1 }
                 else if (trimmed.indexOf("[ ] Planned") >= 0) { docSubContextDone = 0 }
                 else if (trimmed.indexOf("[~] In Progress") >= 0) { docSubContextDone = 0 }
                 else if (trimmed.indexOf("[ ] Blocked") >= 0) { docSubContextDone = 0 }
+                // v2 (5) paren-style status (D154 ### Phase 18+: ...(Planned) 风格)
+                else if (trimmed.indexOf("(Planned)") >= 0) { docSubContextDone = 0 }
+                else if (trimmed.indexOf("(In Progress)") >= 0) { docSubContextDone = 0 }
                 else { docSubContextDone = 0 }
+                inCommitListItem = 0  // H3/H4 切换 reset list-item state
             } else if (text.startsWith("- **[") == 1) {
-                // Top-level list-item (无 indent) — 改 state. 用 text (非 trimmed)
-                // 区分 indented sub-bullet `  - **[`(后者继承 parent state).
+                // Top-level list-item with status marker
                 if (trimmed.indexOf("[x] Done") == 4) { docSubContextDone = 1 }
                 else if (trimmed.indexOf("[✓") == 4) { docSubContextDone = 1 }
                 else if (trimmed.indexOf("[ ] Planned") == 4) { docSubContextDone = 0 }
                 else if (trimmed.indexOf("[~] In Progress") == 4) { docSubContextDone = 0 }
                 else if (trimmed.indexOf("[ ] Blocked") == 4) { docSubContextDone = 0 }
+                inCommitListItem = 1  // top-level list-item start
             } else if (text.startsWith("- 2026-") == 1 || text.startsWith("- 2025-") == 1) {
-                // Top-level Status 时间线 list-item — 过去叙述 default Done
                 docSubContextDone = 1
+                inCommitListItem = 0
+            } else if (text.startsWith("- ") == 1) {
+                // v2 扩:其他 top-level list-item (非 status marker — D154:522
+                // `- **D154 Phase 17 commit hash 留 Phase 18+ 启动轮回填**` 等)
+                inCommitListItem = 1
+                // docSubContextDone 不变(继承 parent H3/H4 state)
+            } else if (text.startsWith("    - ") == 1) {
+                // 2+ level nested sub-bullet (4-space indent) — narrative reasoning block
+                // (D093:307 ultrathink reflection 类典型;引用其他 D 规则作 reasoning
+                //  context 非新 commitment),skip 视作 narrative.
+                inCommitListItem = 0
+            } else if (text.startsWith("  - ") == 1) {
+                // 1-level indent sub-bullet (2-space) — 继承 parent state
+                // (D093/D170 §下一步 sub-round 子项内 phase 进度承诺与 parent
+                //  [~] In Progress phase 紧耦合,sub-bullet 自身 [x] Done 不该单独改变 phase scope)
+            } else if (trimmed == "") {
+                // Blank line — reset list-item state (但不改 H2/H3-scoped flags)
+                inCommitListItem = 0
+            } else {
+                // Paragraph wrap-up (e.g. D170:301/303 `**回流到 ...**:` style) — reset
+                inCommitListItem = 0
             }
-            // else: continuation / indented sub-bullet / blank / 普通段落 — 继承 prev state
-            // (2) Per-line override — 当前行本身含 Done marker (表格 cell / 行内 narrative);
-            // else if 链 short-circuit 早退,首个 hit 后免后 indexOf 扫描
-            let lineDone = 0
-            if (text.indexOf("[✓") >= 0) { lineDone = 1 }
-            else if (text.indexOf("[x] Done") >= 0) { lineDone = 1 }
-            else if (text.indexOf("Done at ") >= 0) { lineDone = 1 }
-            else if (text.indexOf("at commit `") >= 0) { lineDone = 1 }
-            // (3) C5/C6 仅在三 sub-pattern 都不 skip 时匹配 (flatten 嵌套 if → &&)
-            if (inSpecSection == 0 && docSubContextDone == 0 && lineDone == 0) {
-                scanLineC5(path, li + 1, text)
-                scanLineC6(path, li + 1, text)
+            // (2) C5/C6 仅在白名单 inActiveCommitSection + list-item + 非 Done state 时匹配;
+            //     hoist 短路前(simplify Agent 3 HIGH:~100K indexOf savings — 非 active commit
+            //     段 + 非 list-item 行占 95%+ 不必算 per-line lineDone/isTableCell)
+            if (inActiveCommitSection == 1 && inCommitListItem == 1 && docSubContextDone == 0) {
+                // Per-line override — 当前行本身含 Done marker (表格 cell / 行内 narrative);
+                // else if 链 short-circuit 早退,首个 hit 后免后 indexOf 扫描
+                let lineDone = 0
+                if (text.indexOf("[✓") >= 0) { lineDone = 1 }
+                else if (text.indexOf("[x] Done") >= 0) { lineDone = 1 }
+                else if (text.indexOf("Done at ") >= 0) { lineDone = 1 }
+                else if (text.indexOf("at commit `") >= 0) { lineDone = 1 }
+                // v2 (3) table cell skip — `|` 起首 markdown table row
+                if (lineDone == 0 && trimmed.startsWith("|") == 0) {
+                    scanLineC5(path, li + 1, text)
+                    scanLineC6(path, li + 1, text)
+                }
             }
         }
         if (isCode == 1) {
