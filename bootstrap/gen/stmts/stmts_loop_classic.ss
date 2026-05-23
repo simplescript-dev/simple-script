@@ -2,6 +2,22 @@
 
 import { emitCondToI1, genBlock, genNestedBlock } from "./stmts_core"
 
+// D093 Phase 1.5e+ helper 抽取 — gen for/while/do-while ct path 三件统一:
+// genVal cond + isCt check + comptimeError emit。caller 用 `isCt(result) == 0`
+// 检 sentinel + 裸 return(genFor/genWhile/genDoWhile 都是 void;原 6 行 × 3 callsite
+// 重复模板消)。sibling D093 1.5d sibling 子轮 b94dc8b 落地 3 处 callsite 形态完全一致
+// 后,本 helper 是 1.5e+ 纯结构 cleanup — 单一事实源(error message 协议同步)。
+// 与 sibling evalExpr family(ternary.ss:10 / short_circuit.ss:13 `return comptimeError(...)`
+// 函数返 int 单行)惯例错位:本场景 caller 在 loop 体内非函数末端,defensive `return`
+// 出整个 gen 函数(不依赖 comptimeError exit 假设,保留原 callsite 1.5d sibling 子轮形态)。
+function ctEvalCondOrError(condId: int, kindName: string, id: int): int {
+    const tagged = genVal(condId)
+    if (isCt(tagged) == 0) {
+        comptimeError(`${kindName} condition not compile-time known`, id)
+    }
+    return tagged
+}
+
 function genFor(id: int) {
     const initId = nGetI1(id)
     const condId = nGetI2(id)
@@ -9,17 +25,15 @@ function genFor(id: int) {
     const bodyId = nGetI4(id)
 
     // D089 Phase 3: comptime for in comptime block — ct-interp 评估 for-loop。
-    // D093/D169 1.5d sibling 子轮(sibling do-while ddd327c)— 入口字面 rename
-    // + silent `||` 拆 loud comptimeError("for condition not compile-time known", id)。
+    // D093/D169 1.5d sibling 子轮(b94dc8b)— 入口字面 rename + silent `||` 拆 loud。
+    // D093 1.5e+(本子轮)— ct path cond check 三件统一抽 `ctEvalCondOrError` helper
+    // (定义 line 13);3 callsite (do-while/for/while) 形态完全一致单一事实源。
     if (comptimeMustBeKnown == 1) {
         genStmt(initId)
         let ctForLimit = 10000
         while (ctForLimit > 0) {
-            const fCondTagged = genVal(condId)
-            if (isCt(fCondTagged) == 0) {
-                comptimeError("for condition not compile-time known", id)
-                return
-            }
+            const fCondTagged = ctEvalCondOrError(condId, "for", id)
+            if (isCt(fCondTagged) == 0) { return }
             if (interpTruthy(payload(fCondTagged)) == 0) { break }
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
@@ -74,16 +88,13 @@ function genWhile(id: int) {
     const bodyId = nGetI2(id)
 
     // D089 Phase 3: comptime while in comptime block — ct-interp 评估 while-loop。
-    // D093/D169 1.5d sibling 子轮(sibling do-while ddd327c)— 入口字面 rename
-    // + silent `||` 拆 loud comptimeError("while condition not compile-time known", id)。
+    // D093/D169 1.5d sibling 子轮(b94dc8b)— 入口字面 rename + silent `||` 拆 loud。
+    // D093 1.5e+(本子轮)— ct path cond check 三件统一抽 `ctEvalCondOrError` helper。
     if (comptimeMustBeKnown == 1) {
         let ctWhileLimit = 10000
         while (ctWhileLimit > 0) {
-            const wCondTagged = genVal(condId)
-            if (isCt(wCondTagged) == 0) {
-                comptimeError("while condition not compile-time known", id)
-                return
-            }
+            const wCondTagged = ctEvalCondOrError(condId, "while", id)
+            if (isCt(wCondTagged) == 0) { return }
             if (interpTruthy(payload(wCondTagged)) == 0) { break }
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
@@ -136,18 +147,16 @@ function genDoWhile(id: int) {
     //   (b) OLD silent `|| interpTruthy == 0` 短路拆 loud gate(sibling `ternary.ss:10`
     //        / `short_circuit.ss:13` / `eval_expr.ss:125` 完全一致;D093 §第一性需求
     //        "comptime 块内 evalExpr known=false 即 error")
-    // statement 层无 mv 出口,真单 dispatch eager+无 gate 终态留 1.5e+。
+    // D093 1.5e+(本子轮)— ct path cond check 三件统一抽 `ctEvalCondOrError` helper
+    // (do-while 是 3 callsite 中 cond 倒序的特例 — gen body 后再 check cond)。
     if (comptimeMustBeKnown == 1) {
         let ctDoLimit = 10000
         while (ctDoLimit > 0) {
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
             interpContinueFlag = 0
-            const dwCondTagged = genVal(condId)
-            if (isCt(dwCondTagged) == 0) {
-                comptimeError("do-while condition not compile-time known", id)
-                return
-            }
+            const dwCondTagged = ctEvalCondOrError(condId, "do-while", id)
+            if (isCt(dwCondTagged) == 0) { return }
             if (interpTruthy(payload(dwCondTagged)) == 0) { break }
             ctDoLimit = ctDoLimit - 1
         }
