@@ -25,11 +25,17 @@ function evalExpr(astId: int): int {
     const k = nGetKind(astId)
     // D093 §Zig 原理 §1 "唯一求值入口" leaf literal 直返 ctVal — UNARY swap `subMv = evalExpr(childId)`
     // 安全 prereq(否则 leaf literal child fall through 到 BINARY 区域 corrupt)。sibling 对齐
-    // gen/exprs/exprs.ss:62-67 genVal 同 4 case。GROUPING 委托内层避剥皮丢 location。
+    // gen/exprs/exprs.ss:62-67 + :83 genVal 同 8 case(INT/STRING/TRUE/FALSE/NULL/DOUBLE_LIT
+    // + GROUPING + NAMED_ARG;THIS/SUPER/ARROW_FUNC ct-depth 特例留 Phase 4)。GROUPING/NAMED_ARG
+    // 委托内层避剥皮丢 location。
     if (k == "INT_LIT") { return ctVal(interpNewInt(parseInt(nGetS1(astId)))) }
+    if (k == "STRING_LIT") { return ctVal(interpNewString(nGetS1(astId))) }
     if (k == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
     if (k == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
+    if (k == "NULL_LIT") { return ctVal(interpNewNull()) }
+    if (k == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(astId)))) }
     if (k == "GROUPING") { return evalExpr(nGetI1(astId)) }
+    if (k == "NAMED_ARG") { return evalExpr(nGetI1(astId)) }
     if (k == "UNARY") {
         // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — UNARY 入口单 dispatch (类 B 入口双轨消除)。
         // 主 case 直接 `evalExpr(childId)` 拿 mv 空间值无 genVal 桥反向编码 — evalExpr 主 dispatch
