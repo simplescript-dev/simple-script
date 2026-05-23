@@ -2,6 +2,7 @@
 
 function genPostfixStmt(id: int) {
     // D089 Phase 3+4: comptime postfix → update ctVars with scope chain lookup
+    // SUNSET(D093 §Phase 2): postfix stmt 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const pfName = nGetS1(id)
         let pfKey = ""

@@ -166,6 +166,7 @@ function emitReleaseForType(reg: string, ssType: string) {
 // ── Class decl dispatcher ─────────────────────────────────────
 
 function genClassDecl(id: int) {
+    // SUNSET(D093 §Phase 5): class decl 入口双轨 dispatch — Phase 5 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctClassName = nGetS1(id)
         interpClasses.set(ctClassName, `${id}`)

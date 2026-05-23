@@ -130,6 +130,7 @@ function genForIn(id: int) {
             ctVars.delete(`${currentFunc}:${itemName}`)
             return
         }
+        // SUNSET(D093 §Phase 2): for-in ct-fold 后置 ct-depth 字面 — Phase 2 统一后消除
         if (comptimeDepth > 0) { return }
     }
 

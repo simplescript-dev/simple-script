@@ -25,6 +25,7 @@ function genTryCatch(id: int) {
     const finallyBody = nGetI3(id)
     const catchList = nGetList(id)
 
+    // SUNSET(D093 §Phase 2): try/catch 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         if (tryBody > 0) { genBlock(tryBody) }
         if (finallyBody > 0) { genBlock(finallyBody) }
@@ -170,6 +171,7 @@ function genCatchClauses(catchList: string, convergeLabel: string, finallyBody: 
 }
 
 function genThrow(id: int) {
+    // SUNSET(D093 §Phase 2): throw 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const throwVal = genVal(nGetI1(id))
         if (isCt(throwVal) == 1) {

@@ -20,6 +20,7 @@ function genStmt(id: int) {
     if (kind == "EXPR_STMT") {
         const esExpr = nGetI1(id)
         if (esExpr > 0 && nGetKind(esExpr) == "CALL" && nGetS1(esExpr) == "annotationMapping") { return }
+        // SUNSET(D093 §Phase 2): EXPR_STMT 入口双轨 dispatch — Phase 2 统一 evalExpr 主 dispatch 后消除 ct-depth 字面
         if (comptimeDepth > 0) {
             genVal(esExpr)
             return

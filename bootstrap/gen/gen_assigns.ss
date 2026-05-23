@@ -90,6 +90,7 @@ function genMemberAssign(id: int) {
     const valExpr = nGetI2(id)
 
     // D089 Phase 4: comptime member assign
+    // SUNSET(D093 §Phase 3): member assign 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctObj = genVal(objExpr)
         const ctNewVal = genVal(valExpr)
@@ -258,6 +259,7 @@ function genAssign(id: int) {
     const valId = nGetI1(id)
 
     // D089 Phase 3+4: comptime assign → update ctVars with scope chain lookup
+    // SUNSET(D093 §Phase 3): general assign 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctAssignTagged = genVal(valId)
         if (isCt(ctAssignTagged) == 1) {

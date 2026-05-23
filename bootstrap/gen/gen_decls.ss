@@ -32,6 +32,7 @@ function emitParamAllocas(paramList: string, useVarAlias: int) {
 }
 
 function genFuncDeclStmt(id: int) {
+    // SUNSET(D093 §Phase 3): func decl 入口双轨 dispatch — Phase 3 统一 evalExpr 后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         if (handleMethodOfFuncDecl(id) == 1) { return }
         ctFuncNodes.set(nGetS1(id), `${id}`)
@@ -356,6 +357,7 @@ function emitGlobalInits() {
 function genDestructureArray(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
+    // SUNSET(D093 §Phase 3): destructure array 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctArrV = genVal(initId)
         if (isCt(ctArrV) != 1) { return }
@@ -450,6 +452,7 @@ function genDestructureArray(id: int) {
 function genDestructureObject(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
+    // SUNSET(D093 §Phase 3): destructure object 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctObjV = genVal(initId)
         if (isCt(ctObjV) != 1) { return }
@@ -524,6 +527,7 @@ function genVarDecl(id: int) {
     }
 
     // Comptime: evaluate and store in ctVars, no IR emission
+    // SUNSET(D093 §Phase 3): var decl 入口双轨 dispatch — Phase 3 统一 evalExpr 后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctInit = genVal(initId)
         if (isCt(ctInit) == 1) {
@@ -680,6 +684,7 @@ function genVarDecl(id: int) {
 
 function genReturn(id: int) {
     // D089 Phase 3: comptime return → set flag + value
+    // SUNSET(D093 §Phase 3): return 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const ctRetValId = nGetI1(id)
         if (ctRetValId > 0) {

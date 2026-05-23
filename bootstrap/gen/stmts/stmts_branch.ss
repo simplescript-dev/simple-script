@@ -8,6 +8,7 @@ function genIf(id: int) {
     const elseId = nGetI3(id)
 
     // D089 Phase 3: comptime condition in comptime block → only codegen hit branch
+    // SUNSET(D093 §Phase 2): if 入口双轨 dispatch — Phase 2 统一 evalExpr 主 dispatch 后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const condTagged = genVal(condId)
         if (isCt(condTagged) == 1) {
@@ -58,6 +59,7 @@ function genSwitch(id: int) {
     const defaultId = nGetI2(id)
     const caseList = nGetList(id)
 
+    // SUNSET(D093 §Phase 2): switch 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         const subjTagged = genVal(subjectId)
         if (isCt(subjTagged) == 1) {

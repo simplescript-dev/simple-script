@@ -68,6 +68,7 @@ function genVal(id: int): int {
     if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL" || kind == "CALL" || kind == "NEW_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
     if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
+        // SUNSET(D093 §Phase 4): THIS/SUPER expr 入口双轨 dispatch — Phase 4 统一后消除 ct-depth 字面
         if (comptimeDepth > 0) {
             if (interpThisVal > 0) { return ctVal(interpThisVal) }
             return ctVal(interpNewNull())
@@ -75,10 +76,12 @@ function genVal(id: int): int {
         return constVal(genThisExpr())
     }
     if (kind == "ARROW_FUNC") {
+        // SUNSET(D093 §Phase 4): ARROW_FUNC expr 入口双轨 dispatch — Phase 4 统一后消除 ct-depth 字面
         if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }
         return constVal(genArrowFunc(id))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
+    // SUNSET(D093 §Phase 4): genVal 主 dispatch 入口 ct-depth — Phase 4 统一 evalExpr 主 dispatch 后消除 ct-depth 字面
     if (comptimeDepth > 0) {
         if (kind == "COMPTIME_EMIT") {
             const ctEmitVal = genVal(nGetI1(id))
