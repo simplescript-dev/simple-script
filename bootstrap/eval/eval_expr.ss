@@ -125,7 +125,7 @@ function evalExpr(astId: int): int {
         if (op == "Add" && (ctBlt == "string" || ctBrt == "string")) {
             return ctVal(interpNewString(`${interpToStr(ctBlp)}${interpToStr(ctBrp)}`))
         }
-        if (ctBlt == "string" && ctBrt == "string") { return genValStringCompare(op, astId) }
+        if (ctBlt == "string" && ctBrt == "string") { return genValStringCompare(op, astId, ctBlv, ctBrv) }
         if (ctBlt == "double" || ctBrt == "double") {
             const ctLd = ctBlt == "double" ? parseDouble(interpAsStr(ctBlp)) : parseDouble(`${interpAsInt(ctBlp)}`)
             const ctRd = ctBrt == "double" ? parseDouble(interpAsStr(ctBrp)) : parseDouble(`${interpAsInt(ctBrp)}`)

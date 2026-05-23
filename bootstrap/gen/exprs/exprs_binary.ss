@@ -1,10 +1,12 @@
 // gen/exprs_binary.ss — 二元运算 codegen:string concat / string cmp / null coalesce /
 // short circuit / int / double / Instanceof / As / Pow / fn 比较。genBinary 为本族分发入口。
 
-function genStringConcat(leftId: int, rightId: int): string {
-    const l = genExprAsString(leftId)
+// D169 §1.5d prereq:lPreReg/rPreReg 可选预求值 reg(默认 "")透传 genExprAsString
+// preReg 协议(exprs_str_conv.ss:4 先例)— caller 已 eager 时 forward 避双 eval。
+function genStringConcat(leftId: int, rightId: int, lPreReg: string = "", rPreReg: string = ""): string {
+    const l = genExprAsString(leftId, lPreReg)
     const lOwned = lastExprStringOwned
-    const rVal = genExprAsString(rightId)
+    const rVal = genExprAsString(rightId, rPreReg)
     const rOwned = lastExprStringOwned
     const r = nextReg(); emitIR(`  ${r} = call ptr @ss_string_concat(ptr ${l}, ptr ${rVal})`)
     // RC: release left operand (concat chain intermediate or conversion temp)
@@ -168,7 +170,10 @@ function genIntBinary(op: string, left: string, right: string): string {
     return r
 }
 
-function genBinary(id: int): string {
+// D169 §1.5d prereq:lPreReg/rPreReg 可选预求值 reg(默认 "")透传 genStringConcat
+// + 数值 op eager。**不 forward** 给 NullCoalesce/ShortCircuit/Instanceof/As
+// (短路/单边控制流语义不可 eager);genStringCompare 本轮不在 scope。
+function genBinary(id: int, lPreReg: string = "", rPreReg: string = ""): string {
     const op = nGetS1(id)
     const leftId = nGetI1(id)
     const rightId = nGetI2(id)
@@ -178,7 +183,7 @@ function genBinary(id: int): string {
     // String concatenation
     if (op == "Add" && (blt == "string" || brt == "string" || blt == "i64" || brt == "i64")) {
         if (blt == "string" || brt == "string") {
-            return genStringConcat(leftId, rightId)
+            return genStringConcat(leftId, rightId, lPreReg, rPreReg)
         }
     }
     // String equality/comparison
@@ -214,9 +219,9 @@ function genBinary(id: int): string {
         return objReg
     }
 
-    // Numeric: evaluate operands
-    let left = genExpr(leftId)
-    let right = genExpr(rightId)
+    // Numeric: evaluate operands (lPreReg/rPreReg forward if caller eager)
+    let left = lPreReg != "" ? lPreReg : genExpr(leftId)
+    let right = rPreReg != "" ? rPreReg : genExpr(rightId)
     if (blt == "i64") { const tr = nextReg(); emitIR(`  ${tr} = trunc i64 ${left} to i32`); left = tr }
     if (brt == "i64") { const tr = nextReg(); emitIR(`  ${tr} = trunc i64 ${right} to i32`); right = tr }
 

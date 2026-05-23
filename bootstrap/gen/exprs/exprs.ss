@@ -94,9 +94,11 @@ function genVal(id: int): int {
     return constVal("0")
 }
 
-function genValStringCompare(op: string, id: int): int {
-    const lv = genVal(nGetI1(id))
-    const rv = genVal(nGetI2(id))
+// D169 §1.5d prereq:lPreVal/rPreVal 可选预求值 Value 句柄(默认 -1 = "未传"哨兵)。
+// caller 已 eager 时 forward 避免 delegate 内部 double-eval(eval_expr.ss:128)。
+function genValStringCompare(op: string, id: int, lPreVal: int = 0 - 1, rPreVal: int = 0 - 1): int {
+    const lv = lPreVal != 0 - 1 ? lPreVal : genVal(nGetI1(id))
+    const rv = rPreVal != 0 - 1 ? rPreVal : genVal(nGetI2(id))
     // InternPool dedup: 相同 string 同 payload id,与 interpValEquals string 分支对称
     // 字典序无法从 id 推,Lt/Gt/Le/Ge 保深比较
     if (isCt(lv) == 1 && isCt(rv) == 1) {
