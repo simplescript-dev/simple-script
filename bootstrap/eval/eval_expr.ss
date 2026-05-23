@@ -136,20 +136,29 @@ function evalExpr(astId: int): int {
     if (op == "NullCoalesce" || op == "Instanceof" || op == "As" || op == "Pow") {
         return mvRuntime(constVal(genBinary(astId)))
     }
-    const blt = inferType(nGetI1(astId))
-    const brt = inferType(nGetI2(astId))
-    if (blt == "string" && brt == "string" && (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge")) {
-        const sc = genValStringCompare(op, astId)
-        return isCt(sc) == 1 ? sc : (0 - sc - 1)
-    }
-    if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
-        return mvRuntime(constVal(genBinary(astId)))
-    }
-    // int/bool runtime — eager mv 协议(genVal 桥消除留 1.5d,见上注)
+    // D169 §1.5d 真单 dispatch 主轮第一子步 — eager genVal + 混合 dispatch + 142/146 forward。
+    // **不变量**:caller forward `lRaw/rRaw`(positive 空间 = ctVal tagged | regId,reg() /
+    // isCt() / valType() 合法输入);mv 空间值禁传 delegate — reg(negative_mv) 走 isCt
+    // bit 30 误判 → IR `ptr 0` 崩 + valType(negative_mv) bit-mask 后 InternPool miss → ""。
+    // **类型 dispatch**:`isCt(lRaw) ? valType(lRaw) : inferType(...)` — ct path valType
+    // 修 §POC N3 17 处 ctVars IDENT fallback "int" 错配(i021/d123/spring),runtime path
+    // inferType 等价 OLD 兜底。候选 C(regToType 全空间 valType 扩展)依赖 SS 数据流
+    // Air.Inst.Ref 等价物升级,跨 phase scope 留 1.5e+。142/146 callsite forward 消除
+    // delegate 内重 genVal → `f()+g()` 副作用 emit 两次的 double-eval bug。
     const lRaw = genVal(nGetI1(astId))
     const rRaw = genVal(nGetI2(astId))
     const lMv = isCt(lRaw) == 1 ? lRaw : (0 - lRaw - 1)
     const rMv = isCt(rRaw) == 1 ? rRaw : (0 - rRaw - 1)
+    const blt = isCt(lRaw) == 1 ? valType(lRaw) : inferType(nGetI1(astId))
+    const brt = isCt(rRaw) == 1 ? valType(rRaw) : inferType(nGetI2(astId))
+    if (blt == "string" && brt == "string" && (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge")) {
+        const sc = genValStringCompare(op, astId, lRaw, rRaw)
+        return isCt(sc) == 1 ? sc : (0 - sc - 1)
+    }
+    if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
+        return mvRuntime(constVal(genBinary(astId, reg(lRaw), reg(rRaw))))
+    }
+    // int/bool runtime — eager mv 协议(已 line 上移 eager,本块仅 mvKnownOf/IR emit)
     if (mvKnownOf(lMv) == 1 && mvKnownOf(rMv) == 1) {
         return ctVal(interpIntOp(op, interpAsInt(valOf(lMv)), interpAsInt(valOf(rMv))))
     }
