@@ -1,8 +1,9 @@
 // tools/sunset_linter.ss — D170 SUNSET marker 过渡债漂移机械 gate
 //
-// SUNSET(D170 §step 9): 长期可考虑与 d_doc_index_linter 共享 D 文档实存判 helper
+// SUNSET(D170 §Phase 2+ 优化): 长期可考虑与 d_doc_index_linter 共享 D 文档实存判 helper
 //   (D170 §与现有机制关系 line 133 "留 Phase 2+ 优化");
-//   归 step 9 工具实施轮 scope(D170 §决策 A.2 自循环示范)
+//   step 9 工具实施轮 scope 已完结 (协议 v0.2 形态最终固化 at b.2.2 收口子步),
+//   helper 共享归 Phase 2+ 优化 future scope(D170 §决策 A.2 自循环示范)
 //
 // Usage:
 //   bin/ss run tools/sunset_linter.ss                    # 默认扫(C1-C4 BLOCK + C5/C6/C8/C9 软警告汇总)
@@ -31,6 +32,12 @@
 //                       `- 2026-XX-XX` Status 时间线 list-item / 表格 cell 行内 `[✓ Done` /
 //                       `Done at hash`)skip — 头 10 candidate spike 实证 10/10 假阳全在 Done
 //                       段叙述里(非当前活跃 forward-looking commitment).
+//                       **step 9 (b.2.2) v0.2 形态最终固化**:第 6 sub-pattern
+//                       `isHashBackfillMetaLine` (同行含 `commit hash` + `回填` OR
+//                       `hash 回填` token) → skip — D135-D153 sibling 范式
+//                       "单 commit 不能引用自己 hash 下下轮回填" D 文档元规则话术非 SUNSET
+//                       协议 scope (D154:522 audit-driven 唯一真候选 false positive;
+//                       缩 43 → 1 → 0 真候选 100% 真阳率最终固化).
 //   C6 (协议自循环):    扫 docs/3-decisions/D*.md 找 "长期可考虑" — 协议自身 forward-looking
 //                       commitment 必有对应工具/代码侧 SUNSET 反向锚;承载 D170 §决策 A.2.
 //                       step 9 (b) 同 C5 sub-context skip 共享 docSubContextDone(C6 6 candidate
@@ -187,6 +194,19 @@ function isActiveCommitH2Section(trimmed: string): int {
     return 0
 }
 
+// Hash-backfill 元规则 skip (step 9 (b.2.2) — D170 §决策 B C5 v0.2 形态最终固化):
+// D135-D153 sibling 范式 "单 commit 不能引用自己 hash 下下轮回填" — D 文档元规则话术
+// 非 SUNSET 协议 scope (D154:522 audit-driven false positive 唯一真候选).
+// 形态 = 同行含 `commit hash` + `回填` 双 substring OR `hash 回填` 紧贴 token
+// (D149:328/367 / D135:169/198 / D136:176 等 sibling list-item 同模式批量 skip).
+// 抽 helper 避 scanFile 最内层 if 链耦合 substring 列表 (sibling isActiveCommitH2Section
+// 同模式).
+function isHashBackfillMetaLine(text: string): int {
+    if (text.indexOf("hash 回填") >= 0) { return 1 }
+    if (text.indexOf("commit hash") >= 0 && text.indexOf("回填") >= 0) { return 1 }
+    return 0
+}
+
 // Parse one line; if it contains a valid `// SUNSET(D<num> §<phase>): <reason>`
 // marker, append to parallel arrays. Returns 1 if parsed, 0 otherwise.
 //
@@ -297,7 +317,7 @@ function scanFile(path: string) {
     // 黑名单 spec H2 skip 反转为 b.2 白名单 active commit family + list-item-only
     // (paragraph wrap-up skip) + table cell skip + Plan/paren-style H3/H4 status 扩.
     //
-    // 五 sub-pattern (按 prompt §字段 12 实施 — non-list narrative / table cell / cross-doc ref):
+    // 六 sub-pattern (按 prompt §字段 12 实施 — non-list narrative / table cell / cross-doc ref):
     //   (1) inActiveCommitSection (white-list non-list narrative skip — 反转 b.1 黑名单为白名单):
     //       H2 == `## 下一步` / `## §下一步` / `## Followup` / `## Phase 收关锚` /
     //       `## Roadmap` → 1; 其他 H2 → 0 (默认 skip,反 §A.X 决策 / §A.3 废案 / numbered
@@ -318,6 +338,11 @@ function scanFile(path: string) {
     //       `(Planned)` / `(In Progress)` → docSubContextDone = 0
     //       (D154 ### Phase 18+: ...(Planned) paren style;b.1 仅 catch `[X]` bracket
     //        style 漏 paren — D 文档命名风格异构性)
+    //   (6) isHashBackfillMetaLine (step 9 (b.2.2) — v0.2 形态最终固化 audit-driven backfill):
+    //       同行含 `commit hash` + `回填` OR `hash 回填` token → skip
+    //       (D135-D153 sibling 范式 "单 commit 不能引用自己 hash 下下轮回填",
+    //        D 文档元规则话术非 SUNSET 协议 scope;D154:522 唯一真候选 false positive
+    //        + sibling D149:328/367 / D135:169/198 / D136:176 list-item 同模式批量 skip)
     //
     // 与 C3 phase 状态 dDocPhaseStatus 同结构 invariant 复用 — list-item 起首 4 字符
     // 后的 status marker (`- **[x] Done` / `[ ] Planned` / `[~] In Progress` / `[ ] Blocked`)
@@ -403,7 +428,8 @@ function scanFile(path: string) {
                 else if (text.indexOf("Done at ") >= 0) { lineDone = 1 }
                 else if (text.indexOf("at commit `") >= 0) { lineDone = 1 }
                 // v2 (3) table cell skip — `|` 起首 markdown table row
-                if (lineDone == 0 && trimmed.startsWith("|") == 0) {
+                // v2 (6) hash-backfill 元规则 skip — D135-D153 sibling 范式 D 文档元规则话术
+                if (lineDone == 0 && trimmed.startsWith("|") == 0 && isHashBackfillMetaLine(text) == 0) {
                     scanLineC5(path, li + 1, text)
                     scanLineC6(path, li + 1, text)
                 }

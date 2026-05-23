@@ -1,0 +1,56 @@
+// D170 sunset_linter C5 hash-backfill 元规则 skip spike — step 9 (b.2.2) audit-driven backfill
+//
+// 验证 step 9 (b.2.2) 第 6 sub-pattern 协议 v0.2 形态最终固化 (D170 §决策 B C5 行
+// v0.2 形态最终固化 spec + sibling D097 拆 commit 模板 — backfill 子步 audit-driven):
+//
+// 第 6 sub-pattern (b.2.2 实施):
+//   isHashBackfillMetaLine(text): 同行含 `commit hash` + `回填` 双 substring OR
+//   `hash 回填` 紧贴 token → skip
+//   (D135-D153 sibling 范式 "单 commit 不能引用自己 hash 下下轮回填" D 文档元规则话术
+//    非 SUNSET 协议 scope)
+//
+// step 9 (b.2.1) 完结后 1 C5 真候选 (D154:522) audit decision 三选一 (MNK §字段 10 (e)):
+//   (a) sunset_linter scanFile 加第 6 sub-pattern hash-backfill 元规则 skip (本 commit 选)
+//   (b) lib/com/mysql/ 代码侧加 SUNSET 反向锚 (不适用 — D154 主线 close f630c83 后
+//       driver class 12/12 落地无过渡件)
+//   (c) D154 §下一步 改写删 hash 回填承诺 (破坏 D135-D153 sibling 范式 hash trail 一致性)
+//   选 (a) 因根因解决度最高 — 工具机械化协议 scope 边界永久零返工
+//
+// commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
+//   # 正证 1: D154:522 skip (Phase 18+ Planned list-item hash-backfill 元规则 audit-driven 唯一真候选)
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -c "D154-mysql-driver-class-impl.md:522" | awk '$1 == 0 { print "PASS D154:522 hash-backfill 元规则 skip"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 正证 2: C5 = 0 候选 (协议 v0.2 形态最终固化 100% 真阳率)
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -oE "C5 \(D 文档反向锚[^:]+: [0-9]+" | grep -oE "[0-9]+$" | awk '$1 == 0 { print "PASS C5 = 0 真候选最终固化"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 反证 1 (D149:328/367 sibling list-item 同模式 skip):
+//   #   `- **D149 Phase 2 commit hash 留 D149 Phase 3 启动轮回填**(D135-D147 范式延续...)`
+//   #   `- **D149 Phase 4 commit hash 留 D149 Phase 5 启动轮回填**(D135-D147 范式延续...)`
+//   #   docSubContextDone state 即使为 0 也由第 6 sub-pattern 二次 skip 兜底 (D135-D147 sibling 范式延续)
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "D149-partial-named-arg-default-value\.md:(328|367)" | awk '$1 == 0 { print "PASS D149:328/367 sibling skip"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 反证 2 (D135:169/198 sibling list-item 同模式 skip):
+//   #   `- **不动 D134**:Phase 0 只落 D135 文档骨架,D134 §Status retcon 留 Phase 2 实施完成 + commit hash known 时回填(...)`
+//   #   `- **D134 §Status retcon**(Phase 2 commit hash known 时回填):`
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "D135-mysql-caching-sha2-fast-path\.md:(169|198)" | awk '$1 == 0 { print "PASS D135:169/198 sibling skip"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 反证 3 (D136:176 sibling list-item 同模式 skip):
+//   #   `- **不动 D134 / D135 文件**:Phase 0 只落 D136 文档骨架,D134 §Status superseded 锚留 Phase 3 commit hash known 时回填(...)`
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -c "D136-mysql-prepared-statement\.md:176" | awk '$1 == 0 { print "PASS D136:176 sibling skip"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 反证 4 (D154:522 在 active commit `## Phase 收关锚` H2 + `### Phase 18+ (Planned)` H3
+//   #   + `- **D154 Phase 17 commit hash 留 Phase 18+ 启动轮回填**` list-item 三层 b.2.1 全
+//   #   keep 路径下,本来该触发 C5;由第 6 sub-pattern hash-backfill 元规则 skip 兜底):
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep "D154-mysql-driver-class-impl.md:522" | wc -l | awk '$1 == 0 { print "PASS D154:522 由 sub-pattern 6 hash-backfill 元规则 skip 兜底"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 反证 5 (helper isHashBackfillMetaLine 形态机械识别):
+//   #   pattern A = `commit hash` + `回填` 同行 (D154:522 / D149:328/367 / D135:169/198 / D136:176 同 catch)
+//   #   pattern B = `hash 回填` 紧贴 token (D138:436 类历史回填 entry 同 catch — 但已被 `- 2026-` sub-pattern (2) skip)
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -oE "C5 \(D 文档反向锚[^:]+: [0-9]+" | grep -oE "[0-9]+$" | awk '$1 == 0 { print "PASS isHashBackfillMetaLine 全 D135-D153 sibling 同模式批量 skip 0 真候选"; exit 0 } END { exit ($1 == 0 ? 0 : 1) }'
+//
+//   # 累计验收: C5 (D 文档反向锚) 缩到 0 真候选 — 协议 v0.2 形态最终固化 + 100% 真阳率最终态
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -E "C5 \(D 文档反向锚.*0 candidate" | wc -l | awk '$1 >= 1 { print "PASS step 9 (b.2.2) v0.2 形态最终固化 C5=0 audit-ready"; exit 0 } END { exit ($1 >= 1 ? 0 : 1) }'
+
+function main() {
+    // doc-anchor only — sunset_linter --audit 第 6 sub-pattern 通过 shell verify 对比 (1 → 0)
+}
