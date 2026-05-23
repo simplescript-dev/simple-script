@@ -8,6 +8,9 @@
 import { evalCall } from "./call"
 import { evalTernary } from "./ternary"
 import { evalShortCircuit } from "./short_circuit"
+import { evalNullCoalesce } from "./null_coalesce"
+import { evalInstanceofOrAs } from "./instanceof_as"
+import { evalPow } from "./pow_binary"
 import { evalIndexAccess } from "./index_access"
 import { evalTemplateLit } from "./template_lit"
 import { evalArrayLit } from "./array_lit"
@@ -95,24 +98,15 @@ function evalExpr(astId: int): int {
     if (k == "NEW_EXPR") { return evalNewExpr(astId) }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
-    // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — BINARY 入口双轨消除。
-    // OLD ct-depth 字面迁 `comptimeMustBeKnown == 1`(D098 §决策 1 行 92 字面规约 +
-    // D169 §B 短期 1.5a-c 并存,中期 1.5d-e callsite 迁)。**comptime 路径按 valType
-    // (genVal 后真实值类型)dispatch,禁 inferType** — comptime `let acc = ""` 注册
-    // ctVars 而非 varTypes,inferType IDENT fallback 返 "int"(`gen/gen_types.ss:331-336`),
-    // 致 `acc != ""` 走 int interpAsInt → 0 → Ne 恒 false(D169 §POC N3 实证 17 处
-    // i021/d123/spring regression)。「真单 dispatch」(eager genVal + 纯 valType dispatch
-    // + 单 leaf comptime gate)留 1.5d — 1.5c 先把 genBinary/genStringConcat/
-    // genValStringCompare 改 take pre-eval reg 才不出函数调用副作用 double-eval bug。
+    if (op == "NullCoalesce") { return evalNullCoalesce(astId) }
+    if (op == "Instanceof" || op == "As") { return evalInstanceofOrAs(op, astId) }
+    if (op == "Pow") { return evalPow(astId) }
+    // D093/D169 — BINARY 入口双轨消除 (4 op 拆独立 sibling 子文件 dispatch 上移)。
+    // **comptime 路径按 valType(genVal 后真实值类型)dispatch,禁 inferType** —
+    // comptime `let acc = ""` 注册 ctVars 而非 varTypes,inferType IDENT fallback 返
+    // "int"(`gen/gen_types.ss:331-336`),致 `acc != ""` 走 int interpAsInt → 0 → Ne
+    // 恒 false(D169 §POC N3 实证 17 处 i021/d123/spring regression 复发预防)。
     if (comptimeMustBeKnown == 1) {
-        if (op == "NullCoalesce") {
-            const ctNcL = genVal(nGetI1(astId))
-            if (isCt(ctNcL) == 1 && valType(ctNcL) != "null") { return ctNcL }
-            return genVal(nGetI2(astId))
-        }
-        if (op == "Instanceof" || op == "As") {
-            return comptimeError(`operator '${op}' not supported`, astId)
-        }
         const ctBlv = genVal(nGetI1(astId))
         const ctBrv = genVal(nGetI2(astId))
         if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) {
@@ -132,9 +126,6 @@ function evalExpr(astId: int): int {
             return ctVal(interpDoubleOp(op, ctLd, ctRd))
         }
         return ctVal(interpIntOp(op, interpAsInt(ctBlp), interpAsInt(ctBrp)))
-    }
-    if (op == "NullCoalesce" || op == "Instanceof" || op == "As" || op == "Pow") {
-        return mvRuntime(constVal(genBinary(astId)))
     }
     // D169 §1.5d 真单 dispatch 主轮第一子步 — eager genVal + 混合 dispatch + 142/146 forward。
     // **不变量**:caller forward `lRaw/rRaw`(positive 空间 = ctVal tagged | regId,reg() /
