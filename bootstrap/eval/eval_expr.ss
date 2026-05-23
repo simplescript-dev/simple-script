@@ -23,19 +23,20 @@ import { valOf, valType } from "../gen/gen_maybeval"
 
 function evalExpr(astId: int): int {
     const k = nGetKind(astId)
+    // D093 §Zig 原理 §1 "唯一求值入口" leaf literal 直返 ctVal — UNARY swap `subMv = evalExpr(childId)`
+    // 安全 prereq(否则 leaf literal child fall through 到 BINARY 区域 corrupt)。sibling 对齐
+    // gen/exprs/exprs.ss:62-67 genVal 同 4 case。GROUPING 委托内层避剥皮丢 location。
+    if (k == "INT_LIT") { return ctVal(interpNewInt(parseInt(nGetS1(astId)))) }
+    if (k == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
+    if (k == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
+    if (k == "GROUPING") { return evalExpr(nGetI1(astId)) }
     if (k == "UNARY") {
-        // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — UNARY 入口单 dispatch
-        // (类 B 入口双轨消除)。callsite 走 D098 §决策 1 §Phase A mv 编码协议:
-        //   genVal(child) → positive 空间 → 转 mv 空间 → mvKnownOf 判定
-        //   fold (int/bool: interpNewInt/Bool + ctVal) / runtime emit IR + mvRuntime / error
-        // genVal 已对 evalExpr 复杂 kind 返值解码(`mv >= 0 ? mv : 0 - mv - 1`,见
-        // gen/exprs/exprs.ss:68);本 case 再以 `isCt(v) == 1 ? v : 0 - v - 1` 反向
-        // 编码回 mv 空间,让 callsite 走 mvKnownOf/mvValOf 协议(D169 §POC 失败实证
-        // 锁的"mv 空间 vs positive 空间隔离"边界,Phase 1.5d genVal 桥消除后此反向
-        // 转可去除直接 `subMv = evalExpr(child)`)。
-        // comptimeMustBeKnown read callsite 首接入(D169 §B 立法 → read 协议物理推进)。
-        // 1.5c 前不能挪 double fold:`interpAsStr` 跨读 tvS1(string 列)而 double 值在
-        // tvD1(double 列)— 实测 -3.14 global init regression(D169 §POC 失败 N1)。
+        // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — UNARY 入口单 dispatch (类 B 入口双轨消除)。
+        // 主 case 直接 `evalExpr(childId)` 拿 mv 空间值无 genVal 桥反向编码 — evalExpr 主 dispatch
+        // 已返 mv 空间整全(ctVal positive bit-30 + mvRuntime negative),sibling 完全一致对齐
+        // BINARY/POW/NULL_COALESCE 主 case 三段式终态。
+        // double fold 留 1.5c 前不能挪:`interpAsStr` 跨读 tvS1(string 列)而 double 值在 tvD1
+        // (double 列)— 实测 -3.14 global init regression(D169 §POC 失败 N1)。
         const uOp = nGetS1(astId)
         const childId = nGetI1(astId)
         const uType = inferType(childId)
@@ -45,9 +46,7 @@ function evalExpr(astId: int): int {
             }
             return mvRuntime(constVal(genUnary(astId)))
         }
-        const subRaw = genVal(childId)
-        // SUNSET(D093 §Phase 1.5e+): genVal 桥消除后此反向编码 (mv 空间 ↔ positive 空间) 可去除直接 `subMv = evalExpr(child)`,sibling UNARY/BINARY 同模式
-        const subMv = isCt(subRaw) == 1 ? subRaw : (0 - subRaw - 1)
+        const subMv = evalExpr(childId)
         if (mvKnownOf(subMv) == 1) {
             // known int/bool:subMv ∈ positive ctVal 空间(mv >= 0),valOf 取 payload
             const subP = valOf(subMv)
