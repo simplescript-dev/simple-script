@@ -106,6 +106,8 @@ bin/ss clean
 
 **D 文档治理 gate（强制）**：删/合并/重命名 `docs/3-decisions/D*.md` 或改动 bootstrap/tools/CLAUDE.md/docs/3-MNK.md 里 `D\d{3} §` 引用后必须跑 `bin/ss run tools/d_doc_index_linter.ss`；F1 死指针 BLOCK（源码注释指向已删 D 文档） / F2 孤立 D 文档 soft warn。规则见 `docs/3-MNK.md` §特定领域 §D 文档治理 gate（对称 §memory 治理 gate）。
 
+**SUNSET marker（强制）**：渐进 sub-round 实现里每加一处过渡件（"留 X+" / "Phase Y 留" / "暂时这么写" / "TODO 留给未来" 类念头落地的代码）必走 canonical 模板 `// SUNSET(D<NNN> §<phase>): <one-line WHY>`——不允许自然语言注释作过渡 mark（无 grep 统一锚 → 漂移）。改完 `bootstrap/` / `lib/` / `tools/` 或 `docs/3-decisions/D*.md §下一步` 状态后必须跑 `bin/ss run tools/sunset_linter.ss`；C1 collection / C2 D 文档实存 BLOCK / C3 phase 已 `[x] Done` 但 marker 残留 BLOCK / C4 reason 空 BLOCK；不可清理过渡件标 `// PERMANENT(<reason>):` 替代 + 记入 D 文档 §出口清单。规则单一事实源:`docs/3-decisions/D170-sunset-marker-protocol.md` §决策(canonical 模板 + linter 4 检 + Phase Exit Gate 双轨触发);流程闸位与自检 trigger 见 `docs/3-MNK.md` §特定领域 §SUNSET marker 治理 gate（sibling §memory / §D 文档治理 gate / §反射路径根因 gate 第四只 + §After Done §1.5 commit-time 接入）。
+
 **回复语言**：所有回复及总结使用中文。
 
 ## 外部引用
