@@ -1,0 +1,19 @@
+// D170 sunset_linter C5 软警告 spike test — D 文档反向锚 (D170 §决策 A.3 + B C5)
+//
+// 验证 C5 (D 文档反向锚) — 默认模式扫 docs/3-decisions/D*.md 找
+// "留独立轮" / "留下轮" / "留 Phase " 类 forward-looking commitment,
+// 输出汇总 "C5 (D 文档反向锚 ...): N candidate(s)";`--audit` 输出每 candidate
+// file:line + match keyword (D170 §决策 B C5 行 spec)。
+//
+// 软警告 — N candidate > 0 不 BLOCK commit;allow grace window 让 D 文档反向锚
+// audit-driven backfill (step 9 (b) 留下轮)。
+//
+// commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
+//   bin/ss run tools/sunset_linter.ss 2>&1 | grep -c "C5 (D 文档反向锚 "  # 1
+//   bin/ss run tools/sunset_linter.ss 2>&1 | grep -oE "C5 \(D 文档反向锚[^:]+: [0-9]+" | grep -oE "[0-9]+$" | awk '$1 > 0 { exit 0 } END { exit ($1 > 0 ? 0 : 1) }' && echo "PASS C5 > 0 candidates"
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "\[留独立轮\]|\[留下轮\]|\[留 Phase\]"  # ≥ 1
+
+function main() {
+    // doc-anchor only — sunset_linter 默认模式扫 docs/3-decisions/D*.md 触发 C5
+    // 本测试不需自身内嵌 marker,通过 shell verify 跑 sunset_linter 对比 expected output
+}

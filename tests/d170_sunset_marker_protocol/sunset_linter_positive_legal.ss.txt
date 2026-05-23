@@ -6,14 +6,17 @@
 // + (c) §<phase> 在 D 文档 §下一步 列表是 [ ] Planned / Blocked / In Progress
 // + (d) reason 非空。
 //
-// 本测试用 `D093 §1.5d 主轮收口子步 sibling 子轮` (D093 §下一步 line 316 实 [ ] Planned 项).
+// 本测试用 `D093 §1.5e+ helper 抽取` (D093 §下一步 line 317 实 [ ] Planned 项).
+//
+// 历史 anchor `1.5d 主轮收口子步 sibling 子轮` step 7 完结 (b94dc8b) 后已 [x] Done,
+// 本测试 step 9 升级 anchor 到下个 active phase `1.5e+ helper 抽取` 维持 positive 语义.
 //
 // commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
 //   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_positive_legal.ss.txt ; echo $?  # 0
 //   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_positive_legal.ss.txt 2>&1 | grep -c "GATE OK"  # 1
 //   bin/ss run tools/sunset_linter.ss tests/d170_sunset_marker_protocol/sunset_linter_positive_legal.ss.txt 2>&1 | grep -c "C1: 1 SUNSET"  # 1
 
-// SUNSET(D093 §1.5d 主轮收口子步 sibling 子轮): example legal marker — for/while 入口同形 sibling 迁待下轮
+// SUNSET(D093 §1.5e+ helper 抽取): example legal marker — gen for/while/do-while ct path 三件统一(D170 §与现有机制关系 + D093 §1.5e+ 双重延后)
 
 function main() {
     // empty body — 本测试不需要执行,仅作 doc-anchor 给 sunset_linter 解析

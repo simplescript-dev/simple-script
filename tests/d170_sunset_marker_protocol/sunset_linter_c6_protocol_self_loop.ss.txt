@@ -1,0 +1,22 @@
+// D170 sunset_linter C6 软警告 spike test — 协议自循环 (D170 §决策 A.2 + B C6)
+//
+// 验证 C6 (协议自循环) — 默认模式扫 docs/3-decisions/D*.md 找
+// "长期可考虑" 类 forward-looking commitment — D 文档自身 forward-looking commitment
+// 必有对应工具/代码侧 SUNSET 反向锚(元-level 一致性,§第一性需求 "过渡债不漂移"
+// 的递归应用,协议自己也是漂移源)。
+//
+// 软警告 — N candidate > 0 不 BLOCK commit;允许跨 commit 累积 audit。
+//
+// 实证 sibling (本轮 spike 实测):
+//   docs/3-decisions/D170-sunset-marker-protocol.md 自身 6 处 "长期可考虑" (spec 段 +
+//   §与现有机制关系 line 241 真 forward-looking commitment "长期可考虑共享 helper") —
+//   后者已由 tools/sunset_linter.ss 顶 SUNSET(D170 §step 9) 反向锚 cover(本轮 step 8
+//   就近示范)。
+//
+// commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
+//   bin/ss run tools/sunset_linter.ss 2>&1 | grep -c "C6 (协议自循环 "  # 1
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "\[长期可考虑\]"  # ≥ 1
+
+function main() {
+    // doc-anchor only — sunset_linter 默认模式扫 docs/3-decisions/D*.md 触发 C6
+}

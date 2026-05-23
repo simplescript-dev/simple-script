@@ -1,18 +1,19 @@
-// D170 sunset_linter `--phase X` mode spike test — active phase PASS
+// D170 sunset_linter `--phase X` mode spike test — active phase 0 markers PASS
 //
 // 验证 Phase Exit Gate manual gate (D170 §决策 C) — `--phase X` 模式当 X 在
-// D 文档 §下一步 仍 [ ] Planned (active) 时,linter PASS 软提示报告 + exit 0,
-// markers awaiting future cleanup OK to remain。
+// D 文档 §下一步 仍 [ ] Planned (active) **且** filter 后 markers 0 个时,
+// linter PASS 软提示报告 "no cleanup needed" + exit 0。
 //
-// 触发场景 (sibling step 5a 落地的真实 markers):
-//   D093 §1.5d 主轮收口子步 sibling 子轮 = D093 §下一步 line 181 [ ] Planned —
-//   stmts_loop_classic.ss:12 for + :72 while 2 markers 待 sibling 子轮 sweep。
+// 历史 anchor `1.5d 主轮收口子步 sibling 子轮` step 7 (b94dc8b) 物理清 2 markers
+// 后已 [x] Done,本测试 step 9 升级 anchor 到 `1.5e+ helper 抽取`
+// (D093 §下一步 line 317 [ ] Planned;bootstrap 4 markers 用 "Phase 1.5e+"
+// 不严格 match list-item "1.5e+ helper 抽取" 故 filter 后 0)— verdict PASS
+// "no cleanup needed for phase" 验证 active phase 0 markers PASS 路径。
 //
 // commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
-//   bin/ss run tools/sunset_linter.ss --phase "1.5d 主轮收口子步 sibling 子轮" ; echo $?  # 0
-//   bin/ss run tools/sunset_linter.ss --phase "1.5d 主轮收口子步 sibling 子轮" 2>&1 | grep -c "Phase Exit verdict: PASS"  # 1
-//   bin/ss run tools/sunset_linter.ss --phase "1.5d 主轮收口子步 sibling 子轮" 2>&1 | grep -cE "marker: .+stmts_loop_classic\.ss:"  # 2
-//   bin/ss run tools/sunset_linter.ss --phase "1.5d 主轮收口子步 sibling 子轮" 2>&1 | grep -c "phase active \[ \] Planned"  # 1
+//   bin/ss run tools/sunset_linter.ss --phase "1.5e+ helper 抽取" ; echo $?  # 0
+//   bin/ss run tools/sunset_linter.ss --phase "1.5e+ helper 抽取" 2>&1 | grep -c "Phase Exit verdict: PASS"  # 1
+//   bin/ss run tools/sunset_linter.ss --phase "1.5e+ helper 抽取" 2>&1 | grep -c "no cleanup needed"  # 1
 
 function main() {
     // doc-anchor only — sunset_linter --phase X 模式默认扫 bootstrap/lib/tools,

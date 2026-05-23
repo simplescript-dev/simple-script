@@ -5,11 +5,12 @@
 //   归 step 9 工具实施轮 scope(D170 §决策 A.2 自循环示范)
 //
 // Usage:
-//   bin/ss run tools/sunset_linter.ss                    # 默认扫 bootstrap/ lib/ tools/
-//   bin/ss run tools/sunset_linter.ss <path>             # 扫单文件或单目录(测试用)
+//   bin/ss run tools/sunset_linter.ss                    # 默认扫(C1-C4 BLOCK + C5/C6/C8/C9 软警告汇总)
+//   bin/ss run tools/sunset_linter.ss --audit            # 默认 + C5-C9 详情列出每 candidate file:line
+//   bin/ss run tools/sunset_linter.ss <path>             # 扫单文件或单目录(测试用,C5-C9 关闭)
 //   bin/ss run tools/sunset_linter.ss --phase "<X>"      # Phase Exit verify 模式 (D170 §决策 C)
 //
-// 默认模式 C1-C4 (D170 §决策 B):
+// 默认模式 C1-C4 (D170 §决策 B,BLOCK gate):
 //   C1 (collection): 收集所有 `// SUNSET(D<num> §<phase>): <reason>` markers,
 //                    列 file:line + 解析 D 号 / phase 名 / reason
 //   C2 (D 文档实存): 每 marker 的 D<num> 必实存于 docs/3-decisions/
@@ -19,6 +20,25 @@
 //                    [x] Done                                       → BLOCK (marker 需清理)
 //                    全无                                           → 软警告 (verify phase 名)
 //   C4 (reason 非空): `):` 后 trim 后 length > 0,否则 BLOCK
+//
+// 扩展模式 C5/C6/C8/C9 (D170 §决策 B C5-C9 spec — step 8 落档,step 9 实施,全软警告不 BLOCK):
+//   C5 (D 文档反向锚): 扫 docs/3-decisions/D*.md 找 "留独立轮" / "留下轮" / "留 Phase "
+//                       — D 文档 §下一步 / Done 注释里的 forward-looking commitment;
+//                       承载 D170 §决策 A.3 (D 文档 ↔ 代码 双向锚)。
+//                       v0.1 三主 substring pattern;复合正则(留 X+ / 留 N.N+)留 v0.2 升级
+//   C6 (协议自循环):    扫 docs/3-decisions/D*.md 找 "长期可考虑" — 协议自身 forward-looking
+//                       commitment 必有对应工具/代码侧 SUNSET 反向锚;承载 D170 §决策 A.2
+//   C7 (接口默认参数哨兵): **未实施** — 见 D170 §决策 B C7 行 spec 升级路径段
+//                       (v0.1 spike 实证 grep pattern 100% 假阳,需 callsite 判定升级)
+//   C8 (英文模式):      扫 bootstrap/lib/tools .ss 找 "workaround" / "FIXME" / "TBD" /
+//                       "deferred" / "not yet" 5 个高 signal keyword;
+//                       案 v0.1 case-sensitive,case-insensitive 升级留 v0.2
+//                       (实证 stub/placeholder 假阳率高排除)
+//   C9 (IR-emit-side TODO): 扫 bootstrap/gen/ 找 `emitIR(...)` 内含 TODO/FIXME/XXX
+//                       的运行时 IR 携带过渡件
+//
+//   C5-C9 全软警告 (audit reflection 后逐步升 hard BLOCK,对齐 D097 AUTO-DRIFT 升级路径):
+//     默认输出汇总 (每 check N candidates 一行),`--audit` flag 输出详情 file:line
 //
 // `--phase X` 模式 (D170 §决策 C — Phase Exit Gate manual gate 触发,step 6 落地):
 //   filter markers 至匹配 phase X 子集 + 报告 file:line + reason + 按 phase 在 D 文档
@@ -54,14 +74,109 @@ let markerPhases: Array<string> = []
 let markerReasons: Array<string> = []
 let liveDocs: Array<string> = []
 
+// C5-C9 软警告 parallel arrays (D170 §决策 B C5-C9 step 9 实施):
+// 全软警告不 BLOCK,默认输出 N candidates 汇总,`--audit` flag 输出 file:line 详情
+let c5Files: Array<string> = []
+let c5Lines: Array<string> = []
+let c5Matches: Array<string> = []
+let c6Files: Array<string> = []
+let c6Lines: Array<string> = []
+let c6Matches: Array<string> = []
+let c8Files: Array<string> = []
+let c8Lines: Array<string> = []
+let c8Matches: Array<string> = []
+let c9Files: Array<string> = []
+let c9Lines: Array<string> = []
+let c9Matches: Array<string> = []
+
+// 模式 flags:
+// enableC5to9 = 1 → 默认 / --audit 跑 C5-C9 扫;= 0 → --phase / 单 target 不跑 C5-C9
+// auditMode = 1 → C5-C9 输出详情 file:line;= 0 → 仅汇总 N candidates
+let enableC5to9 = 0
+let auditMode = 0
+
 function isDigit(c: int): int {
     if (c >= 48) { if (c <= 57) { return 1 } }
     return 0
 }
 
+// ============ C5-C9 软警告 scan helpers (D170 §决策 B C5-C9 实施) ============
+
+// C5: D 文档反向锚 — 扫 docs/3-decisions/D*.md §下一步 / Done 注释里
+// "留独立轮" / "留下轮" / "留 Phase " 类 forward-looking commitment.
+// 承载 D170 §决策 A.3 (D 文档 ↔ 代码 双向锚).
+// v0.1 三主 substring pattern;复合正则 (留 X+ / 留 N.N+) 留 v0.2 升级路径.
+function scanLineC5(file: string, lineNum: int, text: string) {
+    let matched = ""
+    if (text.indexOf("留独立轮") >= 0) { matched = "留独立轮" }
+    else if (text.indexOf("留下轮") >= 0) { matched = "留下轮" }
+    else if (text.indexOf("留 Phase ") >= 0) { matched = "留 Phase" }
+    if (matched.length() > 0) {
+        c5Files = c5Files.push(file)
+        c5Lines = c5Lines.push(`${lineNum}`)
+        c5Matches = c5Matches.push(matched)
+    }
+}
+
+// C6: 协议自循环 — D 文档自身 forward-looking commitment "长期可考虑 X"
+// → 关联工具/代码侧必有 SUNSET 反向锚. 承载 D170 §决策 A.2.
+// v0.1 单 pattern "长期可考虑";"Phase X+ 优化" 等复合 pattern 与 C5 "留 Phase" 高重叠
+// 留 v0.2 升级路径.
+function scanLineC6(file: string, lineNum: int, text: string) {
+    if (text.indexOf("长期可考虑") >= 0) {
+        c6Files = c6Files.push(file)
+        c6Lines = c6Lines.push(`${lineNum}`)
+        c6Matches = c6Matches.push("长期可考虑")
+    }
+}
+
+// C8: 英文模式 — 扫 .ss 源码注释 5 个高 signal keyword.
+// 案 v0.1 case-sensitive (workaround/FIXME/TBD/deferred/not yet);
+// case-insensitive + "stub" / "placeholder" 等高假阳 keyword 升级留 v0.2
+// (spike 实证 stub 31 / placeholder 18 大量是普通词义噪声 — 见 D170 §audit 续段 #3).
+function scanLineC8(file: string, lineNum: int, text: string) {
+    let matched = ""
+    if (text.indexOf("workaround") >= 0) { matched = "workaround" }
+    else if (text.indexOf("FIXME") >= 0) { matched = "FIXME" }
+    else if (text.indexOf("TBD") >= 0) { matched = "TBD" }
+    else if (text.indexOf("deferred") >= 0) { matched = "deferred" }
+    else if (text.indexOf("not yet") >= 0) { matched = "not yet" }
+    if (matched.length() > 0) {
+        c8Files = c8Files.push(file)
+        c8Lines = c8Lines.push(`${lineNum}`)
+        c8Matches = c8Matches.push(matched)
+    }
+}
+
+// C9: IR-emit-side TODO — 扫 bootstrap/gen/ codegen 输出端
+// `emitIR("... TODO/FIXME/XXX ...")` 类运行时 IR 携带过渡件.
+// 承载 D170 §audit 续段 #4 (立项 scope 只看源码注释漏 emitIR 输出端).
+function scanLineC9(file: string, lineNum: int, text: string) {
+    const emitIdx = text.indexOf("emitIR(")
+    if (emitIdx < 0) { return }
+    // `text.indexOf(X) > emitIdx` = X 在 emitIR( 之后(原子 substring 替代,免 alloc)
+    let matched = ""
+    if (text.indexOf("TODO") > emitIdx) { matched = "emitIR + TODO" }
+    else if (text.indexOf("FIXME") > emitIdx) { matched = "emitIR + FIXME" }
+    else if (text.indexOf("XXX") > emitIdx) { matched = "emitIR + XXX" }
+    if (matched.length() > 0) {
+        c9Files = c9Files.push(file)
+        c9Lines = c9Lines.push(`${lineNum}`)
+        c9Matches = c9Matches.push(matched)
+    }
+}
+
 // Parse one line; if it contains a valid `// SUNSET(D<num> §<phase>): <reason>`
 // marker, append to parallel arrays. Returns 1 if parsed, 0 otherwise.
+//
+// D 文档 (docs/3-decisions/D*.md) self-policing skip:不作 SUNSET marker 携带方
+// (D170 §决策 A.2 — SUNSET marker 在代码/工具/测试侧;D 文档是 SSoT 仅承载 spec /
+// 示范文本不当 real marker).内置 guard 防 future call site re-introduce spec
+// 段 false positives (sibling D097 §决策 防漂移自身 hardening).
 function parseSunsetLine(file: string, lineNum: int, text: string): int {
+    if (file.indexOf("/docs/3-decisions/D") >= 0) {
+        if (file.endsWith(".md") == 1) { return 0 }
+    }
     const sunsetIdx = text.indexOf("SUNSET(")
     if (sunsetIdx < 0) { return 0 }
 
@@ -129,9 +244,32 @@ function scanFile(path: string) {
     const content = readFile(path)
     if (content == "") { return }
     const lines = content.split("\n")
+    // C5-C9 路径分流(enableC5to9 == 1 才跑):
+    //   isDoc = docs/3-decisions/D*.md → C5 / C6 (D 文档反向锚 + 协议自循环)
+    //   isCode = bootstrap/lib/tools 下 .ss 排除 /tests/ → C8 / C9 (英文模式 + IR-emit TODO)
+    // (parseSunsetLine 内部 self-policing 跳 D 文档,无需外部 wrap)
+    let isDoc = 0
+    let isCode = 0
+    if (enableC5to9 == 1) {
+        if (path.indexOf("/docs/3-decisions/D") >= 0) {
+            if (path.endsWith(".md") == 1) { isDoc = 1 }
+        }
+        if (path.endsWith(".ss") == 1) {
+            if (path.indexOf("/tests/") < 0) { isCode = 1 }
+        }
+    }
     let li = 0
     while (li < lines.length()) {
-        parseSunsetLine(path, li + 1, lines[li])
+        const text = lines[li]
+        parseSunsetLine(path, li + 1, text)
+        if (isDoc == 1) {
+            scanLineC5(path, li + 1, text)
+            scanLineC6(path, li + 1, text)
+        }
+        if (isCode == 1) {
+            scanLineC8(path, li + 1, text)
+            scanLineC9(path, li + 1, text)
+        }
         li = li + 1
     }
 }
@@ -238,11 +376,21 @@ function main() {
             phaseFilter = phaseFilter + " " + arg(pi)
             pi = pi + 1
         }
+        // phase exit mode 不开 C5-C9(聚焦 phase verdict,避免输出 noise 干扰)
         println(`[sunset_linter] phase exit verify mode — phase: ${phaseFilter}`)
         scanDir(`${root}/bootstrap`)
         scanDir(`${root}/lib`)
         scanDir(`${root}/tools`)
+    } else if (args() >= 2 && arg(1) == "--audit") {
+        enableC5to9 = 1
+        auditMode = 1
+        println(`[sunset_linter] audit mode — C1-C4 + C5/C6/C8/C9 详情`)
+        scanDir(`${root}/bootstrap`)
+        scanDir(`${root}/lib`)
+        scanDir(`${root}/tools`)
+        scanDir(`${root}/docs/3-decisions`)
     } else if (args() >= 2) {
+        // 单 target 不开 C5-C9 — 避免单文件 scope 内 C5-C9 触发本不相关的噪声
         target = arg(1)
         println(`[sunset_linter] target: ${target}`)
         if (target.endsWith(".ss") == 1 || target.endsWith(".md") == 1 || target.endsWith(".txt") == 1) {
@@ -251,10 +399,12 @@ function main() {
             scanDir(target)
         }
     } else {
-        println(`[sunset_linter] default scan: bootstrap/ lib/ tools/`)
+        enableC5to9 = 1
+        println(`[sunset_linter] default scan: bootstrap/ lib/ tools/ + docs/3-decisions/ (C5-C9 软警告汇总)`)
         scanDir(`${root}/bootstrap`)
         scanDir(`${root}/lib`)
         scanDir(`${root}/tools`)
+        scanDir(`${root}/docs/3-decisions`)
     }
 
     collectLiveDocs(`${root}/docs/3-decisions`)
@@ -335,6 +485,47 @@ function main() {
         println(`  C4 PASS: all SUNSET markers have non-empty reason`)
     } else {
         fails = fails + c4Fail
+    }
+
+    if (enableC5to9 == 1) {
+        println("")
+        println("--- C5-C9 软警告(audit 详情用 --audit;C7 见 D170 §决策 B C7 行 spec 升级路径)---")
+        const c5N = c5Files.length()
+        println(`  C5 (D 文档反向锚 留独立轮/留下轮/留 Phase): ${c5N} candidate(s)`)
+        if (auditMode == 1 && c5N > 0) {
+            let i5 = 0
+            while (i5 < c5N) {
+                println(`    ${c5Files[i5]}:${c5Lines[i5]} [${c5Matches[i5]}]`)
+                i5 = i5 + 1
+            }
+        }
+        const c6N = c6Files.length()
+        println(`  C6 (协议自循环 长期可考虑): ${c6N} candidate(s)`)
+        if (auditMode == 1 && c6N > 0) {
+            let i6 = 0
+            while (i6 < c6N) {
+                println(`    ${c6Files[i6]}:${c6Lines[i6]} [${c6Matches[i6]}]`)
+                i6 = i6 + 1
+            }
+        }
+        const c8N = c8Files.length()
+        println(`  C8 (英文模式 workaround/FIXME/TBD/deferred/not yet): ${c8N} candidate(s)`)
+        if (auditMode == 1 && c8N > 0) {
+            let i8 = 0
+            while (i8 < c8N) {
+                println(`    ${c8Files[i8]}:${c8Lines[i8]} [${c8Matches[i8]}]`)
+                i8 = i8 + 1
+            }
+        }
+        const c9N = c9Files.length()
+        println(`  C9 (IR-emit-side TODO/FIXME/XXX): ${c9N} candidate(s)`)
+        if (auditMode == 1 && c9N > 0) {
+            let i9 = 0
+            while (i9 < c9N) {
+                println(`    ${c9Files[i9]}:${c9Lines[i9]} [${c9Matches[i9]}]`)
+                i9 = i9 + 1
+            }
+        }
     }
 
     // Phase Exit verify (D170 §决策 C — manual gate via --phase X)
