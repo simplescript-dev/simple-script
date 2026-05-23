@@ -23,11 +23,18 @@
 //
 // 扩展模式 C5/C6/C8/C9 (D170 §决策 B C5-C9 spec — step 8 落档,step 9 实施,全软警告不 BLOCK):
 //   C5 (D 文档反向锚): 扫 docs/3-decisions/D*.md 找 "留独立轮" / "留下轮" / "留 Phase "
-//                       — D 文档 §下一步 / Done 注释里的 forward-looking commitment;
-//                       承载 D170 §决策 A.3 (D 文档 ↔ 代码 双向锚)。
-//                       v0.1 三主 substring pattern;复合正则(留 X+ / 留 N.N+)留 v0.2 升级
+//                       — D 文档 §下一步 / Planned list-item / 活 phase narrative 段里的
+//                       forward-looking commitment;承载 D170 §决策 A.3 (D 文档 ↔ 代码 双向锚)。
+//                       v0.1 三主 substring pattern;复合正则(留 X+ / 留 N.N+)留 v0.2 升级.
+//                       **step 9 (b) sub-context 精化**:Done 段(`### Phase X: ... [x] Done at`
+//                       / `### Phase X: ... [✓] Done`/ `- **[x] Done` list-item /
+//                       `- 2026-XX-XX` Status 时间线 list-item / 表格 cell 行内 `[✓ Done` /
+//                       `Done at hash`)skip — 头 10 candidate spike 实证 10/10 假阳全在 Done
+//                       段叙述里(非当前活跃 forward-looking commitment).
 //   C6 (协议自循环):    扫 docs/3-decisions/D*.md 找 "长期可考虑" — 协议自身 forward-looking
-//                       commitment 必有对应工具/代码侧 SUNSET 反向锚;承载 D170 §决策 A.2
+//                       commitment 必有对应工具/代码侧 SUNSET 反向锚;承载 D170 §决策 A.2.
+//                       step 9 (b) 同 C5 sub-context skip 共享 docSubContextDone(C6 6 candidate
+//                       全在 D170 §决策 A.x 解释段 / Done 注释 / 历史语境 含 "[✓" 行).
 //   C7 (接口默认参数哨兵): **未实施** — 见 D170 §决策 B C7 行 spec 升级路径段
 //                       (v0.1 spike 实证 grep pattern 100% 假阳,需 callsite 判定升级)
 //   C8 (英文模式):      扫 bootstrap/lib/tools .ss 找 "workaround" / "FIXME" / "TBD" /
@@ -166,6 +173,20 @@ function scanLineC9(file: string, lineNum: int, text: string) {
     }
 }
 
+// 5 spec/narrative H2 section family detection — skip C5/C6 (协议 spec 段
+// 引"留 Phase X+" / "长期可考虑 X" 类 forward-looking pattern 作示例非真 commitment).
+// 抽 helper 避 scanFile 内 7 行 if/else if 链耦合 spec section name 列表.
+function isSpecH2Section(trimmed: string): int {
+    if (trimmed.indexOf("A.2 ") >= 0 && trimmed.indexOf("隐藏假设") >= 0) { return 1 }
+    if (trimmed.indexOf("§A.2 ") >= 0 && trimmed.indexOf("隐藏假设") >= 0) { return 1 }
+    if (trimmed.startsWith("## 决策") == 1) { return 1 }
+    if (trimmed.startsWith("## 历史语境") == 1) { return 1 }
+    if (trimmed.startsWith("## 与现有机制关系") == 1) { return 1 }
+    if (trimmed.startsWith("## 拒绝准则") == 1) { return 1 }
+    if (trimmed.startsWith("## 第一性需求") == 1) { return 1 }
+    return 0
+}
+
 // Parse one line; if it contains a valid `// SUNSET(D<num> §<phase>): <reason>`
 // marker, append to parallel arrays. Returns 1 if parsed, 0 otherwise.
 //
@@ -258,13 +279,79 @@ function scanFile(path: string) {
             if (path.indexOf("/tests/") < 0) { isCode = 1 }
         }
     }
+    // D170 §决策 B C5/C6 step 9 (b) 精化 — 三 sub-pattern 分流 (prompt §字段 12 spike 协议)
+    //
+    // 头 10 candidate spike v1 (D157:125 / D155:97-158 / D149:31-232) 实证 10/10 假阳
+    // 全在 `### Phase X: ... [x] Done at hash` heading 下的 sub-bullet,
+    // 或 `- 2026-XX-XX Phase X close` Status 时间线,或表格 cell `[✓ Done at`.
+    // 这些"留 X"是历史叙述里描述过去 phase 完结时留给下一 phase 的事(命中后该后继
+    // phase 也已 Done),不是当前活跃 forward-looking commitment.
+    //
+    // 三 sub-pattern (按 prompt §字段 12 实施):
+    //   (1) Done 段(### Phase X: ... [x] Done / [✓] Done / [ ] Pending at commit `hash` /
+    //       顶级 - **[x] Done list-item / - 2026- Status 时间线 list-item / 表格 cell
+    //       含 [✓ Done at / Done at hash / at commit `hash`)→ skip(多为已 resolve 历史叙述)
+    //   (2) Planned 段(### / 顶级 list-item [ ] Planned / [~] In Progress / [ ] Blocked)→ keep
+    //   (3) Spec/narrative 段(## A.2 / ## §A.2 隐藏假设 + ## 决策 + ## 历史语境 +
+    //       ## 与现有机制关系 + ## 拒绝准则 + ## 第一性需求)→ skip
+    //       — 协议 spec 段引"留 Phase X+" / "长期可考虑 X" 类 forward-looking pattern 作示例
+    //       (D170 §决策 A.2 / A.3 描述段 typical);非真 commitment.
+    //       (prompt §字段 12 第三 sub-context "假设破裂段" 扩 spec/narrative 同族,
+    //       因 spec 段共享同样"引模式作示例"特征,与 Done 段历史叙述 / Planned 段当前
+    //       activity 三足分流自然落到 5 段)
+    //
+    // 与 C3 phase 状态 dDocPhaseStatus 同结构 invariant 复用 — list-item 起首 4 字符
+    // 后的 status marker (`- **[x] Done` / `[ ] Planned` / `[~] In Progress` / `[ ] Blocked`)
+    // 作 sub-context 锚. **indent-aware**: 仅 top-level `- **[` (无 indent)改 state,
+    // indented `  - **[` sub-bullet 继承 parent state (D093 §下一步 sub-round 子项内 留 X
+    // 与 parent [~] In Progress phase 紧耦合,sub-bullet 自身 [x] Done 不该单独改变 phase scope).
+    let docSubContextDone = 0
+    let inSpecSection = 0  // 1 = in spec/narrative H2 section (skip C5/C6)
     let li = 0
     while (li < lines.length()) {
         const text = lines[li]
         parseSunsetLine(path, li + 1, text)
         if (isDoc == 1) {
-            scanLineC5(path, li + 1, text)
-            scanLineC6(path, li + 1, text)
+            const trimmed = text.trim()
+            // (1) H2 section reset — 切换 H2 时清 docSubContextDone + 重判 spec/narrative section
+            if (trimmed.startsWith("## ") == 1) {
+                docSubContextDone = 0
+                inSpecSection = isSpecH2Section(trimmed)
+            } else if (trimmed.startsWith("### ") == 1 || trimmed.startsWith("#### ") == 1) {
+                // H3/H4 heading status detect
+                if (trimmed.indexOf("[x] Done") >= 0) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("[✓") >= 0) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("Done at") >= 0) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("at commit `") >= 0) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("[ ] Planned") >= 0) { docSubContextDone = 0 }
+                else if (trimmed.indexOf("[~] In Progress") >= 0) { docSubContextDone = 0 }
+                else if (trimmed.indexOf("[ ] Blocked") >= 0) { docSubContextDone = 0 }
+                else { docSubContextDone = 0 }
+            } else if (text.startsWith("- **[") == 1) {
+                // Top-level list-item (无 indent) — 改 state. 用 text (非 trimmed)
+                // 区分 indented sub-bullet `  - **[`(后者继承 parent state).
+                if (trimmed.indexOf("[x] Done") == 4) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("[✓") == 4) { docSubContextDone = 1 }
+                else if (trimmed.indexOf("[ ] Planned") == 4) { docSubContextDone = 0 }
+                else if (trimmed.indexOf("[~] In Progress") == 4) { docSubContextDone = 0 }
+                else if (trimmed.indexOf("[ ] Blocked") == 4) { docSubContextDone = 0 }
+            } else if (text.startsWith("- 2026-") == 1 || text.startsWith("- 2025-") == 1) {
+                // Top-level Status 时间线 list-item — 过去叙述 default Done
+                docSubContextDone = 1
+            }
+            // else: continuation / indented sub-bullet / blank / 普通段落 — 继承 prev state
+            // (2) Per-line override — 当前行本身含 Done marker (表格 cell / 行内 narrative);
+            // else if 链 short-circuit 早退,首个 hit 后免后 indexOf 扫描
+            let lineDone = 0
+            if (text.indexOf("[✓") >= 0) { lineDone = 1 }
+            else if (text.indexOf("[x] Done") >= 0) { lineDone = 1 }
+            else if (text.indexOf("Done at ") >= 0) { lineDone = 1 }
+            else if (text.indexOf("at commit `") >= 0) { lineDone = 1 }
+            // (3) C5/C6 仅在三 sub-pattern 都不 skip 时匹配 (flatten 嵌套 if → &&)
+            if (inSpecSection == 0 && docSubContextDone == 0 && lineDone == 0) {
+                scanLineC5(path, li + 1, text)
+                scanLineC6(path, li + 1, text)
+            }
         }
         if (isCode == 1) {
             scanLineC8(path, li + 1, text)

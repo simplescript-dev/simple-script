@@ -6,7 +6,18 @@
 // file:line + match keyword (D170 §决策 B C5 行 spec)。
 //
 // 软警告 — N candidate > 0 不 BLOCK commit;allow grace window 让 D 文档反向锚
-// audit-driven backfill (step 9 (b) 留下轮)。
+// audit-driven backfill。
+//
+// **step 9 (b.1) sub-context 精化效果**(本 commit):222 → 43 (-81%)
+// — 头 10 spike 10/10 假阳后 prompt §字段 12 改方案 grep 精化:Done 段(### Phase X
+// [x] Done at hash sub-bullet / 顶级 [x] Done list-item / 2026- Status 时间线 / 表格
+// cell [✓ Done at hash / at commit `hash`)+ spec 段(## A.2 / ## §A.2 隐藏假设 +
+// ## 决策 + ## 历史语境 + ## 与现有机制关系 + ## 拒绝准则 + ## 第一性需求)+ indent-aware
+// (top-level vs indented sub-bullet 区分,sub-bullet 继承 parent state)三 sub-pattern
+// 分流. 详 sibling spike `sunset_linter_c5c6_subcontext_skip.ss.txt`.
+//
+// **step 9 (b.2) backfill 留下轮** — 43 候选人工 audit 标 SUNSET / PERMANENT /
+// false positive → 逐项 backfill,sibling D097 拆 commit 模板.
 //
 // commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
 //   bin/ss run tools/sunset_linter.ss 2>&1 | grep -c "C5 (D 文档反向锚 "  # 1

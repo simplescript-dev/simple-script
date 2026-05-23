@@ -7,15 +7,20 @@
 //
 // 软警告 — N candidate > 0 不 BLOCK commit;允许跨 commit 累积 audit。
 //
-// 实证 sibling (本轮 spike 实测):
-//   docs/3-decisions/D170-sunset-marker-protocol.md 自身 6 处 "长期可考虑" (spec 段 +
-//   §与现有机制关系 line 241 真 forward-looking commitment "长期可考虑共享 helper") —
-//   后者已由 tools/sunset_linter.ss 顶 SUNSET(D170 §step 9) 反向锚 cover(本轮 step 8
-//   就近示范)。
+// 实证 sibling (step 9 (a) 实测 + step 9 (b.1) 精化后):
+//   step 9 (a) 实测 6 处 "长期可考虑" (D170 自身) — 全在 ## 决策 ### A. canonical marker
+//   模板 #### A.2 协议自循环过渡件 spec 段(line 118/124/130/135)+ ## 与现有机制关系
+//   ### 复用 段(line 179/242),协议引"长期可考虑 X" pattern 作 forward-looking commitment
+//   示例文本,非真 commitment。其中 line 242 "长期可考虑共享 helper" 是真 commitment 已由
+//   tools/sunset_linter.ss 顶 SUNSET(D170 §step 9) 反向锚 cover(step 8 就近示范)。
+//
+//   step 9 (b.1) sub-context 精化后:6 → 0 — ## 决策 / ## 与现有机制关系 全 skip(spec
+//   段 false positive),真 commitment 进 §下一步 / §Followup 段 currently 0 库存。
+//   未来若 spec 段外 (§下一步 / §Followup 段)出现"长期可考虑 X"真 commitment 则 C6 命中。
 //
 // commit-time shell verify (`.ss.txt` 后缀避 bin/ss test auto-collect):
-//   bin/ss run tools/sunset_linter.ss 2>&1 | grep -c "C6 (协议自循环 "  # 1
-//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "\[长期可考虑\]"  # ≥ 1
+//   bin/ss run tools/sunset_linter.ss 2>&1 | grep -c "C6 (协议自循环 "  # 1 (汇总行存在)
+//   bin/ss run tools/sunset_linter.ss --audit 2>&1 | grep -cE "\[长期可考虑\]"  # 0 (精化后 spec 段全 skip,真 commitment 暂无)
 
 function main() {
     // doc-anchor only — sunset_linter 默认模式扫 docs/3-decisions/D*.md 触发 C6
