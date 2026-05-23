@@ -347,7 +347,7 @@ D170 协议 step 7 实战首例 (`1.5d 主轮收口子步 sibling 子轮 §出�
 - C5/C6/C8/C9 软警告维持 baseline (C5 0 / C6 0 / C8 43 / C9 3)
 - (sibling 1.5d 子轮 §出口清单 用 `--phase` manual gate;本 sibling 第二例用默认模式 verify ∵ 2 marker 物理清后无残留触发 BLOCK,默认模式即可 verify GATE OK;两 path 均 D170 §决策 C 双轨触发设计预期内)
 
-**D170 step 7 实战首例 sibling 范式实战完结**(2 sub-round 系列:b94dc8b/609b465 + b0f8d12/<本 commit>):D170 协议**实战首例 + 第二例 sibling 闭环** — phase exit verify 双轨(manual gate `--phase X` + 默认模式 0-marker)均落地实战,sibling 应用模板可重复;后续每个 phase exit 沿用本 §出口清单 表格格式(`# | marker file:line | resolve 标签 | commit hash` 三列)
+**D170 step 7 实战首例 sibling 范式实战完结**(2 sub-round 系列:b94dc8b/609b465 + b0f8d12/f9360f9):D170 协议**实战首例 + 第二例 sibling 闭环** — phase exit verify 双轨(manual gate `--phase X` + 默认模式 0-marker)均落地实战,sibling 应用模板可重复;后续每个 phase exit 沿用本 §出口清单 表格格式(`# | marker file:line | resolve 标签 | commit hash` 三列)
 
 - **[x] Done at D098(2026-04-18)+ D099(2026-04-18)+ D111(2026-04-18)+ D112(2026-04-20)+ D117(2026-04-21)** D093 §张力 1-3 "MaybeVal / InternPool / Type-as-Value 详设" — 由 D098 §决策 1/2/3 集中决策,各 Phase 已落地:D098 §决策 1 §Phase A 编码 → D099 落 eval_expr.ss:1-5 + gen/gen_maybeval.ss;D098 §决策 2 §Phase B Meta InternPool → D117 落;D098 §决策 3 Phase A `comptimeTypeAliases` 消除 → D112 落。**D094 由 D098 承接 supersede**,InternPool/Type-as-Value 不再另起 D094
 - **[x] Done at 2026-05-20** 验证 D093 骨架所需的 SS 语言能力缺口 — 见 D169 §SS 语言能力前置实证修订版(全局 int flag / error 机制 / 顶层 helper 函数 / int 符号位运算 全部齐备)
