@@ -72,8 +72,7 @@ function genVal(id: int): int {
         return constVal(genThisExpr())
     }
     if (kind == "ARROW_FUNC") {
-        // SUNSET(D093 §Phase 4): ARROW_FUNC expr 入口双轨 dispatch — Phase 4 统一后消除 ct-depth 字面
-        if (comptimeDepth > 0) { return ctVal(interpNewVal("fn", `${id}`)) }
+        if (comptimeDepth > 0) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
         return constVal(genArrowFunc(id))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }

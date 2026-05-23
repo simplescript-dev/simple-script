@@ -41,6 +41,7 @@ function evalExpr(astId: int): int {
         if (comptimeMustBeKnown == 1) { return comptimeError(`'${k}' not bound in comptime context`, astId) }
         return ctVal(interpNewNull())
     }
+    if (k == "ARROW_FUNC") { return ctVal(interpNewVal("fn", `${astId}`)) }
     if (k == "UNARY") {
         // D093 §决策 §Zig 原理 §2 / D169 §子拆解 1.5b — UNARY 入口单 dispatch (类 B 入口双轨消除)。
         // 主 case 直接 `evalExpr(childId)` 拿 mv 空间值无 genVal 桥反向编码 — evalExpr 主 dispatch
