@@ -1,19 +1,24 @@
 // NULL_COALESCE 二元 op 子文件(原 eval_expr.ss BINARY 迁出)
-// 对称三段式:ct path(must-be-known)短路单边 lhs ct 非 null → 返 lhs,否则 rhs mv 透传;
-// runtime path delegate genBinary 内 NullCoalesce case → genNullCoalesce alloca+br+load IR
+// 单边短路 op(`a ?? b`:lhs 非 null → 返 lhs lazy rhs;lhs null → eval rhs)。
+// 1.5e+ ext 三段式 sibling 一致(对齐 ternary.ss:4-10 + short_circuit.ss:5-13 模式
+// 但保 NullCoalesce 单边短路):eager lRaw 上移 → 段 1 ct 短路(lhs ct 非 null → 返
+// lhs 不 eval rhs)→ 段 2 紧 loud(must-known + lhs/rhs 任一非 ct → loud error)→
+// 段 3 runtime forward `reg(lRaw)`+ 空 rPreReg 哨兵保 rhs lazy 由 genNullCoalesce 内
+// br then 块惰性 eval 消 caller→genBinary→genNullCoalesce→genExpr(leftId) 双 eval bug。
 
 function evalNullCoalesce(astId: int): int {
-    // SUNSET(D093 §Phase 1.5e+): eager genVal 上移 + sibling 完全一致 (ct → 紧 loud → runtime) + 桥消除,genNullCoalesce 接口扩 lPreReg/rPreReg forward 消 lhs runtime 时 genBinary→genNullCoalesce 双 eval bug
-    // 不 eager 上移避 lhs runtime 时 genBinary→genNullCoalesce 内部 genExpr(leftId)
-    // 再 eval 引入 double-eval bug(genNullCoalesce 接口扩 lPreReg/rPreReg 留独立轮)。
-    // NEW rv 返值补 `isCt(rv) == 1 ? rv : 0 - rv - 1` mv 编码 — 顺手修 OLD
-    // `return genVal(nGetI2(astId))` 在 lhs ct null + rhs runtime 时返 positive regId
-    // 伪装 mv-known 的 silent encoding contract leak(baseline 334/3 持平实证未触发)
+    const lRaw = genVal(nGetI1(astId))
+    if (isCt(lRaw) == 1 && valType(lRaw) != "null") { return lRaw }
     if (comptimeMustBeKnown == 1) {
-        const lv = genVal(nGetI1(astId))
-        if (isCt(lv) == 1 && valType(lv) != "null") { return lv }
+        if (isCt(lRaw) == 0) {
+            return comptimeError(`null-coalesce lhs is not compile-time known`, astId)
+        }
         const rv = genVal(nGetI2(astId))
-        return isCt(rv) == 1 ? rv : 0 - rv - 1
+        if (isCt(rv) == 0) {
+            return comptimeError(`null-coalesce rhs is not compile-time known`, astId)
+        }
+        return rv
     }
-    return mvRuntime(constVal(genBinary(astId)))
+    // rPreReg "" 哨兵 PERMANENT:NullCoalesce 短路语义 rhs 仅在 lhs null br then 内 lazy eval,不可 eager forward
+    return mvRuntime(constVal(genBinary(astId, reg(lRaw), "")))
 }

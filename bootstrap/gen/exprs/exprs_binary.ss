@@ -57,9 +57,14 @@ function genStringCompare(op: string, leftId: int, rightId: int, blt: string, br
     const r = nextReg(); emitIR(`  ${r} = zext i1 ${cmpBool} to i32`); return r
 }
 
-function genNullCoalesce(leftId: int, rightId: int): string {
+// D093 §Phase 1.5e+ ext:lPreReg/rPreReg 哨兵 forward — caller eager `genVal(nGetI1)`
+// 后 reg(lRaw) 传入,本函数避 genExpr(leftId) 再 eval(双 eval bug 桥消除);rPreReg 同形
+// 但 NullCoalesce 短路语义保留 — rhs 只在 lhs null 时 lazy eval,本函数 ncRight 由
+// rPreReg(若 forward)或 genExpr(rightId) 在 lhs-null br then 块内 eval(D093 §1.5d
+// 主轮第三子步 sibling 完全一致接口扩,对齐 genStringConcat/genBinary 范式)
+function genNullCoalesce(leftId: int, rightId: int, lPreReg: string = "", rPreReg: string = ""): string {
     const ncResult = emitEntryAlloca(nextReg(), "ptr", 8)
-    const ncLeft = genExpr(leftId)
+    const ncLeft = lPreReg != "" ? lPreReg : genExpr(leftId)
     emitIR(`  store ptr ${ncLeft}, ptr ${ncResult}, align 8`)
     // String: check length == 0; class/other ptr: check == null (D067)
     const ncLType = inferType(leftId)
@@ -77,7 +82,7 @@ function genNullCoalesce(leftId: int, rightId: int): string {
     const ncEnd = nextLabel("nc.end")
     emitIR(`  br i1 ${ncCmp}, label %${ncThen}, label %${ncEnd}`)
     emitIR(`${ncThen}:`)
-    const ncRight = genExpr(rightId)
+    const ncRight = rPreReg != "" ? rPreReg : genExpr(rightId)
     emitIR(`  store ptr ${ncRight}, ptr ${ncResult}, align 8`)
     emitIR(`  br label %${ncEnd}`)
     emitIR(`${ncEnd}:`)
@@ -170,9 +175,10 @@ function genIntBinary(op: string, left: string, right: string): string {
     return r
 }
 
-// D169 §1.5d prereq:lPreReg/rPreReg 可选预求值 reg(默认 "")透传 genStringConcat
-// + 数值 op eager。**不 forward** 给 NullCoalesce/ShortCircuit/Instanceof/As
-// (短路/单边控制流语义不可 eager);genStringCompare 本轮不在 scope。
+// D169 §1.5d prereq + D093 §1.5e+ ext:lPreReg/rPreReg 可选预求值 reg(默认 "")
+// 透传 genStringConcat + 数值 op eager + NullCoalesce(rhs 在 ncThen br 块内 lazy
+// genExpr 保短路语义,见 genNullCoalesce sig 注)。**不 forward** 给 ShortCircuit/
+// Instanceof/As(短路/单边控制流语义不可 eager);genStringCompare 本轮不在 scope。
 function genBinary(id: int, lPreReg: string = "", rPreReg: string = ""): string {
     const op = nGetS1(id)
     const leftId = nGetI1(id)
@@ -190,7 +196,7 @@ function genBinary(id: int, lPreReg: string = "", rPreReg: string = ""): string 
     if ((op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge") && (blt == "string" || brt == "string")) {
         return genStringCompare(op, leftId, rightId, blt, brt)
     }
-    if (op == "NullCoalesce") { return genNullCoalesce(leftId, rightId) }
+    if (op == "NullCoalesce") { return genNullCoalesce(leftId, rightId, lPreReg, rPreReg) }
     if (op == "And" || op == "Or") { return genShortCircuit(op, leftId, rightId) }
     if (op == "Instanceof") {
         const objReg = genExpr(leftId)
