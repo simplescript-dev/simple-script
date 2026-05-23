@@ -1,6 +1,6 @@
 # D170: SUNSET marker — 过渡债漂移机械 gate 协议
 
-**Status:** **Phase 0 Done at f3a93bd** — D170 §决策落地;**Phase 1 全闭环 Done at f3a93bd→3ff649a→72f47c3→d7b5d9c** (三层 SSoT 链);**Phase 2 全闭环 Done at 9ca0e0e/95e0bab/d8a010b** — 32 markers 全库 substance 覆盖度 100% + `--phase X` Phase Exit Gate manual gate 落地 + 2 spike doc-anchor;**Phase 协议 step 7 实战 Done at b94dc8b (C1 feat impl) + 本 commit (C2 docs exit verify)** — D170 协议**实战首例完结**(设计→工具→流程→实战**四阶段全闭环**):回流 feat/d092-sema-q1 主线 fast-forward + D093 §Phase 1.5d sibling 子轮 for/while 迁 + 2 SUNSET marker 物理清 + 2 新 spike test + Phase Exit Gate manual verify 首次实操 verdict PASS "no cleanup needed" + D093 §出口清单 段首例落地。
+**Status:** **Phase 0 Done at f3a93bd** — D170 §决策落地;**Phase 1 全闭环 Done at f3a93bd→3ff649a→72f47c3→d7b5d9c** (三层 SSoT 链);**Phase 2 全闭环 Done at 9ca0e0e/95e0bab/d8a010b** — 32 markers 全库 substance 覆盖度 100% + `--phase X` Phase Exit Gate manual gate 落地 + 2 spike doc-anchor;**Phase 协议 step 7 实战 Done at b94dc8b (C1 feat impl) + 609b465 (C2 docs exit verify)** — D170 协议**实战首例完结**(设计→工具→流程→实战**四阶段全闭环**):回流 feat/d092-sema-q1 主线 fast-forward + D093 §Phase 1.5d sibling 子轮 for/while 迁 + 2 SUNSET marker 物理清 + 2 新 spike test + Phase Exit Gate manual verify 首次实操 verdict PASS "no cleanup needed" + D093 §出口清单 段首例落地;**step 8 协议 scope 扩 spec 落档 Done at 本 commit** — 实战首例后元-level 自审改进:audit 揭 6 类协议 scope 设计盲点(D 文档反向锚 / 接口默认参数哨兵 / 英文模式 / IR-emit / SUNSET 域内 PERMANENT 子残留 / 协议自循环)→ §决策 A 扩 3 亚类(A.1/A.2/A.3)+ §决策 B 扩 C5-C9 软警告 spec(实现留 step 9)+ §历史语境 加 audit 续段 + sunset_linter.ss 顶端示范自循环 SUNSET 锚(A.2 自循环约束就近落地避递归)。
 **Depends on:** D097 (reflection_health_linter §决策 + linter 拆 commit sibling 模式), D093 (本会话 8 处过渡件实证来源 + 1.5a-d sub-round 节奏实证), D169 (sub-round 分批迁实证)
 **Spawned by:** 2026-05-23 用户对话「实现过程中有些过渡阶段,等到后期,可能忘记了发生了漂移,忘记清理过渡的逻辑」+ 同对话用户锁定候选 A+B
 **Date:** 2026-05-23
@@ -40,6 +40,27 @@
 
 **关键观察**:8 处用了**至少 6 种不同自然语言模板** —— "留 1.5e+" / "Phase C 留" / "Phase 8 §差距 #5" / "1.5d 桥消除后" / "终态依赖 X" / "类 C 边界"。无 grep pattern 一次抓全。**这是漂移的物理根因**:用自然语言记账,跨轮 reader 不可枚举。
 
+### Audit 续段(step 8 — 实战首例后 scope 设计盲点反思)
+
+**触发事件**:2026-05-23 D170 step 7 实战首例完结(b94dc8b C1 + 609b465 C2)后,用户连续两次 ultrathink 拷问 — "历史上有很多 SUNSET 需要标注吧" + "应该改进流程吧" — 指出**协议设计自身有盲点 → 改协议比补 N 处漏标更根本**(CLAUDE.md §Root Cause 第一法则:根因方案 vs workaround → 选根因)。
+
+**6 类协议 scope 设计盲点**(audit 揭出,Phase 0/1/2 立项时漏 catch;**根因列摘要** — 完整形态见 §决策 A.x / §决策 B C.y):
+
+| # | 盲点类别 | 根因摘要 | 协议扩措施 |
+|---|---|---|---|
+| 1 | **D 文档反向锚** | 单向引(代码→D 文档)漏反向(D 文档 ↔ 代码) | §决策 A.3 + B C5 |
+| 2 | **接口签名默认参数哨兵** | `: int = -1` 哨兵默认参数本质过渡态(callsite 未全 forward) | §决策 B C7 |
+| 3 | **英文模式** | 立项实证表只 catch 中文「留 X+」,漏英文同义模式 | §决策 B C8 |
+| 4 | **IR-emit-side TODO** | 立项只看源码注释,漏 codegen 输出端 `emitIR("... TODO ...")` | §决策 B C9 |
+| 5 | **SUNSET 域内 PERMANENT 子残留** | 立项只二选一(SUNSET 整块清 / PERMANENT 整块留),缺嵌套语义 | §决策 A.1 + C exit `[partial-clean]` |
+| 6 | **协议自循环过渡件** | 协议自身 forward-looking commitment 也是漂移源(元-level 一致性) | §决策 A.2 + B C6 |
+
+**根本根因** = 协议立项 scope 偏窄,只 catch 显式自然语言「留 X+」源码注释一种模式(Phase 0 §决策 A canonical 模板单层 + §决策 B C1-C4 单 grep pattern)。实战首例后**真实漂移面 ⊋ 协议立项 catch 面**,故而漏 N 处实证不是症状各自孤立,而是协议本身可治理范围设计不全。
+
+**实战首例验证机制**(后续 D 协议 sibling 模板):每个新 D 协议 / linter 推出后,**首例实战 = scope 实证 audit 触发点** — Phase 立项时 ultrathink 自审有限,实战遇到的边界案例才是 scope 充分性的真正 forcing。D170 step 7 实战 → step 8 scope 反思 + 协议扩;后续 D 协议(sibling D097 reflection_health_linter / D161-D165 等)实战首例后皆应有"实战首例完结 + scope 反思入文"环节,不止"声明完结"。**业界对标** Rust `cargo deprecate-check` v0.1 → v0.2 升级期 — 初版只 catch 显式 `#[deprecated]` attribute,v0.2 加 grep 模式扩(`// TODO(removal):` 注释 / `unimplemented!()` 调用等);SS D170 v0.1 → v0.2 同模式 scope 扩。
+
+**本段意义**:本 audit 续段是 **D170 实证完结里程碑** — 从"声明完结"升级为"实证完结 + scope 反思入文",**协议 v0.1 → v0.2 升级期形态固化**。后续 step 9 实施 C5-C9 linter 工具 → 跑出 candidates → 人工 audit 标 SUNSET / PERMANENT / false positive → 逐项 backfill(协议扩的自然副产物,不是人工记忆 file:line 漂移)。
+
 ## 决策
 
 ### A. canonical marker 模板
@@ -69,6 +90,76 @@ const subMv = isCt(subRaw) == 1 ? subRaw : (0 - subRaw - 1)
 function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptimeDepth + 1 }
 ```
 
+#### A.1 SUNSET 域内 PERMANENT 子残留(audit #5)
+
+**形态**:`// SUNSET(D<NNN> §<phase>):` 块内代码段若含**永久必要逻辑**(reset / dispatch fallback / dual-write 内永久写端 / 兜底 error path 等),该子段前必加 `// PERMANENT(<reason>):` 第二层标。phase exit 时 `[clean]` 部分代码 + `[partial-clean]` 标签保 PERMANENT 段(§决策 C exit 动作清单 §2 resolve 标签扩第 4 种,见 §C 节)。
+
+**模板**:
+
+```ss
+// SUNSET(D093 §Phase 8 §差距 #5): comptime 块降为 flag 后 comptimeDepth 可删
+function exitComptimeBlock() {
+    comptimeMustBeKnown = comptimeMustBeKnown - 1
+    // PERMANENT(嵌套真出栈必须 reset depth — 即使 D093 §Phase 8 完结此函数不删,reset 逻辑永久必要)
+    if (comptimeDepth > 0) { comptimeDepth = comptimeDepth - 1 }
+}
+```
+
+**强制约束**:
+- PERMANENT 子段紧邻其保护代码,**不允许跨多行隔离**(必紧接下一可执行行)
+- PERMANENT reason **必填**,空 reason BLOCK
+- phase exit 时 SUNSET 整块清除若误删 PERMANENT 段 → §决策 C `[partial-clean]` 标签 BLOCK + 强制人工 audit
+- 不允许 PERMANENT 嵌套 SUNSET(违 SSoT;若过渡件嵌套过渡件,拆为两个独立 SUNSET marker)
+
+**实证 sibling**(audit 揭出):`ct_driver.ss` `exitComptimeBlock` 真嵌套出栈 reset(SUNSET 域内 PERMANENT 子残留)— Phase 8 完结后整段 SUNSET 物理清若误删 reset 逻辑则嵌套层级泄漏。
+
+#### A.2 协议自循环过渡件(audit #6)
+
+**形态**:D 文档**自身**(尤其 D170 自己,或任何 D 文档的 §下一步 / 与现有机制关系 / 历史语境 段)出现"留 Phase X+" / "留独立轮" / "长期可考虑共享 helper 留 Phase Y+" 类 **forward-looking commitment** 时,**关联工具 / 代码 / 测试**侧必有对应 SUNSET 反向锚。**元-level 一致性要求** — 协议设计自己说要标 → 协议设计自己必须标自身过渡件(§第一性需求"过渡债不能漂移"的递归应用,协议自己也是漂移源)。
+
+**模板**:
+
+```ss
+// 文件顶端示范(sunset_linter.ss):
+// SUNSET(D170 §与现有机制关系): 长期可考虑与 d_doc_index_linter 共享 helper
+//   (D170 §与现有机制关系 line 133 明示"留 Phase 2+ 优化"),
+//   sibling 工具 grep D<NNN> 实存判逻辑可抽 common helper
+```
+
+**强制约束**:
+- D 文档自身 forward-looking commitment 凡在 `docs/3-decisions/D*.md` 出现"留 Phase X+" / "长期可考虑 X" / "Phase Y 优化"等表达 → 关联工具(若 D 文档绑定具体 tool/linter)或代码侧必有 SUNSET 反向锚
+- 反向锚 reason 字段必引 D 文档原文锚(`§<section> line <N>` 或原文 partial quote),不允许"留 Phase X" 空话(避递归 audit 漂移)
+- D 文档自己**不**作 SUNSET marker 携带方(D 文档是 SSoT,SUNSET marker 在代码 / 工具 / 测试侧)
+- 协议自身改造时(如本轮 D170 step 8)**禁留新"Phase 2+"承诺**,改为本轮直接 spec 落档,或 split 为独立 D 文档(避自循环递归)
+
+**实证 sibling**(audit 揭出):D170 §与现有机制关系 line 133 字面"长期可考虑共享 helper 留 Phase 2+"但 `tools/sunset_linter.ss` 顶端无 SUNSET 反向锚(本轮 step 8 就近示范修正)。
+
+#### A.3 D 文档反向锚(audit #1)
+
+**形态**:D 文档 §下一步 / list-item Done 注释 / 各 phase 子项 reason 段里说"留独立轮升级" / "留 X+ 处理" / "正交关切留独立轮" 等 **forward-looking commitment**,必触代码侧对应位置有 SUNSET 反向锚。**单向引扩双向引**(原 D170 §不重复 D 文档 §下一步 节"代码侧 SUNSET → D 文档 §下一步" 单向 → "D 文档 §下一步 ↔ 代码"双向)。
+
+**模板**:
+
+```markdown
+<!-- D 文档 §下一步 -->
+- **[x] Done at <hash>** 1.5c <case> 子轮 — ... silent→loud 升级属正交 error-reporting 关切,**本轮纯字面 swap 不碰 line N**(留独立轮独立升级路径)
+```
+
+```ss
+// 代码侧对应位置(file:line 28):
+// SUNSET(D093 §Phase 1.5c <case>): per-element silent null 留独立轮 error-reporting 升级,
+//   引 D093 §下一步 1.5c <case> 子轮 Done 注释正交关切段
+if (var-not-found) { return ctVal(interpNewNull()) }
+```
+
+**强制约束**:
+- D 文档 §下一步 list-item 内的 "留独立轮" / "留下轮" / "留 Phase X" / "留 X+" 类承诺,代码侧必有同 phase 引用的 SUNSET marker
+- 反向锚 reason 字段必引 D 文档 list-item locator(`D<NNN> §下一步 <phase> <case-name>` 或 `line <N>`)
+- linter C5 软警告检查(allow grace window — phase 可能尚未起手时无代码侧 marker 合法;phase 起首后无 marker 则触警告)
+- 双向链 invariant:**D 文档说留 X ↔ 代码侧标 X**;两侧任一缺 → C5 软警告
+
+**实证 sibling**(audit 揭出):D093 §下一步 1.5c 各子轮 Done 注释"silent null 留独立轮 error-reporting 升级"~8 处(postfix_inc / array_lit / new_expr / call / ident / ternary / short_circuit / member_access)但代码侧 0 处 SUNSET 反向锚(C5 实证)。
+
 ### B. `tools/sunset_linter.ss` 规则
 
 **默认模式 (C1-C4)**:挂在 MNK §After Done §1 simplify 与 §2 commit 之间的新 §1.5 gate。
@@ -79,6 +170,21 @@ function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptim
 | **C2 D 文档实存** | 每 marker 的 `D<NNN>` 必在 `docs/3-decisions/` 实存 (沿用 d_doc_index_linter 模式) | **BLOCK commit** + 输出死指针 |
 | **C3 phase 状态** | 每 marker 的 `§<phase>` 在该 D 文档 §下一步 中: (a) 有 `[ ] Planned <phase>` 项 → **PASS**;(b) 已 `[x] Done <phase>` 但 marker 还存在 → **BLOCK**;(c) § 段名不存在 → **软警告** | (b) BLOCK / (c) 软警告 |
 | **C4 reason 非空** | 冒号后第一行 reason `.trim().length() > 0` | **BLOCK commit** |
+
+**扩 grep 模式 (C5-C9 软警告)** — step 8 协议 scope 扩落档,实现留 step 9。**全部软警告不 BLOCK**(audit 反思:hard BLOCK 应只在协议清晰且 grep 模式低假阳率时启用;C5-C9 首次落地用软警告 + 人工 audit 后逐步升 hard BLOCK,对齐 D097 AUTO-DRIFT 软警告升级路径)。
+
+| Check | 规则 | 违反行为 |
+|---|---|---|
+| **C5 D 文档反向锚** | 扫 `docs/3-decisions/D*.md` §下一步 / list-item Done 注释,模式 `grep -nE "留(独立轮\|下轮\|X\+\|\d+\.\d+\+\|Phase\s+\w+)"`,逐项 trace 到代码侧是否有对应 SUNSET marker;无 → 软警告(allow grace window — phase 可能尚未起手时无代码侧 marker 合法;phase 起首后无 marker 触警告)。**规则承载** §决策 A.3 | 软警告(grace window) |
+| **C6 协议自循环** | D 文档自身 §下一步 / §与现有机制关系 / 历史语境 出现"长期可考虑 X" / "Phase X 优化"等 forward-looking commitment(去重避 C5"留 X" 重叠)→ 关联工具(若 D 文档绑定具体 tool/linter)或代码侧必有 SUNSET 反向锚;模式 `grep -nE "(长期可考虑\|Phase \w+\+ 优化)" docs/3-decisions/D*.md` + 跨文件 trace 工具 / 代码侧。**规则承载** §决策 A.2 | 软警告 |
+| **C7 接口签名默认参数哨兵** | 扫 `bootstrap/gen/` + `bootstrap/eval/` 函数签名模式 `grep -rnE ":\s*(int\|string)\s*=\s*(\"\"\|0\s*-\s*1)"`,逐参考 callsite 是否全 forward(全 forward = 完成态可去默认值)还是仍混 default + forward(过渡态 → 软警告需 SUNSET)。**规则承载** §历史语境 audit #2 | 软警告 |
+| **C8 英文模式扩** | 扫 `(future use\|later use\|TBD\|deferred\|not yet\|workaround\|placeholder\|stub\|FIXME)` 中英文统一(原 D170 §历史语境表只 catch 中文「留 X+」);grep -rnEi 跨 `bootstrap/ lib/ tools/`。**规则承载** §历史语境 audit #3 | 软警告 |
+| **C9 IR-emit-side TODO** | 扫 `emitIR\(.*\b(TODO\|FIXME\|XXX)\b.*\)` 等 codegen 输出端 transitional placeholder(运行时 IR 携带的过渡件);grep -rnE 跨 `bootstrap/gen/`。**规则承载** §历史语境 audit #4 | 软警告 |
+
+**C5-C9 升级路径**(对齐 D097 AUTO-DRIFT 软警告 → hard BLOCK 升级模式):
+- step 9 实施 C5-C9 后用软警告跑 N 次(N ≥ 3)累积 audit 数据 + 实测假阳率
+- 单 check 假阳率 < 10% 且 candidates 收敛(连续 2 commit candidates 数 = 0) → 该 check 升 hard BLOCK
+- 升 hard BLOCK 时**必同步**改 D170 §决策 B 本表"违反行为"列(SSoT 同步,不可分裂)
 
 **Phase Exit 模式** (`--phase <X>`):由 Phase Exit Gate 触发,见 §C。
 
@@ -114,9 +220,11 @@ function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptim
 | 5a | Backfill | Done at **9ca0e0e** — 9 处显式过渡件 SUNSET marker 落地 (实证表 #1-7 + #6 sibling 拆 2 + #7 拆 2 = 9 markers, 6 文件 bootstrap/eval+gen/stmts) + sunset_linter GATE OK + bootstrap 三阶段固定点 verified + 全测 baseline 334/3 持平 | 大改 | bootstrap/ 单子族 |
 | 5b | Backfill | Done at **95e0bab** — 23 处类 A 批量 backfill (D093 §0.4 Phase 2-5 candidates,13 文件) + 32 markers 全库 GATE OK + bootstrap 三阶段固定点 verified | 大改 | bootstrap/ 单子族 |
 | 6 | Implementation | Done at **d8a010b** — `sunset_linter.ss --phase X` 模式实施 + MNK §SUNSET marker 治理 gate 新「Phase Exit Gate 触发流程」段 + 2 spike doc-anchor + 首次试用 | 大改 | tools/ + docs/ + tests/ |
-| 7 | Implementation/实战 | **本 commit C1 (feat impl) + 配套 C2 (docs exit verify)** — 回流 `feat/d092-sema-q1` 主线 + D093 §Phase 1.5d sibling 子轮 (for/while 迁) 首例 SUNSET marker 实战 + Phase Exit Gate manual verify 首次实操 | 大改 | bootstrap/ + docs/ + tests/ 拆 2 commit (合 D170 §决策 C 独立 commit 原则) |
+| 7 | Implementation/实战 | Done at **b94dc8b** (C1 feat impl) + **609b465** (C2 docs exit verify) — 回流 `feat/d092-sema-q1` 主线 + D093 §Phase 1.5d sibling 子轮 (for/while 迁) 首例 SUNSET marker 实战 + Phase Exit Gate manual verify 首次实操 | 大改 | bootstrap/ + docs/ + tests/ 拆 2 commit (合 D170 §决策 C 独立 commit 原则) |
+| 8 | Decision/scope 扩 spec | **本 commit** — 协议 scope 扩 spec 落档:实战首例后 audit 揭 6 类盲点 → §决策 A 扩 A.1/A.2/A.3 亚类(SUNSET 域内 PERMANENT 子残留 / 协议自循环 / D 文档反向锚)+ §决策 B 扩 C5-C9 软警告(实现留 step 9)+ §历史语境 加 audit 续段(6 类盲点 + 实战首例验证机制反思)+ sunset_linter.ss 顶端示范自循环 SUNSET 锚(A.2 自循环约束就近落地避递归);D093 §下一步 1.5d 整段 [~] → [x] Done at b94dc8b | 标准改 | docs/ 单子族 + tools/sunset_linter.ss 1 处自循环示范注释 |
+| 9 | Implementation | **待实施(下轮)** — C5-C9 sunset_linter.ss 实现 + audit-driven backfill 副产物(linter 跑后自动列 candidates,人工 audit 标 SUNSET / PERMANENT / false positive,逐项 backfill;反"人工记忆 18 处"反 workaround 反模式) | 大改 | tools/ + docs/ + bootstrap/ 多子族(linter 实施 + backfill) |
 
-预估 **6 commit** (拆 5a/5b 为 2 commit),跨 4-6 个对话轮。
+预估 **9 commit** (拆 5a/5b 为 2 commit + step 7 拆 C1/C2 + step 8 scope 扩 spec + step 9 工具实施),跨 6-8 个对话轮。
 
 ## 与现有机制关系
 
@@ -182,8 +290,10 @@ function enterComptimeBlock() { comptimeMustBeKnown = 1; comptimeDepth = comptim
 - **[x] Phase 2 续 (step 5b) Done at 95e0bab** — 23 处类 A 批量 backfill (D093 §0.4 Phase 2-5 candidates 跨 13 文件):Phase 2 stmt 族 8 + Phase 3 decl/assign 族 7 + Phase 4 call/expr 族 4 + Phase 5 class/enum 族 3 = 23 markers;**32 markers 全库 GATE OK** + bootstrap 三阶段固定点 verified + 全测 baseline 334/3 持平;全库自然语言「留 X+」过渡件清零,D170 §第一性需求覆盖度 100%
 - **[x] Phase 2 完 (step 6) Done at d8a010b** — `tools/sunset_linter.ss` 扩 `--phase X` 模式实施(D170 §决策 C 双轨触发 manual gate 落地;`args() ≥ 3 && arg(1) == "--phase"` + arg(2..) concat 绕 bin/ss run 拆 quoted 多 token args 限制;filter markers by phase + 按 phase 在 D 文档 §下一步 状态判 verdict — [x] Done → BLOCK / [ ] Planned / [ ] Blocked / [~] In Progress → PASS 软提示 / missing → WARN) + `docs/3-MNK.md` §特定领域 §SUNSET marker 治理 gate 新「Phase Exit Gate 触发流程」段(双轨触发 auto-detect 软 + manual 硬 BLOCK + Exit 动作清单 3 步 + linter 调用) + 2 spike doc-anchor `tests/d170_sunset_marker_protocol/sunset_linter_phase_exit_{active_pass,missing_warn}.ss.txt`(各 4-5 shell verify 命令跑通) + **首次试用** `bin/ss run tools/sunset_linter.ss --phase "1.5d 主轮收口子步 sibling 子轮"` 实测列 stmts_loop_classic for/while 2 markers + phase status `[ ] Planned` + verdict PASS + exit 0 + GATE OK
 - **[x] step 7 实战 起首 (C1 feat impl) Done at b94dc8b** — Phase Exit Gate 协议**实战首例 C1**:`bootstrap/gen/stmts/stmts_loop_classic.ss:16+83` for/while 入口同形 sibling 迁(`comptimeDepth > 0 → comptimeMustBeKnown == 1` 字面 rename + silent `||` 短路拆 loud `comptimeError("for|while condition not compile-time known", id)`,与 do-while ddd327c 完全一致)+ **2 SUNSET marker 物理清**(line 12 for + line 72 while,sibling 子轮 phase 完结后 markers 不再需要)+ 2 新 spike doc-anchor `tests/phase5/comptime_{for,while}_unknown_error.ss.txt`(sibling do-while spike 完全一致 — bare IDENT cond 触 loud error)+ bootstrap 三阶段固定点 verified + 全测 baseline 334/3 持平 + sunset_linter 默认 30 markers GATE OK(-2 from 32)+ `--phase` 模式 verdict PASS "no cleanup needed";**扩容申报-step-7-实战-bump-fix**:本轮顺手补 95e0bab/d8a010b 漏 bump 历史遗留 — `F1:bootstrap/gen/gen_decls.ss` 745→750(95e0bab step 5b Phase 3 SUNSET markers ×5 加在 gen_decls.ss line 35/360/455/530/687 时漏申报,本轮 step 7 一并补 bump)
-- **[~] In Progress step 7 配套 C2 (docs exit verify) — 本 commit** — D170 协议**实战首例 C2 docs exit verify**(D170 §决策 C Manual gate 触发 + Exit 动作清单 §1 独立 commit 单子族 docs/ + §2 D093 add §Phase X §出口清单 段 + §3 commit footer `Phase X exit verify` 锚 + 标准「去掉少什么:」):D093 §下一步 sibling 子轮 [ ] Planned → [x] Done at b94dc8b + D093 add §Phase 1.5d 主轮收口子步 sibling 子轮 §出口清单 段(2 行 [clean] markers 引 b94dc8b)+ D093 §下一步 追加 1.5e+ helper 抽取 anchor(simplify Reuse F1 actionable 但延后)+ D170 §Status 含 step 7 完结 + D170 §下一步 step 7 C1 转 [x] Done + commit footer "Phase 1.5d 主轮收口子步 sibling 子轮 exit verify" + 回流主线已 fast-forward 完成(feat/d092-sema-q1 HEAD = b94dc8b);D170 协议**设计→工具→流程→实战四阶段全闭环 — 6 步序 + step 7 实战 完结**
+- **[x] step 7 配套 C2 (docs exit verify) Done at 609b465** — D170 协议**实战首例 C2 docs exit verify**(D170 §决策 C Manual gate 触发 + Exit 动作清单 §1 独立 commit 单子族 docs/ + §2 D093 add §Phase X §出口清单 段 + §3 commit footer `Phase X exit verify` 锚 + 标准「去掉少什么:」):D093 §下一步 sibling 子轮 [ ] Planned → [x] Done at b94dc8b + D093 add §Phase 1.5d 主轮收口子步 sibling 子轮 §出口清单 段(2 行 [clean] markers 引 b94dc8b)+ D093 §下一步 追加 1.5e+ helper 抽取 anchor(simplify Reuse F1 actionable 但延后)+ D170 §Status 含 step 7 完结 + D170 §下一步 step 7 C1 转 [x] Done + commit footer "Phase 1.5d 主轮收口子步 sibling 子轮 exit verify" + 回流主线已 fast-forward 完成(feat/d092-sema-q1 HEAD = b94dc8b);D170 协议**设计→工具→流程→实战四阶段全闭环 — 6 步序 + step 7 实战 完结**
+- **[x] step 8 协议 scope 扩 spec 落档 Done at 本 commit** — 实战首例后元-level 自审改进(audit-driven scope reflection):用户连续两次 ultrathink 拷问"历史上有很多 SUNSET 需要标注吧"+"应该改进流程吧"→ Claude 反思根因 = **漏标 N 处是症状,协议自身 scope 设计偏窄是病因**(CLAUDE.md §Root Cause 第一法则:根因方案 vs workaround → 选根因)。本 commit 落档:**§决策 A 扩 3 亚类**(A.1 SUNSET 域内 PERMANENT 子残留 + A.2 协议自循环 + A.3 D 文档反向锚)+ **§决策 B 扩 C5-C9 软警告**(C5 D 文档反向锚 / C6 协议自循环 / C7 接口默认参数哨兵 / C8 英文模式扩 / C9 IR-emit-side TODO — 实施留 step 9)+ **§历史语境 加 audit 续段**(6 类协议 scope 设计盲点表 + 实战首例验证机制 sibling 模板 + 实证完结里程碑)+ **sunset_linter.ss 顶端示范自循环 SUNSET 锚**(A.2 自循环约束就近落地避递归)+ **D093 §下一步 line 310 1.5d 剩余 prereq [~] In Progress → [x] Done at b94dc8b**(整段达成 §0.3 Phase 1 验收 5 项 ∵ 主轮收口子步 sibling 子轮 b94dc8b 完结)。**协议 v0.1 → v0.2 升级期形态固化**(业界对标 Rust cargo deprecate-check 同模式)
+- **[ ] Planned** step 9 C5-C9 sunset_linter 实现 + audit-driven backfill 副产物 — `tools/sunset_linter.ss` 扩 C5-C9 grep 模式 + 全软警告(不 BLOCK 避假阳 disrupt commit flow)+ 跑出 candidates → 人工 audit 标 SUNSET / PERMANENT / false positive → 逐项 backfill;**这是协议扩的自然副产物,不是人工记忆 18 处**(反 workaround 反模式)。sibling D097 拆 commit 模板(§决策 spec → linter 实现 → bump CLI 三 commit),C5-C9 实施单 commit 或拆 5 commit 视 audit 数据决定
 
-**回流到 `feat/d092-sema-q1`**:6 步完结后,本分支 rebase / merge 回主线;之后 1.5d sibling 子轮 (for/while 迁) 直接用 SUNSET marker 取代自然语言「留 X+」首批落地。step 7 实战已落地 — C1 feat impl `b94dc8b` + C2 docs exit verify 本 commit;**已 fast-forward 回 feat/d092-sema-q1 主线(merge-base = d092-sema-q1 tip = ddd327c,7 commit 一气 merge)**,本协议 6 步序 + step 7 实战 全闭环。
+**回流到 `feat/d092-sema-q1`**:6 步完结后,本分支 rebase / merge 回主线;之后 1.5d sibling 子轮 (for/while 迁) 直接用 SUNSET marker 取代自然语言「留 X+」首批落地。step 7 实战已落地 — C1 feat impl `b94dc8b` + C2 docs exit verify `609b465`;**已 fast-forward 回 feat/d092-sema-q1 主线(merge-base = d092-sema-q1 tip = ddd327c,7 commit 一气 merge)**,本协议 6 步序 + step 7 实战 全闭环;step 8 scope 扩 spec 落档本轮完结,step 9 C5-C9 工具实现 + audit-driven backfill 留下轮。
 
-**D170 协议完结**(2026-05-23):设计 (Phase 0)→ 工具 (Phase 1 起首 step 2 sunset_linter.ss MVP)→ 流程 (Phase 1 续 step 3 MNK + 完 step 4 CLAUDE.md)→ Backfill (Phase 2 起首/续/完 step 5a/5b/6 — 32 markers 全库 substance 覆盖度 100% + `--phase X` Phase Exit Gate manual gate 落地)→ 实战 (step 7 — D093 §Phase 1.5d sibling 子轮 首例 SUNSET marker 实战 + Phase Exit Gate manual verify 首次实操 verdict PASS + D093 §出口清单 段首例落地)**四阶段全闭环**;后续 phase exit 沿用本轮 sibling 模板(D093 §0.3 Phase 1 验收 5 项达成 + §Phase 1.5e+/2-5 各 phase 完结时 Manual gate verify + §出口清单 段)。
+**D170 协议完结**(2026-05-23):设计 (Phase 0)→ 工具 (step 2)→ 流程 (step 3-4)→ Backfill (step 5a/5b/6,32 markers 全库 + Phase Exit Gate manual gate 落地)→ 实战 (step 7,D093 §Phase 1.5d sibling 子轮 首例 + verdict PASS)→ **scope 扩 spec 落档 (step 8 — §决策 A 扩 3 亚类 + §决策 B 扩 C5-C9 软警告 + §历史语境 audit 续段) — 五阶段全闭环 + 协议 v0.1 → v0.2 升级期形态固化**;C5-C9 工具实现 + audit-driven backfill 留 step 9;详细 step 序见 §下一步 / §6 步序。

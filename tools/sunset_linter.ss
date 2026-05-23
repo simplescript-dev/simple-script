@@ -1,5 +1,9 @@
 // tools/sunset_linter.ss — D170 SUNSET marker 过渡债漂移机械 gate
 //
+// SUNSET(D170 §step 9): 长期可考虑与 d_doc_index_linter 共享 D 文档实存判 helper
+//   (D170 §与现有机制关系 line 133 "留 Phase 2+ 优化");
+//   归 step 9 工具实施轮 scope(D170 §决策 A.2 自循环示范)
+//
 // Usage:
 //   bin/ss run tools/sunset_linter.ss                    # 默认扫 bootstrap/ lib/ tools/
 //   bin/ss run tools/sunset_linter.ss <path>             # 扫单文件或单目录(测试用)
