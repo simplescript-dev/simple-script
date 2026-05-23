@@ -101,57 +101,36 @@ function evalExpr(astId: int): int {
     if (op == "NullCoalesce") { return evalNullCoalesce(astId) }
     if (op == "Instanceof" || op == "As") { return evalInstanceofOrAs(op, astId) }
     if (op == "Pow") { return evalPow(astId) }
-    // D093/D169 — BINARY 入口双轨消除 (4 op 拆独立 sibling 子文件 dispatch 上移)。
-    // **comptime 路径按 valType(genVal 后真实值类型)dispatch,禁 inferType** —
-    // comptime `let acc = ""` 注册 ctVars 而非 varTypes,inferType IDENT fallback 返
-    // "int"(`gen/gen_types.ss:331-336`),致 `acc != ""` 走 int interpAsInt → 0 → Ne
-    // 恒 false(D169 §POC N3 实证 17 处 i021/d123/spring regression 复发预防)。
-    if (comptimeMustBeKnown == 1) {
-        const ctBlv = genVal(nGetI1(astId))
-        const ctBrv = genVal(nGetI2(astId))
-        if (isCt(ctBlv) == 0 || isCt(ctBrv) == 0) {
-            return comptimeError(`binary '${op}' operand is not compile-time known`, astId)
-        }
-        const ctBlp = valOf(ctBlv)
-        const ctBrp = valOf(ctBrv)
-        const ctBlt = valType(ctBlv)
-        const ctBrt = valType(ctBrv)
-        if (op == "Add" && (ctBlt == "string" || ctBrt == "string")) {
-            return ctVal(interpNewString(`${interpToStr(ctBlp)}${interpToStr(ctBrp)}`))
-        }
-        if (ctBlt == "string" && ctBrt == "string") { return genValStringCompare(op, astId, ctBlv, ctBrv) }
-        if (ctBlt == "double" || ctBrt == "double") {
-            const ctLd = ctBlt == "double" ? parseDouble(interpAsStr(ctBlp)) : parseDouble(`${interpAsInt(ctBlp)}`)
-            const ctRd = ctBrt == "double" ? parseDouble(interpAsStr(ctBrp)) : parseDouble(`${interpAsInt(ctBrp)}`)
-            return ctVal(interpDoubleOp(op, ctLd, ctRd))
-        }
-        return ctVal(interpIntOp(op, interpAsInt(ctBlp), interpAsInt(ctBrp)))
-    }
-    // D169 §1.5d 真单 dispatch 主轮第一子步 — eager genVal + 混合 dispatch + 142/146 forward。
-    // **不变量**:caller forward `lRaw/rRaw`(positive 空间 = ctVal tagged | regId,reg() /
-    // isCt() / valType() 合法输入);mv 空间值禁传 delegate — reg(negative_mv) 走 isCt
-    // bit 30 误判 → IR `ptr 0` 崩 + valType(negative_mv) bit-mask 后 InternPool miss → ""。
-    // **类型 dispatch**:`isCt(lRaw) ? valType(lRaw) : inferType(...)` — ct path valType
-    // 修 §POC N3 17 处 ctVars IDENT fallback "int" 错配(i021/d123/spring),runtime path
-    // inferType 等价 OLD 兜底。候选 C(regToType 全空间 valType 扩展)依赖 SS 数据流
-    // Air.Inst.Ref 等价物升级,跨 phase scope 留 1.5e+。142/146 callsite forward 消除
-    // delegate 内重 genVal → `f()+g()` 副作用 emit 两次的 double-eval bug。
+    // D093/D169 1.5d 主轮第三子步 — BINARY 主 case 收口为通用 binop only,sibling 完全一致
+    // 三段式(ct → 紧 loud → runtime,对齐 `ternary.ss:4-10` / `short_circuit.ss:5-13` /
+    // `index_access.ss`)。**eager unify**:lRaw/rRaw 仅 genVal 一次,double-ct fold + 紧 loud +
+    // runtime path 共享句柄避 double-eval bug(commit 2af65a7 接口扩 forward reg 已就绪)。
+    // **混合 dispatch** `isCt(lRaw) ? valType(lRaw) : inferType(...)` blt/brt — ct path
+    // valType 修 §POC N3 17 处 ctVars IDENT fallback "int" 错配(i021/d123/spring);runtime
+    // path inferType 等价 OLD 兜底;Air.Inst.Ref 携 type info 终态(全空间 valType 扩展)
+    // 依赖 SS 数据流升级跨 phase scope 留 1.5e+。
     const lRaw = genVal(nGetI1(astId))
     const rRaw = genVal(nGetI2(astId))
-    const lMv = isCt(lRaw) == 1 ? lRaw : (0 - lRaw - 1)
-    const rMv = isCt(rRaw) == 1 ? rRaw : (0 - rRaw - 1)
     const blt = isCt(lRaw) == 1 ? valType(lRaw) : inferType(nGetI1(astId))
     const brt = isCt(rRaw) == 1 ? valType(rRaw) : inferType(nGetI2(astId))
+    if (isCt(lRaw) == 1 && isCt(rRaw) == 1) {
+        const lp = valOf(lRaw)
+        const rp = valOf(rRaw)
+        if (op == "Add" && (blt == "string" || brt == "string")) {
+            return ctVal(interpNewString(`${interpToStr(lp)}${interpToStr(rp)}`))
+        }
+        if (blt == "string" && brt == "string") { return genValStringCompare(op, astId, lRaw, rRaw) }
+        return ctVal(interpNumericBinop(op, lp, rp, blt, brt))
+    }
+    if (comptimeMustBeKnown == 1) {
+        return comptimeError(`binary '${op}' operand is not compile-time known`, astId)
+    }
     if (blt == "string" && brt == "string" && (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge")) {
         const sc = genValStringCompare(op, astId, lRaw, rRaw)
         return isCt(sc) == 1 ? sc : (0 - sc - 1)
     }
     if ((blt != "int" && blt != "bool") || (brt != "int" && brt != "bool")) {
         return mvRuntime(constVal(genBinary(astId, reg(lRaw), reg(rRaw))))
-    }
-    // int/bool runtime — eager mv 协议(已 line 上移 eager,本块仅 mvKnownOf/IR emit)
-    if (mvKnownOf(lMv) == 1 && mvKnownOf(rMv) == 1) {
-        return ctVal(interpIntOp(op, interpAsInt(valOf(lMv)), interpAsInt(valOf(rMv))))
     }
     return mvRuntime(constVal(genIntBinary(op, reg(lRaw), reg(rRaw))))
 }

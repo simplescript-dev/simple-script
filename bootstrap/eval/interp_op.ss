@@ -71,6 +71,22 @@ function interpIntOp(op: string, a: int, b: int): int {
     return newTvNull()
 }
 
+// D093/D169 1.5d 主轮第三子步 — ct path 通用 binop 数值 fold (int/double dispatch +
+// parseDouble 转换),与 eval_expr.ss BINARY 通用 ct path / pow_binary.ss Pow ct path
+// 共享 (5 行 × 2 callsite → 1 helper × 2 caller,simplify Finding 1 / H2 unify)。
+// **interpToStr 必非 interpAsStr**:double 值存 tvD1 列,interpAsStr 读 tvS1 必返 "" →
+// parseDouble("") = 0.0 ct fold 必错(OLD eval_expr.ss:124 leaf gate + pow_binary.ss
+// 原同模式 latent bug,仅在 comptime context 未触发);interpToStr 分发 tvD1 for double
+// 修根因。`int → string → parseDouble` 是 SS bootstrap tv 无 native double 存储既有模式。
+function interpNumericBinop(op: string, lp: int, rp: int, lt: string, rt: string): int {
+    if (lt == "double" || rt == "double") {
+        const ld = lt == "double" ? parseDouble(interpToStr(lp)) : parseDouble(`${interpAsInt(lp)}`)
+        const rd = rt == "double" ? parseDouble(interpToStr(rp)) : parseDouble(`${interpAsInt(rp)}`)
+        return interpDoubleOp(op, ld, rd)
+    }
+    return interpIntOp(op, interpAsInt(lp), interpAsInt(rp))
+}
+
 function interpDoubleOp(op: string, a: double, b: double): int {
     if (op == "Add") { return interpNewDouble(a + b) }
     if (op == "Sub") { return interpNewDouble(a - b) }
