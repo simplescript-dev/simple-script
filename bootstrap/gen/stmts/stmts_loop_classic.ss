@@ -117,14 +117,27 @@ function genDoWhile(id: int) {
     const bodyId = nGetI1(id)
     const condId = nGetI2(id)
 
-    if (comptimeDepth > 0) {
+    // D093/D169 1.5d 主轮收口子步起手 — Phase 1 类 A spike(原 5d36c8c §拒绝准则 #1/#3
+    // Blocked,1.5a-d 协议接口就绪后落地首处 statement-level 类 A 消除):
+    //   (a) ct-depth 字面 → `comptimeMustBeKnown == 1` rename(sibling 1.5c
+    //        12 子轮同模式;ct_driver.ss:30-36 enter/exit lockstep + codegen.ss:281 reset 对称)
+    //   (b) OLD silent `|| interpTruthy == 0` 短路拆 loud gate(sibling `ternary.ss:10`
+    //        / `short_circuit.ss:13` / `eval_expr.ss:125` 完全一致;D093 §第一性需求
+    //        "comptime 块内 evalExpr known=false 即 error")
+    // statement 层无 mv 出口,真单 dispatch eager+无 gate 终态留 1.5e+;
+    // line 12 for / line 71 while 同入口边界留**后续 sibling 子轮**迁。
+    if (comptimeMustBeKnown == 1) {
         let ctDoLimit = 10000
         while (ctDoLimit > 0) {
             genBlock(bodyId)
             if (interpCheckLoopExit() == 1) { break }
             interpContinueFlag = 0
             const dwCondTagged = genVal(condId)
-            if (isCt(dwCondTagged) == 0 || interpTruthy(payload(dwCondTagged)) == 0) { break }
+            if (isCt(dwCondTagged) == 0) {
+                comptimeError("do-while condition not compile-time known", id)
+                return
+            }
+            if (interpTruthy(payload(dwCondTagged)) == 0) { break }
             ctDoLimit = ctDoLimit - 1
         }
         interpBreakFlag = 0
