@@ -161,6 +161,10 @@ VCM 通过 ≠ 回合结束。宣告「完成」到实际 stop 之间还有**三
 
 **simplify 采纳/拒绝记账(档位门槛)**:标准改 / 大改的 commit message 必须加一行,格式 `simplify 采纳: <项>; 拒绝: <项>(<≤20 字依据>)`,依据必须点**否决类目**(可读性 / scope 错位 / 反例具体命名),禁 "本轮限 X scope" / "与任务无关" 这种套话;**无 simplify 建议或全采纳 → 不写这行**(不凑"无")。微改 / 纯文档 / 纯配置豁免。目的:补位 `feedback_human_readable_code` 可读性对 reuse/quality/efficiency 的 veto 行权留痕 —— memory 跨 compact 可失、对话缓冲区跨轮丢,git log 是唯一持久可 grep 入口。
 
+### 1.5. SUNSET marker gate:`bin/ss run tools/sunset_linter.ss`
+
+simplify 收敛后、commit 之前必跑 `bin/ss run tools/sunset_linter.ss`(默认扫 `bootstrap/` + `lib/` + `tools/`)。**GATE BLOCKED → 不许 commit**;规则详 §特定领域 §SUNSET marker 治理 gate 与 D170 §决策。微改 / 纯文档 / 纯配置 + 本轮无 SUNSET marker 增删 → 跑一次确认 0 markers / 已有 markers 全 valid 即可,**不豁免**(sibling commit_radius / next_prompt_ultrathink_linter / d_doc_index_linter 同模式 — 单次跑成本可控,免漂移)。
+
 ### 2. 提交:commit
 
 `git status` 有未提交改动 → commit(`/commit` 或手工),消息遵循 conventional commits。commit **必须**落在同一轮对话里,**不许跨轮补**。
@@ -459,6 +463,20 @@ find bootstrap -name "${filepref}*" -type f | awk -F/ '{OFS="/"; $NF=""; print}'
 - F2 孤立 D 文档 soft warn 不阻 commit:纯 Plan/业务 D 文档未必需要在源码注释里引,linter 仅提示人工审视
 
 **自检 trigger**:看到 "D 文档已 stale" / "这个 D 可以删了" / "合并到 MNK" / "批量 deprecate D" 类念头时,停下问"源码注释里该 D § 引用 grep 迁移已落实?跑过 d_doc_index_linter?"。把"想删"念头当 trigger,不是把"已删"当事后清单。对称 memory 治理 gate,两层形成 "ls → 源码注释" 双轨消歧。
+
+### SUNSET marker 治理 gate
+
+**trigger**:任何**新增 / 修改 / 移除** `// SUNSET(D<NNN> §<phase>): <reason>` canonical marker (D170 §决策 A 模板) + 任何 `bootstrap/` / `lib/` / `tools/` 内现有 SUNSET marker 关联 phase 在 D 文档 §下一步 从 `[ ] Planned` → `[x] Done` 的状态切换。
+
+**硬规则**:
+- **新增过渡件必走 canonical 模板**:不允许新增自然语言 "留 X+" / "Phase Y 留" 注释作过渡 mark,必用 `// SUNSET(D<NNN> §<phase>): <one-line WHY>`(D170 §决策 A 强制约束)。漂移识别根因 = 无 grep 一次抓全的统一模板 → SUNSET token 是唯一锚
+- **改完 bootstrap/lib/tools/ 或 docs/3-decisions/D*.md §下一步 状态必须**跑 `bin/ss run tools/sunset_linter.ss`(C1 collection / C2 D 文档实存 / C3 phase 状态 [x] Done BLOCK / C4 reason 非空);**有 GATE BLOCKED → 不许 commit**
+- 规则单一事实源 = **D170 §决策 A+B+C**;本段不复制规则定义,仅承担 trigger + 闸位 + linter 调用入口(SSoT 不分裂,sibling D097 §6 治理 gate 引法相同)
+- 不可清理的过渡件(永久存在合理)→ 标 `// PERMANENT(<reason>):` 替代 SUNSET + 记入对应 D 文档 §出口清单;**不允许**保留 SUNSET 假装是过渡(D170 §拒绝准则 #3)
+- linter 默认 project root = `pwd`,扫 `bootstrap/` + `lib/` + `tools/`;跨目录或单文件可传第 1 参数(sibling next_prompt_ultrathink_linter args() 模式)
+- 双轨触发:**默认模式 C1-C4** = 每次 commit 前必跑(sibling 三 gate 同形);**`--phase X` Phase Exit Gate** = D170 §决策 C step 6 实施留 = phase 整段 [x] Done 时强制独立 commit 跑过渡债清盘(每 marker 显式 resolve `[clean]` / `[upgrade]` / `[permanent]`)
+
+**自检 trigger**:看到 "这个 hack 留下轮再清" / "暂时这么写,等 Phase X 完了再说" / "先 workaround 一下" / "TODO 留给未来" 类念头时,停下问"是过渡件吗?那必带 SUNSET marker — 引哪个 D 文档 §下一步 [ ] Planned 项作清除条件?reason 一句话说清?"。把"想留过渡注释"念头当 trigger,不是把"忘清"当事后审视。**对称 memory 治理 gate / D 文档治理 gate / 反射路径根因 gate**,sibling 第四只机械化闸位 — D170 §决策落地的物理通道。
 
 ---
 
