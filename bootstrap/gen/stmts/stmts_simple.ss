@@ -2,8 +2,7 @@
 
 function genPostfixStmt(id: int) {
     // D089 Phase 3+4: comptime postfix → update ctVars with scope chain lookup
-    // SUNSET(D093 §Phase 2): postfix stmt 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const pfName = nGetS1(id)
         let pfKey = ""
         if (ctScopeStack.length() > 0) {
@@ -40,7 +39,7 @@ function genPostfixStmt(id: int) {
 function genIndexAssign(id: int) {
     // SS-LIM-2: nGetI3(id) > 0 = generic obj-expr form (obj.field[i] = v); else var-name form (x[i] = v)
     const iaObjExprId = nGetI3(id)
-    if (comptimeDepth > 0 && iaObjExprId == 0) {
+    if (comptimeMustBeKnown == 1 && iaObjExprId == 0) {
         const iaVarName = nGetS1(id)
         const iaIdxVal = genVal(nGetI1(id))
         const iaValVal = genVal(nGetI2(id))
