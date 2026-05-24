@@ -74,7 +74,7 @@ function genForIn(id: int) {
     // ctProbe 不依赖 kind 白名单,改按 "genVal 返回 ctVal array" 决定;
     // 字面量短路(INT/STRING/DOUBLE/BOOL/NULL/ARRAY_LIT 由其他入口处理);
     // 非字面量 kind 尝试 genVal,cache 供 runtime path 复用 reg,避免双重 IR。
-    let ctProbe = comptimeDepth > 0 ? 1 : 0
+    let ctProbe = comptimeMustBeKnown == 1 ? 1 : 0
     let ctIterVal = 0
     let ctIterReady = 0
     if (ctProbe == 0) {
