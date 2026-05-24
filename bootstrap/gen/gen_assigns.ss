@@ -258,8 +258,7 @@ function genAssign(id: int) {
     const valId = nGetI1(id)
 
     // D089 Phase 3+4: comptime assign → update ctVars with scope chain lookup
-    // SUNSET(D093 §Phase 3): general assign 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctAssignTagged = genVal(valId)
         if (isCt(ctAssignTagged) == 1) {
             // Find variable in scope chain and update there
