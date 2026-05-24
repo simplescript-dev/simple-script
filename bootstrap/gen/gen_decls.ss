@@ -680,8 +680,7 @@ function genVarDecl(id: int) {
 
 function genReturn(id: int) {
     // D089 Phase 3: comptime return → set flag + value
-    // SUNSET(D093 §Phase 3): return 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctRetValId = nGetI1(id)
         if (ctRetValId > 0) {
             const ctRetTagged = genVal(ctRetValId)
