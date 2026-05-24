@@ -64,7 +64,7 @@ function genVal(id: int): int {
         return constVal(genThisExpr())
     }
     if (kind == "ARROW_FUNC") {
-        if (comptimeDepth > 0) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+        if (comptimeMustBeKnown == 1) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
         return constVal(genArrowFunc(id))
     }
     const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1
