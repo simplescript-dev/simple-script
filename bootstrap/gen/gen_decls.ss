@@ -32,8 +32,7 @@ function emitParamAllocas(paramList: string, useVarAlias: int) {
 }
 
 function genFuncDeclStmt(id: int) {
-    // SUNSET(D093 §Phase 3): func decl 入口双轨 dispatch — Phase 3 统一 evalExpr 后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         if (handleMethodOfFuncDecl(id) == 1) { return }
         ctFuncNodes.set(nGetS1(id), `${id}`)
         return
