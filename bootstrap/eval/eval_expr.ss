@@ -109,6 +109,24 @@ function evalExpr(astId: int): int {
     if (k == "METHOD_CALL") { return evalMethodCall(astId) }
     if (k == "CALL") { return evalCall(astId) }
     if (k == "NEW_EXPR") { return evalNewExpr(astId) }
+    // D093 §Phase 4 续 sub-round 第三例 — COMPTIME_EMIT cross-module side-effect 写 comptimeSS
+    // (interp_core.ss:79 全局可跨 eval 子模块直读/写,sibling THIS/SUPER 21f8342 interpThisVal cross-module access 模板)。
+    // TYPEINFO_EXPR 直构造 ct value(interpBuildTypeInfo 经 interp_obj.ss:215 接受 string 参数,
+    // sibling ARROW_FUNC 33c65e2 interpNewVal 单态直构同模板)。
+    if (k == "COMPTIME_EMIT") {
+        const ctEmitMv = evalExpr(nGetI1(astId))
+        if (mvKnownOf(ctEmitMv) == 1) {
+            comptimeSS = `${comptimeSS}${interpAsStr(valOf(ctEmitMv))}`
+        }
+        return ctVal(interpNewNull())
+    }
+    if (k == "TYPEINFO_EXPR") { return ctVal(interpBuildTypeInfo(nGetS1(astId))) }
+    // unsupported 兜底 — BINARY 主 case 之前 kind 白名单守门 prereq(防 fall-through 到 BINARY ct path
+    // 致 corrupt;sibling THIS/SUPER 21f8342 comptimeMustBeKnown==1 loud-error path 模板)。
+    if (k != "BINARY") {
+        if (comptimeMustBeKnown == 1) { return comptimeError(`unsupported expression: ${k}`, astId) }
+        return ctVal(interpNewNull())
+    }
     const op = nGetS1(astId)
     if (op == "And" || op == "Or") { return evalShortCircuit(op, astId) }
     if (op == "NullCoalesce") { return evalNullCoalesce(astId) }

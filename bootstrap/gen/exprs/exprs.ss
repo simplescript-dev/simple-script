@@ -76,20 +76,7 @@ function genVal(id: int): int {
         return constVal(genArrowFunc(id))
     }
     if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
-    // SUNSET(D093 §Phase 4): genVal 主 dispatch 入口 ct-depth — Phase 4 统一 evalExpr 主 dispatch 后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
-        if (kind == "COMPTIME_EMIT") {
-            const ctEmitVal = genVal(nGetI1(id))
-            if (isCt(ctEmitVal) == 1) {
-                comptimeSS = `${comptimeSS}${interpAsStr(payload(ctEmitVal))}`
-            }
-            return ctVal(interpNewNull())
-        }
-        if (kind == "TYPEINFO_EXPR") { return ctVal(interpBuildTypeInfo(nGetS1(id))) }
-        return comptimeError(`unsupported expression: ${kind}`, id)
-    }
-    println(`[genVal] unknown kind: ${kind}`)
-    return constVal("0")
+    const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1
 }
 
 // D169 §1.5d prereq:lPreVal/rPreVal 可选预求值 Value 句柄(默认 -1 = "未传"哨兵)。
