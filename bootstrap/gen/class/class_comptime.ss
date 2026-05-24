@@ -4,7 +4,7 @@
 // → interpVars), mirroring genVal's IDENT path but without IR side effects.
 // Returns tagged ctVal if bound to a comptime value, -1 otherwise.
 function lookupComptimeBinding(name: string): int {
-    if (comptimeDepth > 0 && ctScopeStack.length() > 0) {
+    if (comptimeMustBeKnown == 1 && ctScopeStack.length() > 0) {
         let si = ctScopeStack.length() - 1
         while (si >= 0) {
             const k = `${ctScopeStack[si]}:${name}`
