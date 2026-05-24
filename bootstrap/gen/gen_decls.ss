@@ -450,8 +450,7 @@ function genDestructureArray(id: int) {
 function genDestructureObject(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
-    // SUNSET(D093 §Phase 3): destructure object 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctObjV = genVal(initId)
         if (isCt(ctObjV) != 1) { return }
         const ctObjPayload = payload(ctObjV)
