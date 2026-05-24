@@ -524,8 +524,7 @@ function genVarDecl(id: int) {
     }
 
     // Comptime: evaluate and store in ctVars, no IR emission
-    // SUNSET(D093 §Phase 3): var decl 入口双轨 dispatch — Phase 3 统一 evalExpr 后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctInit = genVal(initId)
         if (isCt(ctInit) == 1) {
             ctVars.set(`${currentFunc}:${name}`, `${ctInit}`)
