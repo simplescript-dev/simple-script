@@ -356,8 +356,7 @@ function emitGlobalInits() {
 function genDestructureArray(id: int) {
     const names = nGetS1(id)
     const initId = nGetI1(id)
-    // SUNSET(D093 §Phase 3): destructure array 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctArrV = genVal(initId)
         if (isCt(ctArrV) != 1) { return }
         const arrPayload = payload(ctArrV)
