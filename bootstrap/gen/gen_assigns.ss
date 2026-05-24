@@ -90,8 +90,7 @@ function genMemberAssign(id: int) {
     const valExpr = nGetI2(id)
 
     // D089 Phase 4: comptime member assign
-    // SUNSET(D093 §Phase 3): member assign 入口双轨 dispatch — Phase 3 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ctObj = genVal(objExpr)
         const ctNewVal = genVal(valExpr)
         if (isCt(ctObj) == 1 && interpType(payload(ctObj)) == "object") {
