@@ -59,14 +59,6 @@ function comptimeError(msg: string, nodeId: int): int {
 function genVal(id: int): int {
     if (id <= 0) { return constVal("0") }
     const kind = nGetKind(id)
-    if (kind == "INT_LIT") { return ctVal(interpNewInt(parseInt(nGetS1(id)))) }
-    if (kind == "STRING_LIT") { return ctVal(interpNewString(nGetS1(id))) }
-    if (kind == "TRUE_LIT") { return ctVal(interpNewBool(1)) }
-    if (kind == "FALSE_LIT") { return ctVal(interpNewBool(0)) }
-    if (kind == "NULL_LIT") { return ctVal(interpNewNull()) }
-    if (kind == "DOUBLE_LIT") { return ctVal(interpNewDouble(parseDouble(nGetS1(id)))) }
-    if (kind == "BINARY" || kind == "UNARY" || kind == "TERNARY" || kind == "COMPTIME_EXPR" || kind == "INDEX_ACCESS" || kind == "TEMPLATE_LIT" || kind == "ARRAY_LIT" || kind == "IDENT" || kind == "MEMBER_ACCESS" || kind == "POSTFIX_INC" || kind == "METHOD_CALL" || kind == "CALL" || kind == "NEW_EXPR") { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
-    if (kind == "GROUPING") { return genVal(nGetI1(id)) }
     if (kind == "THIS" || kind == "SUPER") {
         if (comptimeDepth > 0) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
         return constVal(genThisExpr())
@@ -75,7 +67,6 @@ function genVal(id: int): int {
         if (comptimeDepth > 0) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
         return constVal(genArrowFunc(id))
     }
-    if (kind == "NAMED_ARG") { return genVal(nGetI1(id)) }
     const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1
 }
 
