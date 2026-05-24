@@ -23,8 +23,7 @@ function emitCondToI1(condId: int, condVal: string): string {
 
 function genBreak() {
     // D089 Phase 3: comptime break → set flag
-    // SUNSET(D093 §Phase 2): break 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) { interpBreakFlag = 1; return }
+    if (comptimeMustBeKnown == 1) { interpBreakFlag = 1; return }
     if (breakLabel != "") {
         emitReleaseBlockVarsSince(loopBlockStackSaved)
         emitIR(`  br label %${breakLabel}`)
@@ -34,8 +33,7 @@ function genBreak() {
 
 function genContinueStmt() {
     // D089 Phase 3: comptime continue → set flag
-    // SUNSET(D093 §Phase 2): continue 入口双轨 dispatch — Phase 2 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) { interpContinueFlag = 1; return }
+    if (comptimeMustBeKnown == 1) { interpContinueFlag = 1; return }
     if (continueLabel != "") {
         emitReleaseBlockVarsSince(loopBlockStackSaved)
         emitIR(`  br label %${continueLabel}`)
