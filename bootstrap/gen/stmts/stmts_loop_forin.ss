@@ -130,8 +130,7 @@ function genForIn(id: int) {
             ctVars.delete(`${currentFunc}:${itemName}`)
             return
         }
-        // SUNSET(D093 §Phase 2): for-in ct-fold 后置 ct-depth 字面 — Phase 2 统一后消除
-        if (comptimeDepth > 0) { return }
+        if (comptimeMustBeKnown == 1) { return }
     }
 
     // D088: detect obj.fields() → compile-time unroll(runtime obj,Execute 5 迁)
