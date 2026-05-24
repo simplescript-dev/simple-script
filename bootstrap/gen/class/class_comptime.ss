@@ -17,8 +17,7 @@ function lookupComptimeBinding(name: string): int {
         const v = parseInt(ctVars.getString(fk))
         if (isCt(v) == 1) { return v }
     }
-    // SUNSET(D093 §Phase 5): class ctLookup 入口双轨 dispatch — Phase 5 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         const ik = interpFindScopeKey(name)
         if (ik != "") { return ctVal(parseInt(interpVars.getString(ik))) }
     }
