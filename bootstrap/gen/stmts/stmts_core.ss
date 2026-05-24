@@ -82,7 +82,7 @@ function genBlock(blockId: int) {
         if (stmtId > 0) {
             genStmt(stmtId)
             if (terminated == 1) { return }
-            if (comptimeDepth > 0 && interpShouldStop() == 1) { return }
+            if (comptimeMustBeKnown == 1 && interpShouldStop() == 1) { return }
             pirEmitScheduled(stmtId)
         }
     }
