@@ -60,7 +60,7 @@ function genVal(id: int): int {
     if (id <= 0) { return constVal("0") }
     const kind = nGetKind(id)
     if (kind == "THIS" || kind == "SUPER") {
-        if (comptimeDepth > 0) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
+        if (comptimeMustBeKnown == 1) { const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1 }
         return constVal(genThisExpr())
     }
     if (kind == "ARROW_FUNC") {
