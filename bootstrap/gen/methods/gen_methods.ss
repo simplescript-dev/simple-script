@@ -255,8 +255,7 @@ let pendingSuperParent = ""
 
 function resolveSuperParent(objNodeId: int, callNodeId: int): string {
     if (nGetKind(objNodeId) != "SUPER") { return "" }
-    // SUNSET(D093 §Phase 4): super resolve 入口双轨 dispatch — Phase 4 统一后消除 ct-depth 字面
-    if (comptimeDepth > 0) {
+    if (comptimeMustBeKnown == 1) {
         if (interpCurrentMethodClass == "" || interpClassParents.has(interpCurrentMethodClass) != 1) {
             println(`error: [comptime] 'super' invalid in '${interpCurrentMethodClass}' at line ${nGetLine(callNodeId)}:${nGetCol(callNodeId)}`)
             exit(1)
