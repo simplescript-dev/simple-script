@@ -88,8 +88,7 @@ function evalExpr(astId: int): int {
     }
     if (k == "TERNARY") { return evalTernary(astId) }
     if (k == "COMPTIME_EXPR") {
-        // SUNSET(D093 §Phase 8): comptime 块降为 flag 后 comptimeDepth 可删,本处类 C 边界检查 (nested comptime) 切走 comptimeMustBeKnown
-        if (comptimeDepth > 0) { return comptimeError("nested comptime expression", astId) }
+        if (comptimeMustBeKnown == 1) { return comptimeError("nested comptime expression", astId) }
         const ceK = `${astId}`
         const ceTy = inferType(astId)
         // I014 §路径 A — array/object/map 返回不 materialize 成 runtime literal(无法压 i32),
