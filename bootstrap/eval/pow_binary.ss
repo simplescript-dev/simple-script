@@ -14,7 +14,6 @@ function evalPow(astId: int): int {
     const lRaw = genVal(nGetI1(astId))
     const rRaw = genVal(nGetI2(astId))
     if (isCt(lRaw) == 1 && isCt(rRaw) == 1) {
-        // SUNSET(D093 §Phase 1.5e+): Air.Inst.Ref 携 type info 终态后 valType dispatch 收口为单一形态(同 eval_expr.ss:116 sibling 锚)
         const rt = valType(rRaw)
         if (rt != "double") {
             return ctVal(interpNumericBinop("Pow", valOf(lRaw), valOf(rRaw), valType(lRaw), rt))
