@@ -160,7 +160,7 @@ function buildAnnotationMetaArrayFromSingle(annNodeId: int, annPoolPrefix: strin
 
 // STRING/INT/DOUBLE/BOOL → typed tv;MEMBER_ACCESS enum → typed(backed)取 backing value,
 // untyped 取 symbol name —— 两种形态下用户期望都是 "GET"。enum 注册分属 interpEnumValues /
-// enumValues 两条(comptimeDepth=0/>0),见 member_access.ss:10-16。未实装 kind 抛
+// enumValues 两条(comptimeMustBeKnown=0/1),见 member_access.ss:10-16。未实装 kind 抛
 // comptimeError 而非静默返 null,避免下游 `.length()` NPE 归因成本。
 function evalAnnotationArg(nodeId: int): int {
     if (nodeId <= 0) { return interpNewNull() }

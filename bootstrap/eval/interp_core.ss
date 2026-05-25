@@ -72,7 +72,7 @@ function interpCheckLoopExit(): int {
 }
 
 // ── Comptime buffer (D092 Phase 2 sub-d) ────────────────────
-// gen_exprs.ss 在 comptimeDepth > 0 时往 comptimeIR/SS 积累代码,
+// gen_exprs.ss 在 comptimeMustBeKnown == 1 时往 comptimeIR/SS 积累代码,
 // @comptime 块结束由 interpGet*Comptime* 读出后清空。
 
 let comptimeIR = ""

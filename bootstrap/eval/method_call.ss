@@ -73,7 +73,7 @@ function evalMethodCall(astId: int): int {
     }
     // ctVal array/map 接收者无法 materialize 成寄存器(interp_value.ss:41 返 "0"),
     // 必须走 ctMethodCallDispatch 否则运行时 genMethodCall 发 `ss_mapKeysArray(ptr 0)`。
-    // @methodOf handler 体常触发(comptimeDepth==0 + for-in 绑 ctVal)。
+    // @methodOf handler 体常触发(comptimeMustBeKnown == 0 + for-in 绑 ctVal)。
     if (isCt(mcObj) == 1) {
         const mcObjKind = interpType(payload(mcObj))
         if (mcObjKind == "array" || mcObjKind == "map") {
