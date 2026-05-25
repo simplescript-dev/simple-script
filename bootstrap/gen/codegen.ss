@@ -4,7 +4,7 @@
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "../parse/parser"
 import { interpClearComptimeIR, interpClearComptimeSS, ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf } from "../eval/interp_core"
-import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds, ctVars, ctFuncNodes, ctScopeStack, ctCallCounter, comptimeDepth, comptimeMustBeKnown } from "../eval/ct_driver"
+import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds, ctVars, ctFuncNodes, ctScopeStack, ctCallCounter, comptimeMustBeKnown } from "../eval/ct_driver"
 import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { internPoolGetOrInsert } from "../lexer/intern_pool"
 import { irLabel, irAlloca, irLoad, irStore, irGEP, irICmp, irBr, irBrCond, irRet, irRetVoid, irAdd, irSub, irMul, irCall, irCallVoid, irSext, irZext, irSelect, irSDiv, irOr, irTrunc, irPtrToInt, irIntToPtr, irLoadArrayData } from "./ir_builder"
@@ -14,7 +14,7 @@ import { emitPendingDeserializers, deserializerTargets } from "./gen_deserialize
 
 // ── State ─────────────────────────────────────────────────────
 // IR emit / reg / label / strConsts state + ops moved to gen_emit.ss
-// Comptime SEMA scope state (ctVars/ctInvalidated/ctFuncNodes/ctScopeStack/ctCallCounter/comptimeDepth)
+// Comptime SEMA scope state (ctVars/ctInvalidated/ctFuncNodes/ctScopeStack/ctCallCounter/comptimeMustBeKnown)
 //   + ops (ctLookupTypeVal/resolveCtTypeAlias/ctPopScope) moved to eval/ct_driver.ss
 
 let varTypes = ""
@@ -278,7 +278,6 @@ function resetCodegen() {
     ctFuncNodes = new Map()
     ctScopeStack = []
     ctCallCounter = 0
-    comptimeDepth = 0
     comptimeMustBeKnown = 0
     // I021-requestbody — 防跨编译单元污染:每次 generateToFile 重置 deserializerTargets,
     // 仅本编译单元 invoke sentinel kind == "RequestBody" 注册的 class 进入 emitPendingDeserializers

@@ -16,25 +16,18 @@ let ctInvalidated = new Map()
 let ctFuncNodes = new Map()
 let ctScopeStack: Array<string> = []
 let ctCallCounter = 0
-let comptimeDepth = 0
 
-// comptimeMustBeKnown flag(D098 §决策 1 行 92 实施细化 / D169 §B Phase 1.5a 落地)
-// 0/1 渐进替代 `comptimeDepth > 0` 判定;短期与 comptimeDepth 双 flag 并存,
-// 终态(D093 §差距 #5 完成)comptimeDepth 仅作嵌套统计,known 判定全走本 flag。
-// callsite 进出 comptime 块必经 enterComptimeBlock / exitComptimeBlock 对称封装。
-// **Phase 1.5a 立法 phase**:本 flag 仅 enter/exit 写端,read callsite 接入待
-// 1.5b/c/d 渐进迁(eval_expr.ss/eval/* 30+ 处 `comptimeDepth > 0` 判定逐步切)。
+// comptimeMustBeKnown flag(D098 §决策 1 行 92 实施细化 / D169 §B Phase 1.5a 立法 → D093 §差距 #5 终态)
+// callsite 进出 comptime 块必经 enterComptimeBlock / exitComptimeBlock 对称封装,
+// 单 flag 形态 — known 判定全走本 flag,nested defense 由 eval_expr.ss:92 类 C boundary check 保证。
 let comptimeMustBeKnown = 0
 
-// SUNSET(D093 §Phase 8): comptime 块降为 flag 后 comptimeDepth dual-write 可消,enter/exit 单写 comptimeMustBeKnown (D093 §差距 #5 终态)
 function enterComptimeBlock() {
     comptimeMustBeKnown = 1
-    comptimeDepth = comptimeDepth + 1
 }
 
 function exitComptimeBlock() {
-    comptimeDepth = comptimeDepth - 1
-    if (comptimeDepth == 0) { comptimeMustBeKnown = 0 }
+    comptimeMustBeKnown = 0
 }
 
 // Flush @comptimeEmit SS source: tokenize → parse → multi-pass codegen.
@@ -151,7 +144,7 @@ function preScanCodegenCtClassesInStmts(stmtList: string) {
     }
 }
 
-// 消费 comptime 块里声明的 class:registration + IR emit 在 comptimeDepth=0 下跑,
+// 消费 comptime 块里声明的 class:registration + IR emit 在 comptime block 外跑,
 // genClassDecl 走 runtime 分支。genStmt 若产生新 pending(嵌套 comptime class),继续 drain。
 function flushPendingCtClasses() {
     while (pendingCtClassIds.length() > 0) {
