@@ -141,7 +141,7 @@ function evalExpr(astId: int): int {
     // 依赖 SS 数据流升级跨 phase scope 留 1.5e+。
     const lRaw = genVal(nGetI1(astId))
     const rRaw = genVal(nGetI2(astId))
-    // SUNSET(D093 §Phase 1.5e+): Air.Inst.Ref 携 type info 终态后 valType/inferType 混合 dispatch 收口为单一 valType (全空间扩展) — 跨 phase scope SS 数据流升级
+    // PERMANENT(D093 scope 内不可达 — Air.Inst.Ref 携 type info 终态 + InternPool / Air IR 数据流升级依赖 D093 外 phase / D098 §下一步 无 active §Phase D/§InternPool/§Air IR anchor; D170 §决策 C exit 动作 §2 [permanent] 兜底 + D170 §拒绝准则 #3 SUNSET→PERMANENT 替代 + 记入 D093 §出口清单 sibling 第三十四例):
     const blt = isCt(lRaw) == 1 ? valType(lRaw) : inferType(nGetI1(astId))
     const brt = isCt(rRaw) == 1 ? valType(rRaw) : inferType(nGetI2(astId))
     if (isCt(lRaw) == 1 && isCt(rRaw) == 1) {
