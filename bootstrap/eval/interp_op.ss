@@ -107,7 +107,7 @@ function interpDoubleOp(op: string, a: double, b: double): int {
 }
 
 // 5 标量(int/bool/string/null/type)依赖 InternPool dedup 不变量,lid==rid 即 Value.eql
-// SUNSET(D098 §Phase C): double 入 InternPool dedup + NaN/精度边界处理 后此 Map 深比较可消 — (可选 Phase C,evalExpr 全合并后评估)
+// PERMANENT(D098 scope 内不可达 — double 入 InternPool dedup + NaN/精度边界处理 后此 Map 深比较可消 依赖 D098 §决策 2 §Phase C "(可选,evalExpr 全合并后评估)" 远期未启动 / D098 §下一步 L190-198 无 active §Phase C anchor 跨 D 文档大改超本轮 scope; D170 §决策 C exit 动作 §2 [permanent] 兜底 + D170 §拒绝准则 #3 SUNSET→PERMANENT 替代 + 记入 D098 §出口清单 sibling 第三十五例):
 // double 未入 InternPool,保 Map 深比较
 function interpValEquals(lid: int, rid: int): int {
     const lk = tvKindOf(lid)
