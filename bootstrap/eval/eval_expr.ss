@@ -59,7 +59,7 @@ function evalExpr(astId: int): int {
             return mvRuntime(constVal(genUnary(astId)))
         }
         const subMv = evalExpr(childId)
-        if (mvKnownOf(subMv) == 1) {
+        if (mvKnown(subMv) == 1) {
             // known int/bool:subMv ∈ positive ctVal 空间(mv >= 0),valOf 取 payload
             const subP = valOf(subMv)
             if (uOp == "Neg") { return ctVal(interpNewInt(0 - interpAsInt(subP))) }
@@ -67,11 +67,11 @@ function evalExpr(astId: int): int {
             if (uOp == "BitNot") { return ctVal(interpNewInt(~interpAsInt(subP))) }
             return ctVal(interpNewNull())
         }
-        // runtime int/bool:mvKnownOf == 0
+        // runtime int/bool:mvKnown == 0
         if (comptimeMustBeKnown == 1) {
             return comptimeError(`unary '${uOp}' operand not compile-time known`, astId)
         }
-        const uValStr = regTable[mvValOf(subMv) - 1]
+        const uValStr = regTable[mvVal(subMv) - 1]
         const uR = nextReg()
         if (uOp == "Neg") {
             emitIR(`  ${uR} = sub i32 0, ${uValStr}`)
@@ -114,7 +114,7 @@ function evalExpr(astId: int): int {
     // sibling ARROW_FUNC 33c65e2 interpNewVal 单态直构同模板)。
     if (k == "COMPTIME_EMIT") {
         const ctEmitMv = evalExpr(nGetI1(astId))
-        if (mvKnownOf(ctEmitMv) == 1) {
+        if (mvKnown(ctEmitMv) == 1) {
             comptimeSS = `${comptimeSS}${interpAsStr(valOf(ctEmitMv))}`
         }
         return ctVal(interpNewNull())

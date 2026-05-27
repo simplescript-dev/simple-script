@@ -201,15 +201,13 @@ function interpNewDouble(d: double): int {
 //   mv >= 0   → known=true,  val = mv             (Value 句柄,通常已是 ctVal tagged int)
 //   mv <= -2  → known=false, regId = -mv - 1      (regTable 1-based)
 //   mv == -1  → error 哨兵,禁止 reg()
-//
-// 构造器命名错开访问器避 SS 函数重载 int 同名 dispatch 失效(D098 §新张力 6)。
 
 function mvRuntime(regId: int): int { return 0 - regId - 1 }   // regId 1-based → mv <= -2
 function mvError(): int { return 0 - 1 }                        // -1 哨兵
 
-function mvKnownOf(mv: int): int { return mv >= 0 ? 1 : 0 }
+function mvKnown(mv: int): int { return mv >= 0 ? 1 : 0 }
 
-function mvValOf(mv: int): int {
+function mvVal(mv: int): int {
     if (mv >= 0) { return mv }              // known=true:Value 句柄(payload 等价 mv 本身,bit 30 含 ct tag)
     if (mv == 0 - 1) { return 0 - 1 }       // error:返回 -1 哨兵
     return 0 - mv - 1                        // runtime:decode regId
