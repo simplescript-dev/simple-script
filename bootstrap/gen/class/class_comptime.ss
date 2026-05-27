@@ -29,7 +29,11 @@ function lookupComptimeBinding(name: string): int {
 function rewriteIdentToLit(nodeId: int, tagged: int): int {
     if (isCt(tagged) == 0) { return 0 }
     const pl = payload(tagged)
-    const tk = tvKindOf(pl)
+    // SUNSET(D093 §差距 #3): sibling 44 候选 C 子细化 C2 spike 双重保护 no-op 验证 getVarType 可达性,sibling 45+ 去保护改单层 dispatch (vType ∈ 4 scalar ? vType : tkOrig)
+    const identName = nGetS1(nodeId)
+    const vType = getVarType(identName)
+    const tkOrig = tvKindOf(pl)
+    const tk = ((vType == "string" || vType == "int" || vType == "double" || vType == "bool") && vType == tkOrig) ? vType : tkOrig
     if (tk == "string") {
         nKind.set(nodeId + "", "STRING_LIT")
         nSetS1(nodeId, tvStringOf(pl))
