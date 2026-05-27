@@ -156,6 +156,46 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 
 **核心结论**:Phase B 3 子决策全 **retro-active 落档为 [x] Done** —— 子 1 Map hash 直 SS 原生 / 子 2 STR key 5 标量拼接无预 hash / 子 3 `interp*` 保运算库立场 `valOf/valType` 接口边界。Phase B 实际已 Execute,本段是状态收口非新决策。
 
+### §Phase C 启动决策详化 — double 入 InternPool dedup(2026-05-27 sibling 58 Plan 详化首手)
+
+**启动动机**:`bootstrap/eval/interp_op.ss:110-111` PERMANENT marker "double 未入 InternPool, 保 Map 深比较" 长期残留, 上述 §决策 2 §Phase C 原文(L131-134)仅 4 行 "可选,evalExpr 全合并后评估" 占位 — 无具体候选 / 无自决策 / 无 spike 预期 → §下一步 无 active §Phase C anchor 可做。本段把 §Phase C 从"可选远期占位"上升为"已启动子方向: double 标量先于 Array/Map", 给候选评估 + 自决策 + 下下轮 Execute spike 预期, §下一步 anchor 进入 active。
+
+**业界对标**:Zig `src/InternPool.zig` `Key.float_*`(`float_16`/`float_32`/`float_64`/`float_80`/`float_128`/`float_comptime_float`)统一通过 `@bitCast` 转无符号整数 → canonical 序列化 → InternPool dedup。NaN bit-pattern **保留**(不同 NaN payload 独立 id, 不强行 canonical 化, 与运行时语义一致); -0.0 与 0.0 通过 bit 模式自然区分(IEEE 754 等价但 bit 不等)。本方案沿用 Zig "先 scalar 后 aggregate" 演化顺序: double 标量是 Phase C 最简起手, Array/Map 留后续 sub-phase。
+
+**RED 实测前提**(sibling 58 收集, 2026-05-27):
+
+- (a) `interpNewDouble` callsites = 7 处: `eval_expr.ss:36` DOUBLE_LIT comptime + `interp_obj.ss:170` DOUBLE_LIT 对象字面 + `gen_decls.ss:237/248` const var(含取负)+ `exprs_ct_call.ss:20/21` `parseDouble` builtin + `interp_op.ss:91/92/93/94/104` 算术 Add/Sub/Mul/Div/Pow 5 处
+- (b) `interpValEquals` 真实外部 callsite **仅 1 处** `exprs_ct_builtin.ss:139`(array.indexOf comptime fold); `interp_op.ss:115` `lk == "double"` Map 深比较分支唯一定位
+- (c) probe `/tmp/double_eql_probe3.ss`(`comptime { const arr = [1.5, 2.5, 3.5]; const i = arr.indexOf(2.5); println(`${i}`) }`)build OK + 运行输出 `1` ✓ → deep-compare 路径**确实被 comptime fold 触发**, 但**非 hot path**(仅 array.indexOf 一处入口走该分支)
+- (d) `interpNewDouble(d: double): int` 在 `bootstrap/eval/interp_value.ss:189-193`, 当前实现 3 行(`allocTv("double") + tvD1.set(id+"", `${d}`) + return id`), **无现成 `newTvDouble(d)` 助手**(5 标量改造前提: 先提取 `newTvDouble`, 再包 `internPoolGetOrInsert("double|<key>", newTvDouble(d))`, 同 `interpNewInt/String/Bool/Null/Type` 形态)
+
+**候选方案评估**(按根因解决度 + 业界对标排, **禁按工程量排序**):
+
+| 候选 | 方案 | (i) 根因解决度 | (ii) 底层依赖链 | (iii) N 年返工度 | (iv) 业界对标 | (v) 工程量(仅参考) |
+|---|---|---|---|---|---|---|
+| **A. bit-pattern key** | `interpNewDouble(d)` key 写 ``double\|<bits-hex>``(IEEE 754 binary repr 64-bit 转 16 hex char), NaN 走 bit-pattern 自然区分(不 canonical 化, 与 Zig 一致), -0.0/0.0 通过 bit 差异自然区分 | **高** — 与 Zig `InternPool.Key.float_*` 完全对齐, IEEE 754 语义保真 | **依赖 SS double→bits 原语**(当前 bootstrap 无 `doubleBits` builtin); 需先添加 LLVM 层 `ss_doubleBits(double): ptr`(走 `bitcast double → i64` + hex format) | **极低** — 业界标准做法, 落地后不会被更基础能力覆盖 | Zig `@bitCast(u64, f)` + InternPool key | 中(builtin 1 处 + `interpNewDouble` 改 3 行 + checker/codegen 注册 ~5 行) |
+| **B. NaN 不入 pool** | `if (isNaN(d)) return newTvDouble(d)`(NaN 走老路径不 dedup), non-NaN 走 InternPool | 中 — non-NaN 正确, 但违反 D098 §决策 2 "相同 (tag, payload) 同 tvId"不变量(NaN 例外要文字升级) | 依赖 SS `isNaN(d): int` builtin(当前 bootstrap 无); non-NaN key 仍要选 toString 或 bits(若选 toString 仍有 -0.0/0.0 false positive) | 中 — 若 Phase C 后续 Array<double> dedup 需 NaN 处理仍要回头补 bit-pattern | Zig 不取此路径(bit-pattern 统一处理 NaN) | 小(NaN 检查 + key 仍需 builtin 或 toString) |
+| **C. toString key** | `interpNewDouble(d)` key 写 ``double\|${d}``(`${d}` 当前 SS double→string 实现) | **低** — -0.0 vs 0.0 `${d}` 输出形态依实现可能相同 → **false positive**(IEEE 754 不等但 dedup 同 id)→ codegen 正确性破坏; 0.1+0.2 vs 0.3 toString 可能不同 → false negative(dedup 失效, 可接受) | 无依赖 — 现成 SS 能力 | **高** — false positive 必须修, 几乎一定回头改 bit-pattern | Zig 不取此路径(精度风险) | 极小(`interpNewDouble` 改 1 行) |
+| **D. 跳 double 改 Array/Map** | 不做 double InternPool, Phase C 起首改做 Array/Map(结构化 key 更复杂) | 低 — `interp_op.ss:110` PERMANENT marker 不动 | 依赖结构化 key 设计 + 递归 child tvId 不变量, 比 double 复杂数量级 | 中 — double 仍要补, 只是延后 | Zig 演化"先 scalar 后 aggregate", 跳 double 与 Zig 顺序相反 | 大(Array/Map 各独立 key schema + 递归 hash) |
+
+**自决策起首推荐**(§字段 12 (e) 自决策 gate 单一 X — 禁列菜单):
+
+**选 候选 A — bit-pattern key**(根因解决度: 最深可达层)。理由: (1) Zig 对齐(业界标准, N 年返工度极低); (2) IEEE 754 语义保真(NaN/0.0/-0.0/Inf 全正确); (3) 候选 C false positive 必修(IEEE 754 正确性硬要求), 候选 B 违反不变量 + key 仍要选, 候选 D 与 Zig 演化顺序相反 — 三者均次优。
+
+**前置 spike**(下下轮 Execute 第一步, < 20 LOC 最小可行验证): 在 `bootstrap/gen/rt/gen_rt_*.ss` 选一处加 `ss_doubleBits(double): ptr` LLVM IR(`%bits = bitcast double %d to i64` + `call sprintf(%buf, "%016llx", i64 %bits)` + 返回 ptr to %buf), 同步 `bootstrap/checker/check_types.ss` 注册 `doubleBits` 返回类型 `string` + `bootstrap/gen/codegen.ss` `initFuncRetTypes`; 写 1 行 SS test `let bits = doubleBits(0.0); let nbits = doubleBits(-0.0); println(`${bits != nbits}`)` 验证 -0.0 vs 0.0 bit 区分。spike 通过 → 整方案放心做; spike 崩 → 回方案层(候选 B 退路)。
+
+**下下轮 Execute spike 预期**:
+- 总 LOC ~30(gen_rt_*.ss builtin LLVM IR ~15 + `interp_value.ss` `newTvDouble` 提取 + `interpNewDouble` 改 ~10 + checker/codegen 注册 ~5)
+- 影响 callsite: `interpNewDouble` 7 处全自动通过单点改造受益(**无 callsite 改动需**, 与 5 标量同形)
+- baseline 风险: bootstrap 三阶段固定点必复跑 + `bin/ss test tests/` 全测必跑(spike 触碰核心代码路径 `interp_value.ss`, **不豁免 VCM §验 1**)
+- reflection / sunset / d_doc_index linter: 0 影响(改动非反射路径, 不动 SUNSET marker, 不改 D 引用)
+- 假设破裂入口(§字段 12 (b)): 若 LLVM `bitcast double → i64` + `sprintf` hex format 在 SS gen_rt 路径遇编译器限制不可达, 退路 = 候选 B(NaN 不入 pool, key 用 `${d}` + 文字升级 D098 §决策 2 不变量例外段)
+
+**§Phase C double 落地后预期收益**:
+- `bootstrap/eval/interp_op.ss:110-111` PERMANENT marker 可降级为 [clean](D170 §拒绝准则 #3 反向: 从 PERMANENT 升回 [clean] 形态)
+- `bootstrap/eval/interp_op.ss:115` Map 深比较分支可删, `interpValEquals` 全函数收敛为 `lid == rid ? 1 : 0`(O(1) eql 完整兑现, 与 5 标量对齐)
+- Phase C 后续 Array/Map dedup 沿用本段决策模式(候选评估 + 自决策 + spike) — 业界对标 Zig "先 scalar 后 aggregate" 演化顺序保持
+
 ### §决策 3 — Type-as-Value 语义
 
 **目标**:Type 句柄和 int/string/class instance 共享 MaybeVal.val 编码空间(Zig `Value.Tag.ty` 语义)。
@@ -215,6 +255,7 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 - **[x] Done(2026-04-20)** Phase A 末尾 `comptimeTypeAliases` → `ctVars` 合并 Plan(§决策 3 Phase A 收尾项)—— D112 §步骤 1 Execute 完成,独立通道消除
 - **[x] Done at e3417e2(D117 E2 InternPool dedup 起手)+ 6e264fd(D117 E5 Meta 入口 + interpCt*Array 消除)+ e3d8262(D113 SEMA 拆分 5 标量入 interp_value.ss)+ c1c8d65(§Phase B 启动前决策详化段 retro-active 落档收口)** Phase B 启动前 3 子决策(Map hash 策略 / `STR` key 预 hash / `interp*` 访问器改造范围)— 实际已物理 Execute 落地,详 §决策 2 §Phase B 启动前决策详化段。本 anchor 由 retro-active 落档收口,sibling 第三十六例应用(D170 §决策 C exit 动作 §2 D 文档治理 anchor 收口形态首手 — sibling 范式跨形态扩展 SUNSET marker discipline → D 文档治理 anchor 收口 第一次)
 - **[x] Done at D117 Execute 5(2026-04-21)** — **Meta 对象 InternPool 承载**(§决策 2 §Phase B L123-128):ClassMeta / FieldMeta / MethodMeta / AnnotationMeta 五类 Meta 对象走 `internPoolGetOrInsert` name-based dedup,key schema `CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>` / `ANN|{CLS|FLD|MTH}|<...>`,**O(1) eql** 兑现。`interpCollectFields` / `interpCtFieldsArray` 字符串拼接 + 字符串数组双轨路径消除,反射路径单入口经 `interpBuildTypeInfo` + `interpGetField(meta, field)` Meta 对象 MEMBER_ACCESS。详情见 D117 §下一步 Execute 5 Done 条目
+- **[~] In Progress(sibling 58 Plan 详化 at <本 commit>)** D098 §决策 2 §Phase C double 入 InternPool dedup 启动决策详化 — 4 候选评估(A bit-pattern key / B NaN 不入 pool / C toString key / D 跳 double 改 Array/Map)+ 自决策选 A bit-pattern key(业界对标 Zig `InternPool.Key.float_*` 同形)+ 下下轮 Execute spike 预期 LOC ~30 + 前置 spike 验证 SS `doubleBits` builtin 可行性, 详 §决策 2 §Phase C 启动决策详化段。**承接路径**: 下轮 Execute spike `doubleBits` builtin(`gen_rt_*.ss` LLVM `bitcast double → i64` + hex format)+ `interpNewDouble` InternPool 改造 → `interp_op.ss:115` Map 深比较分支可删 → `interp_op.ss:110-111` PERMANENT marker 可降 [clean]。**停手声明**: 本 anchor 起首前连续 4 轮 sibling 54-57(5d1a30c/efdf9e5/8b531eb/ad8e646)全 0 bootstrap diff 的 D 文档治理元循环, 2026-05-27 用户授权停手转真主线 SEMA Q1 Plan 详化(详 §出口清单 sibling 第五十八例段)
 
 **本 D 文档不触发任何 `.ss` 代码改动,不跑 bootstrap。** 代码改动从 evalExpr Phase A 首批 1a Plan 被批准后的 Execute 轮开始。
 
@@ -508,10 +549,33 @@ D170 协议 step 7 实战首例 (b94dc8b/609b465) → ... → sibling 第五十�
 
 **D170 step 7 实战首例 sibling 范式实战完结升级**(57 sub-round 系列:... + 5d1a30c/efdf9e5 + efdf9e5/8b531eb + 8b531eb/<本 commit> + <本 commit>/<下下轮回填>):D170 协议**实战首例 + ... + 第五十六例 + 第五十七例 sibling 闭环** — 五十七轮均落地实战, sibling 应用模板可重复;**sibling 56 commit hash 6 处占位符精确化回填 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第四次实证 + sibling 范式跨形态扩展第十四次 + RED 实测正向兑现第十四次 + Plan-Execute 交替 16→17 兑现** (sibling 56 Execute 型 0 bootstrap diff 收口第十三次形态首例完结之后 sibling 57 Execute 型 0 bootstrap diff 接续真主线 SEMA Q1 D 文档治理形态续手第十四次 sibling 56 模板复用第五次实战):sibling 第五十七例是**sibling 范式跨形态扩展第十四次**(sibling 56 commit hash 6 处占位符精确化回填 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第四次实证 — next_prompt L1/L9/L11 量化基线 5+1=6 处 RED 实测 100% 命中**模板复用第四次实证生效**, sibling 53 教训第十层 + sibling 54 教训第十一层 + sibling 55 教训第十二层 + sibling 56 教训第十三层连续修正后**第四次**连续 next_prompt 量化基线精确化前进),对应 sibling 第五十六例 8b531eb sibling 55 hash 回填 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第三次实证 (sibling 范式跨形态扩展第十三次) + sibling 第五十五例 efdf9e5 sibling 54 hash 回填 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第二次实证 (sibling 范式跨形态扩展第十二次) + sibling 第五十四例 5d1a30c sibling 53 hash 回填 + 文字举证句符号引用 vs 真 placeholder 区分核对形态首手 (sibling 范式跨形态扩展第十一次) + sibling 第五十三例 445f2b3 D 文档 §差距/§下一步段 active 候选枚举完整性 vs 物理不可达扫描结果不一致 + chain log placeholder 数量量化基线前进度误判形态第十次首手 (sibling 范式跨形态扩展第十次) + sibling 第五十二例 d138281 Execute spike rename + identity 构造器删除 + 同步清理 (第九次) + sibling 第五十一例 835160c D 文档 §决策段 §构造入口子段 helper 定义文档状态 vs bootstrap 实物状态前进度误判 (第八次) + sibling 第五十例 074b6a0 跨时点 mangling 失效定位状态前进度误判 (第七次) + sibling 第四十九例 4bf5783 跨 D 文档父子 anchor 状态同步语义层 (第六次) + sibling 第四十八例 ba57fdd D 文档段 retro-active 落档状态前进度误判 (第五次) + sibling 第四十例 98e8760 RED 实测主动补检形态首手 (第四次) + sibling 第三十六例 c1c8d65 D 文档治理 anchor 收口形态首手 (第三次) + sibling 第三十五例 7aabe2b 跨 D 文档 [permanent] 形态首手 (第二次) + sibling 第三十二例 5aa37e4 注释字面消除子轮 全 SS comptimeDepth 字面物理消完结 (首次) + sibling 范式可覆盖**sibling hash 回填 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第三次实证场景** robustness 验证 (sibling 36-56 D 文档治理 anchor 收口形态十三次累积 + sibling 57 sibling 56 hash 回填 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第四次实证第十四次形态首手十四轮累计验证升级);**根因解决度**:D098 + D093 scope 内最深可达根因层本轮 (sibling 56 commit hash 6 处精确化回填 + 教训沉淀第十四层 §字段 12 (a) 演化十三级形态 + candidate I 62 处分批 retro-active 回填 sibling 58+ Plan 详化起首推荐是 sibling 56 Execute 型 0 bootstrap diff 第十三次形态完结之后真主线 SEMA Q1 active 路径物理不可达本轮 D 文档治理形态续手第十四次唯一可达点 — 不起 candidate H+ Plan 详化 (sibling 53-56 教训凭空候选名同形阻断累积保持) + 不扩大 sibling 41-52 系统性 62 处历史漂移 scope 本轮 (保持 sibling 49-56 累积九次精确化版本) 留 candidate I sibling 58+ Plan 详化起首独立处理 + 不动 bootstrap (核心代码路径 diff=0));**业界对标** Zig SEMA spec retro-active 文档化 + chain log hash 量化基线精确化模板复用第三次实证 (Sema.zig + Value.zig + InternPool.zig 各阶段实施 commit 与 spec 文档化 chain log hash 精确同步), SS sibling 57 sibling 56 commit hash 8b531eb 6 处占位符精确化回填 + D 文档治理 anchor 收口形态续手第十四次 + sibling 56 模板复用第五次实战 + candidate I 62 处分批 retro-active 回填推荐 + 教训沉淀第十四层 §字段 12 (a) 演化十三级形态是 Zig SEMA spec retro-active 文档化 + chain log hash 量化基线精确化**模板复用第四次实证**在 SS 的同形落地
 
+## D098 §出口清单 sibling 第五十八例 — sibling 41-57 D 文档治理元循环停手 + D098 §决策 2 §Phase C double 入 InternPool dedup 启动决策详化首手(2026-05-27 用户授权转真主线 SEMA Q1 Plan 详化)
+
+**停手声明**(2026-05-27 用户授权): sibling 57(ad8e646)之前连续 4 commit(5d1a30c sibling 54 / efdf9e5 sibling 55 / 8b531eb sibling 56 / ad8e646 sibling 57)均为 **0 bootstrap diff 的 D 文档治理元循环** — 每轮回填上轮 commit hash + 新增 sibling 例段 + next_prompt 让下一轮接着回填, 形成自维持闭环。用户 2026-05-27 指出**严重偏离 `feat/d092-sema-q1` 分支核心目标**(SEMA Q1 代码), 触发 CLAUDE.md §交互式单文档"5 个月 0 SEMA 主线 commit 事件复发"风险信号。
+
+**元循环根因诊断**: D098/D169 §下一步 全 [x] Done + D093 §差距 #3/#4 active 但被定为"跨 D098 §Phase C scope 远期未启动" → 真主线代码任务被"远期"标签搁置 → §下一步 无 active anchor 可做 → 只剩 D 文档治理 anchor 收口 → 元循环滚雪球。**这违反 CLAUDE.md 第一法则"根因解决度优先, 禁按工程量最小作排序依据"** — "Phase C 远期"不是不做的理由。`tools/next_prompt_ultrathink_linter.ss` C5 只查关键字字符串("D092"/"SEMA"), 无法检测"用 SEMA Q1 关键字包装的 docs-only 元循环" — 这是 linter 盲区, 由用户抽查兜底(MNK §核心原则 (2) 终极闸门)。
+
+**停手动作**: 本轮 sibling 58 **不**回填 sibling 57 ad8e646 hash 占位符(若有)、**不**追加 "教训沉淀 / 模板复用 / 文字举证句符号引用 vs 真 placeholder 区分核对" 类元循环术语、**不**用 sibling chain log batch 模板(`<上轮>/<本轮> + <本轮>/<下下轮>` 形态)。本轮 sibling 58 **转**: D098 §决策 2 末追加 §Phase C 启动决策详化段(double 入 InternPool dedup 子方向 4 候选评估 + 自决策 A bit-pattern key + 下下轮 Execute spike 预期), 给 §下一步 加 active anchor 让真主线代码路径重新有事可做。
+
+| # | anchor type | resolve 标签 | commit hash |
+|---|---|---|---|
+| 1 | sibling 41-57 D 文档治理元循环停手(CLAUDE.md §交互式单文档"5 个月 0 SEMA 主线 commit 事件"风险预防) | `[stopped]` ad8e646 sibling 57 之前 4 commit(5d1a30c/efdf9e5/8b531eb/ad8e646)全 0 bootstrap diff 元循环已停; 后续 sibling 58+ **不**回填上轮 commit hash、**不**追加元循环术语 sibling 例段、**不**用 chain log batch 模板; 元循环根因 = D 文档 active anchor 全 [x] Done 后无真主线可做 + linter C5 盲区(用户抽查兜底 MNK §核心原则 (2)); 用户 2026-05-27 授权停手转真主线 SEMA Q1 Plan 详化 | <本 commit> |
+| 2 | D098 §决策 2 §Phase C double 入 InternPool dedup 启动决策详化首手(4 候选 A/B/C/D + 自决策 A bit-pattern key + 下下轮 Execute spike 预期 + 业界对标 Zig `InternPool.Key.float_*`) | `[done-plan]` D098 §决策 2 末新增 §Phase C 启动决策详化段 — 启动动机(`interp_op.ss:110-111` PERMANENT marker 长期残留 + §决策 2 §Phase C 原文 L131-134 仅 4 行占位)+ 业界对标 Zig `InternPool.Key.float_*` "先 scalar 后 aggregate" 演化顺序 + RED 实测前提 4 项(callsites 7 处 / 唯一定位 1 处 / probe build OK 输出 1 / `interpNewDouble` 5 标量同形改造前提)+ 候选 A/B/C/D 评估表(根因解决度 + 底层依赖链 + N 年返工度 + 业界对标 + 工程量参考)+ 自决策 §字段 12 (e) 选 A bit-pattern key + 前置 spike 验证 SS `doubleBits` builtin 可行性 + 下下轮 Execute spike 预期 LOC ~30 + 假设破裂入口 + 落地后预期收益(`interp_op.ss:110-111` PERMANENT 可降 [clean] + `interp_op.ss:115` Map 深比较分支可删) | <本 commit> |
+| 3 | D098 §下一步 sibling 58 Plan 锚 [~] In Progress | `[done-plan]` D098 §下一步 L218 新增 active anchor — Plan 详化承接路径指下下轮 Execute spike(`doubleBits` builtin + `interpNewDouble` InternPool 改造), 锚 footer 含停手声明 + 引 §出口清单 sibling 第五十八例段 | <本 commit> |
+
+**验收实测**(VCM 六验 — Plan 型 §验 4 替换为"替代方案对比 + 隐藏假设挑战"):
+- §验 1 工程: bootstrap diff = 0(`git diff --stat HEAD -- bootstrap/ lib/ tools/` 空输出, VCM §1 §豁免) + baseline `/tmp/maybeval_overload.ss` 持平(不动 core)
+- §验 2 行为: D098 §决策 2 末新增 §Phase C 启动决策详化段(`grep -A5 "Phase C 启动决策详化" docs/3-decisions/D098-sema-value-model.md` 命中, 改前仅 §Phase B 启动前决策详化段为最后一个 §决策 2 子段, 改后多一段 §Phase C)
+- §验 3 反向: 若删除新增 §Phase C 启动决策详化段, D098 §决策 2 §Phase C 退回 4 行占位无 active 候选(改前状态), 元循环根因复发
+- §验 4 替代方案对比: 候选 A(bit-pattern, 选)vs B(NaN 不入 pool, 违反不变量)vs C(toString, false positive 破坏正确性)vs D(跳 double, Zig 演化顺序相反) — 表内详; 隐藏假设挑战: 假设 "SS bootstrap 可加 `doubleBits` builtin" 未实测(前置 spike 验证留下下轮), 退路 = 候选 B
+- §验 5 路线: (a) D088 §正模式 Zig 路线对标 — Zig `InternPool.Key.float_*` 同形 ✓; (b) D098 §第一性需求距离 — Phase C 直接服务 §决策 2 InternPool 模型完整化, 0 phase 距离; (c) K 收敛见 commit 后 linter GATE 实测
+- §验 6 根因: PSM §字段 9 标"根"(D098 §Phase C 从"可选远期占位"上升为"具体候选 + 自决策 + spike 预期"消除元循环根因 active anchor 缺失) — 反身性: 明天用户质疑 = workaround?反驳锚 = Zig `InternPool.Key.float_*` 业界对标 + IEEE 754 语义保真 + 4 候选根因解决度排序证据 + 下下轮 Execute spike LOC ~30 物理路径已知, 非空话
+- 四 linter GATE OK 预期(sunset_linter 1 持平 / next_prompt_ultrathink_linter 5/5 / d_doc_index_linter 19 referenced / reflection_health_linter PASS no regressions) — commit 后实测
+
 ## 参考
 
 - D088 §第一性需求 / §Zig 路线 §借鉴来源
 - D093 §决策 §Zig 原理 / §SS 本质一样骨架 / §张力 1-3 / §下一步
 - D094 §决策 §规则 1-3(继承,Phase A 仍有效)/ §Supersession §Supersession 关系(本文承接 §张力 1-3)
-- Zig `src/Sema.zig` / `src/Value.zig` / `src/InternPool.zig`(原理以 D093 §Zig 原理 固化文本为权威,不做外部 fetch)
+- Zig `src/Sema.zig` / `src/Value.zig` / `src/InternPool.zig`(原理以 D093 §Zig 原理 固化文本为权威,不做外部 fetch);`src/InternPool.zig` `Key.float_*`(`float_16`/`float_32`/`float_64`/`float_80`/`float_128`/`float_comptime_float`)`@bitCast` + canonical 序列化(§Phase C 启动决策详化段 业界对标依据)
 - D088 Phase 4 "类型作为 comptime 值" 实现点(§决策 3 Phase A 收尾目标):`bootstrap/codegen.ss:83`(`comptimeTypeAliases` 待删) / `gen_exprs.ss:158-163`(genVal IDENT 查表待合并)/ `gen_decls.ss:235`(`genGlobalVar` 识别 type 待改走 ctVars)
