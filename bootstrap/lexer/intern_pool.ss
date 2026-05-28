@@ -34,7 +34,8 @@ function metaPoolGetOrInsert(key: string, ifMissAlloc: int): int {
 // D093 §差距 #3 候选 D1 真路径 sibling 65 — 双 namespace 查表 (Zig InternPool.indexToKey 同构)
 // internPoolKeyOf 命中 → split "|" 取 tag 返 9 kind (int/string/bool/null/type/double/array/map)
 // metaPoolKeyOf 命中 → 返 "object" (Meta 对象 CLS/FLD/MTH/PRM/ANN 统一 tvKind="object")
-// 兜底 → tvKindOf storage 直读 (D098 §Phase C 远期 sub-phase 3 完结后清)
+// sibling 70 sub-phase 3b spike — fallback `tvKindOf` 改 `"object"` 1 LOC
+// 验证 fallback 物理依赖度 (sub-phase 3a 38/38 GREEN 后 tvKindByPool 3 caller tvId 全入 pool, fallback 物理不可达)
 function tvKindByPool(tvId: int): string {
     const k = `${tvId}`
     if (internPoolKeyOf.has(k) == 1) {
@@ -45,5 +46,5 @@ function tvKindByPool(tvId: int): string {
     if (metaPoolKeyOf.has(k) == 1) {
         return "object"
     }
-    return tvKindOf(tvId)
+    return "object"
 }
