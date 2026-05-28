@@ -135,7 +135,7 @@ function buildSingleAnnotationMeta(annNodeId: int, annPoolPrefix: string): int {
         if (valId > 0) { interpMapSet(argsMap, key, interpNewInt(valId)) }
     }
     tvMap.set(`${amId}|args`, `${argsMap}`)
-    return internPoolGetOrInsert(`ANN|${annPoolPrefix}.${nGetS1(annNodeId)}`, amId)
+    return metaPoolGetOrInsert(`ANN|${annPoolPrefix}.${nGetS1(annNodeId)}`, amId)
 }
 
 function buildAnnotationMetaArray(annListId: int, annPoolPrefix: string): int {
@@ -248,7 +248,7 @@ function interpBuildTypeInfo(typeName: string): int {
         const fAnnId = fpAnn == "" ? 0 : parseInt(fpAnn)
         const fAnnArr = buildAnnotationMetaArray(fAnnId, `FLD|${ftKey}`)
         tvMap.set(`${fmId}|annotations`, `${fAnnArr}`)
-        interpArrayPush(fArr, internPoolGetOrInsert(`FLD|${ftKey}`, fmId))
+        interpArrayPush(fArr, metaPoolGetOrInsert(`FLD|${ftKey}`, fmId))
     }
     tvMap.set(`${id}|fields`, `${fArr}`)
     // methods 段:AST 直读 methodsBlock → FUNC_DECL.I4 ANNOTATION_LIST + handler-generated 尾部补齐。
@@ -283,12 +283,12 @@ function interpBuildTypeInfo(typeName: string): int {
                     tvMap.set(`${pmId}|type`, `${interpNewString(nGetS2(pId))}`)
                     const pAnnArr = buildAnnotationMetaArrayFromSingle(nGetI4(pId), prmKey)
                     tvMap.set(`${pmId}|annotations`, `${pAnnArr}`)
-                    interpArrayPush(pArr, internPoolGetOrInsert(`PRM|${prmKey}`, pmId))
+                    interpArrayPush(pArr, metaPoolGetOrInsert(`PRM|${prmKey}`, pmId))
                 }
                 tvMap.set(`${mmId}|params`, `${pArr}`)
                 const mAnnArr = buildAnnotationMetaArray(nGetI4(mId), `MTH|${mKey}`)
                 tvMap.set(`${mmId}|annotations`, `${mAnnArr}`)
-                interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${mKey}`, mmId))
+                interpArrayPush(mArr, metaPoolGetOrInsert(`MTH|${mKey}`, mmId))
             }
         }
     }
@@ -306,7 +306,7 @@ function interpBuildTypeInfo(typeName: string): int {
                 tvMap.set(`${mmId}|params`, `${emptyParams}`)
                 const emptyAnn = interpNewArray("")
                 tvMap.set(`${mmId}|annotations`, `${emptyAnn}`)
-                interpArrayPush(mArr, internPoolGetOrInsert(`MTH|${typeName}.${mp}`, mmId))
+                interpArrayPush(mArr, metaPoolGetOrInsert(`MTH|${typeName}.${mp}`, mmId))
             }
             mIdx = mIdx + 1
         }
@@ -317,7 +317,7 @@ function interpBuildTypeInfo(typeName: string): int {
         aArr = buildAnnotationMetaArray(nGetI4(clsNodeId), `CLS|${typeName}`)
     }
     tvMap.set(`${id}|annotations`, `${aArr}`)
-    return internPoolGetOrInsert(poolKey, id)
+    return metaPoolGetOrInsert(poolKey, id)
 }
 
 function isKnownClass(name: string): int {
