@@ -44,7 +44,6 @@ function materialize(interpValId: int): string {
 // ── TypedValue Storage (D092 Phase 0) ────────────────────────
 
 let nextTvId = 1
-let tvKind = ""
 let tvI1: Array<int> = []
 let tvI2: Array<int> = []
 let tvI3: Array<int> = []
@@ -58,7 +57,6 @@ let tvReady = 0
 
 function initTypedValue() {
     if (tvReady == 1) { return }
-    tvKind = new Map()
     tvS1 = new Map()
     tvS2 = new Map()
     tvD1 = new Map()
@@ -72,11 +70,10 @@ function initTypedValue() {
     tvReady = 1
 }
 
-function allocTv(kind: string): int {
+function allocTv(): int {
     initTypedValue()
     const id = nextTvId
     nextTvId = nextTvId + 1
-    tvKind.set(id + "", kind)
     tvI1.push(0)
     tvI2.push(0)
     tvI3.push(0)
@@ -84,36 +81,36 @@ function allocTv(kind: string): int {
 }
 
 function newTvInt(n: int): int {
-    const id = allocTv("int")
+    const id = allocTv()
     tvI1[id] = n
     return id
 }
 
 function newTvString(s: string): int {
-    const id = allocTv("string")
+    const id = allocTv()
     tvS1.set(id + "", s)
     return id
 }
 
 // comptime TypeValue:kind="type",tvS1 存 class 名
 function newTvType(className: string): int {
-    const id = allocTv("type")
+    const id = allocTv()
     tvS1.set(id + "", className)
     return id
 }
 
 function newTvBool(b: int): int {
-    const id = allocTv("bool")
+    const id = allocTv()
     tvI1[id] = b
     return id
 }
 
 function newTvNull(): int {
-    return allocTv("null")
+    return allocTv()
 }
 
 function newTvArray(initCsv: string): int {
-    const id = allocTv("array")
+    const id = allocTv()
     if (initCsv != "") {
         const parts = initCsv.split(",")
         let i = 0
@@ -129,11 +126,6 @@ function newTvArray(initCsv: string): int {
 
 // ── TypedValue Accessor Primitive (D092 Phase 1 最小子集) ────
 
-function tvKindOf(id: int): string {
-    initTypedValue()
-    return tvKind.getString(id + "")
-}
-
 function tvIntOf(id: int): int {
     initTypedValue()
     return tvI1[id]
@@ -147,11 +139,12 @@ function tvStringOf(id: int): string {
 // ── interp* delegate (D092 Phase 2 sub-a) ────────────────────
 // interp* 前缀让现有 callsite 自动 resolve,底层改走 Phase 1 的 TypedValue accessor。
 
+// D093 §差距 #3 — kind 单一源:Value 层不存 kind,interpType 全量走 internPoolKeyOf
+// 反查(tvKindByPool)。tvKind 存储 + tvKindOf 已删除,双轨"读+存"消除。9 个 value 构造入口
+// 注册 internPoolKeyOf(6 标量经 internPoolGetOrInsert + array/map/fn 显式 set);object kind
+// (Meta + comptime obj)经 metaPool/fallback 返 "object",不入 value pool(namespace 物理分离)。
 function interpType(id: int): string {
-    const k = tvKindOf(id)
-    if (k == "array") { return tvKindByPool(id) }
-    if (k == "map") { return tvKindByPool(id) }
-    return k
+    return tvKindByPool(id)
 }
 
 function interpAsInt(id: int): int {
@@ -191,7 +184,7 @@ function interpNewArray(init: string): int {
 }
 
 function newTvDouble(d: double): int {
-    const id = allocTv("double")
+    const id = allocTv()
     tvD1.set(id + "", `${d}`)
     return id
 }

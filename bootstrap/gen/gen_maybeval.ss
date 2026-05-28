@@ -6,19 +6,14 @@
 // Phase B 起步:valOf 物理等价 payload(valId) —— InternPool dedup 后
 // pool index = backing tvId(stable dedup id),`payload(valId)` ≡
 // `pool.load(tvId).payload`(invariant:interpNew* 5 入口全走 pool)。
-// valType 经 internPoolKeyOf 反查 key,split "|" 取 tag,替代 D092
-// tvKindOf 直读,建立 valType "走 pool 反查" 的物理不变。
+// valType = interpType ∘ payload:strip Value 句柄后走 interpType 单一 kind 源
+// (tvKindByPool 反查)。D093 §差距 #3 后 interpType 本身即 internPoolKeyOf 反查,valType
+// 不再自带反查副本(与 interpType 合一,消除重复查表 — flip 前 interpType 走 tvKindOf 存储才需 pre-check)。
 
 function valOf(valId: int): int {
     return payload(valId)
 }
 
 function valType(valId: int): string {
-    const tvId = payload(valId)
-    if (internPoolKeyOf.has(`${tvId}`) == 1) {
-        const key = internPoolKeyOf.getString(`${tvId}`)
-        const barAt = key.indexOf("|")
-        return key.substring(0, barAt)
-    }
-    return interpType(tvId)
+    return interpType(payload(valId))
 }

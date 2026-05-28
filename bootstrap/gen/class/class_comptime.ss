@@ -127,7 +127,7 @@ function resolveComptimeString(id: int): string {
 // a comptime value in the outer handler's scope. Recurses through I1..I4 and
 // the list slot. Non-node ints are filtered by nGetKind == "" check.
 // D117 Execute 4 — IDENT 绑定 Meta object 时 rewriteIdentToLit 无法 fold
-// (tvKind=object),需在 MEMBER_ACCESS 层 interpGetField 取 scalar field 重写。
+// (kind=object),需在 MEMBER_ACCESS 层 interpGetField 取 scalar field 重写。
 // 失败(field 非 scalar,如 FieldMeta.annotations array)则 fall-through,交由
 // ct-probe 路径处理。
 function foldComptimeIdentsInTree(rootId: int) {

@@ -3,7 +3,7 @@
 // Uses SSA registers (%1, %2, ...) and named allocas for variables.
 
 import { nGetKind, nGetS1, nGetS2, nGetS3, nGetI1, nGetI2, nGetI3, nGetI4, nGetList, classTypeParams } from "../parse/parser"
-import { interpClearComptimeIR, interpClearComptimeSS, ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf } from "../eval/interp_core"
+import { interpClearComptimeIR, interpClearComptimeSS, ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvIntOf, tvStringOf } from "../eval/interp_core"
 import { flushComptimeSS, flushComptimeIR, fullyRegisterCtClass, preScanCodegenCtClassesInStmts, flushPendingCtClasses, pendingCtClassIds, ctVars, ctFuncNodes, ctScopeStack, ctCallCounter, comptimeMustBeKnown } from "../eval/ct_driver"
 import { registerInterface, generateInterfaceDispatchers } from "./gen_iface"
 import { internPoolGetOrInsert } from "../lexer/intern_pool"

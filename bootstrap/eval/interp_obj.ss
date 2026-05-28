@@ -48,7 +48,7 @@ function interpArrayGet(arrId: int, idx: int): int {
 }
 
 function interpNewMap(): int {
-    const id = allocTv("map")
+    const id = allocTv()
     tvList.set(id + "", "")
     internPoolKeyOf.set(`${id}`, `map|${id}`)
     return id
@@ -94,14 +94,18 @@ function interpMapGetSize(mapId: int): int {
 
 function interpNewVal(kind: string, payload: string): int {
     if (kind == "object") {
-        const id = allocTv("object")
+        const id = allocTv()
         tvS1.set(id + "", payload)
         tvList.set(id + "", "")
+        // object-kind(Meta + comptime obj)经 metaPoolKeyOf / tvKindByPool fallback 返 "object",
+        // 不入 value pool — 保留 D093 §差距 #3 value/meta namespace 物理分离(intern_pool.ss:18)。
         return id
     }
     if (kind == "fn") {
-        const id = allocTv("fn")
+        const id = allocTv()
         tvI1[id] = parseInt(payload)
+        // fn 是 value kind,入 value pool:fallback 会误判 "object"(≠"fn"),显式注册修正。
+        internPoolKeyOf.set(`${id}`, `fn|${id}`)
         return id
     }
     return interpNewNull()

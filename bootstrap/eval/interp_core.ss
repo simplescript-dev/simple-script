@@ -10,7 +10,7 @@
 // 消费方 import 从 "./eval/interp_core" 统一走 barrel 路径,不感知内部细分
 // (SS resolveImports advisory,但需真实 import 链触达才会被 inline,故本文件显式 re-chain)。
 
-import { ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvKindOf, tvIntOf, tvStringOf, interpType, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpNewBool, interpNewNull, interpNewType, interpNewArray, interpNewDouble } from "./interp_value"
+import { ctVal, isCt, payload, constVal, reg, materialize, initTypedValue, allocTv, newTvInt, newTvString, newTvType, newTvBool, newTvNull, newTvArray, tvIntOf, tvStringOf, interpType, interpAsInt, interpAsStr, interpNewInt, interpNewString, interpNewBool, interpNewNull, interpNewType, interpNewArray, interpNewDouble } from "./interp_value"
 import { interpCompoundOp, interpTruthy, interpToStr, interpIntOp, interpDoubleOp, interpValEquals } from "./interp_op"
 import { interpGetField, interpSetField, interpArrayPush, interpArraySet, interpArrayLen, interpArrayGet, interpNewMap, interpMapSet, interpMapGet, interpMapHas, interpMapDelete, interpMapGetKeys, interpMapGetSize, interpNewVal, interpBuildTypeInfo, isKnownClass, interpFindMethod } from "./interp_obj"
 
