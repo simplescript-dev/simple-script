@@ -31,7 +31,7 @@ function rewriteIdentToLit(nodeId: int, tagged: int): int {
     const pl = payload(tagged)
     const identName = nGetS1(nodeId)
     const vType = getVarType(identName)
-    const tkOrig = tvKindOf(pl)
+    const tkOrig = tvKindByPool(pl)
     const tk = (vType == "string" || vType == "int" || vType == "double" || vType == "bool") ? vType : tkOrig
     if (tk == "string") {
         nKind.set(nodeId + "", "STRING_LIT")
