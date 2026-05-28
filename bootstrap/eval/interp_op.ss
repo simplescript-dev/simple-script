@@ -5,7 +5,7 @@
 // op 是 parse_stmts.ss 里 ASSIGN/MEMBER_ASSIGN 的 raw token 名
 // (PLUS_ASSIGN / MINUS_ASSIGN / STAR_ASSIGN / ...),不是 BINARY 的 Add/Sub
 function interpCompoundOp(op: string, lid: int, rid: int): int {
-    if (tvKindOf(lid) == "int" && tvKindOf(rid) == "int") {
+    if (tvKindByPool(lid) == "int" && tvKindByPool(rid) == "int") {
         const a = tvIntOf(lid)
         const b = tvIntOf(rid)
         if (op == "PLUS_ASSIGN") { return newTvInt(a + b) }
@@ -18,7 +18,7 @@ function interpCompoundOp(op: string, lid: int, rid: int): int {
 }
 
 function interpTruthy(id: int): int {
-    const k = tvKindOf(id)
+    const k = tvKindByPool(id)
     if (k == "null") { return 0 }
     if (k == "bool") { return tvIntOf(id) }
     if (k == "int") { return tvIntOf(id) != 0 ? 1 : 0 }
@@ -29,7 +29,7 @@ function interpTruthy(id: int): int {
 }
 
 function interpToStr(id: int): string {
-    const k = tvKindOf(id)
+    const k = tvKindByPool(id)
     if (k == "int") { return `${tvIntOf(id)}` }
     if (k == "string") { return tvStringOf(id) }
     if (k == "bool") { return tvIntOf(id) == 1 ? "true" : "false" }
