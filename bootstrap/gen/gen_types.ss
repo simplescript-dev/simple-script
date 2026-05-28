@@ -318,9 +318,15 @@ function inferType(id: int): string {
             // eval_expr.ss 消费侧按 array/object/map type 解回 ctVal(tvId)。gen_decls.ss 对 CONST
             // 绑定走 ctVars,跳过 runtime alloca。route 收集 `const routes = comptime{...return arr}`
             // 与 D120 §A.4 #3 ct-array unroll 入口形成闭环(iter → unroll → body invoke → static call)。
+            // D098 §决策 2 §Phase C(sibling 61):array/map frozen-after-build —— literal 写入侧单点 freeze
+            // 取代下游(eval_expr.ss COMPTIME_EXPR 退出 / gen_decls.ss ctVars 绑定 2 处)3 处 hook,
+            // 所有消费 transparent 拿 canonical id。object 留后续 sub-phase 不 freeze。
             if (ceType == "array" || ceType == "object" || ceType == "map") {
                 comptimeExprType.set(ceKey, ceType)
-                comptimeExprLiteral.set(ceKey, `${ceRetVal}`)
+                let frozenId = ceRetVal
+                if (ceType == "array") { frozenId = interpFreezeArray(ceRetVal) }
+                else if (ceType == "map") { frozenId = interpFreezeMap(ceRetVal) }
+                comptimeExprLiteral.set(ceKey, `${frozenId}`)
                 return ceType
             }
         }

@@ -151,6 +151,13 @@ function evalExpr(astId: int): int {
             return ctVal(interpNewString(`${interpToStr(lp)}${interpToStr(rp)}`))
         }
         if (blt == "string" && brt == "string") { return genValStringCompare(op, astId, lRaw, rRaw) }
+        // D098 §决策 2 §Phase C(sibling 61):array/map Eq/Ne 走 interpValEquals(lid==rid?1:0),
+        // frozen-after-build dedup 后同值同 tvId,真正 O(1) Value.eql 兑现(替代 interpNumericBinop
+        // 数值路径误把 tvId 当 int 比的隐式假相等)。
+        if ((blt == "array" || blt == "map") && (op == "Eq" || op == "Ne")) {
+            const eq = interpValEquals(lp, rp)
+            return ctVal(interpNewBool(op == "Eq" ? eq : (eq == 1 ? 0 : 1)))
+        }
         return ctVal(interpNumericBinop(op, lp, rp, blt, brt))
     }
     if (comptimeMustBeKnown == 1) {

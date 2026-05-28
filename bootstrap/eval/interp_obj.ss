@@ -343,3 +343,49 @@ function interpFindMethod(className: string, methodName: string): int {
     }
     return 0
 }
+
+// D098 §决策 2 §Phase C — Array/Map 入 InternPool dedup(sibling 61 Execute, Zig Key.aggregate 对齐)
+// frozen-after-build 语义:comptime { return X } 退出 + const X = comptime { ... } 绑定时刻 freeze;
+// 构造期 mutate(interpArrayPush/interpMapSet 等)不 dedup。child 递归 freeze 让嵌套 Array/Map 自动级联 canonical id。
+// idempotent:第二次 freeze 同 id 命中 InternPool 同 key 返回同 id,无重复消耗。
+function interpFreezeArray(arrId: int): int {
+    if (interpType(arrId) != "array") { return arrId }
+    const len = tvI2[arrId]
+    let key = `array|${len}`
+    let i = 0
+    while (i < len) {
+        const childKey = `${arrId}:${i}`
+        let childId = 0
+        if (tvArrElem.has(childKey) == 1) {
+            childId = parseInt(tvArrElem.getString(childKey))
+            const childKind = interpType(childId)
+            if (childKind == "array") { childId = interpFreezeArray(childId) }
+            else if (childKind == "map") { childId = interpFreezeMap(childId) }
+            tvArrElem.set(childKey, `${childId}`)
+        }
+        key = `${key}|${childId}`
+        i = i + 1
+    }
+    return internPoolGetOrInsert(key, arrId)
+}
+
+function interpFreezeMap(mapId: int): int {
+    if (interpType(mapId) != "map") { return mapId }
+    const size = tvI3[mapId]
+    let key = `map|${size}`
+    const keysCsv = tvList.getString(mapId + "")
+    if (keysCsv != "") {
+        for (k in keysCsv.split(",")) {
+            const fullKey = `${mapId}|${k}`
+            if (tvMap.has(fullKey) == 1) {
+                let childId = parseInt(tvMap.getString(fullKey))
+                const childKind = interpType(childId)
+                if (childKind == "array") { childId = interpFreezeArray(childId) }
+                else if (childKind == "map") { childId = interpFreezeMap(childId) }
+                tvMap.set(fullKey, `${childId}`)
+                key = `${key}|${k}=${childId}`
+            }
+        }
+    }
+    return internPoolGetOrInsert(key, mapId)
+}
