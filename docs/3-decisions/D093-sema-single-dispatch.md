@@ -414,6 +414,92 @@ function exitComptimeBlock()  { comptimeMustBeKnown = false }
 
    - **sibling 57 实战 retro-active 状态** — **本轮 0 spike 实测** (RED 实测正向兑现 next_prompt L1/L9/L11 量化基线 5+1=6 处 RED 实测 100% 命中**模板复用第四次实证生效**, sibling 53 教训第十层 + sibling 54 教训第十一层 + sibling 55 教训第十二层 + sibling 56 教训第十三层连续修正后**第四次**连续 next_prompt 量化基线精确化前进, 不起 candidate H+ Plan 详化 (sibling 53-56 教训保持凭空候选名同形阻断累积) + 不扩大 sibling 41-52 系统性 62 处历史漂移 scope 本轮 (保持 sibling 49-56 累积九次精确化版本) 留 candidate I 62 处分批 retro-active 回填 sibling 58+ Plan 详化起首独立处理 + 不动 bootstrap); **本轮 0 bootstrap diff Execute** (sibling 56 commit hash 8b531eb 6 处占位符精确化回填 D098 5 + D093 1 + D098 §出口清单 sibling 第五十七例段新增 + 教训沉淀第十四层 §字段 12 (a) 演化十三级形态 + 文字举证句符号引用 vs 真 placeholder 区分核对模板复用第四次实证 + candidate I 62 处分批 retro-active 回填 sibling 58+ Plan 详化起首推荐, 0 bootstrap diff); D093 §差距 #3 L101 状态保持 `[~] In Progress at <sibling 45 f87f330>` + §差距 #4 状态保持 `[~] In Progress at e3417e2 + 6e264fd + e3d8262 + c1c8d65` (sibling 48 retro-active 收口版本 sibling 49-57 累积十次精确化保持); sibling 58+ 起首推荐 (i) **candidate I 62 处分批 retro-active 回填 sibling 58+ Plan 详化起首** (跨 sub-round 形态扩展第十五次, sibling 53/54/55/56/57 累积五次推荐升级 Plan 详化起首本轮, 分批方案 batch I.1 sibling 41-44 ~12 处 / I.2 sibling 45-48 ~16 处 / I.3 sibling 49-52 ~34 处) 或 (ii) candidate F 跨 D 文档 anchor 状态系统性核对脚本工具化 (sibling 51-57 累积七次推荐, 需用户授权拆轮跨工具基础设施) 或 (iii) 等待 D098 §Phase C InternPool Array/Map/Double 三类入 InternPool 落地之后 sibling 59+ 起手 candidate D 真主线 SEMA Q1 active 候选 (跨 D098 phase 不可达本轮**保持** sibling 48-57 累积十次精确化版本).
 
+   **sibling 62 候选 D InternPool 起首 Plan 详化 + spike 实测发现 InternPool key tag 双语义空间混用真根因更深一层 (2026-05-28)** — D098 §决策 2 §Phase C 9 kind 全入 InternPool 完整完结 (sibling 61 commit hash `0a6dd16`) 之后, sibling 41 候选 D 决策行 L132 "**长期 ✓ 但本轮跨 D098 scope 不可达**" 声明**首次自动解除** — 候选 D InternPool Type id 通道真主线 active 路径**物理可达本轮**, sibling 62 起手 Plan 详化.
+
+   **RED 实测前提** (sibling 62 开工前):
+   - `grep -c "tvKind\b" bootstrap/eval/interp_value.ss` = 4 (字段定义 line 47 + initTypedValue line 61 + allocTv 写入 line 79 + 反引用)
+   - `grep -rn "tvKindOf\b" bootstrap/ | wc -l` = 9 (interp_value:131 定义 + interp_value:150 self + interp_op:8/21/32 + interp_core:13 import + codegen:6 import + gen_maybeval:10 注释 + class_comptime:34 sibling 45 canonical 形态)
+   - `gen_maybeval.ss:16-24` `valType(valId)` 走 `internPoolKeyOf` 反查 (`key.substring(0, key.indexOf("|"))` 取 tag) + fallback `interpType(tvId)` 兜底
+   - `intern_pool.ss:14` `internPoolGetOrInsert` 内 `internPoolKeyOf.set(${ifMissAlloc}, key)` 自动反查写入 9 kind 全覆盖
+
+   **业界对标 Zig SEMA 后期形态**: `src/InternPool.zig` `Key` 设计无 separate tag 列, payload 完全决定 kind 通过反查 key 取 tag — 与 SS `internPoolKeyOf` 反查 + `key.split("|")` 取 tag 同构. 候选 D 终态架构对齐 Zig SEMA 后期 InternPool Type id 通道形态.
+
+   **4 候选评估** (D1/D2/D3/D4):
+
+   - **候选 D1 — 全 tvKind 列删 + tvKindOf 全走 internPoolKeyOf 反查 (根因最深)**
+     - 层次: 数据层重构 + 接口层迁
+     - 内容: `interp_value.ss` 删 `tvKind` 列 (字段定义 + initTypedValue + allocTv 写入 + 反引用 4 hits) + 9 callsite tvKindOf 改 `internPoolKeyOf.getString(${id})` 反查 + `key.substring(0, key.indexOf("|"))` 取 tag
+     - 假设破裂入口 (next_prompt 预期): tvKindOf 9 callsite 中是否有 frozen 前调用 — 那时 internPoolKeyOf 尚未写入会返 "" 错误回退
+     - 长久演化评估: Zig SEMA 后期 InternPool Type id 通道终态架构对齐 / N 年返工度 **最低** (终态)
+     - 决策: **✓ 选 — 终态根因层** 但需先验证 frozen 前调用假设 + sibling 62 spike 实测发现真根因更深一层 (见下)
+
+   - **候选 D2 — tvKind 列保留 + 内部一致性双轨断言 (表面平衡)**
+     - 层次: 数据层 patch
+     - 内容: tvKind 列保留, 在 allocTv 后断言 `tvKindOf(id) == internPoolKeyOf.getString(id).split("|")[0]` 一致性
+     - 假设破裂入口: Value 仍带 Type info (tvKind 列实质 Type tag), **不达 D093 §差距 #3 终态** "Value 层不带 Type"; 名义 InternPool 落地实际未拆双轨
+     - 决策: **✗ 不选** (根因解决度 = 0, 双轨保留)
+
+   - **候选 D3 — 渐进迁部分 callsite 双轨长期共存 (双轨变体)**
+     - 层次: 接口层混合
+     - 内容: 部分 callsite 走 internPoolKeyOf 反查 (gen-side dispatch path), 部分保留 tvKindOf (eval/ operation path 已 sibling 46 实证 OUT OF SCOPE), 双轨长期共存
+     - 假设破裂入口: 与 sibling 41 Plan 详化候选 C 同形 (混合形态 hybrid), 不达"Value 层不带 Type"终态
+     - 决策: **✗ 不选** (sibling 45 gen-side dispatch 已 fallback-correct 模式落地, 候选 D3 = sibling 45 现状延长线)
+
+   - **候选 D4 — 等待 Air IR scope (跨 D098 phase 外不归 D093 scope)**
+     - 层次: 架构层 Air IR
+     - 内容: 跳过 InternPool Type id, 等 Air IR (Zig 中后期 SSA IR) 引入后 Type 走 SSA Inst.Ref 携带
+     - 假设破裂入口: Air IR 是 Zig SEMA 后期演化形态, SS 尚无 Air IR 引入计划 (跨出 D092/D093/D098 scope)
+     - 决策: **✗ 不选 — 跨 D098 phase 外不归 D093 scope** (Air IR 引入是单独 D 文档决议)
+
+   **Claude 主动决策** (§字段 12 (e) 自决策 gate 单一 X — 禁列菜单): 选 **候选 D1** (全 tvKind 列删 + tvKindOf 全走 internPoolKeyOf 反查), 理由:
+   1. **根因解决度** — D1 是终态架构对齐 Zig SEMA 后期 InternPool Type id 通道, 不带 Type 在 Value 层完整闭环
+   2. **业界对标** — Zig `InternPool.Key` payload 完全决定 kind 同构, SS `internPoolKeyOf` 反查 key split "|" 取 tag 完整同形
+   3. **底层依赖链** — D098 §决策 2 §Phase C 9 kind 全入 InternPool 完结 (sibling 61 `0a6dd16`) 是 D1 物理可达本轮 prereq, 已 100% 满足
+   4. **N 年返工度** — D1 终态架构 N 年返工度 **最低**, D2/D3 双轨保留高返工度, D4 跨出 scope 不归 D093
+
+   **sibling 62 spike 实测 — 候选 D1 最危险假设破裂入口实证 + 真根因更深一层发现**:
+
+   spike scope (≤ 1 文件触动核心代码路径核对最危险假设): 改 `interp_value.ss:149-151` `interpType` 走 `internPoolKeyOf` 反查 + fallback `tvKindOf` 兜底 (同形态 gen_maybeval.ss:16-24 valType, sibling 63 Execute spike 预 patch).
+
+   spike code 形态:
+   ```ss
+   function interpType(id: int): string {
+       if (internPoolKeyOf.has(`${id}`) == 1) {
+           const key = internPoolKeyOf.getString(`${id}`)
+           return key.substring(0, key.indexOf("|"))
+       }
+       return tvKindOf(id)
+   }
+   ```
+
+   **spike 实测结果 — 38 fail vs baseline 3 fail (净 +35 regression)**: bootstrap 三阶段固定点 PASS (Fixed point verified! Stage 2 = Stage 3) 但全测 **335/3 → 300/38** 净 -35 regression. fail 全在 `tests/phase5/`: d095/d096 系列 + d097 + d121 + i005 + i021 + spring_annotation_e2e + spring_web_params 等反射 Meta 对象路径.
+
+   **真根因更深一层 — InternPool key tag 双语义空间混用 (比 next_prompt 预期"frozen 前调用"更深)**:
+
+   sibling 61 `0a6dd16` 落地的 InternPool 9 kind 全覆盖 actually 是**两个语义空间** mixed:
+   - **value kind 语义空间** (9 种 type kind): `int|...` / `string|...` / `bool|...` / `null|` / `type|...` / `double|...` / `array|...` / `map|...` (Array/Map 形态见 `interp_obj.ss:351-390` `interpFreezeArray/Map` key schema) — 这些 tag 是 SS type kind
+   - **Meta schema 语义空间** (5 种 Meta object schema): `CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>` / `PRM|<cls>.<mth>.<prm>` / `ANN|<scope>.<name>` (见 `interp_obj.ss:138/216/251/286/291/309/320`) — 这些 tag 是 Meta 对象的 schema namespace, **不是 SS type kind** (Meta 对象的 actual SS type kind 是 "object")
+
+   两种 key tag 共享 `internPool` + `internPoolKeyOf` 同一全局 Map. 当 `interpType(metaTvId)` 走 internPoolKeyOf 反查 → `key.substring(0, key.indexOf("|"))` 取 tag 时, 对 Meta 对象 tvId 反查返回 `"ANN"` / `"FLD"` / `"MTH"` / `"PRM"` / `"CLS"` 作为 type kind, 而原本 (走 tvKindOf 直读) 应返回 `"object"` (因为 Meta 对象的 `tvKind.getString(metaTvId)` = "object").
+
+   38 fail 全在反射 Meta 对象路径 (d095/d096/d097/d121/i005/i021/spring) — 即 codegen 路径 `interpType(metaTvId)` 误返 `"ANN"`/`"FLD"`/... 而非 `"object"` → 下游 dispatch (materialize / class instance routing / 反射 Meta 字段访问) 走错分支生成错误 IR.
+
+   **此即候选 D1 真假设破裂入口 — 比 next_prompt 预期"frozen 前调用"更深一层**:
+   - next_prompt 预期假设: tvKindOf 9 callsite 中是否有 frozen 前调用 (array/map kind 未入 pool 时 internPoolKeyOf 反查失败 fallback 兜)
+   - spike 实测发现的更深一层: InternPool key tag **双语义空间混用** — Meta 对象 tag (`ANN`/`FLD`/`MTH`/`PRM`/`CLS`) 入 internPoolKeyOf 但**不是 type kind**, 反查 + split tag 直接取得错误 kind, fallback 不触发 (`has(${id}) == 1` 命中 Meta 对象 tvId 直接走错误分支)
+
+   spike revert (`interpType` 改回 `return tvKindOf(id)`), bootstrap 三阶段固定点 rebuild + 全测 335/3 baseline 持平验证完整恢复. **核心代码路径本轮 diff = 0** (spike 完整 revert).
+
+   **候选 D1 真路径 (revised, sibling 63+ Execute scope 调整)**:
+   - **prereq — InternPool key tag 双语义空间分离** (sibling 63 起首 Plan 型 sub-decision 详化 + sibling 64+ Execute spike): 选项 A) `Meta 对象 separate InternPool` (新增 `metaPool` + `metaPoolKeyOf`, Meta 对象不入 `internPool` 共池) / 选项 B) `key tag prefix 统一加 type kind 前缀` (Meta 对象 key tag 改 `object:CLS|<cls>` / `object:FLD|...` 等, type kind 部分仍可 split 第一段取 — 但破坏现有 D117/D118 Meta key schema) / 选项 C) `interpType 反查时 9 kind 白名单 filter` (key.substring 取 tag 后检查 tag ∈ {int/string/bool/null/type/double/array/map/object}, 不在 → fallback tvKindOf 兜 — 表面解但物理可行最小改动)
+   - **D1 实际可达本轮 Execute 路径**: sibling 63 起首先做 prereq sub-decision 详化 (选项 A/B/C 评估 + 自决策) + sibling 64+ Execute spike prereq, prereq 完成后 sibling 65+ 起手 D1 真路径 tvKind 列删 + tvKindOf 全迁 internPoolKeyOf 反查
+
+   **sibling 41 候选 D 决策行 L132 retro-active 修正** — sibling 62 spike 实测发现真根因更深一层后, 候选 D 决策行从 "**长期 ✓ 但本轮跨 D098 scope 不可达** — sibling 43+ 待 D098 InternPool 落地后升级" 修正为 "**长期 ✓ 物理可达本轮 prereq 满足 (D098 §决策 2 §Phase C [x] Done at 0a6dd16) 但需先做 InternPool key tag 双语义空间分离 sub-prereq — sibling 63+ 起首先做 prereq Plan 详化 + Execute spike, sibling 65+ 起手 D1 真路径全量迁**". sibling 41 + sibling 62 双 retro-active 改正同形态 — Plan 层"现成 API 已存在"凭空名假设破裂 (sibling 43 教训) 演化扩展为 "现成 API 已存在但语义空间混用"假设破裂 (sibling 62 spike 实测新发现) — 共同 root cause: §字段 12 (a) 事实断言核对路线 RED 实证不充分, 需核对**API 语义空间纯度**(避免"API 名命中 = 语义一致"假设连环错).
+
+   **D093 §差距 #3 L101 状态保持 `[~] In Progress at <sibling 45 f87f330>`** — 不升级 `[x] Done` 也不升级新 commit hash, 因 sibling 62 spike revert + 0 实质 dispatch 改变 (interpType 改回原状, 全测 baseline 持平); 候选 D 真路径 prereq sub-decision 详化 + Execute spike 留 sibling 63+ 起首独立处理.
+
+   **sibling 62 实战 retro-active 状态** — **本轮 0 bootstrap diff Execute** (spike revert 完整, 核心代码路径 diff = 0) + D093 docs 本段新增 (~80 行) + D098 sibling 61 hash 占位符回填 L155 + L307 共 2 处 (`<本 commit>` → `0a6dd16`); D093 §差距 #3 L101 状态保持 `[~] In Progress at <sibling 45 f87f330>` + §差距 #4 状态保持 `[~] In Progress at e3417e2 + 6e264fd + e3d8262 + c1c8d65` 持平; sibling 63 起手 = 候选 D1 prereq Plan 详化 (InternPool key tag 双语义空间分离 — 选项 A/B/C 评估 + 自决策 + spike 验证 38 fail 是否完全消除).
+
 4. **[~] In Progress at e3417e2 + 6e264fd + e3d8262 + c1c8d65 (sibling 48 retro-active 收口)** — 引入 InternPool 去重 Value / Type
    现状: ~~无 intern,相同常量每次产生新 id(或通过 tagged int 原地带值)~~ → Phase B 已物理 Execute 落地: 5 标量 (int/string/bool/null/type) + 5 类 Meta 对象 (ClassMeta/FieldMeta/MethodMeta/AnnotationMeta) 走 `bootstrap/lexer/intern_pool.ss` `internPoolGetOrInsert(key, ifMissAlloc): int` name-based dedup, key schema `<tag>|<payload>` (`INT|42` / `STR|<s>` / `BOOL|0` / `NULL|` / `TY|<class>` / `CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>` / `ANN|<scope>|<name>`)。目标: 实现 InternPool,Value 相等即 id 相等,Type 同理 — Phase B 部分达成 (5 标量 + Meta), 终态闭环 Array/Map/Double 三类 + interp* 家族 codegen.ss L277-500 约 30 函数内部 value 表示迁入 InternPool 彻底消除 tagged int 空间 = D098 §决策 2 §Phase C scope 远期未启动 (interp_op.ss:110 PERMANENT marker D170 sibling 第三十五例 7aabe2b 跨 D 文档 [permanent] 形态首手物理保留诚实声明). **实测**: `grep -rcn "InternPool\|internPool" bootstrap/ | grep -v ":0$"` = 5 文件 34 hits + D098 §决策 2 §Phase B L196 [x] Done + L215 [x] Done at D117 E5. retro-active 收口 sibling 48 RED 实测主动改正第五次形态 (D 文档段 retro-active 落档状态前进度误判)
 
