@@ -500,6 +500,89 @@ function exitComptimeBlock()  { comptimeMustBeKnown = false }
 
    **sibling 62 实战 retro-active 状态** — **本轮 0 bootstrap diff Execute** (spike revert 完整, 核心代码路径 diff = 0) + D093 docs 本段新增 (~80 行) + D098 sibling 61 hash 占位符回填 L155 + L307 共 2 处 (`<本 commit>` → `0a6dd16`); D093 §差距 #3 L101 状态保持 `[~] In Progress at <sibling 45 f87f330>` + §差距 #4 状态保持 `[~] In Progress at e3417e2 + 6e264fd + e3d8262 + c1c8d65` 持平; sibling 63 起手 = 候选 D1 prereq Plan 详化 (InternPool key tag 双语义空间分离 — 选项 A/B/C 评估 + 自决策 + spike 验证 38 fail 是否完全消除).
 
+   **sibling 63 候选 D1 prereq InternPool key tag 双语义空间分离启动决策详化 + spike 实测验证选项 C 9 kind 白名单 filter 38 fail 完全消除 (2026-05-28)** — sibling 62 commit `c1bbc65` spike 实测发现真根因 InternPool key tag 双语义空间混用 (value kind 9 种 vs Meta schema 5 种共池) 之后, sibling 63 起首先做该 sub-prereq Plan 详化 (3 选项 ABC 评估 + 自决策 + Zig 业界对标 + 假设破裂入口 + sibling 64+ Execute 预期) + 必跑小 spike 实测验证选项 C 物理可行性.
+
+   **RED 实测前提** (sibling 63 开工前):
+   - 全测 baseline `bin/ss test tests/` = **335 passed / 3 failed** (3 fail = pre-existing phase5 `d096_p4_l2_reactive` / `harness_task` / `spring_web_params`, 与 sibling 41-62 baseline 持平)
+   - `grep -c "internPoolKeyOf" bootstrap/eval/interp_value.ss` = **0** (interpType 走纯 tvKindOf, internPoolKeyOf 反查通道未引入)
+   - `grep -n "internPoolKeyOf" bootstrap/lexer/intern_pool.ss bootstrap/gen/gen_maybeval.ss` = **5 hits** (intern_pool:7 全局 Map 声明 + intern_pool:14 内部 set 写入 + gen_maybeval:9 注释 + gen_maybeval:18 has + gen_maybeval:19 getString 反查模板)
+   - `git branch --show-current` = `feat/d092-sema-q1` (PSM §字段 13 分支核心目标对齐 ultrathink yes — D092/D093 §SEMA Q1 第一性需求 同分支 sub-round 系列接续, D093 §差距 #3 候选 D1 prereq 是 SEMA Q1 真主线直接 sub-decision)
+
+   **业界对标 Zig SEMA 后期 InternPool 演化** (sibling 62 业界对标 Zig `src/InternPool.zig` Key 同构延续 + namespace 维度精细化):
+   - Zig `src/InternPool.zig` Key 设计采用 **enum tag union** (`Key.simple_type` / `Key.struct_type` / `Key.func_type` / `Key.simple_value` / `Key.aggregate` 等独立 variant) — **不是** string key + global Map 形态, 而是 Rust-style discriminated union with typed payload, 每 variant **自带 namespace 物理隔离**
+   - SS 当前 `internPool` + `internPoolKeyOf` 是 **string key 共享 Map**, 跨 namespace mixing 物理可能 — Meta tag (`CLS|FLD|MTH|PRM|ANN`) 与 value kind tag (`int|string|bool|null|type|double|array|map|object`) 共池
+   - **选项 A separate metaPool 同构 Zig namespace 物理分离** (Meta 对象不入 internPool 共池, 自带 `metaPool` + `metaPoolKeyOf`), 终态架构对齐
+   - 选项 B key tag prefix `object:` 同 Zig 后期 string-key cache 演化早期形态 (加 namespace prefix 但仍共池, 不达 enum tag union 终态)
+   - 选项 C 9 kind 白名单 filter 是 Zig 早期 patch 形态 (反查口加 filter, namespace 物理混合不变)
+   - 业界对标客观判据按"先 X 后 Y"演化顺序: **选 A 终态对齐 / B 中期 / C 早期** — sibling 64+ 选 A 一步到位避免 B/C 中期过渡形态
+
+   **3 候选评估** (A/B/C):
+
+   - **候选 A — separate metaPool + metaPoolKeyOf (Meta 对象不入 internPool 共池)**
+     - 层次: 数据层重构 + 接口层迁
+     - 内容: `bootstrap/lexer/intern_pool.ss` 新增 `metaPool` + `metaPoolKeyOf` 独立 Map + `metaPoolGetOrInsert(key, ifMissAlloc): int` 同形 API; `bootstrap/eval/interp_obj.ss` **11 hits** Meta 对象 `internPoolGetOrInsert` 调用迁 `metaPoolGetOrInsert` (5 入口 CLS/FLD/MTH/PRM/ANN + 2 容器 Array/Map freeze 助手 + 4 其他); `interpType` 走 internPoolKeyOf 反查时 Meta 对象 tvId 自动 miss (因不在 internPool) fallback `tvKindOf` 返 "object"
+     - 假设破裂入口: Meta 对象 `internPoolGetOrInsert` 是否在 Meta build 期就入 `internPoolKeyOf` 不可绕 — `grep -n "internPoolGetOrInsert" bootstrap/eval/interp_obj.ss` = 11 hits 全 Meta 对象路径需迁 metaPool, 错迁单点即 Meta dedup 失效 (Meta 对象 id 不 dedup → 反射等价比较 失效); 假设破裂入口 = 是否 Array/Map freeze 助手 (2 hits) 内部容器元素也是 Meta 对象 (需级联识别 — RED 实证)
+     - 长久演化评估: Zig `InternPool.Key` enum tag union namespace 物理分离 SS 对应同构 / N 年返工度 **最低** (终态架构不被 Air IR 更基础能力覆盖, Air IR 引入后 Type 走 SSA Inst.Ref 携带但 InternPool 仍是 Type 唯一全局表) / 底层依赖链 — sibling 61 `0a6dd16` D098 §决策 2 §Phase C InternPool 数据结构落地 + Phase B Meta 5 类 internPoolGetOrInsert callsite 已迁 prereq **100% 满足** (本轮可达)
+     - 决策: **✓ 选 — 终态根因层** (sibling 64+ Execute spike), 预 LOC ~30 (新 metaPool/metaPoolKeyOf/metaPoolGetOrInsert ~10 LOC + 11 callsite 迁 ~15 LOC + 反查 callsite 同步 ~5 LOC)
+
+   - **候选 B — key tag prefix `object:` 统一加 type kind 前缀 (Meta key 改 `object:CLS|<cls>` 等)**
+     - 层次: 接口层 trap + 数据层 schema 改
+     - 内容: `bootstrap/eval/interp_obj.ss` 11 hits Meta 对象 `internPoolGetOrInsert` 调用 key schema 改 `object:CLS|<cls>` / `object:FLD|<cls>.<fld>` / `object:MTH|<cls>.<mth>` / `object:PRM|<cls>.<mth>.<prm>` / `object:ANN|<scope>.<name>` — type kind 部分仍可 `key.substring(0, key.indexOf(":"))` 取 (5 字符 "object")
+     - 假设破裂入口: **破坏 D117/D118 既有 Meta key schema** (D117 字段 + D118 方法 Meta key 沿用 CLS|/FLD|/MTH| 等 prefix 已稳定 — D117 §决策 2 / D118 §决策 1 key schema 锚), 改 schema 需同步 D117/D118 文档 §key schema 段 + 所有读 `key.substring` 取 tag 的反查 callsite 校验 prefix 长度从 1 段升 2 段 + Meta dedup key collision 重新审视 (object: 前缀加后是否 Class meta 与 Field meta 跨 schema 撞 key 风险)
+     - 长久演化评估: **半终态** (namespace 仍共池, prefix 仅命名空间表达不分离物理 Map) / N 年返工度 **中** (Zig 演化最终走 enum tag union, prefix 是 string-key cache 中期形态, sibling 65+ 仍需升 metaPool) / 底层依赖链 OK 但破坏 D117/D118 schema 须迁
+     - 决策: **✗ 不选** — 破坏 D117/D118 既有 Meta key schema (跨 D 文档影响), prefix 中期形态非终态, 同等工程量 LOC ~50 反而比选 A LOC ~30 更多 (CLAUDE.md "工程量最小不是排序依据" 但选 A 工程量同时更小且更根因)
+
+   - **候选 C — `interpType` 反查时 9 kind 白名单 filter (tag ∉ {int/string/bool/null/type/double/array/map/object} → fallback tvKindOf)**
+     - 层次: 接口层 patch
+     - 内容: `bootstrap/eval/interp_value.ss:149-151` `interpType` 改走 `internPoolKeyOf` 反查 + `key.substring(0, key.indexOf("|"))` 取 tag 后 9 kind 白名单 filter + 不在白名单 fallback `tvKindOf` 兜底 — Meta tag (`CLS|FLD|MTH|PRM|ANN`) 不在 9 kind 白名单 fallback `tvKindOf` 返 "object" 修复反射 Meta 对象路径
+     - 假设破裂入口: **表面解 — internPool + internPoolKeyOf 共池物理不变** (Meta tag 仍混入), 仅 `interpType` 反查口 filter 跳过 Meta tag fallback; 假设破裂入口 = 是否有其他反查 callsite (除 `interpType` 外) 也撞 Meta tag 错读 — 需全 repo 扫 `internPoolKeyOf` 反查通道所有 read callsite 各自加 filter (扩散维护负担)
+     - 长久演化评估: **早期 patch 形态** (namespace 仍共池, 反查口 filter 形式) / N 年返工度 **高** (Zig 早期演化形态废弃, sibling 65+ 必返工升 metaPool — 选 C 等于在 C 路径上投资必废弃) / 底层依赖链 OK (单 callsite 改 LOC ~10), 工程量最小但根因解决度最低
+     - 决策: **✗ 不选终态** — 但 sibling 63 spike 实测**物理可行性验证选 C** — 选 C 仅作 38 fail 是否完全消除最危险假设破裂入口实证 (§字段 12 (b) (c) 最小 spike 协议兑现, ≤ 1 文件触动核心代码路径 ≤ 10 LOC 必 revert)
+
+   **Claude 主动决策** (§字段 12 (e) 自决策 gate 单一 X — 禁列菜单): **终态选 候选 A (separate metaPool — sibling 64+ Execute spike)**, 理由:
+   1. **根因解决度** — A 物理分离 namespace 终态架构对齐 Zig SEMA 后期 InternPool 形态 (enum tag union namespace 物理分离), B prefix 仅命名空间表达不分离 namespace, C 仅 patch interpType 反查口共池物理不变
+   2. **业界对标** — Zig `src/InternPool.zig` Key enum tag union (namespace 物理分离) 与 SS 选项 A separate metaPool 同构对齐, B 半同构 (string prefix 中期), C 不同构 (反查口 filter 非 namespace 维度)
+   3. **底层依赖链** — sibling 61 `0a6dd16` D098 §决策 2 §Phase C InternPool 数据结构落地 + Phase B Meta 5 类 internPoolGetOrInsert callsite 已迁 prereq **100% 满足** (本轮可达, 不需跨 D098 phase)
+   4. **N 年返工度** — A 终态架构 N 年返工度 **最低**, B 中 (prefix 中期形态 sibling 65+ 仍升 metaPool), C 高 (早期 patch sibling 65+ 必废弃)
+   5. **CLAUDE.md "多候选推荐排序按根因解决度 + 第一性需求覆盖度排, 禁按工程量最小作排序依据"** — A 第一性需求覆盖度 (Value 层不带 Type + Type 单独通道 read 接口稳定 + namespace 物理分离) ≥ B (半分离) ≥ C (patch 共池); 工程量 A ~30 LOC < B ~50 LOC > C ~10 LOC, **A 同时根因度最高 + 工程量适中**, 同形态 sibling 41 选 候选 C "根因解决度 + 第一性需求覆盖度" 排序判据完整继承
+
+   **sibling 63 spike 实测 — 选项 C 物理可行性验证** (§字段 12 (b) (c) 最小 spike 协议兑现):
+
+   spike scope (≤ 1 文件触动核心代码路径核对最危险假设): 改 `bootstrap/eval/interp_value.ss:149-151` `interpType` 走 `internPoolKeyOf` 反查 + `key.substring` 取 tag 后 9 kind 白名单 filter + 不在白名单 fallback `tvKindOf` 兜底 ≤ 10 LOC.
+
+   spike code 形态:
+   ```ss
+   function interpType(id: int): string {
+       if (internPoolKeyOf.has(`${id}`) == 1) {
+           const key = internPoolKeyOf.getString(`${id}`)
+           const barAt = key.indexOf("|")
+           if (barAt > 0) {
+               const tag = key.substring(0, barAt)
+               if (tag == "int" || tag == "string" || tag == "bool" || tag == "null" || tag == "type" || tag == "double" || tag == "array" || tag == "map" || tag == "object") {
+                   return tag
+               }
+           }
+       }
+       return tvKindOf(id)
+   }
+   ```
+
+   **spike 实测结果 — 38 fail 完全消除 baseline 持平**: bootstrap 三阶段固定点 PASS (`./build.sh bootstrap` Fixed point verified! Stage 2 = Stage 3) + 全测 **335 passed / 3 failed** (3 fail = pre-existing baseline phase5 `d096_p4_l2_reactive` / `harness_task` / `spring_web_params`, 与 sibling 41-62 baseline 持平). sibling 62 spike (无白名单 filter, **300 passed / 38 failed** 反射 Meta 对象路径全崩) → sibling 63 spike (9 kind 白名单 filter, **335 passed / 3 failed** 38 fail 完全消除) — Meta tag (`CLS|FLD|MTH|PRM|ANN`) 不在 9 kind 白名单 fallback `tvKindOf` 返 "object" 修复反射 Meta 对象路径完整闭环.
+
+   **最危险假设破裂入口验证三连演化**: sibling 62 next_prompt 预期"frozen 前调用"假设 (array/map kind 未入 pool 时 internPoolKeyOf 反查失败 fallback) → sibling 62 spike 发现真根因 = InternPool key tag 双语义空间混用 (value kind 9 vs Meta schema 5 共池) → sibling 63 spike 选项 C 9 kind 白名单 filter 验证物理可行性 = **✓** (38 fail 完全消除). 即选项 C 表面解物理可行但仍是 patch 不分离 namespace (共池物理不变), 选项 A separate metaPool 才是终态根因 (namespace 物理分离 = Zig enum tag union 同构).
+
+   spike revert (`interpType` 改回 `return tvKindOf(id)`), bootstrap 三阶段固定点 rebuild + 全测 **335/3 baseline 持平**验证完整恢复. **核心代码路径本轮 diff = 0** (spike 完整 revert, `git diff HEAD -- bootstrap/` 空输出).
+
+   **sibling 41 候选 D 决策行 L132/L133 retro-active 修正声明** (sibling 60 → 61 → 62 下下轮回填模式 sibling 56-61 累积六次同形累积 + sibling 63 第七次同形累积) — sibling 62 段 L497 已声明候选 D 决策行修正 (从"长期 ✓ 但本轮跨 D098 scope 不可达"到"长期 ✓ 物理可达本轮 prereq 满足 但需先做 InternPool key tag 双语义空间分离 sub-prereq"); **sibling 63 段进一步精确化 sub-prereq = 选 候选 A (separate metaPool) 终态架构对齐** + sibling 64+ Execute spike scope 锁定 (LOC ~30 separate metaPool + metaPoolKeyOf 独立 Map + 11 hits Meta 对象 `internPoolGetOrInsert` 迁 `metaPoolGetOrInsert`) + sibling 65+ 起手 D1 真路径全量迁 tvKind 列删 + tvKindOf 全走 metaPool/internPool 双 namespace 查表 (split "|" 取 tag). sibling 41 → 62 → 63 三次 retro-active 改正同形态 — Plan 层假设破裂入口 (sibling 43 "现成 API 已存在"凭空名 → sibling 62 "现成 API 已存在但语义空间混用" → sibling 63 "sub-prereq 解法物理可行性") 共同 root cause: §字段 12 (a) 事实断言核对路线 RED 实证不充分, 需核对 **(1) API 实存 + (2) 语义空间纯度 + (3) 终态 vs patch 解法层次**.
+
+   **sibling 63 sub-decision 选 A 完整论证 vs 选 C spike 实证物理可行性双重论证完整闭环**: 业界对标 (Zig InternPool enum tag union 同构) + 根因解决度 (namespace 物理分离 vs patch 共池) + N 年返工度 (终态 vs 早期 patch 废弃) + 底层依赖链 (D098 §决策 2 §Phase C [x] Done at `0a6dd16` prereq 满足) + 工程量评估禁作排序依据 (CLAUDE.md "禁按工程量最小作排序依据"); spike 实证选 C 物理可行 ≠ 选 C 作终态 (终态选 A 根因解决度优先, spike 选 C 仅最小验证假设破裂入口).
+
+   **D093 §差距 #3 L101 状态保持 `[~] In Progress at <sibling 45 f87f330>`** — 不升级 `[x] Done` 也不升级新 commit hash, 因 sibling 63 spike revert + 0 实质 dispatch 改变 (interpType 改回原状, 全测 baseline 持平); 候选 D 真路径 (选 A separate metaPool) Execute 留 sibling 64+ 起首独立处理.
+
+   **sibling 41 → 42 → 43 → 44 → 45 → 46 → 47 → 48 → 49 → ... → 62 → 63 sub-round chain log** — sibling 62 `c1bbc65` 候选 D InternPool 起首 Plan 详化 + spike 实测发现 InternPool key tag 双语义空间混用真根因更深一层 → sibling 63 `<本 commit>` 候选 D1 prereq InternPool key tag 双语义空间分离启动决策详化 (3 选项 ABC + 自决策 选 A + Zig 业界对标 namespace 物理分离 + 假设破裂入口 + sibling 64+ Execute spike scope 锁定) + spike 实测选项 C 9 kind 白名单 filter 38 fail 完全消除物理可行性验证 + sibling 41 候选 D L132/L133 retro-active 修正精确化 sub-prereq 选 A 终态架构 + sibling 64+ Execute spike scope 锁定. sibling chain log "Plan 假设破裂 retro-active 改正" 累积模式继续 — sibling 62 spike 发现真根因更深一层 → sibling 63 sub-prereq 起首 + spike 实证物理可行性验证 双形态 (Plan + Execute spike 同轮闭环 §字段 12 spike 协议 "失败即数据 + 物理可行性 GREEN" 双轨完整兑现).
+
+   **sibling 63 实战 retro-active 状态** — **本轮 0 bootstrap diff Execute** (spike revert 完整, 核心代码路径 diff = 0, `git diff HEAD -- bootstrap/` 空输出) + D093 docs 本段新增 (~120 行) + sibling 62 commit hash `c1bbc65` 直接引用 (sibling 62 段 L417-501 自身无 `<本 commit>` 占位, sibling 62 段写入时 sibling 62 commit hash 自身已知); D093 §差距 #3 L101 状态保持 `[~] In Progress at <sibling 45 f87f330>` 持平 + §差距 #4 状态保持 `[~] In Progress at e3417e2 + 6e264fd + e3d8262 + c1c8d65` 持平; sibling 64 起手 = 候选 A (separate metaPool + metaPoolKeyOf 独立 Map + `metaPoolGetOrInsert` API + 11 hits Meta 对象 `internPoolGetOrInsert` 迁 `metaPoolGetOrInsert`) Execute spike 实测 (LOC ~30, bootstrap 三阶段 + 全测验证 38 fail 是否完全消除 + Meta dedup 完整可用 + 业界对标 Zig namespace 物理分离同构 + 假设破裂入口 = Array/Map freeze 助手内部容器元素是否级联 Meta 对象).
+
 4. **[~] In Progress at e3417e2 + 6e264fd + e3d8262 + c1c8d65 (sibling 48 retro-active 收口)** — 引入 InternPool 去重 Value / Type
    现状: ~~无 intern,相同常量每次产生新 id(或通过 tagged int 原地带值)~~ → Phase B 已物理 Execute 落地: 5 标量 (int/string/bool/null/type) + 5 类 Meta 对象 (ClassMeta/FieldMeta/MethodMeta/AnnotationMeta) 走 `bootstrap/lexer/intern_pool.ss` `internPoolGetOrInsert(key, ifMissAlloc): int` name-based dedup, key schema `<tag>|<payload>` (`INT|42` / `STR|<s>` / `BOOL|0` / `NULL|` / `TY|<class>` / `CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>` / `ANN|<scope>|<name>`)。目标: 实现 InternPool,Value 相等即 id 相等,Type 同理 — Phase B 部分达成 (5 标量 + Meta), 终态闭环 Array/Map/Double 三类 + interp* 家族 codegen.ss L277-500 约 30 函数内部 value 表示迁入 InternPool 彻底消除 tagged int 空间 = D098 §决策 2 §Phase C scope 远期未启动 (interp_op.ss:110 PERMANENT marker D170 sibling 第三十五例 7aabe2b 跨 D 文档 [permanent] 形态首手物理保留诚实声明). **实测**: `grep -rcn "InternPool\|internPool" bootstrap/ | grep -v ":0$"` = 5 文件 34 hits + D098 §决策 2 §Phase B L196 [x] Done + L215 [x] Done at D117 E5. retro-active 收口 sibling 48 RED 实测主动改正第五次形态 (D 文档段 retro-active 落档状态前进度误判)
 
