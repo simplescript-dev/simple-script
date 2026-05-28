@@ -276,7 +276,7 @@ function initChecker() {
     methodRetTypes.set("Array.filter", "Array")
     methodRetTypes.set("Array.forEach", "void")
     // Built-in functions with return types (synced with gen_registry.ss)
-    const strFns = "readLine,readFile,shell,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,_ss_inotify_poll"
+    const strFns = "readLine,readFile,shell,arg,getenv,listDir,sha256,tcpRead,fromCharCode,base64Encode,base64Decode,_ss_inotify_poll,doubleBits"
     const sf = strFns.split(",")
     for (s in sf) { funcNames.set(s, "string") }
     const intFns = "parseInt,args,system,tcpListen,tcpAccept,tcpWrite,tcpWriteBytes,tcpConnect,tcpReadBytes,writeDoubleLE,mkdir,mkdirp,fileExists,removeFile,renameFile,charCodeAt,timeMs,timeUnix,fileSize,_ss_inotify_init,_ss_inotify_add_watch"
@@ -309,7 +309,7 @@ function initChecker() {
     funcParamMax.set("println", "99")
     funcParamMin.set("print", "0")
     funcParamMax.set("print", "99")
-    const oneArgFns = "readFile,shell,arg,exit,system,parseInt,parseDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec,_ss_inotify_close,ref"
+    const oneArgFns = "readFile,shell,arg,exit,system,parseInt,parseDouble,doubleBits,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec,_ss_inotify_close,ref"
     const oa = oneArgFns.split(",")
     for (o in oa) {
         funcParamMin.set(o, "1")

@@ -333,4 +333,20 @@ function emitRuntimeConversions() {
     irRet("double", "%result")
     emitIR("}")
     emitIR("")
+
+    // ss_doubleBits — IEEE 754 binary repr (D098 §决策 2 §Phase C InternPool key)
+    // bitcast double → i64 + snprintf "%016llx" → 16-char hex String
+    emitIR("define ptr @ss_doubleBits(double %d) {")
+    irLabel("entry")
+    irCall("new", "ptr", "ss_alloc_string", "i64 32")
+    emitIR("  %new_buf_ptr = getelementptr %String, ptr %new, i32 0, i32 2")
+    emitIR("  %new_buf = load ptr, ptr %new_buf_ptr, align 8")
+    emitIR("  %bits = bitcast double %d to i64")
+    irCall("written", "i32 (ptr, i64, ptr, ...)", "snprintf", "ptr %new_buf, i64 32, ptr @.rt.fmt.hex16, i64 %bits")
+    irSext("written64", "i32", "%written", "i64")
+    emitIR("  %new_len_ptr = getelementptr %String, ptr %new, i32 0, i32 3")
+    emitIR("  store i64 %written64, ptr %new_len_ptr, align 8")
+    irRet("ptr", "%new")
+    emitIR("}")
+    emitIR("")
 }

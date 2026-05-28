@@ -186,10 +186,16 @@ function interpNewArray(init: string): int {
     return newTvArray(init)
 }
 
-function interpNewDouble(d: double): int {
+function newTvDouble(d: double): int {
     const id = allocTv("double")
     tvD1.set(id + "", `${d}`)
     return id
+}
+
+// D098 §决策 2 §Phase C — double 入 InternPool dedup (sibling 58 起首 Execute)
+// key = `double|<IEEE 754 bit-pattern hex>` (Zig InternPool.Key.float_* 对齐)
+function interpNewDouble(d: double): int {
+    return internPoolGetOrInsert(`double|${doubleBits(d)}`, newTvDouble(d))
 }
 
 // ── MaybeVal helper(D098 §决策 1 §Phase A 字面规约 — D169 Phase 1.5a 显式化) ──

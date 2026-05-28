@@ -164,6 +164,7 @@ function emitRuntimeGlobals() {
     emitIR(`@.rt.fmt.d = constant [3 x i8] c"%d\\00"`)
     emitIR(`@.rt.fmt.g = constant [3 x i8] c"%g\\00"`)
     emitIR(`@.rt.fmt.lld = constant [5 x i8] c"%lld\\00"`)
+    emitIR(`@.rt.fmt.hex16 = constant [8 x i8] c"%016llx\\00"`)
     emitIR(`@.rt.str.true = constant [5 x i8] c"true\\00"`)
     emitIR(`@.rt.str.false = constant [6 x i8] c"false\\00"`)
     emitIR(`@.rt.str.empty = constant [1 x i8] c"\\00"`)
