@@ -98,10 +98,10 @@ function exitComptimeBlock()  { comptimeMustBeKnown = false }
 2. **[x] Done at c051b3d** — 合并 7 个 `genValCt*` 函数到 `evalExpr` 分发表 (Phase 2 系列合并 milestone — `c051b3d` "METHOD_CALL Zig SEMA 合并 — 最后配对消灭, genValCt* 归零 (dual 6→5, zig 6→7, 配对 1→0)" 完结)
    现状: 7 个 `genValCt*` (`Call` / `NewExpr` / `MemberAccess` / `MethodCall` / `TemplateLit` / `ArrayLit` / `IndexAccess`) 已 Phase 2 系列 commit (`66fcbd0` IndexAccess + `a8a2964` TemplateLit + `6d30421` ARRAY_LIT + `e0d6f30` MEMBER_ACCESS + `6d6e835` CALL + `e3de269` NEW_EXPR + `c051b3d` METHOD_CALL) 物理合并完结, `evalExpr` 各 kind 分支吸收。**实测**: `grep -rn "function genValCt" bootstrap/` = 1 hit (`genValCtReflectClasses` in `bootstrap/gen/exprs/exprs_ct_reflect.ss:12` 是 D120 `a364e4b` reflect.classes() comptime API 新功能, 不属本条 scope)。retro-active 收口 sibling 第四十例 (sibling 36-39 D 文档治理 maintenance 形态 4 轮累积漏检 §差距 #2 L98 已 `c051b3d` 完结事实, sibling 40 RED 实测补检)
 
-3. **[x] Done at <本 commit>** — TypedValue storage 拆成 Value + Type 两层(kind 单一源)
+3. **[x] Done at 3026f14** — TypedValue storage 拆成 Value + Type 两层(kind 单一源)
    现状: `{tvKind, tvI1, tvS1, tvD1, tvList, tvMap}` 把 kind 和 val 混存,名义 TypedValue 实则 Kind-tagged Value。目标: Value 层不带 Type,Type 查询走独立通道(`astType` / `inferType` 或未来 InternPool 的 Type id)
 
-   **[完结 <本 commit>] kind 单一源落地(候选 D'' flip 兑现)** — `tvKind` 存储 Map + `tvKindOf` 物理删除;`interpType` 改单一源 `return tvKindByPool(id)`(internPoolKeyOf 反查,Zig InternPool.indexToKey 同构);`valType` 委托 `interpType(payload(...))` 消重复反查副本;`allocTv(kind)` 去 kind 死参(10 callsite);fn 入 value pool 显式注册(`fn|${id}`),object kind 走 metaPool/fallback(value/meta namespace 物理分离保留,intern_pool.ss:18)。**实测**: `grep -rn "tvKindOf\|tvKind\b" bootstrap/ | grep -v tvKindByPool` = 0 代码引用(仅 3 处注释历史说明);bootstrap 三阶段固定点 stage2==stage3 + 全测 335/3 baseline 持平;fresh demo comptime type/array/object/fn kind 分类全正确。Value 层(tvI1/tvS1/tvD1/tvList/tvMap)现仅承载 payload,kind(Type)已移出存储改 InternPool 反查 = "Value 层不带 Type" 终态达成。
+   **[完结 3026f14] kind 单一源落地(候选 D'' flip 兑现)** — `tvKind` 存储 Map + `tvKindOf` 物理删除;`interpType` 改单一源 `return tvKindByPool(id)`(internPoolKeyOf 反查,Zig InternPool.indexToKey 同构);`valType` 委托 `interpType(payload(...))` 消重复反查副本;`allocTv(kind)` 去 kind 死参(10 callsite);fn 入 value pool 显式注册(`fn|${id}`),object kind 走 metaPool/fallback(value/meta namespace 物理分离保留,intern_pool.ss:18)。**实测**: `grep -rn "tvKindOf\|tvKind\b" bootstrap/ | grep -v tvKindByPool` = 0 代码引用(仅 3 处注释历史说明);bootstrap 三阶段固定点 stage2==stage3 + 全测 335/3 baseline 持平;fresh demo comptime type/array/object/fn kind 分类全正确。Value 层(tvI1/tvS1/tvD1/tvList/tvMap)现仅承载 payload,kind(Type)已移出存储改 InternPool 反查 = "Value 层不带 Type" 终态达成。
 
    **偏离继承 spike-by-spike 计划的根因决策(2026-05-28, 用户授权"根因直改")** — sibling 70-73 的 candidate D'' 形态是"逐 kind 给 interpType 加临时 `if (k==X) return tvKindByPool(id)` 分支 + 一 kind 一 commit",经八股自检判定为**可证明 no-op**(tvKindByPool 对已注册 kind 返回与 tvKindOf 同值,335/3 零变化)且结构上**永不推进 flip**(interpType 仍先读 tvKindOf 做 dispatch)。本轮直接做 flip + 删 tvKind 兑现终态,并据 VCM §3 反向实测发现:**drop object-reg**(tvKindByPool fallback 已正确返 "object",注册属八股 + 破坏 namespace 分离),**仅保留 fn-reg**(fallback 误判 "object"≠"fn" 的真修复)。candidate D'' 的核心 insight(全 value kind 入 pool 让反查命中)正确,错的是执行形态(spike 空转 + 推迟 flip),已纠正。
    **现状 scope RED 实测** (sibling 41 baseline,`grep -rcn "tvKind\|tvI1\|tvS1\|TypedValue" bootstrap/ | grep -v ":0$"` = 9 文件 46 hits): 数据层 storage `interp_value.ss` 29 hits (核心) + `class_comptime.ss` 2 hits (Type-as-Value tagged int) / 接口层 read `interp_op.ss` 7 + `interp_obj.ss` 2 + `interp_core.ss` 2 + `eval_expr.ss` 1 = 12 hits / 接口层 write `codegen.ss` 1 + `gen_maybeval.ss` 1 + `stmts_loop_forin.ss` 1 = 3 hits
@@ -999,6 +999,31 @@ function exitComptimeBlock()  { comptimeMustBeKnown = false }
 
 5. **[x] Done at 64afe74** — comptime 块降为 `comptimeMustBeKnown` flag (Phase 8 续子轮第二例 §差距 #5 终态完结 milestone)
    现状: comptime 块内触发一整套独立求值器 —— `interpIntOp` / `interpDoubleOp` / `interpCompoundOp` / `interpGetField` / `interpSetField` / `ctVars` / `ctScopeStack` / `interpBreakFlag` / `interpContinueFlag` / `interpReturnFlag` / TypedValue storage,本质是 code + state 两份独立系统。目标: 块内走同一个 `evalExpr`,只在块边界把 flag 置位/复位,`evalExpr` 返回 `known=false` 即 error。**实测**: `grep -c "comptimeMustBeKnown" bootstrap/eval/ct_driver.ss` ≥ 1 (4 hits 单写终态持平),64afe74 ct_driver enter/exit 单写 comptimeMustBeKnown + comptimeDepth dual-write 物理删 + `interp*` 系列已 evalExpr 统一吸收 = D093 §差距 #5 终态完结。retro-active 收口 sibling 第三十九例 (D 文档治理 anchor 收口 fourth batch)
+
+## 端到端审计 — §第一性需求 达成核对 (2026-05-28, Plan 型, HEAD 3026f14)
+
+三差距(#1/#2/#3)`[x] Done` 后做 Plan 型端到端审计:`grep bootstrap` 实测复核三计数 + 残留 comptime-vs-runtime 求值双轨扫,不预设结论。
+
+**三核心 grep 实测**(对照 §第一性需求 三命名目标):
+
+| 目标 | 命令 | 实测 | 判定 |
+|---|---|---|---|
+| §差距 #1 — 40 处 `comptimeDepth > 0` 分岔 | `grep -rn "comptimeDepth > 0" bootstrap/` | **0**(裸 `comptimeDepth` 变量含注释全库 0 + `== 0` inverse 0) | ✅ 字面物理消尽 |
+| §差距 #2 — 7 个 `genValCt*` 求值器 | `grep -rn "function genValCt" bootstrap/` | **1**(`genValCtReflectClasses` D120 reflect API,carve-out 非重复求值器) | ✅ 已并入 evalExpr |
+| §差距 #3 — kind 单一源 | `grep -rn "tvKindOf\|let tvKind" bootstrap/` | **2 注释 / 0 代码**(`interpType` = `return tvKindByPool(id)` 单行 flip) | ✅ Value 层不带 Type |
+
+**残留求值双轨扫(无残留)**:
+
+- `comptimeMustBeKnown` 60+ 命中 = **收敛后单一 flag**(Zig 骨架 line 69 `if (comptimeMustBeKnown) error(...)` loud-error gate),实测 0 处 inline `else` fork → **非** `if comptime {A} else {B}` dispatch 双轨
+- `evalExpr`(`eval_expr.ss:24`)= **唯一求值入口**,24 case 覆盖全表达式 grammar(INT/STRING/.../METHOD_CALL/CALL/NEW_EXPR/COMPTIME_EXPR/TYPEINFO_EXPR);并行 dispatcher(interpExpr/evalCt/genExprCt 等)实测 **0**
+- `genVal`(`exprs.ss:59`)= **唯一 codegen 入口**,全部走 `const mv = evalExpr(id); return mv >= 0 ? mv : 0 - mv - 1`(MaybeVal 解码:正=已知 Value id / 负=runtime reg);`interp*` 折叠臂 与 `gen*` 发射臂 = **单 dispatch 两臂**,非并行轨(Zig 骨架 line 64-73 同构)
+- `ctEvalCondOrError`(`stmts_loop_classic.ss:13`)= comptime loop 条件 3-callsite(do-while/for/while)统一 helper,委托 `genVal` + loud-error gate,**非 duplicate evaluator**(§差距 #5 收敛形态)
+
+**结论**:**§第一性需求「编译器里只能有一份求值逻辑」达成。** 三差距(#1/#2/#3)实证全清 + #5 `[x] Done`(64afe74)+ 无残留 comptime-vs-runtime 求值双轨;§决策 Zig single-dispatch 物理落地(§0.4 Phase 8 验收「D093 §决策 全达成」命中)。
+
+**唯一 open = §差距 #4(InternPool 全量去重 Phase C)** —— 属 §张力 #2(Value/Type **storage dedup**,与「一份求值逻辑」**正交**:消的是相同常量重复 id,非双求值器)、归 **D098 §决策 2 §Phase C**(Array/Map/Double + `interp*` 家族 ~30 函数迁 InternPool 消 tagged int 空间,远期未启动 + `interp_op.ss:110` PERMANENT 诚实标),**非求值双轨残留**。
+
+**SEMA Q1 milestone 评估**:D092→D093 单 dispatch 真主线「消除双轨求值」**达成**。下一步方向(交用户裁):(a) **宣告 D093 closure**(§决策 + §第一性需求 全达成,§差距 #4 Phase C 正式 handoff D098 §决策 2 远期 track);或 (b) **接续 §差距 #4 Phase C**(D098 §决策 2 scope,InternPool 全量迁移 — 但已标 PERMANENT 远期,非 SEMA Q1 本质双轨)。
 
 ## Rejected Alternatives
 
