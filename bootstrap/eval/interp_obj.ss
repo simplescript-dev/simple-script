@@ -10,7 +10,7 @@
 
 function interpGetField(objId: int, name: string): int {
     const key = objId + "|" + name
-    if (tvMap.has(key) == 0) { return newTvNull() }
+    if (tvMap.has(key) == 0) { return interpNewNull() }
     return parseInt(tvMap.getString(key))
 }
 
@@ -41,9 +41,9 @@ function interpArrayLen(arrId: int): int {
 }
 
 function interpArrayGet(arrId: int, idx: int): int {
-    if (idx < 0 || idx >= tvI2[arrId]) { return newTvNull() }
+    if (idx < 0 || idx >= tvI2[arrId]) { return interpNewNull() }
     const key = `${arrId}:${idx}`
-    if (tvArrElem.has(key) == 0) { return newTvNull() }
+    if (tvArrElem.has(key) == 0) { return interpNewNull() }
     return parseInt(tvArrElem.getString(key))
 }
 
@@ -78,10 +78,10 @@ function interpMapDelete(mapId: int, key: string) {
 }
 
 function interpMapGetKeys(mapId: int): int {
-    const arrId = newTvArray("")
+    const arrId = interpNewArray("")
     const cur = tvList.getString(mapId + "")
     if (cur == "") { return arrId }
-    for (p in cur.split(",")) { interpArrayPush(arrId, newTvString(p)) }
+    for (p in cur.split(",")) { interpArrayPush(arrId, interpNewString(p)) }
     return arrId
 }
 
@@ -103,7 +103,7 @@ function interpNewVal(kind: string, payload: string): int {
         tvI1[id] = parseInt(payload)
         return id
     }
-    return newTvNull()
+    return interpNewNull()
 }
 
 // args value 存 AstNodeId(tv kind=int 包装),消费侧调 evalAnnotationArg(nodeId)

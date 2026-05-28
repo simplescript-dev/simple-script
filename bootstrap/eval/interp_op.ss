@@ -8,13 +8,13 @@ function interpCompoundOp(op: string, lid: int, rid: int): int {
     if (tvKindByPool(lid) == "int" && tvKindByPool(rid) == "int") {
         const a = tvIntOf(lid)
         const b = tvIntOf(rid)
-        if (op == "PLUS_ASSIGN") { return newTvInt(a + b) }
-        if (op == "MINUS_ASSIGN") { return newTvInt(a - b) }
-        if (op == "STAR_ASSIGN") { return newTvInt(a * b) }
-        if (op == "SLASH_ASSIGN") { return newTvInt(a / b) }
-        if (op == "PERCENT_ASSIGN") { return newTvInt(a % b) }
+        if (op == "PLUS_ASSIGN") { return interpNewInt(a + b) }
+        if (op == "MINUS_ASSIGN") { return interpNewInt(a - b) }
+        if (op == "STAR_ASSIGN") { return interpNewInt(a * b) }
+        if (op == "SLASH_ASSIGN") { return interpNewInt(a / b) }
+        if (op == "PERCENT_ASSIGN") { return interpNewInt(a % b) }
     }
-    return newTvNull()
+    return interpNewNull()
 }
 
 function interpTruthy(id: int): int {
@@ -46,29 +46,29 @@ function interpToStr(id: int): string {
 // 不是 PLUS/MINUS 等 token 名,也不是 Plus/Minus 等随手发明名
 function interpIntOp(op: string, a: int, b: int): int {
     if (op == "Add") { return interpNewInt(a + b) }
-    if (op == "Sub") { return newTvInt(a - b) }
-    if (op == "Eq") { return newTvBool(a == b ? 1 : 0) }
-    if (op == "Ne") { return newTvBool(a != b ? 1 : 0) }
-    if (op == "Lt") { return newTvBool(a < b ? 1 : 0) }
-    if (op == "Gt") { return newTvBool(a > b ? 1 : 0) }
-    if (op == "Le") { return newTvBool(a <= b ? 1 : 0) }
-    if (op == "Ge") { return newTvBool(a >= b ? 1 : 0) }
-    if (op == "Mul") { return newTvInt(a * b) }
-    if (op == "Div") { return newTvInt(a / b) }
-    if (op == "Mod") { return newTvInt(a % b) }
-    if (op == "BitAnd") { return newTvInt(a & b) }
-    if (op == "BitOr") { return newTvInt(a | b) }
-    if (op == "BitXor") { return newTvInt(a ^ b) }
-    if (op == "Shl") { return newTvInt(a << b) }
-    if (op == "Shr") { return newTvInt(a >> b) }
+    if (op == "Sub") { return interpNewInt(a - b) }
+    if (op == "Eq") { return interpNewBool(a == b ? 1 : 0) }
+    if (op == "Ne") { return interpNewBool(a != b ? 1 : 0) }
+    if (op == "Lt") { return interpNewBool(a < b ? 1 : 0) }
+    if (op == "Gt") { return interpNewBool(a > b ? 1 : 0) }
+    if (op == "Le") { return interpNewBool(a <= b ? 1 : 0) }
+    if (op == "Ge") { return interpNewBool(a >= b ? 1 : 0) }
+    if (op == "Mul") { return interpNewInt(a * b) }
+    if (op == "Div") { return interpNewInt(a / b) }
+    if (op == "Mod") { return interpNewInt(a % b) }
+    if (op == "BitAnd") { return interpNewInt(a & b) }
+    if (op == "BitOr") { return interpNewInt(a | b) }
+    if (op == "BitXor") { return interpNewInt(a ^ b) }
+    if (op == "Shl") { return interpNewInt(a << b) }
+    if (op == "Shr") { return interpNewInt(a >> b) }
     // gen_exprs.ss genIntBinary 用 lshr (zero-fill),与 SS 的 >>> 运算符对齐
-    if (op == "UShr") { return newTvInt(a >>> b) }
+    if (op == "UShr") { return interpNewInt(a >>> b) }
     if (op == "Pow") {
         let pr = 1; let pi = 0
         while (pi < b) { pr = pr * a; pi = pi + 1 }
-        return newTvInt(pr)
+        return interpNewInt(pr)
     }
-    return newTvNull()
+    return interpNewNull()
 }
 
 // D093/D169 1.5d 主轮第三子步 — ct path 通用 binop 数值 fold (int/double dispatch +
@@ -92,18 +92,18 @@ function interpDoubleOp(op: string, a: double, b: double): int {
     if (op == "Sub") { return interpNewDouble(a - b) }
     if (op == "Mul") { return interpNewDouble(a * b) }
     if (op == "Div") { return interpNewDouble(a / b) }
-    if (op == "Eq") { return newTvBool(a == b ? 1 : 0) }
-    if (op == "Ne") { return newTvBool(a != b ? 1 : 0) }
-    if (op == "Lt") { return newTvBool(a < b ? 1 : 0) }
-    if (op == "Gt") { return newTvBool(a > b ? 1 : 0) }
-    if (op == "Le") { return newTvBool(a <= b ? 1 : 0) }
-    if (op == "Ge") { return newTvBool(a >= b ? 1 : 0) }
+    if (op == "Eq") { return interpNewBool(a == b ? 1 : 0) }
+    if (op == "Ne") { return interpNewBool(a != b ? 1 : 0) }
+    if (op == "Lt") { return interpNewBool(a < b ? 1 : 0) }
+    if (op == "Gt") { return interpNewBool(a > b ? 1 : 0) }
+    if (op == "Le") { return interpNewBool(a <= b ? 1 : 0) }
+    if (op == "Ge") { return interpNewBool(a >= b ? 1 : 0) }
     if (op == "Pow") {
         let pr = 1.0; let pi = 0; const pe = parseInt(`${b}`)
         while (pi < pe) { pr = pr * a; pi = pi + 1 }
         return interpNewDouble(pr)
     }
-    return newTvNull()
+    return interpNewNull()
 }
 
 // 6 kind (5 标量 int/bool/string/null/type + double) 全 InternPool dedup,lid==rid 即 Value.eql O(1)
