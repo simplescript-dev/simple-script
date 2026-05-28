@@ -45,7 +45,7 @@ function interpToStr(id: int): string {
 // op 名对齐 parse_exprs.ss 的 BINARY nSetS1 约定(Add/Sub/Mul/...),
 // 不是 PLUS/MINUS 等 token 名,也不是 Plus/Minus 等随手发明名
 function interpIntOp(op: string, a: int, b: int): int {
-    if (op == "Add") { return newTvInt(a + b) }
+    if (op == "Add") { return interpNewInt(a + b) }
     if (op == "Sub") { return newTvInt(a - b) }
     if (op == "Eq") { return newTvBool(a == b ? 1 : 0) }
     if (op == "Ne") { return newTvBool(a != b ? 1 : 0) }
