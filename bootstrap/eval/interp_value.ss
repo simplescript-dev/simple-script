@@ -123,6 +123,7 @@ function newTvArray(initCsv: string): int {
         }
         tvI2[id] = i
     }
+    internPoolKeyOf.set(`${id}`, `array|${id}`)
     return id
 }
 
@@ -147,7 +148,9 @@ function tvStringOf(id: int): string {
 // interp* 前缀让现有 callsite 自动 resolve,底层改走 Phase 1 的 TypedValue accessor。
 
 function interpType(id: int): string {
-    return tvKindOf(id)
+    const k = tvKindOf(id)
+    if (k == "array") { return tvKindByPool(id) }
+    return k
 }
 
 function interpAsInt(id: int): int {
