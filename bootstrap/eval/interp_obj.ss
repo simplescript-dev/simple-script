@@ -50,6 +50,7 @@ function interpArrayGet(arrId: int, idx: int): int {
 function interpNewMap(): int {
     const id = allocTv("map")
     tvList.set(id + "", "")
+    internPoolKeyOf.set(`${id}`, `map|${id}`)
     return id
 }
 

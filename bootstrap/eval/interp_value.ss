@@ -150,6 +150,7 @@ function tvStringOf(id: int): string {
 function interpType(id: int): string {
     const k = tvKindOf(id)
     if (k == "array") { return tvKindByPool(id) }
+    if (k == "map") { return tvKindByPool(id) }
     return k
 }
 
