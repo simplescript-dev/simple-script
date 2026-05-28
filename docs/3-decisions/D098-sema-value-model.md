@@ -196,6 +196,54 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 - `bootstrap/eval/interp_op.ss:115` Map 深比较分支可删, `interpValEquals` 全函数收敛为 `lid == rid ? 1 : 0`(O(1) eql 完整兑现, 与 5 标量对齐)
 - Phase C 后续 Array/Map dedup 沿用本段决策模式(候选评估 + 自决策 + spike) — 业界对标 Zig "先 scalar 后 aggregate" 演化顺序保持
 
+### §Phase C 启动决策详化 — Array/Map 入 InternPool dedup(2026-05-28 sibling 60 Plan 详化续手 sibling 58 双手范式)
+
+**启动动机**: sibling 58-59 double 闭环 commit `259577b` 之后, "Array/Map 留 Phase C 后续 sub-phase" 占位符长期残留(L155 + L189 + L197 + L258 多处提及)+ §下一步 无 active Array/Map sub-phase anchor → 容器子方向继续无活动 = D098 §决策 2 InternPool 模型完整化阻塞. sibling 60 把 Array/Map 子方向从"占位符提及"上升为"已启动 sub-phase: 嵌套序列化 key 候选评估 + 自决策 + spike 预期", §下一步 anchor 进入 active.
+
+**业界对标**: Zig `src/InternPool.zig` `Key.aggregate`(`anon_struct_type` / `struct_type` / `array_type` / `tuple_type`)统一通过 **递归子元素 pool index list 序列化** + frozen 时(sema 完结)入 pool. **dedup 时机 = comptime evaluation 完结 + frozen 边界**(不在 mutable 构造期 dedup), 与 IEEE 754 标量 dedup 时机不同(标量构造即 frozen). Zig 不取 "构造期 dedup + invalidation" 路径 — comptime aggregate value 在 sema 阶段一次性 build 后 immutable 进 pool. 本方案沿用 Zig "frozen 后入 pool" 语义边界: Array.push/Set/MapSet 等 mutate 操作发生在 frozen 之前(即 comptime block 内 + const 绑定前), frozen 后(comptime block 退出 / const 绑定时刻)的 final value 才 InternPool dedup.
+
+**RED 实测前提**(sibling 60 收集, 2026-05-28):
+
+- (a) `interpNewArray(init): int` 实现 = `bootstrap/eval/interp_value.ss:185-187` `return newTvArray(init)`(无 InternPool 包装), callsites 24+ 处覆盖 `array_lit.ss:7/22` 字面量入口 + `interp_obj.ss:84/142/155/183/220/261/275/305/307/315` 反射 Meta build + `gen_decls.ss:369` rest 参数 + `exprs_ct_builtin.ss` 多处 + `exprs_ct_reflect.ss`/`exprs_ct_enum.ss`/`exprs_ct_call.ss` 多处
+- (b) `interpNewMap(): int` 实现 = `bootstrap/eval/interp_obj.ss:50-54` 简单 `allocTv("map") + tvList.set + return id` 无 InternPool 包装, 真实外部 callsites **仅 2 处** = `new_expr.ss:16 ctVal(interpNewMap())` + `interp_obj.ss:118 const argsMap = interpNewMap()`(反射 annotation args build)
+- (c) Array/Map mutate 函数 = `interp_obj.ss:17 interpSetField` / `:27 interpArrayPush` / `:34 interpArraySet` / `:56 interpMapSet` / `:68 interpMapDelete` 5 函数直改全局 Map(`tvArrElem`/`tvMap`/`tvI2`/`tvI3`)— 实测 callsites 显示 mutate 操作发生在 **构造期**(`interp_obj.ss:84/147/157/191/251/286/291/309` push 后 build Meta; `array_lit.ss:22-30` 字面量 elem-by-elem push), 与 frozen-after-build 边界自然分离
+- (d) `interpValEquals` 当前 = `interp_op.ss:111-113 return lid == rid ? 1 : 0` 单行(sibling 59 收敛后无 kind 分支), Array/Map kind 同 6 标量走顶层 `lid==rid` 引用相等 — 但 Array/Map 引用相等 ≠ 值相等(`interpNewArray("") != interpNewArray("")` 即使两空 Array 也返 0, 违反值语义); 唯一外部 callsite `exprs_ct_builtin.ss:139` array.indexOf comptime fold 当前比 Array element 与 target(不直接比 Array 容器本身), Array dedup 缺失无破坏 — 但 user-level `comptime { assert([1,2,3]==[1,2,3]) }` 类期望仍未兑现
+- (e) D117 Phase B Meta 对象 `internPoolGetOrInsert(\`FLD|${ftKey}\`, fmId)` 等(`interp_obj.ss:251/286/291/309`)已是 **frozen-after-build 模式实战** — Meta 对象 build 完一次性 push 入 pool, 不在 push 后改; sibling 60 Array/Map 沿用同模式
+- (f) `comptime { return X }` 退出走 `eval_expr.ss` COMPTIME_EXPR 分支(`bootstrap/gen/gen_types.ss inferType COMPTIME_EXPR` + `bootstrap/eval/eval_expr.ss COMPTIME_EXPR`), `const X = comptime { ... }` 绑定走 `gen_decls.ss genVarDecl COMPTIME_EXPR` + ctVars 绑定路径 — frozen 边界两处 hook 物理可达
+
+**候选方案评估**(按根因解决度 + 业界对标排, **禁按工程量排序**):
+
+| 候选 | 方案 | (i) 根因解决度 | (ii) 底层依赖链 | (iii) N 年返工度 | (iv) 业界对标 | (v) 工程量(仅参考) |
+|---|---|---|---|---|---|---|
+| **A. 嵌套序列化 key + frozen 时入 pool** | `interpNewArray(init)`/`interpNewMap()` 不改(构造期不 dedup), 新增 `interpFreezeArray(arrId): int` / `interpFreezeMap(mapId): int` 助手在 `comptime { return X }` 退出 + `const Y = comptime { ... }` 绑定时刻调用; Array key = ``array\|<len>\|<child-1>\|<child-2>\|...\|<child-N>``(子元素 tvId 已是 InternPool index, 递归 dedup 自动级联), Map key = ``map\|<size>\|<k1>=<v1>\|<k2>=<v2>\|...``(键有序化 = SS Map 插入序). frozen 后返回 canonical id, 后续 mutate 视为 "fork 副本"(违反 frozen-after 不变量则 comptime error) | **高** — 与 Zig `Key.aggregate` 完全对齐, 递归 child 已 dedup 自动得 nested dedup, 6+1+2=9 kind(5 标量 + double + array + map)全 O(1) eql | **依赖 frozen 边界识别**(COMPTIME_EXPR 退出 + ctVars 绑定 — 两 hook 物理可达, RED §字段 (f) 已实测); 依赖 SS Map 插入序保持(实测稳定, 可机械序化) | **极低** — 业界标准, IEEE 754 同根原理 retro-active 续手, 落地后 nested dedup 自动得 | Zig `Key.aggregate` 递归 pool index list serialization + sema 完结时入 pool | 中(`interpFreezeArray/Map` 助手 ~15 LOC + COMPTIME_EXPR + ctVars 绑定 hook ~10 LOC + builtin/checker 注册 0 — frozen 是 comptime 内部, 不动 builtin signature) |
+| **B. 引用语义保持 不入 InternPool** | Array/Map kind 永走引用相等(`lid==rid`), 不入 InternPool — 接受 `interpNewArray("") != interpNewArray("")` 即使两空 Array 也返 0 | **低** — 违反 D098 §决策 2 "容器全入 InternPool" 不变量, 永远停在 8 kind 完成 + 2 kind 引用相等的双轨态; 等于放弃 §Phase C 容器完整化 | 无依赖 — 现状, 不动 | **高** — 后续若 user 写 `comptime { assert([1,2,3]==[1,2,3]) }` 类期望值相等代码必修, 回头补 | Zig 不取此路径(Zig 容器完整入 pool) | 0(不改) |
+| **C. 浅层 dedup + invalidation on mutate** | `interpNewArray(init)` 构造期立即入 InternPool, key 走当时快照; `interpArrayPush/Set/MapSet/MapDelete` 5 mutate 函数每次 evict 旧 key + 重 hash 入新 key | 中 — 构造期 dedup 形式上工作, 但 mutate 与 dedup 链路粘连 = 隐式 ref-count 不变量, 每次 mutate O(N) 序列化 + 重 hash, 实战中难维护 | 依赖 invalidation 链路 + ref-count(当前 SS comptime tv 无 ref-count, 需新引入); mutate 触发 hash 重算需所有 callsite 后插桩 | **极高** — 业界普遍不取此路径(O(N) 摊销退化 + 不变量复杂), 几乎必被 frozen-after 模式替代 | Zig 不取(违反 Zig "sema 完结后 immutable" 语义) | 大(5 mutate 函数全要插桩 evict+rehash + 不变量验证 ~50 LOC) |
+| **D. 跳 Array/Map 改 §决策 3 Type-as-Value 其他子方向** | 不做 Array/Map InternPool, 留 §下一步 占位符, Phase C 改做 §决策 3 子方向 | 低 — §决策 3 已 [x] Done at D112(`comptimeTypeAliases` → ctVars 合并完结), §决策 3 **无活子方向可做**, 跳 Array/Map = 跳整个 Phase C 容器完整化 | 无依赖 — §决策 3 已 done | 中 — Array/Map 仍要补, 只是延后到无限远 | Zig 演化"先 scalar 后 aggregate" 顺序自然要求 aggregate 接 scalar 后, 跳 Array/Map 与 Zig 顺序断裂 | 0(不改) |
+
+**自决策起首推荐**(§字段 12 (e) 自决策 gate 单一 X — 禁列菜单):
+
+**选 候选 A — 嵌套序列化 key + frozen 时入 pool**(根因解决度: 最深可达层). 理由: (1) Zig `Key.aggregate` 业界对标(N 年返工度极低); (2) 递归子元素 pool index 自动得 nested dedup, 与 sibling 58-59 5 标量 + double InternPool dedup 一致(child tvId 已 dedup → array key 用 child tvId 自动级联); (3) frozen-after-build 模式与 D117 Phase B Meta 对象 `internPoolGetOrInsert` 同型(已实战验证); (4) 候选 B 放弃完整化 / 候选 C O(N) 摊销 + 不变量复杂业界不取 / 候选 D 与 Zig 演化顺序断裂 — 三者均次优.
+
+**前置 spike**(下下轮 Execute 第一步, < 30 LOC 最小可行验证):
+
+- step 1: `bootstrap/eval/interp_value.ss` / `interp_obj.ss` 加 `interpFreezeArray(arrId: int): int` 助手 — 读 `tvI2[arrId]` len + `tvArrElem[\`${arrId}:${i}\`]` 子元素逐个序列化, key = ``array|${len}|${child-1}|${child-2}|...`` 走 `internPoolGetOrInsert(key, arrId)` 返回 canonical id; `interpFreezeMap(mapId): int` 同理读 `tvList[mapId]` 有序键列表 + `tvMap[\`${mapId}|${k}\`]` 值, key = ``map|${size}|${k1}=${v1}|...``
+- step 2: 找 frozen 边界 hook — `comptime { return X }` 退出走 `eval_expr.ss` COMPTIME_EXPR 分支, 加 `if (interpType(retVal) == "array") retVal = interpFreezeArray(retVal); if (interpType(retVal) == "map") retVal = interpFreezeMap(retVal)`; `const X = comptime { ... }` 绑定走 `gen_decls.ss` ctVars 绑定路径同形 hook
+- step 3: 写最小 SS test 验证 3 关键性质 — (i) 同值同 id `const arr1=comptime{return [1,2,3]};const arr2=comptime{return [1,2,3]};assert(arr1==arr2)` (frozen 后 dedup 成功); (ii) 空 Array dedup `const empty1=comptime{return []};const empty2=comptime{return []};assert(empty1==empty2)`; (iii) 嵌套 dedup `const a=comptime{return [[1],[2]]};const b=comptime{return [[1],[2]]};assert(a==b)`(递归 child dedup 级联)
+- spike 通过 → 整方案放心做; spike 崩(frozen 边界识别不机械 / Map 有序键迭代不稳定 / mutate 与 frozen 顺序冲突)→ 回方案层退候选 B
+
+**下下轮 Execute spike 预期**:
+- 总 LOC ~30(`interpFreezeArray/Map` 助手 ~15 + COMPTIME_EXPR + ctVars 绑定 hook ~10 + 测试 ~5)
+- 影响 callsite: `interpNewArray` 24+ 处 + `interpNewMap` 2 处 = 26+ 处全 **不动**(构造期不 dedup, 与 5 标量 + double 单点改造模式不同 — 容器走 frozen hook), 仅 frozen 边界 2 处新增 hook(COMPTIME_EXPR 退出 + ctVars 绑定)
+- baseline 风险: bootstrap 三阶段固定点必复跑 + `bin/ss test tests/` 全测必跑(spike 改 `eval_expr.ss` + `gen_decls.ss` 核心代码路径, **不豁免 VCM §验 1** — 与 sibling 59 double 同形不豁免)
+- reflection / sunset / d_doc_index linter: 0 影响(不动反射路径 / SUNSET marker / D 引用)
+- 假设破裂入口(§字段 12 (b)): 若 `comptime { return X }` 退出时 X 是嵌套半 build 完(child Array 已 freeze 父 Array 未 push 完), frozen 时机错位 dedup 半成品 — 退路 = 候选 B(Array/Map 永不入 pool); 或更严格的 frozen 边界识别(仅 ctVars 绑定时刻不在 COMPTIME_EXPR 退出 dedup)
+
+**§Phase C Array/Map 落地后预期收益**:
+- D098 §决策 2 InternPool 模型完整化 — **9 kind 全入 InternPool**(5 标量 int/string/bool/null/type + double + array + map + 已 Done meta-objects)
+- `interpValEquals` 全函数 `lid == rid ? 1 : 0` 单行 **真正完整 O(1) eql**(当前 sibling 59 已收敛, 但 Array/Map 仍走"假"引用相等 — 9 kind 都 dedup 后 `lid==rid` 才真正等价 Value.eql)
+- D098 §决策 2 §Phase C "(可选,evalExpr 全合并后评估)" 完结, §下一步 sibling 60 anchor [x] Done
+- Phase C 后续可考虑 §决策 2 §Phase C step 2 把 `interp*` 家族内部 value 表示也迁到 InternPool(D098 L131-134 原文范围), 但 9 kind dedup 已是 Zig SOTA 形态足
+
 ### §决策 3 — Type-as-Value 语义
 
 **目标**:Type 句柄和 int/string/class instance 共享 MaybeVal.val 编码空间(Zig `Value.Tag.ty` 语义)。
@@ -256,6 +304,7 @@ function valType(valId: int): string { ... }   // Phase A: interpType(valId);Pha
 - **[x] Done at e3417e2(D117 E2 InternPool dedup 起手)+ 6e264fd(D117 E5 Meta 入口 + interpCt*Array 消除)+ e3d8262(D113 SEMA 拆分 5 标量入 interp_value.ss)+ c1c8d65(§Phase B 启动前决策详化段 retro-active 落档收口)** Phase B 启动前 3 子决策(Map hash 策略 / `STR` key 预 hash / `interp*` 访问器改造范围)— 实际已物理 Execute 落地,详 §决策 2 §Phase B 启动前决策详化段。本 anchor 由 retro-active 落档收口,sibling 第三十六例应用(D170 §决策 C exit 动作 §2 D 文档治理 anchor 收口形态首手 — sibling 范式跨形态扩展 SUNSET marker discipline → D 文档治理 anchor 收口 第一次)
 - **[x] Done at D117 Execute 5(2026-04-21)** — **Meta 对象 InternPool 承载**(§决策 2 §Phase B L123-128):ClassMeta / FieldMeta / MethodMeta / AnnotationMeta 五类 Meta 对象走 `internPoolGetOrInsert` name-based dedup,key schema `CLS|<cls>` / `FLD|<cls>.<fld>` / `MTH|<cls>.<mth>` / `ANN|{CLS|FLD|MTH}|<...>`,**O(1) eql** 兑现。`interpCollectFields` / `interpCtFieldsArray` 字符串拼接 + 字符串数组双轨路径消除,反射路径单入口经 `interpBuildTypeInfo` + `interpGetField(meta, field)` Meta 对象 MEMBER_ACCESS。详情见 D117 §下一步 Execute 5 Done 条目
 - **[x] Done at `1d1fb84`(sibling 58 Plan 详化)+ `<本 commit>`(sibling 59 Execute spike + 整方案落地)** D098 §决策 2 §Phase C double 入 InternPool dedup 启动 + 落地 — sibling 58 1d1fb84 Plan 详化(4 候选评估 + 自决策 A bit-pattern key + Execute spike 预期 LOC ~30 + 业界对标 Zig `InternPool.Key.float_*`),sibling 59 Execute 落地(`ss_doubleBits` LLVM builtin + `interpNewDouble` 走 `internPoolGetOrInsert("double|<doubleBits(d)>", newTvDouble(d))` 5 标量同形 + `interp_op.ss:110-111` PERMANENT marker 物理删除 + L115 Map 深比较分支删 + `interpValEquals` 收敛到 `lid==rid?1:0` 单行)。spike RED `1.5 → 3ff8000000000000` / `2.5 → 4004000000000000` / `3.14 → 40091eb851eb851f` IEEE 754 binary repr 正确 + 同值同 bits + 异值异 bits 三关键性质全 GREEN(`-0.0` 字面量 RED 因 SS `-x` parse 为 `0 - x` 不可表达, dedup 性质 RED 替代)。bootstrap 三阶段固定点 stage2==stage3 + 全测 334/3 baseline 持平(3 fail = pre-existing stash 验证)+ 四 linter GATE OK。详 §决策 2 §Phase C 启动决策详化段 + §出口清单 sibling 第五十九例段
+- **[~] In Progress at `<本 commit>`(sibling 60 Plan 详化首手 — Array/Map sub-phase 启动)** D098 §决策 2 §Phase C Array/Map 入 InternPool dedup Plan 详化 — sibling 60 启动决策详化(4 候选 ABCD 评估 + 自决策 A 嵌套序列化 key + frozen 时入 pool + 业界对标 Zig `Key.aggregate` "先 scalar 后 aggregate" 演化顺序自然续手 sibling 58 double + 下下轮 Execute spike 预期 LOC ~30 + 假设破裂入口 = frozen 边界识别 mutate vs immutable). 承接路径: 下下轮 Execute spike 起首 `interpFreezeArray/Map` 助手 + COMPTIME_EXPR 退出 + ctVars 绑定 2 hook + 3 关键性质 SS test 验证(同值同 id / 空 Array dedup / 嵌套 dedup). 落地后预期收益: 9 kind 全入 InternPool(5 标量 + double + array + map + meta-objects), `interpValEquals` 真正完整 O(1) eql, D098 §决策 2 §Phase C "(可选,evalExpr 全合并后评估)" 完结. 详 §决策 2 §Phase C Array/Map 启动决策详化段
 
 **本 D 文档不触发任何 `.ss` 代码改动,不跑 bootstrap。** 代码改动从 evalExpr Phase A 首批 1a Plan 被批准后的 Execute 轮开始。
 
