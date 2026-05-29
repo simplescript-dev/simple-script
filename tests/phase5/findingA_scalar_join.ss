@@ -13,8 +13,9 @@ import { assertEq } from "./import/asserts"
 // 修复:join 归位 dispatch type-dependent 区(持 objId 按 inferArrayElemType 分派
 //   typed prelude 变体 _ss_joinInt/Double/Bool)+ inferArrayElemType 补 ARRAY_LIT 首元素推断。
 //
-// bool 显示 "1"/"0" 而非 "true"/"false" = genExprAsString bool 分支既有缺陷(模板插值
-//   `${true}` 同样输出 "1"),先于 join 存在,非阻挡本段段错核心 → 独立立项 I033。
+// bool 显示曾输出 "1"/"0"(非 "true"/"false")= 独立 issue I033,已 Resolved(两站点根因:
+//   gen_types.ss TRUE_LIT/FALSE_LIT→"bool" + genExprAsString bool 分支→ss_bool_to_string),
+//   回归覆盖见 tests/phase5/i033_runtime_bool_display.ss。
 // ════════════════════════════════════════════════════════════════════════
 
 function main() {
@@ -25,9 +26,10 @@ function main() {
     let ad = [1.5, 2.5]
     assertEq(ad.join("-"), "1.5-2.5", "double arr join (inferred)")
 
-    // bool: 字面量推断为 int(TRUE_LIT inferType="int")→ ss_joinInt → "1"/"0"(R2/I033)
+    // bool: I033 Resolved — TRUE_LIT/FALSE_LIT inferType="bool" → ss_joinBool + genExprAsString
+    // bool 分支 → "true"/"false"(对齐 comptime interpToStr + JS),不再 "1"/"0"。
     let ab = [true, false]
-    assertEq(ab.join("-"), "1-0", "bool arr join (inferred, R2 1/0 — I033)")
+    assertEq(ab.join("-"), "true-false", "bool arr join (inferred, I033 Resolved)")
 
     // string 回归保护(元素本是 ptr,_ss_join 默认路径)
     let as = ["x", "y", "z"]

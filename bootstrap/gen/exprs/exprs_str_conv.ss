@@ -30,6 +30,13 @@ function genExprAsString(id: int, preReg: string = ""): string {
         lastExprStringOwned = 1
         return r
     }
+    // I033: bool → "true"/"false"(单一真相源,惠及模板/+拼接/join/println)。须先于 int
+    // fallback,否则落 ss_int_to_string 出 "1"/"0"。ss_bool_to_string@gen_rt_string.ss:308。
+    if (vType == "bool") {
+        const r = nextReg(); emitIR(`  ${r} = call ptr @ss_bool_to_string(i32 ${val})`)
+        lastExprStringOwned = 1
+        return r
+    }
     // D168 §B.7: 凡 llType==ptr(user class / array / map / set / generic 等)走
     // ptrtoint → ss_i64_to_string,打印整数地址(替代旧 ABI 把 ptr 当 cstr 给 puts 的 hack)。
     if (vType == "ptr" || vType.contains("<") == 1 || llType == "ptr") {

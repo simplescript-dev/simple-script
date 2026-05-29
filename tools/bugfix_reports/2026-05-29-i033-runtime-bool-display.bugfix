@@ -1,0 +1,31 @@
+[meta]
+type = bugfix
+title = I033 runtime bool→string 显示 "1"/"0" 偏离 comptime oracle + JS — 两站点根因(gen_types.ss TRUE_LIT/FALSE_LIT 折叠 int + genExprAsString 缺 bool 分支)
+date = 2026-05-29
+commit = uncommitted
+
+[found]
+symptom = runtime bool 经 genExprAsString 落 ss_int_to_string → "1"/"0",偏离 comptime oracle interpToStr(interp_op.ss:35 → "true"/"false")+ JS String(true)="true"。实测:let b=true; `${b}` → "1"(期望 "true");[true,false].join("-") → "1-0"(期望 "true-false");comptime { return [true,false].join("-") } → "true-false"(oracle 反转)。D171 finding A 修复(scalar join 段错)后逐 kind 隔离 bool 时暴露,独立立项 I033。
+
+[isolate]
+# stash_exit=1 依据:修复前最小变量隔离矩阵(git stash 站点A+B + 全量 rebuild 基线复跑)直接观测 baseline 对本测试所有断言表达式产出 "1"/"1-0":`${b}`(inferred/annotated)→"1"、bare println→"1"、[true,false].join("-")→"1-0"、"v="+false→"v=0";i033 测试断言其为 "true"/"true-false" → 在 baseline 必 assert 失败(nonzero)。findingA baseline exit 0、3 pre-existing fail baseline 即 fail 已同次验证。
+test_file = tests/phase5/i033_runtime_bool_display.ss
+stash_exit = 1
+
+[analyze]
+broken = 单一概念根 = gen 层把 bool 折叠成 int,丢失显示/分派所需类型,两个折叠站点:站点A gen_types.ss:274 inferType(TRUE_LIT/FALSE_LIT) 返 "int"(非 "bool")→ `let b=true` 经 gen_decls.ss setVarType 传播为 int + `[true,false]` 经 inferArrayElemType 首元素 inferType="int" → gen_methods.ss:542 dispatch _ss_joinInt(非 _ss_joinBool);站点B genExprAsString(exprs_str_conv.ss)分派 string/double/i64/ptr 无 bool 分支 → 任何 vType=="bool" 值落最后 ss_int_to_string(行42)→ "1"/"0"。
+why = 站点A:历史把 bool 字面量推断折叠为 int(注释"SS bool is i32 at IR level"误把"IR 物理表示 i32"等同于"类型字符串 int")— 但 bool@IR=i32(gen_types.ss:742)是正确低层表示,类型字符串折叠才是 bug,致显示路径永远拿不到 "bool"。站点B:genExprAsString 作为 runtime scalar→string 单一真相源,从未补 bool 分支,即便类型=bool 仍 fallback ss_int_to_string。两站点叠加 → 任何 runtime bool 显示出 "1"/"0",偏离 comptime interpToStr + JS。issue-doc 仅指站点B(实测对 inferred/join inert,因站点A 在前折叠)— 经 §字段12 实证修正为双站点。
+fix = 站点A:gen_types.ss:274 TRUE_LIT/FALSE_LIT 返 "bool"(literal 推断回归 bool,流过 var 传播 + 数组元素 dispatch→_ss_joinBool)。站点B:genExprAsString 在 i64 分支后、ptr 分支前补 if(vType=="bool"){ call ss_bool_to_string(i32 val) }(显示单一真相源,惠及模板插值/+拼接/数组 join 内 result+arr[i]/println/annotated 全部 sink,_ss_joinBool body 的 result+arr[i] 复用同一分支)。ss_bool_to_string 现成(gen_rt_string.ss:308,ne i32 0→@.rt.str.true/.false),零新 runtime IR、零新函数。bool@IR=i32 + mangling "i" 不动 → 无 ABI break。
+same_pattern_count = 0
+root_or_workaround = root
+
+[resolve]
+fix_exit = 0
+net_new_ifs = 1
+net_new_fns = 0
+
+[verify]
+bootstrap = PASS
+test_passed = 344
+test_failed = 3
+test_known_fail = 3

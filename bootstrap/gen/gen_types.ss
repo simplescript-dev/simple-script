@@ -271,7 +271,11 @@ function inferType(id: int): string {
     if (kind == "INT_LIT") { return "int" }
     if (kind == "DOUBLE_LIT") { return "double" }
     if (kind == "STRING_LIT") { return "string" }
-    if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "int" }
+    // I033: bool 字面量推断回归 "bool"(原折叠为 "int")。bool@IR 仍是 i32(ssTypeToLLVM/
+    // mangling 不变,无 ABI break),但类型字符串保留 "bool" 让 `let b=true` var 传播 +
+    // `[true,false]` 数组元素 dispatch(→ ss_joinBool)+ genExprAsString 显示分支拿到 bool,
+    // 输出 "true"/"false" 对齐 comptime interpToStr + JS String(true)。
+    if (kind == "TRUE_LIT" || kind == "FALSE_LIT") { return "bool" }
     if (kind == "NULL_LIT") { return "ptr" }
     if (kind == "TEMPLATE_LIT") { return "string" }
     if (kind == "THIS") {
