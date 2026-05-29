@@ -373,13 +373,20 @@ function inferType(id: int): string {
         if (op == "As") {
             return nGetS1(nGetI2(id))
         }
+        // I034(I033 line 278 字面量 / comptime-bool-return line 324 同族第三站点):comparison
+        // (Eq/Ne/Lt/Gt/Le/Ge)+ logical(And/Or)+ instanceof BINOP 产出 JS-bool,推断回归 "bool"(原折叠
+        // "int")。bool@IR 仍 i32 无 ABI break,流过 var/join/显示/Not-unary 全链复用 I033
+        // (exprs_str_conv.ss:35)/ findingA(ss_joinBool)遗产,对齐 comptime interpNewBool + JS String()。
         if (op == "Eq" || op == "Ne" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" || op == "And" || op == "Or" || op == "Instanceof") {
-            return "int"
+            return "bool"
         }
         const binLt = inferType(nGetI1(id))
         const binRt = inferType(nGetI2(id))
         if (binLt == "double" || binRt == "double") { return "double" }
-        if (binLt == "i64") { return "int" }
+        // i64(老兼容)/ bool 操作数算术·位运算结果归 int:bool 是 comparison/logical/instanceof 结果或
+        // 字面量,JS bool→number 强制(comptime (1<2)+1=2);不归一则 return binLt 漏 "bool" 给算术结果 →
+        // ${(a<b)+1} 误显 "true"(I034 假设破裂闭合,含 I033-latent true+1 漏)。
+        if (binLt == "i64" || binLt == "bool") { return "int" }
         return binLt
     }
     if (kind == "CALL") {

@@ -1,0 +1,30 @@
+# i034_comparison_logical_bool.bugfix — D171 §收口验收 runtime comparison/logical→bool 推断残留修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter i034_comparison_logical_bool.bugfix
+
+title = runtime comparison(Eq/Ne/Lt/Gt/Le/Ge)+ logical(And/Or)BINOP 经 gen_types.ss:376-378 inferType(BINARY) 折叠成 int → ${b}/拼接/join 三 sink 显示 "1"/"0" 偏离 comptime interpNewBool(interp_op.ss:50-55 含短路)+ JS String(1<2)="true"(D171 §收口验收「行为级穷举 parity 零偏离」兑现,I033 字面量站点 line 278 / comptime-bool-return 站点 line 324 同族第三折叠站点)
+test_file = tests/phase5/i034_comparison_logical_bool.ss
+stash_exit = 1
+fix_exit = 0
+broken = let b=1<2 显示 "1"(期望 "true");comparison 全 6 运算符 <,>,<=,>=,==,!= 同 "1"/"0";logical &&/||(含短路)同折;[1<2,3>4].join("-") → "1-0"(期望 "true-false");"v="+(1<2) 拼接、多片段模板 ${l}-${g} 三 sink 全偏离;Not-unary !(a<b) 显示 "1";instanceof 显示 "1"(JS String(x instanceof Y)="true");全偏离 comptime oracle interpNewBool + JS;附带 I033-latent true+1 误显 "true"(应 int 2)
+why = gen_types.ss:376-378 inferType(BINARY) 对 op==Eq/Ne/Lt/Gt/Le/Ge/And/Or/Instanceof 一律 return "int"(非 "bool"),致下游 setVarType(let b=1<2) 传播 int / inferArrayElemType([1<2,..] 首元素 inferType=int)→ ss_joinInt / genExprAsString(exprs_str_conv.ss:5 inferType)拿到 int → 落 ss_int_to_string 出 "1"/"0";Not-unary !(a<b) 经 gen_types.ss:586 委派操作数 inferType=int 同折;是 I033 字面量站点(line 278 已修 "bool")+ comptime-bool-return 站点(line 324 已修 "bool")的镜像同根 = gen 层 bool→int 折叠族,comparison/logical/instanceof BINOP 站点漏改(第三站点)
+fix = 站点 A 根因:gen_types.ss:377 comparison/logical/instanceof BINOP return "int" → "bool"(各 cmp/短路/instanceof 出口仍 zext i1→i32,bool@IR=i32 ssTypeToLLVM:750/mangling i 无 ABI break)→ bool 类型流过 var 传播 / 数组 join dispatch(→ss_joinBool gen_methods.ss:544 findingA 遗产)/ genExprAsString bool 分支(exprs_str_conv.ss:35 I033 遗产)/ Not-unary 委派(line 586)单一真相源;假设破裂闭合:gen_types.ss:383 算术/位运算 fallthrough 既有 if(binLt=="i64") guard 合并 binLt=="bool" → if(binLt=="i64"||binLt=="bool")return "int"(simplify 采纳,JS bool→number 强制,防 (a<b)+1 误显 "true",parity comptime (1<2)+1=2,附带闭合 I033-latent true+1 漏)。零新 runtime IR/函数,gen_types.ss only(无消费侧 站点 B:global 非字面量 comparison 物化是 pre-existing 独立根因 store ptr,非本轮 regression)
+same_pattern_count = 0
+net_new_ifs = 0
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 347
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑):
+#   git stash push bootstrap/gen/gen_types.ss → ./build.sh bootstrap(rebuilt WITHOUT fix)→ bin/ss run test
+#   → STASH(no-fix) exit=1(let b=1<2 显示 "1"≠"true",assertEq fail;test 无 fix 必失败)
+#   git stash pop → ./build.sh bootstrap(rebuilt WITH fix,Stage2==Stage3 固定点)→ bin/ss run test → exit=0(all pass)
+# same_pattern_count=0 论证:comparison/logical/instanceof BINOP 折叠唯一站点 = gen_types.ss:377(已修);
+#   显示侧 genExprAsString bool 分支 I033 已建复用;join dispatch ss_joinBool findingA 已建复用;
+#   Not-unary 经 gen_types.ss:586 委派操作数自动得 bool;算术 fallthrough(line 383)同站点闭合 bool→int 漏。
+#   grep instanceof bootstrap/ = 仅 eval import(bootstrap 不以 operator 使用,纳 instanceof 零风险);无第二处残留 sink。
+# net_new_ifs=0:line 383 既有 if(binLt=="i64") guard 合并 binLt=="bool"(simplify 采纳,非新增 if);line 377 comparison/logical/instanceof 同行修改(return 值 int→bool,非新增 if)。
+# net_new_fns=0:零新函数,全复用 I033/findingA 遗产显示/dispatch/委派路径。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params(全测 347 passed / 3 failed / 350 total = 346 baseline + 1 新测,3 pre-existing 不变)。
+# 范围外 backlog(pre-existing 独立根因,不混入):global 顶层非字面量 comparison `let g=1<2` → llc store ptr 1 error(全局物化 ptr null 路径,与 inferType 显示无关 = 另根因);Map.getInt I003b deferred。
