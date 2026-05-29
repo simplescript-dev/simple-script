@@ -319,11 +319,15 @@ function inferType(id: int): string {
                 comptimeExprLiteral.set(ceKey, ceConst)
                 return "string"
             }
-            // SS bool is i32 at IR level
+            // I033 sibling — comptime bool-return 推断回归 "bool"(原折叠 "int")。bool@IR 仍是 i32
+            // (literal 存 tvIntOf=1/0 不变,ssTypeToLLVM:746/mangling:847 无 ABI break;值物化
+            // eval_expr.ss:102 经 constVal 与 int 字节一致),类型字符串保留 "bool" 让 ${b}/拼接/join
+            // 三 sink 经 inferType 拿到 bool → genExprAsString bool 分支(exprs_str_conv.ss:35)+ ss_joinBool,
+            // 输出 "true"/"false" 对齐 comptime interpToStr(interp_op.ss:50-55 比较/逻辑亦返 interpNewBool)+ JS String(true)。
             if (ceType == "bool") {
-                comptimeExprType.set(ceKey, "int")
+                comptimeExprType.set(ceKey, "bool")
                 comptimeExprLiteral.set(ceKey, `${tvIntOf(ceRetVal)}`)
-                return "int"
+                return "bool"
             }
             // D112: TypeValue literal 存 class 名,外层 VAR_DECL 走 ctVars(消除独立通道)
             if (ceType == "type") {

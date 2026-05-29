@@ -252,9 +252,11 @@ function genGlobalVar(id: int) {
     } else if (nGetKind(initId) == "COMPTIME_EXPR") {
         const ceType = inferType(initId)
         const ceLit = comptimeExprLiteral.getString(`${initId}`)
-        if (ceType == "int") {
+        // I033 sibling — comptime bool-return:bool@IR=i32 共享 int 物化路径(literal=1/0),gType=ceType
+        // 让全局读 dispatch bool 显示(防 gen_types.ss COMPTIME_EXPR 返 "bool" 后落 else → global ptr null regression)
+        if (ceType == "int" || ceType == "bool") {
             emitIR(`@${name} = global i32 ${ceLit}, align 4`)
-            gType = "int"
+            gType = ceType
         } else if (ceType == "double") {
             emitIR(`@${name} = global double ${ceLit}, align 8`)
             gType = "double"

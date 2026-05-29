@@ -1,0 +1,27 @@
+# comptime_bool_return_fold.bugfix — D171 §收口验收 comptime-scalar bool-return 折叠修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter comptime_bool_return_fold.bugfix
+
+title = comptime-scalar bool-return 经 gen_types.ss inferType(COMPTIME_EXPR) 折叠成 int → ${b}/拼接/join 三 sink 显示 "1"/"0" 偏离 comptime/JS "true"/"false"(D171 §收口验收 I033 残余 backlog 兑现,镜像同根)
+test_file = tests/phase5/comptime_bool_return_fold.ss
+stash_exit = 1
+fix_exit = 0
+broken = comptime{return true} 显示 "1"(期望 "true");comptime{return 1<2}/逻辑 &&|| 同 "1"/"0";模板插值 ${b} / 拼接 "v="+b / 数组 [b1,b2].join 三 sink 全偏离 comptime oracle interpToStr + JS String(true);全局 scope let g=comptime{return true} 亦 "1"
+why = gen_types.ss:324 inferType(COMPTIME_EXPR) 对 interpType=="bool" 的返回值 set/return "int"(literal 存 tvIntOf=1/0),致下游 genExprAsString(exprs_str_conv.ss:5 inferType)/inferArrayElemType(join dispatch)/gen_decls 全局物化均拿到 "int" → 落 ss_int_to_string 出 "1"/"0";是 I033 字面量站点(line 278 已修 "bool")的镜像同根 = gen 层 bool→int 折叠族,comptime-return 站点漏改
+fix = 站点 A 根因:gen_types.ss:324 COMPTIME_EXPR ceType=="bool" → set/return "bool"(literal 仍 tvIntOf=1/0 不变,bool@IR=i32 ssTypeToLLVM:746/mangling:847 无 ABI break,值物化 eval_expr.ss:102 经 constVal 同 int)→ bool 类型经 inferType 流过三 sink,复用 genExprAsString bool 分支(exprs_str_conv.ss:35,I033 遗产)+ ss_joinBool 单一真相源;站点 B 消费侧补全:gen_decls.ss 全局物化加 bool case → global i32 ${ceLit}(防站点 A 改后落 else→global ptr null regression)。零新 runtime IR/函数
+same_pattern_count = 0
+net_new_ifs = 0
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 346
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑):
+#   git stash push bootstrap/gen/gen_types.ss bootstrap/gen/gen_decls.ss → ./build.sh bootstrap → bin/ss run test
+#   → stash_exit=1(comptime{return true} 显示 "1"≠"true",assertEq fail;test 无 fix 必失败)
+#   git stash pop → ./build.sh bootstrap → bin/ss run test → fix_exit=0(all pass)
+# same_pattern_count=0 论证:comptime scalar bool-return 折叠唯一站点 = gen_types.ss:324(已修);
+#   显示侧 genExprAsString bool 分支 I033 已建复用;值物化 eval_expr.ss:102 bool 走 constVal 同 int 无折叠;
+#   全局物化 gen_decls.ss bool case 已补;无第二处残留 sink。
+# net_new_ifs=0:站点 A line 324 修改既有 if 体(非新增);站点 B 经 simplify 合并 int||bool 单分支(gType=ceType 去重 emitIR,非新 else if)。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params
