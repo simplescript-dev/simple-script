@@ -290,6 +290,13 @@ function genGlobalVar(id: int) {
             // store ptr <i32val> → llc "integer constant must have integer type" 硬失败。
             emitIR(`@${name} = global i32 0, align 4`)
             gType = realType
+        } else if (realType == "double") {
+            // I036: 非字面量 double 全局初值(算术 fadd / array-get bitcast i64→double / double-fn-call):
+            // 物化 double slot;emitGlobalInits 对称发 store double —— 防 global ptr null +
+            // store ptr <doubleval> → llc "floating point constant invalid for type" 硬失败。
+            // 初值 0.0(LLVM 拒 global double 整数值);折叠值经 interp_value.ss:39 `0x<hex>` 精确常量到达(同 COMPTIME_EXPR double 分支 line 260,无需额外 .0 guard)。
+            emitIR(`@${name} = global double 0.0, align 8`)
+            gType = realType
         } else {
             emitIR(`@${name} = global ptr null, align 8`)
         }
@@ -351,6 +358,11 @@ function emitGlobalInits() {
                     // genExpr 对 comparison/逻辑(zext i1→i32)/算术(add i32)/array-get(内部
                     // trunc i64→i32)/int-call(call i32)均返 i32,无需额外 trunc 安全网。
                     emitIR(`  store i32 ${val}, ptr @${gname}, align 4`)
+                } else if (gVarType == "double") {
+                    // I036: 非字面量 double 全局:double slot(genGlobalVar else 分支 global double 0.0)。
+                    // genExpr 对算术(fadd double)/array-get(bitcast i64→double)/double-call(call double)
+                    // 均返 double 寄存器或 `0x<hex>` 精确常量,直接 store double —— 与 int/bool i32 slot 对称。
+                    emitIR(`  store double ${val}, ptr @${gname}, align 8`)
                 } else {
                     emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
                 }

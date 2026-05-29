@@ -1,0 +1,31 @@
+# global_double_scalar_materialize.bugfix — D171 §收口验收 runtime-parity 族全局非字面量 double 标量物化未支持修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter global_double_scalar_materialize.bugfix
+
+title = global 顶层非字面量 double 初值(算术 fadd / 无标注 double 数组 array-get / double 函数调用 / 引用其他全局 double)经 gen_decls.ss genGlobalVar else 分支 realType=double 缺分支落最终 else @x=global ptr null + emitGlobalInits gVarType=double 缺分支落 else store ptr <doubleval> → llc "floating point constant invalid for type" 硬失败(整类不可编译;I035 轮 regression test 验证衍生的独立根因 — materialization 侧,非 propagation 侧;global_scalar_materialize int/bool 物化家族的 double 扩展,D171 §收口验收 runtime-parity 族「零硬失败」收口最后一块)
+test_file = tests/phase5/global_double_scalar_materialize.ss
+stash_exit = 1
+fix_exit = 0
+broken = 全局 let g=1.5+2.5 → llc store ptr 0x4010000000000000, ptr @gAdd "floating point constant invalid for type" 硬失败(grep -c 'error: llc'=2,0x4010..=4.0 的 IEEE754 位);算术 add/sub/mul/div 同崩;引用其他全局 let gScaled=gBase*3.0 同崩;无标注 double 数组 array-get let gArr=[1.5,2.5,3.5]; let gIdx=gArr[1](I035 后已传播 Array<double>)同崩;double 函数调用 let gCall=dfn():double 同崩;局部作用域同表达式全 GREEN(let g=1.5+2.5 局部走 alloca double、let d=da[1] 局部显 "2.5")—— 仅全局 scope 崩
+why = gen_decls.ss 全局标量物化接口边界 2 站点对非字面量 double 未分派类型(物化 ptr slot 而值是 double),与 int/bool 完全同构仅类型差。站点 A genGlobalVar else 分支(line 286-295)realType=int/bool 已分派 global i32 0,realType=double 无分支 → 落最终 else @x=global ptr null(ptr slot)。站点 B emitGlobalInits(line 349-356)gVarType=int/bool 已分派 store i32,double 无分支 → 落 else store ptr <val>,而 genExpr 对 double 算术返 fadd double 寄存器 / 折叠常量返 0x<16hex> 精确位(interp_value.ss:39)/ array-get 返 bitcast i64→double 寄存器 / double-call 返 call double 寄存器 → store ptr <doubleval> → llc 类型错。global_scalar_materialize 修了 int/bool 同 2 站点、I035 修了元素类型传播,但 double 标量物化从未覆盖(double 局部始终走 alloca double,仅全局裸露)
+fix = 候选 B 接口层 trap(gen_decls.ss 全局物化边界单一真相源,2 站点对称,与 int/bool slice 同构)。站点 A genGlobalVar else 分支加 else if(realType=="double")→ @x=global double 0.0, align 8 + gType=realType(初值 0.0 因 LLVM 拒整数 global double 0;与同函数 COMPTIME_EXPR double 分支 gen_decls.ss:260 物化模板对齐)。站点 B emitGlobalInits 加 else if(gVarType=="double")→ store double ${val}, align 8(对称)。读取侧 genIdent(exprs_simple.ss:17)经 getVarType→ssTypeToLLVM 自动 load double(COMPTIME_EXPR double 全局 + 局部 alloca double 已验此路径)。无需额外 .0 guard(折叠值经 interp_value.ss:39 `0x<hex>` 前缀在源头承担,store double 操作数恒合法:0x<16hex> 精确常量 / fadd/call/bitcast double 寄存器)。零新 runtime IR/函数。不在调用方补 bitcast/inttoptr workaround(候选 A 数据层 slot 类型仍错污染读取链被否)
+same_pattern_count = 0
+net_new_ifs = 2
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 350
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑,单阶段 pre-fix 编译器隔离):
+#   bin/ss build bootstrap/main.ss -o /tmp/newcc(当前 bin/ss 编译改后源 → fixed 编译器)
+#   /tmp/newcc run tests/phase5/global_double_scalar_materialize.ss → exit=0 "all pass"(fix 生效)
+#   当前 bin/ss(未含 fix)run 同 test → llc error "floating point constant invalid for type" / store ptr 0x4010000000000000, ptr @gAdd(无 fix 必失败,stash_exit=1)
+#   bootstrap 三阶段固定点(Stage2=Stage3,Updated bin/ss)后 bin/ss run test → exit=0(fixed bin/ss 仍 all pass)
+# same_pattern_count=0 论证:全局非字面量 double 物化唯一 2 站点 = genGlobalVar else 分支 + emitGlobalInits(均已对称补 double);
+#   读取侧 genIdent 经 getVarType→ssTypeToLLVM 自动分派 load double(COMPTIME_EXPR double 全局 gen_decls.ss:260 + 局部 alloca double 已走此路径,非新增);
+#   COMPTIME_EXPR double 物化(gen_decls.ss:260)已存在;非字面量 double 与 COMPTIME_EXPR 各自分支,无第三处残留 sink。
+# net_new_ifs=2:站点 A 1 个 else if(realType=="double")+ 站点 B 1 个 else if(gVarType=="double"),均是物化 double slot 的最小分派(声明 + store 各 1 分支),≤2 非 workaround。
+# net_new_fns=0:零新函数,复用既有 genGlobalVar/emitGlobalInits/genIdent/getVarType/ssTypeToLLVM 路径。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params(全测 350 passed / 3 failed / 353 total = 349 baseline + 1 新测,3 pre-existing 不变)。
+# F1 gen_decls.ss 775(763→775,+12 行)走 §扩容申报-I036 bump 765→780(合法特性增长,2 站点 double 物化分派),reflection_health GATE PASS;N2/N3/N4 soft drift 不 bump。
+# 范围外(独立根因,不混入):comptime double 物化 = 既有 I011(comptime 侧,本 I036 是 runtime 全局侧);Map.getInt I003b deferred 维持。

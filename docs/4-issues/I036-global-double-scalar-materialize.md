@@ -4,7 +4,7 @@
 **int/bool** 标量物化（genGlobalVar else 分支 `global i32 0` + emitGlobalInits `store i32`），
 但 **double 从未覆盖**；I035 轮（无标注全局数组元素类型传播）验证时实测暴露:double 元素类型
 已正确传播，但物化侧仍崩 —— 独立根因。
-**状态:** **[ ] Planned**（backlog；非阻挡 I035 核心 RED int/string/bool array-get — 该主路径已彻底修）。
+**状态:** **[x] Done**（2026-05-29 修复 — 候选 B 接口层 trap,gen_decls.ss 2 站点对称补 double 分派;`global_double_scalar_materialize.options.md` GATE 6/6 + `.bugfix` 6 gate PASS;回归 `tests/phase5/global_double_scalar_materialize.ss`;F1 gen_decls 走 §扩容申报-I036 bump 765→780;详见 D171 §下一步 I036 条目）。
 **颗粒度:** 预估微改（genGlobalVar else + emitGlobalInits 各补 double 分支，对齐 int/bool 2 站点对称模式）。
 **依赖:** 无硬依赖；与 `global_scalar_materialize`（int/bool 物化）、I035（元素类型传播）同函数
 `gen_decls.ss genGlobalVar`/`emitGlobalInits`，**不同根因**:I036 = 标量物化 double 扩展（materialization 侧），
@@ -51,7 +51,10 @@ function main(){ let g = 1.5 + 2.5 }   # ✓
   REJECT,初值用 `0.0`；存储值若 comptime 折叠须 `.0` guard（参考 D171:163 comptime double 物化 `.0` 补点）。
 - **数据层（次优）**:物化点 `bitcast double→i64` 存 ptr slot 再读取侧还原 —— slot 类型仍错,污染读取链,违反 §Root Cause。
 
-## GREEN 判据（立项目标，非本轮）
+## GREEN 判据（已达成 2026-05-29）
 
 全局非字面量 double（算术 `let g=1.5+2.5` / 无标注 double 数组 array-get / double-fn-call）编译通过 +
-值正确 + comptime==runtime parity；全局 int/bool/double 标量物化 3 类型对称。
+值正确 + comptime==runtime parity；全局 int/bool/double 标量物化 3 类型对称。**[x] 全部达成** —
+回归 `tests/phase5/global_double_scalar_materialize.ss`（18 assert,算术 add/sub/mul/div + 引用其他全局
++ 无标注 array-get + fn-call + 显示 parity + assertApprox 值 + comptime==runtime + 局部对称）+ 全测 349→350
++ bootstrap 三阶段固定点 + reflection/sunset/bugfix/d_doc/derived_issue gate 全 PASS。
