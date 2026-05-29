@@ -286,6 +286,7 @@ function initChecker() {
     const vf = voidFns.split(",")
     for (v in vf) { funcNames.set(v, "void") }
     funcNames.set("parseDouble", "double")
+    funcNames.set("bitsToDouble", "double")
     funcNames.set("readDoubleLE", "double")
     funcNames.set("Map", "Map")
     funcNames.set("Set", "Set")
@@ -293,7 +294,7 @@ function initChecker() {
     // D082: ref/watch
     funcNames.set("ref", "Ref")
     funcNames.set("watch", "void")
-    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,readDoubleLE,Map,Set,ref,watch`
+    allFuncNameList = `${voidFns},${strFns},${intFns},parseDouble,bitsToDouble,readDoubleLE,Map,Set,ref,watch`
     // Built-in namespaces (accessed as Math.sqrt(), Thread.start() etc.)
     defineVar("Math", "namespace", 0)
     defineVar("Thread", "namespace", 0)
@@ -309,7 +310,7 @@ function initChecker() {
     funcParamMax.set("println", "99")
     funcParamMin.set("print", "0")
     funcParamMax.set("print", "99")
-    const oneArgFns = "readFile,shell,arg,exit,system,parseInt,parseDouble,doubleBits,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec,_ss_inotify_close,ref"
+    const oneArgFns = "readFile,shell,arg,exit,system,parseInt,parseDouble,doubleBits,bitsToDouble,getenv,listDir,sha256,fromCharCode,base64Encode,base64Decode,tcpListen,tcpAccept,tcpClose,mkdir,mkdirp,fileExists,removeFile,fileSize,_ss_popen_read,exec,_ss_inotify_close,ref"
     const oa = oneArgFns.split(",")
     for (o in oa) {
         funcParamMin.set(o, "1")

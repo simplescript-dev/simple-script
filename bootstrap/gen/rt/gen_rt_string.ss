@@ -349,4 +349,17 @@ function emitRuntimeConversions() {
     irRet("ptr", "%new")
     emitIR("}")
     emitIR("")
+
+    // ss_bitsToDouble — IEEE 754 hex16 → double(ss_doubleBits 逆;D171 chained comptime double
+    // 算术 exact 回读)。strtoull(buf, NULL, 16) → i64 → bitcast double,与 ss_doubleBits 完全互逆,
+    // 单 op exact-bits 不退化。签名形状同 ss_parseDouble(ptr→double),仅 body 走精确位非 atof 十进制。
+    emitIR("define double @ss_bitsToDouble(ptr %s) {")
+    irLabel("entry")
+    emitIR("  %s_buf_ptr = getelementptr %String, ptr %s, i32 0, i32 2")
+    emitIR("  %s_buf = load ptr, ptr %s_buf_ptr, align 8")
+    irCall("bits", "i64", "strtoull", "ptr %s_buf, ptr null, i32 16")
+    emitIR("  %d = bitcast i64 %bits to double")
+    irRet("double", "%d")
+    emitIR("}")
+    emitIR("")
 }

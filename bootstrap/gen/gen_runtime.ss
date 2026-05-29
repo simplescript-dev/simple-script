@@ -67,6 +67,7 @@ function emitLibcDecls() {
     // Conversion
     emitIR("declare i32 @atoi(ptr)")
     emitIR("declare double @atof(ptr)")
+    emitIR("declare i64 @strtoull(ptr, ptr, i32)")
     emitIR("declare i32 @snprintf(ptr, i64, ptr, ...)")
     emitIR("declare i32 @printf(ptr, ...)")
     // Math
