@@ -33,9 +33,10 @@ function materialize(interpValId: int): string {
     if (t == "string") { return addStringConst(interpAsStr(interpValId)) }
     if (t == "bool") { return tvIntOf(interpValId) == 1 ? "1" : "0" }
     if (t == "double") {
-        const dStr = tvD1.getString(interpValId + "")
-        if (dStr.indexOf(".") < 0) { return `${dStr}.0` }
-        return dStr
+        // D171 finding C — 走 exact-bits hex(tvS1=doubleBits,见 newTvDouble),与 gen_types
+        // COMPTIME_EXPR 物化(gen_types.ss:294)对齐。消除 tvD1=%g 编译期 double 常量折叠丢精
+        // (`10.0/3.0` 旧物化成 `store double 3.33333`)。`0x<16hex>` 是 LLVM 精确 double 常量。
+        return `0x${tvStringOf(interpValId)}`
     }
     if (t == "null") { return "null" }
     return "0"
@@ -186,6 +187,11 @@ function interpNewArray(init: string): int {
 function newTvDouble(d: double): int {
     const id = allocTv()
     tvD1.set(id + "", `${d}`)
+    // D169 §1.5c / D171 finding C — exact-bits 副本入 tvS1(string 槽,double tv 原恒空),
+    // 供物化路径(gen_types COMPTIME_EXPR / materialize)读 `0x<16hex>` 精确常量。
+    // tvD1=%g 仅作 human 显示 + 算术回读;tvS1=IEEE754 bits 作精确物化源。
+    // 消除 tvS1 跨读 0.0(D169 §POC 失败 N1 -3.14 regression)+ %g 静默丢精双根。
+    tvS1.set(id + "", doubleBits(d))
     return id
 }
 

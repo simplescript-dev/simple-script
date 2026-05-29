@@ -291,7 +291,10 @@ function inferType(id: int): string {
             }
             if (ceType == "double") {
                 comptimeExprType.set(ceKey, "double")
-                comptimeExprLiteral.set(ceKey, interpAsStr(ceRetVal))
+                // D171 finding C — double 物化走 exact-bits hex:interpAsStr 读 tvS1=doubleBits(见
+                // interp_value.ss newTvDouble)。`0x<16hex>` 是 LLVM double 精确常量,避 interpToStr 读
+                // tvD1=%g 丢精(10.0/3.0→3.33333)+ 避 OLD interpAsStr 读空 tvS1 致 `store double ,` 崩。
+                comptimeExprLiteral.set(ceKey, `0x${interpAsStr(ceRetVal)}`)
                 return "double"
             }
             if (ceType == "string") {
