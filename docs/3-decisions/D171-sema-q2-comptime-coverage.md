@@ -1,6 +1,6 @@
 # D171: SEMA Q2 — comptime 解释器语言覆盖度补全（走统一 evalExpr）
 
-**Status:** draft — Phase 1 **[x] Done**（闭包/arrow 在 comptime 可调用，含外层捕获）；Phase 2-5 Planned
+**Status:** draft — Phase 1-2 **[x] Done**（Ph1 闭包/arrow 可调用含捕获；Ph2 spread 数组字面量 + ct 数组 `.length`）；Phase 3-5 Planned
 **Depends on:** D088（Zig 路线 / §核心验证三问 / Phase 6-8）, D093（SEMA Q1 单函数 dispatch — closure 宣告）, D094（comptime purity）, D098（SEMA Value Model — InternPool / Type-as-Value）
 **Date:** 2026-05-29
 
@@ -17,7 +17,7 @@ D093（SEMA Q1）已达成路线的**架构层**——一份 `evalExpr` 单函�
 | 构造 | probe（comptime 内） | 现状 |
 |---|---|---|
 | 闭包 / arrow 调用 | `const add=(a,b)=>a+b; return add(3,4)` | ❌ `[comptime] unknown function: add` → **静默返 0**（应 7） |
-| spread 数组字面量 | `const b=[...a, 3]; return b.length` | ❌ **静默返 0**（应 3；spread 调用参数 `f(...a)` 已工作） |
+| spread 数组字面量 | `const b=[...a, 3]; return b.length` | ✅ **Phase 2 [x] Done** — 实测根因非 spread（展平本就工作）而是 ct 数组 `.length` 走错访问器恒返 0；改走 `interpArrayLen` 后 = 3 |
 | try/catch/throw | `try{throw("e")}catch(e){return e}` | ❌ throw 逃逸为 comptime error，catch 不捕获 |
 | super / 继承方法 | `super.speak()` | ❌ `[comptime] no method 'speak' on class Dog` |
 
@@ -153,7 +153,8 @@ bin/ss run /tmp/d171_p1_closure.ss 2>&1 | grep -c "unknown function"
 ## 下一步
 
 - **[x] Done** Phase 1：闭包 / arrow 在 comptime 可调用。`exprs_ct_call.ss` `ctCallDispatch` 在「unknown function」前经 `ctResolveFnNodeId(name)` 解析 callee→绑定的 fn-kind ctVar 值→ARROW_FUNC astId（作用域链镜像 `eval/ident.ss`，外层捕获沿 `ctVars` 同 key 协议解析），与顶层 `ctFuncNodes` 统一到同一 `if (ctFuncId > 0)` bind+exec（复用 lines 206-263，零重复，不新开 ct* 注册表）；静默 null fallback 升 loud `comptimeError`（D088 §Phase 8 不变量）。GREEN：`add(3,4)=7` + `grep -c "unknown function"=0`，回归测试 `tests/phase5/d171_comptime_closure_call.ss`（简单/捕获/多捕获/嵌套 4 例），bootstrap 三阶段固定点 + 全测 335→336 passed（+1 新测，3 pre-existing 不变）。
-- **[ ] Planned** Phase 2-5：spread 数组字面量 / super 继承方法 / try-catch / loud-gate 审计 + 覆盖度回归套件（各 Phase Execute 轮起手细化 PSM）。
+- **[x] Done** Phase 2：spread 数组字面量 `[...a, x]` + comptime 数组 `.length`。**§字段3 最小变量隔离实测翻案根因**：spread 展平（`array_lit.ss:27-40` SPREAD_ELEM 分支）**本就工作**（probe `b[0..2]` 全对），真正断流在 `.length` —— `member_access.ss:23-26` 旧路径经 `interpAsStr`（读 tvS1 字符串列）`.split(",")` 数长度,而数组数据存 `tvArrElem`/`tvI2`、tvS1 对数组恒空 → **任何 ct 数组 `.length` 恒返 0**（连普通 `[1,2].length` 亦然）。改走权威 `interpArrayLen`（`interp_obj.ss:39` 读 `tvI2`，全库 array 长度唯一源；string 分支保留 `interpAsStr().length()`）。GREEN：`[...a,3].length` 0→3 + `[1,2].length` 0→2，回归测试 `tests/phase5/d171_comptime_spread_array.ss`（RED case / 元素值 / 中间 spread / 双 spread / 普通数组 5 例），bootstrap 三阶段固定点 + 全测 336→337 passed（+1 新测，3 pre-existing 不变）。走 D093 统一 `evalExpr`/`interpArray*`，不新开 ct* 注册表（D171 §拒绝准则 / D088 §反模式）。
+- **[ ] Planned** Phase 3-5：super 继承方法 / try-catch / loud-gate 审计 + 覆盖度回归套件（各 Phase Execute 轮起手细化 PSM）。
 
 **本 D 文档不触发任何 `.ss` 代码改动，不跑 bootstrap。代码改动从 Phase 1 Execute 轮开始。**
 

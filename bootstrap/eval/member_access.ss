@@ -20,9 +20,10 @@ function evalMemberAccess(astId: int): int {
         const objPayload = payload(obj)
         const mpKind = interpType(objPayload)
         if (mpKind == "object") { return ctVal(interpGetField(objPayload, member)) }
+        // D171 §Phase 2 — 数组长度走权威 interpArrayLen(tvI2);数组数据存 tvArrElem/tvI2,interpAsStr 读 tvS1
+        // 对数组恒空 → 旧 split(",") 对任何 ct 数组恒返 0(spread 展平本就工作,断流在此);string 仍走 interpAsStr
         if (member == "length" && (mpKind == "string" || mpKind == "array")) {
-            const items = interpAsStr(objPayload)
-            return ctVal(interpNewInt(mpKind == "string" ? items.length() : (items == "" ? 0 : items.split(",").length())))
+            return ctVal(interpNewInt(mpKind == "string" ? interpAsStr(objPayload).length() : interpArrayLen(objPayload)))
         }
         // D120 §Phase 1 — string/TypeValue 当作 class 句柄 .name/.fields/.methods/
         // .annotations 全部统一经 ClassMeta interpGetField read,消除 hardcoded 字符串
