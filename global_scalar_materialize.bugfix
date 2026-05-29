@@ -1,0 +1,31 @@
+# global_scalar_materialize.bugfix — D171 §收口验收 comparison-area 全局非字面量 int/bool 物化 ptr 误用修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter global_scalar_materialize.bugfix
+
+title = global 顶层非字面量 int/bool 初值(comparison/逻辑/算术/int 函数调用/标注 array-get)经 gen_decls.ss genGlobalVar else 分支无条件 @x=global ptr null + emitGlobalInits store ptr <i32val> → llc "integer constant must have integer type" 硬失败(整类不可编译,D171 §收口验收行 169 I034 末「global 顶层非字面量 comparison pre-existing 独立根因(全局物化 ptr null 路径)维持 backlog」立项兑现 — 根因在全局物化路径,与 I033/I034 inferType 显示无关)
+test_file = tests/phase5/global_scalar_materialize.ss
+stash_exit = 1
+fix_exit = 0
+broken = 全局 let g=1<2 → llc store ptr 1, ptr @g 硬失败(grep -c 'error: llc'=2);comparison 全 6 运算符 <,>,<=,>=,==,!= 同崩;逻辑 true&&false / false||true 同崩;算术 let c=a+b(引用其他全局)同崩;int 函数调用 let k=f():int 同崩;标注 let a:Array<int>=[..]; let m=a[1] array-get 同崩;局部作用域同表达式全 GREEN(let g=1<2 局部显 "true"、let k=f() 显 "7")—— 仅全局 scope 崩
+why = gen_decls.ss 全局物化接口边界 2 站点对非字面量 int/bool 丢失类型(物化 ptr slot 而值是 i32)。站点 A genGlobalVar else 分支(line 287)对所有非 fn 类型无条件 @x=global ptr null,但 realType=int/bool 时 genExpr 产出 i32 寄存器(comparison zext i1→i32 exprs_binary.ss:57/171 / 逻辑 genShortCircuit i32 / 算术 add i32 / array-get 内部 trunc i64→i32 exprs_simple.ss:61 / int-call call i32)→ 入 runtime init queue。站点 B emitGlobalInits(line 339)对非 fn 类型一律 store ptr <val> → 把 i32 值存入 ptr slot → llc 类型错。I034 把 comparison/logical inferType 改 "bool"、I033 修了显示,但全局物化路径从未支持非字面量 int/bool(I034 前 realType="int" 同样撞此 else 分支 store ptr,潜伏已久)
+fix = 候选 B 接口层 trap(gen_decls.ss 全局物化边界单一真相源,2 站点对称)。站点 A genGlobalVar else 分支加 else if(realType=="int"||realType=="bool")→ @x=global i32 0, align 4 + gType=realType(与同函数 COMPTIME_EXPR 分支 gen_decls.ss:258 int/bool 物化模板对齐)。站点 B emitGlobalInits 加 else if(gVarType=="int"||gVarType=="bool")→ store i32 ${val}, align 4(对称)。读取侧 genIdent(exprs_simple.ss:17)经 getVarType→ssTypeToLLVM 自动 load i32(literal int 全局 let n=5 已验 global i32 align 4 + load i32 align 8 组合 llc 接受)。无需额外 trunc 安全网(genExpr 对所有在范围 int/bool 表达式均返 i32,Map.getInt 可能 i64 = I003b backlog 独立 scope)。零新 runtime IR/函数,bool@IR=i32 ssTypeToLLVM:757/mangling 不变无 ABI break。不在调用方补 inttoptr/strdup workaround(候选 A 数据层 slot 类型仍错被否)
+same_pattern_count = 0
+net_new_ifs = 2
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 348
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑,单阶段 pre-fix 编译器隔离 — 不动 bin/ss):
+#   git stash push bootstrap/gen/gen_decls.ss → bin/ss build bootstrap/main.ss -o /tmp/oldcc(已修复 bin/ss 编译 pre-fix 源 → pre-fix 行为编译器)
+#   git stash pop(立即恢复 fix)→ /tmp/oldcc build tests/phase5/global_scalar_materialize.ss
+#   → STASH(pre-fix) exit=1 + llc error "integer constant must have integer type" / store ptr 1, ptr @gCmpLt(无 fix 必失败)
+#   bin/ss run tests/phase5/global_scalar_materialize.ss → exit=0(all pass,fix 已恢复 bin/ss 仍 fixed)
+# same_pattern_count=0 论证:全局非字面量 int/bool 物化唯一 2 站点 = genGlobalVar else 分支 + emitGlobalInits(均已对称修);
+#   读取侧 genIdent 经 getVarType→ssTypeToLLVM 自动分派 load i32(literal int 全局已走此路径,非新增);
+#   COMPTIME_EXPR 分支 int/bool 物化(gen_decls.ss:257)已存在(comptime-bool-return 轮修);非字面量与 COMPTIME_EXPR 各自分支,无第三处残留 sink。
+# net_new_ifs=2:站点 A 1 个 else if(realType int/bool)+ 站点 B 1 个 else if(gVarType int/bool),均是物化 i32 slot 的最小分派(声明 + store 各 1 分支),≤2 非 workaround。
+# net_new_fns=0:零新函数,复用既有 genGlobalVar/emitGlobalInits/genIdent/getVarType/ssTypeToLLVM 路径。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params(全测 348 passed / 3 failed / 351 total = 347 baseline + 1 新测,3 pre-existing 不变)。
+# F1 gen_decls.ss 759 走 §扩容申报-global-scalar-materialize bump 750→765(合法特性增长,2 站点 int/bool 物化分派),reflection_health GATE PASS。
+# 范围外 backlog(独立根因,不混入):无标注全局 array-get let a=[..]; let m=a[1](genGlobalVar 缺 inferArrayElemType→setVarType(Array<elem>) 传播,与 genVarDecl:576-581 不对称,非标量物化)→ 立项 I035;Map.getInt I003b deferred 维持。

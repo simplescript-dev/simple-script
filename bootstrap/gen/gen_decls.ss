@@ -283,6 +283,13 @@ function genGlobalVar(id: int) {
         if (isFnType(annotation) == 1 || isFnType(realType) == 1) {
             emitIR(`@${name} = global i64 0, align 8`)
             gType = "fn"
+        } else if (realType == "int" || realType == "bool") {
+            // 非字面量 int/bool 全局初值(comparison/逻辑/算术/array-get/int 函数调用):
+            // bool@IR=i32 共享 int 物化模板,与本函数 COMPTIME_EXPR 分支(line 258)对齐。
+            // 物化 i32 slot;emitGlobalInits 对称发 store i32 —— 防 global ptr null +
+            // store ptr <i32val> → llc "integer constant must have integer type" 硬失败。
+            emitIR(`@${name} = global i32 0, align 4`)
+            gType = realType
         } else {
             emitIR(`@${name} = global ptr null, align 8`)
         }
@@ -292,7 +299,7 @@ function genGlobalVar(id: int) {
             if (annotation != "") {
                 gType = annotation
             } else {
-                if (realType != "" && realType != "ptr" && realType != "int") { gType = realType }
+                if (realType != "" && realType != "ptr" && realType != "int" && realType != "bool") { gType = realType }
             }
         }
     }
@@ -335,6 +342,11 @@ function emitGlobalInits() {
                 const gVarType = getVarType(gname)
                 if (isFnType(gVarType) == 1) {
                     emitIR(`  store i64 ${val}, ptr @${gname}, align 8`)
+                } else if (gVarType == "int" || gVarType == "bool") {
+                    // 非字面量 int/bool 全局:i32 slot(genGlobalVar else 分支 global i32 0)。
+                    // genExpr 对 comparison/逻辑(zext i1→i32)/算术(add i32)/array-get(内部
+                    // trunc i64→i32)/int-call(call i32)均返 i32,无需额外 trunc 安全网。
+                    emitIR(`  store i32 ${val}, ptr @${gname}, align 4`)
                 } else {
                     emitIR(`  store ptr ${val}, ptr @${gname}, align 8`)
                 }
