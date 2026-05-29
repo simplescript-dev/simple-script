@@ -40,6 +40,17 @@ function main() {
     assertEq(comptime { return "a,b,c".split(",").length() }, 3, "str split→array len")
     assertEq(comptime { return "hello".substring(0, 3) }, "hel", "str substring (start,len)")
     assertEq(comptime { return "hello".indexOf("ll") }, 2, "str indexOf")
+    // D171 收口验收硬化:补全 grep-站点审计漏的 8 string 方法盲区(.map bug 同族)+ 语义/边界锁
+    assertEq(comptime { return "  hi  ".trim() }, "hi", "str trim")
+    assertEq(comptime { return "Hi There".toLowerCase() }, "hi there", "str toLowerCase")
+    assertEq(comptime { return "a-b-c".replace("-", "+") }, "a+b+c", "str replace")
+    assertEq(comptime { return "hello".startsWith("he") ? 1 : 0 }, 1, "str startsWith")
+    assertEq(comptime { return "hello".endsWith("lo") ? 1 : 0 }, 1, "str endsWith")
+    assertEq(comptime { return "hello".charAt(1) }, "e", "str charAt")
+    assertEq(comptime { return "hello".includes("ell") ? 1 : 0 }, 1, "str includes")
+    assertEq(comptime { return "ab".repeat(3) }, "ababab", "str repeat")
+    assertEq(comptime { return "hello".substring(1, 3) }, "ell", "str substring (start,len) 语义锁(非 end)")
+    assertEq(comptime { return "hello".indexOf("z") }, 0 - 1, "str indexOf not-found = -1")
 
     // ── 3. 数组方法(含 map/filter/reduce 高阶) ──
     assertEq(comptime { return [1, 2, 3, 4].length() }, 4, "arr length")
@@ -58,6 +69,17 @@ function main() {
         const a = [1, 2, 3, 4]
         return a.reduce((s: int, x: int) => s + x, 0)
     }, 10, "arr reduce")
+    // D171 收口验收硬化:补 push storeback / forEach 外层捕获变异 / indexOf 边界 / slice 负 end
+    assertEq(comptime { let a = [1, 2]; a.push(3); return a.length() }, 3, "arr push storeback")
+    assertEq(comptime {
+        let s = 0
+        [1, 2, 3, 4].forEach((x: int) => { s = s + x })
+        return s
+    }, 10, "arr forEach 外层捕获变异")
+    assertEq(comptime { return [1, 2, 3].indexOf(9) }, 0 - 1, "arr indexOf not-found = -1")
+    assertEq(comptime { return ["a", "b", "c"].indexOf("b") }, 1, "arr indexOf string elem")
+    // slice 负 end:comptime 正确处理(end<0 → len+end),runtime 范围外(收口验收发现 B)
+    assertEq(comptime { return [1, 2, 3, 4].slice(1, 0 - 1).length() }, 2, "arr slice 负 end(comptime 正确)")
 
     // ── 4. Map 方法 ──
     assertEq(comptime {
@@ -81,6 +103,10 @@ function main() {
         m.set("s", "v")
         return m.getString("s")
     }, "v", "map getString")
+    // D171 收口验收硬化:补 getBool / delete / keys(getInt/getDouble 仍 deferred I003b,见 D171 §160)
+    assertEq(comptime { const m = new Map(); m.set("b", true); return m.getBool("b") ? 1 : 0 }, 1, "map getBool")
+    assertEq(comptime { const m = new Map(); m.set("k", 1); m.delete("k"); return m.has("k") ? 1 : 0 }, 0, "map delete")
+    assertEq(comptime { const m = new Map(); m.set("a", 1); m.set("b", 2); return m.keys().length() }, 2, "map keys length")
 
     // ── 5. 闭包 / arrow + 外层捕获(Phase 1) ──
     assertEq(comptime {
