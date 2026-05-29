@@ -156,7 +156,7 @@ function interpAsStr(id: int): string {
 }
 
 // interp* value delegate — D092 §Phase 2 sub-b / D098 §决策 2 Phase B InternPool dedup
-// 5 标量入口(int/string/bool/null/type)key tag 与 interpType 同名,Array/Map/Double 留 Phase C
+// 9 value kind (int/string/bool/null/type/double/array/map/fn) key tag 与 interpType 同名;Part B interp* 家族 value 表示迁 = D098 §决策 2 §Phase C step 2 远期可选 trigger unmet
 
 function interpNewInt(n: int): int {
     return internPoolGetOrInsert(`int|${n}`, newTvInt(n))

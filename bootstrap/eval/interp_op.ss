@@ -106,8 +106,8 @@ function interpDoubleOp(op: string, a: double, b: double): int {
     return interpNewNull()
 }
 
-// 6 kind (5 标量 int/bool/string/null/type + double) 全 InternPool dedup,lid==rid 即 Value.eql O(1)
-// D098 §决策 2 §Phase C double 入 InternPool dedup 已 Execute (sibling 58 起首),Array/Map 留 Phase C 后续 sub-phase
+// 9 value kind (int/string/bool/null/type/double/array/map/fn) 全入 InternPool,lid==rid 即 Value.eql O(1)
+// D098 §决策 2 §Phase C dedup done (double sibling 58/59 + array/map sibling 60/61);Part B interp* 家族 value 表示迁 = §Phase C step 2 远期可选 trigger unmet
 function interpValEquals(lid: int, rid: int): int {
     return lid == rid ? 1 : 0
 }

@@ -1,6 +1,6 @@
 // D098 §决策 2 §Phase B — InternPool 引入
 // 相同 (tag, payload) 同 tvId,Value.eql 退化为 id == id O(1) 比较
-// 范围:5 标量入口(int/string/bool/null/type),Array/Map/Double 留 Phase C
+// 范围:9 value kind 全入 InternPool(int/string/bool/null/type/double/array/map/fn);Part B interp* 家族 value 表示迁 = D098 §决策 2 §Phase C step 2 远期可选 trigger unmet
 // key 格式:`<tag>|<payload>` —— int|42 / string|hello / bool|0 / null| / type|MyClass
 
 let internPool = new Map()        // key → tvId
