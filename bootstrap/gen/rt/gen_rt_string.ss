@@ -289,6 +289,21 @@ function emitRuntimeConversions() {
     emitIR("}")
     emitIR("")
 
+    // ss_doubleToStringExact — round-trip 全精度十进制(%.17g = binary64 DBL_DECIMAL_DIG)。形状同
+    // ss_double_to_string,仅 fmt 换 @.rt.fmt.g17。D171 finding C / I032:comptime double IDENT 折叠
+    // (rewriteIdentToLit)物化 DOUBLE_LIT S1 走此,消除 %g 6 位丢精;atof/LLVM round-to-nearest 往返 bit-exact。
+    emitIR("define ptr @ss_doubleToStringExact(double %val) {")
+    irCall("new", "ptr", "ss_alloc_string", "i64 64")
+    emitIR("  %new_buf_ptr = getelementptr %String, ptr %new, i32 0, i32 2")
+    emitIR("  %new_buf = load ptr, ptr %new_buf_ptr, align 8")
+    irCall("written", "i32 (ptr, i64, ptr, ...)", "snprintf", "ptr %new_buf, i64 64, ptr @.rt.fmt.g17, double %val")
+    irSext("written64", "i32", "%written", "i64")
+    emitIR("  %new_len_ptr = getelementptr %String, ptr %new, i32 0, i32 3")
+    emitIR("  store i64 %written64, ptr %new_len_ptr, align 8")
+    irRet("ptr", "%new")
+    emitIR("}")
+    emitIR("")
+
     // ss_bool_to_string — 包装 @.rt.str.true/.false 为新 String(每次返回新对象,immortal 可后期优化)
     emitIR("define ptr @ss_bool_to_string(i32 %val) {")
     irICmp("nonzero", "ne", "i32", "%val", "0")

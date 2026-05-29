@@ -45,7 +45,14 @@ function rewriteIdentToLit(nodeId: int, tagged: int): int {
     }
     if (tk == "double") {
         nKind.set(nodeId + "", "DOUBLE_LIT")
-        nSetS1(nodeId, tvD1.getString(pl + ""))
+        // D171 finding C / I032 — round-trip 全精度十进制(非 tvD1=%g 6 位丢精)。tvStringOf(pl)=tvS1
+        // IEEE754 exact-bits hex(见 newTvDouble),bitsToDouble 重建精确 double,doubleToStringExact(%.17g)
+        // 物化 round-trip S1。S1 单一统一契约"round-trip decimal"→ 全消费点(gen_decls store double /
+        // eval_expr:36+interp_obj:175 parseDouble / annArgToSrc 源码回流)零改动即 bit-exact。`.0` guard:
+        // 整数值 double(6.0/2.0→%.17g "3")补小数点(LLVM `global double 3` REJECT + SS lexer 须 数字.数字)。
+        let lit = doubleToStringExact(bitsToDouble(tvStringOf(pl)))
+        if (lit.contains(".") == 0 && lit.contains("e") == 0 && lit.contains("E") == 0) { lit = lit + ".0" }
+        nSetS1(nodeId, lit)
         return 1
     }
     if (tk == "bool") {

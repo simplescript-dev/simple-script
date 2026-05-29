@@ -38,25 +38,25 @@
 # bump-group F1:bootstrap/main.ss=660 trail=D097#扩容申报 date=2026-04-22
 # bump-group F1:bootstrap/gen/gen_decls.ss=750 trail=D170#扩容申报-step-7-实战-bump-fix date=2026-04-22
 # bump-group M1=5830 M5=1955 N3=592000 trail=D171#扩容申报-Phase4-comptime-trycatch date=2026-04-22
-M1=5731:5830
-M2=85203:86400
-M3a=13584:13700
-M3b=2426:2540
-M4=3326:3400
-M5=1917:1955
-M6=38:40
+M1=5814:5830
+M2=86361:86400
+M3a=13770:13700
+M3b=2526:2540
+M4=3372:3400
+M5=1942:1955
+M6=40:40
 M7a=27:27
-M7b=728:750
+M7b=752:750
 N1=35:35
-N2=426015:432000
-N3=586108:592000
+N2=431805:432000
+N3=591259:592000
 N4=352:350
 N5=0:0
 F1:bootstrap/parse/parser.ss=884:885
 F1:bootstrap/parse/parse_stmts.ss=616:616
-F1:bootstrap/main.ss=640:660
-F1:bootstrap/gen/gen_runtime.ss=991:1100
-F1:bootstrap/gen/methods/gen_methods.ss=707:730
-F1:bootstrap/gen/gen_calls.ss=746:750
+F1:bootstrap/main.ss=653:660
+F1:bootstrap/gen/gen_runtime.ss=1094:1100
+F1:bootstrap/gen/methods/gen_methods.ss=710:730
+F1:bootstrap/gen/gen_calls.ss=750:750
 F1:bootstrap/gen/gen_decls.ss=745:750
-F1:bootstrap/gen/gen_types.ss=888:1050
+F1:bootstrap/gen/gen_types.ss=897:1050

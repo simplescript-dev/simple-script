@@ -1,8 +1,8 @@
 # I032 — comptime double IDENT 折叠走 tvD1(%g)丢精(D171 finding C 第三物化 sink)
 
 **父决策:** D171 §第一性需求「comptime = 完整语言」/ finding C(comptime double 精度)。本 issue = tvD1=%g 跨读丢精根因的**第三个物化 sink**(finding C 修了 sink 1/2 = `materialize`+`gen_types`;`comptime_double_arith` 轮修了算术回读 = `interpNumericBinop`;本 sink 漏网)。
-**状态:** Open(2026-05-29 立项;裁决 probe 实测 LOSSY 坐实)
-**颗粒度:** 预估 标准改 —— DOUBLE_LIT S1 表示契约冲突需根因级设计,非照抄 `0x${hex}`(见 §为何独立)
+**状态:** **[x] Resolved**(2026-05-29 修复落地;`comptime_double_ident_fold.options.md` GATE 6/6 选候选 C 架构层)。**根因修复**=fold `rewriteIdentToLit` double 分支(`class_comptime.ss`)从 `tvD1.getString`(%g 6 位丢精)改 `doubleToStringExact(bitsToDouble(tvStringOf(pl)))`——`tvStringOf`=tvS1 IEEE754 exact-bits,`bitsToDouble` 重建精确 double,新增 `doubleToStringExact` builtin(`%.17g` = binary64 DBL_DECIMAL_DIG round-trip;`ss_doubleToStringExact`+`@.rt.fmt.g17`)物化 round-trip 十进制 S1 + `.0` guard 补整数值小数点。**S1 单一统一契约"round-trip decimal" → 3 消费点(`gen_decls store double` / `eval_expr:36`+`interp_obj:175` `parseDouble` / `annArgToSrc` 源码回流)零改动即 bit-exact**。GREEN:getRatio probe `doubleBits`==精确 `400aaaaaaaaaaaab`、`==` 返 true;回归 `tests/phase5/d171_comptime_double_ident_fold.ss`(7 case:canonical/整数值 `.0` guard/链式/IEEE residue 反向/负数/数值消费/源码字面非退化,pre-fix exit 1 ↔ fixed exit 0)。bootstrap 三阶段固定点(新 builtin 2-stage:先注册再接入)+ 全测 342 passed(341 baseline+1 新测试,3 pre-existing 不变)+ reflection_health GATE PASS 无 bump + sunset GATE OK。
+**颗粒度:** 大改(~50 LOC + 6 文件 + 新 builtin 签名)—— DOUBLE_LIT S1 表示契约统一为 round-trip decimal(候选 C 架构层),非照抄 `0x${hex}`(见 §为何独立,候选 A 经 spike 证伪:LLVM `-0x` REJECT + atof/SS lexer 不解析 hex）
 **依赖:** `comptime_double_arith` 轮已落 `bitsToDouble` builtin(hex16→double)—— **本 issue 修复直接复用它**(底层先行,MNK §字段 10(d))
 **创建:** 2026-05-29
 **立项由:** `comptime_double_arith`(chained comptime double 算术精度)轮 `/simplify` altitude agent 复查 —— 发现同根因第三 sink;裁决 probe 实测推翻 D171 上一轮"class_comptime.ss:48 本就正确不改"误判

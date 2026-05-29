@@ -164,6 +164,10 @@ function emitRuntimeGlobals() {
     // Format strings (use @.rt. prefix to avoid collision with user string consts)
     emitIR(`@.rt.fmt.d = constant [3 x i8] c"%d\\00"`)
     emitIR(`@.rt.fmt.g = constant [3 x i8] c"%g\\00"`)
+    // D171 finding C / I032 — round-trip 全精度十进制(17 位 = binary64 DBL_DECIMAL_DIG);comptime double
+    // IDENT 折叠物化 S1 走此而非 %g(6 位丢精),atof/LLVM round-to-nearest 往返 bit-exact。仅折叠点用,
+    // human 显示路径(ss_double_to_string→%g)不动。
+    emitIR(`@.rt.fmt.g17 = constant [6 x i8] c"%.17g\\00"`)
     emitIR(`@.rt.fmt.lld = constant [5 x i8] c"%lld\\00"`)
     emitIR(`@.rt.fmt.hex16 = constant [8 x i8] c"%016llx\\00"`)
     emitIR(`@.rt.str.true = constant [5 x i8] c"true\\00"`)
