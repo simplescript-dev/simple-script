@@ -1,0 +1,28 @@
+# global_array_elem_infer.bugfix — I035 无标注全局数组 var 元素类型未传播致 array-get 全局物化 llc 硬失败修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter global_array_elem_infer.bugfix
+
+title = 无标注全局数组 let a=[10,20,30] + let m=a[1] → genGlobalVar 不传播 a 元素类型(varType 退 "ptr")→ inferType(a[1]) 退化返 i64 → @m=global ptr null + emitGlobalInits store ptr <i64> → llc "defined with type 'i64' but expected 'ptr'" 硬失败(D171:170 立项的全局 array-get 推断侧 gap — 与 global_scalar_materialize 标量物化侧正交,根因在元素类型传播 propagation 侧)
+test_file = tests/phase5/global_array_elem_infer.ss
+stash_exit = 1
+fix_exit = 0
+broken = 无标注全局 let a=[10,20,30]; let m=a[1] → @m=global ptr null + store ptr <i64> 硬失败(grep -c 'error: llc'=2,IR 实证 store ptr %10, ptr @gI0 其中 %10=i64);string 数组 let sa=["a","b"]; let s=sa[0] / bool 数组 let ba=[true,false]; let b=ba[0] 同入口;局部无标注同代码 GREEN(genVarDecl:587-593 已传播 Array<elem>,prints 20)、显式标注 let a: Array<int>=[..] 全局 GREEN(global_scalar_materialize 已覆盖,prints 20)—— 仅无标注全局组合崩
+why = gen_decls.ss var-decl 元素类型传播契约在局部站点(genVarDecl:587-593 typeAnn=="" && initType=="ptr" → inferArrayElemType → setVarType(Array<elem>))honored、在全局站点(genGlobalVar else 分支)缺失 —— 接口层不对称。无标注全局数组 a 经 emitLiteralGlobalInit 返 ""(ARRAY_LIT 非字面量)→ 落 else realType=inferType(ARRAY_LIT)="ptr",原 gType post-processing 仅 realType!="ptr" 才设 gType → realType=="ptr" 时 setVarType(a,"ptr") 丢元素类型 → 下游 inferType(a[1]) 经 inferArrayElemType(IDENT a→getVarType="ptr"→无 "<") 退化返 i64 → genGlobalVar 对 m 落 else @m=global ptr null + genIndexAccess emitI64ToValue(_, "")(elem 未知)不 trunc 留 i64 → emitGlobalInits store ptr <i64> → llc 类型不匹配
+fix = 候选 B 接口层 trap(gen_decls.ss var-decl 元素类型传播契约单一真相源)。genGlobalVar else 分支 annotation=="" 子支补 else if(realType=="ptr"){ const aeType=inferArrayElemType(initId); if(aeType!=""){ gType=Array<elem> } },镜像 genVarDecl:587-593。元素类型在 decl 站点确立 → 下游 inferType(a[1])=elem → array-get 推断/物化/trunc 全链自动正确(标注 Array<int> 路径已验此链):int/bool 走 global_scalar_materialize i32 slot + store i32 + genIndexAccess trunc i64→i32;string 走 ptr slot + store ptr + inttoptr。零新函数零新 runtime IR,inferArrayElemType 已支持 ARRAY_LIT(gen_types.ss:153 finding A 遗产)。不在 array-get 物化点补回查(候选 A 数据层消费侧 workaround 被否)
+same_pattern_count = 0
+net_new_ifs = 2
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 349
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑,单阶段 pre-fix 编译器隔离 — 本轮源改尚未 bootstrap 入 bin/ss,bin/ss 即 pre-fix 编译器):
+#   bin/ss run tests/phase5/global_array_elem_infer.ss → STASH(pre-fix) exit=1 + llc "'%10' defined with type 'i64' but expected 'ptr'" / store ptr %10, ptr @gI0(无 fix 必失败)
+#   ./build.sh bootstrap(Stage2==Stage3 固定点,bin/ss 更新为 fixed)→ bin/ss run tests/phase5/global_array_elem_infer.ss → exit=0(all pass)
+# same_pattern_count=0 论证:var-decl 元素类型传播契约唯二站点 = genVarDecl(局部,已有 587-593)+ genGlobalVar(全局,本轮补),现对称;
+#   genDestructureArray(gen_decls.ss:402)是逐元素 itemType per-element 不同语义,不复用同契约;array-get 消费侧零改(决策不在物化点补回查);无第三 var-decl 站点残留。
+# net_new_ifs=2:else if(realType=="ptr")1 个 + 内 if(aeType!="")1 个,均是元素类型传播的最小分派(分支判定 + 非空 guard),=2 非 >2 非 workaround。
+# net_new_fns=0:零新函数,复用既有 inferArrayElemType/genGlobalVar/setVarType(经 gType 单一 exit)路径。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params(全测 349 passed / 3 failed / 352 total = 348 baseline + 1 新测 global_array_elem_infer,3 pre-existing 不变)。
+# reflection_health:gen_decls.ss cur=763 ≤ bm=765 → DRIFT(软,无需 bump,+4 行在既有 budget 内);sunset GATE OK(// I035 注释非 SUNSET 过渡 marker)。
+# carve-out(本轮验证衍生,正交不混入):无标注全局 double 物化(let g=1.5+2.5 非数组同崩 = general gap / double array-get)= materialization 侧 ptr slot store double,非 propagation 侧(I035 后 double 元素类型已正确传播 Array<double>、d 推为 double,IR 实证)→ 立项 I036(global_scalar_materialize int/bool 物化家族 double 未扩);Map.getInt I003b deferred 维持。

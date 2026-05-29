@@ -1,7 +1,7 @@
 # I035 — 全局无标注数组 var 元素类型未传播致 array-get 全局物化失败
 
 **父决策:** D171 §收口验收 finding（global_scalar_materialize 标量物化修复轮）衍生。该轮修了全局非字面量 int/bool 标量物化（comparison/逻辑/算术/int-fn-call），但**无标注全局数组** `let a = [1,2,3]` 的 `a[i]` 全局 array-get 仍 llc 硬失败 —— 独立根因。
-**状态:** **[ ] Planned**（backlog；非阻挡 global_scalar_materialize 核心 RED comparison/逻辑/int-fn-call — 该主路径已彻底修；**显式标注** `let a: Array<int> = [..]` 路径不受影响，已 GREEN）。
+**状态:** **[x] Resolved at `bootstrap/gen/gen_decls.ss` genGlobalVar else 分支（2026-05-29，候选 B 接口层 trap，`global_array_elem_infer.options.md` GATE 6/6 + `.bugfix` 6 gate PASS）**。
 **颗粒度:** 预估微改~标准改（genGlobalVar 补 inferArrayElemType→setVarType(Array<elem>) 传播，对齐 genVarDecl:576-581）。
 **依赖:** 无硬依赖；与 global_scalar_materialize 标量物化修复（gen_decls.ss genGlobalVar/emitGlobalInits）同函数、不同根因（推断 vs 物化）。同族 I034（inferArrayElemType 覆盖不全）。
 **创建:** 2026-05-29
@@ -48,3 +48,26 @@ let m = a[1]            # @m = global i32 0 + store i32 → ✓
 
 无标注全局数组 `let a=[..]; let m=a[i]` 编译通过 + 值正确 + comptime==runtime parity；
 全局/局部 var decl 元素类型传播对称。
+
+---
+
+## 解决（2026-05-29，本轮，候选 B 接口层 trap）
+
+**实际站点**:`gen_decls.ss` `genGlobalVar` else 分支 annotation=="" 子支补
+`else if (realType == "ptr") { const aeType = inferArrayElemType(initId); if (aeType != "") { gType = \`Array<${aeType}>\` } }`
+（**对齐 `genVarDecl:587-593`** 局部路径——本 doc 创建时记为 `:576-581`，实际现位 587-593，行漂移；
+逻辑完全镜像 `typeAnn=="" && initType=="ptr" → inferArrayElemType → setVarType(Array<elem>)`）。
+SSoT 化 local/global var decl 元素类型传播契约,**不在 array-get 物化点补回查**（候选 A 被否）。
+
+**GREEN（`tests/phase5/global_array_elem_infer.ss`，11 assert，VCM §3 pre-fix exit 1↔fixed exit 0）**:
+无标注全局 int 数组 array-get（值/显示/入算术）、string 数组（ptr slot）、bool 数组（"true" 显示）、
+comptime==runtime parity（`comptime { let ca=[10,20,30]; return ca[1] }`）、局部对称 working-reference 全 ✅。
+net_new_ifs=2 / net_new_fns=0 / same_pattern_count=0 / bootstrap 三阶段固定点 / 全测 baseline 持平
+（3 pre-existing 不变，+1 新测）/ reflection_health GATE PASS（gen_decls 763≤bm765，**无 bump**）/ sunset GATE OK。
+
+**carve-out（本轮验证衍生，正交不混入）**:无标注全局 **double** 数组 array-get（及一切全局非字面量
+double `let g=1.5+2.5`）仍 llc 硬失败——但**根因不同**:I035（本）是 propagation 侧（元素类型已正确传播为
+`Array<double>`、`d` 已正确推为 `double`），崩在 **materialization 侧**（emitGlobalInits 把 double 值
+`store ptr` 入 ptr-默认 slot）= global_scalar_materialize int/bool 物化家族**未做 double 扩展**的独立
+gap → **立项 [[I036]]**（`I036-global-double-scalar-materialize.md`）。I035 的元素类型传播对 double 同样
+生效（IR 实证 `@d`/`@da` 类型推断正确），仅物化未覆盖。

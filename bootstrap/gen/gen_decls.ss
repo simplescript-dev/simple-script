@@ -300,6 +300,10 @@ function genGlobalVar(id: int) {
                 gType = annotation
             } else {
                 if (realType != "" && realType != "ptr" && realType != "int" && realType != "bool") { gType = realType }
+                // I035: 无标注全局数组 var 元素类型传播 —— 对齐 genVarDecl:587-593 局部路径(SSoT 化 local/global
+                // 元素类型契约)。realType=="ptr"(数组)时推 elem,缺则下游 let m=a[1] inferType 退化返 i64 →
+                // @m=ptr null + emitGlobalInits store i32 → llc 类型不匹配硬失败(不在 array-get 物化点补回查)。
+                else if (realType == "ptr") { const aeType = inferArrayElemType(initId); if (aeType != "") { gType = `Array<${aeType}>` } }
             }
         }
     }
