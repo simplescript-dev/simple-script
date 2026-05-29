@@ -65,7 +65,9 @@ function evalExpr(astId: int): int {
             if (uOp == "Neg") { return ctVal(interpNewInt(0 - interpAsInt(subP))) }
             if (uOp == "Not") { return ctVal(interpNewBool(interpTruthy(subP) == 1 ? 0 : 1)) }
             if (uOp == "BitNot") { return ctVal(interpNewInt(~interpAsInt(subP))) }
-            return ctVal(interpNewNull())
+            // D171 Phase 5 loud-gate (D088 §Phase 8):parser 仅产 Neg/Not/BitNot,此处防御
+            // unreachable;补 loud 维持不变量完整性(演化加新 unary op 漏接则 loud 而非静默返 0)。
+            return comptimeError(`unsupported unary operator '${uOp}'`, astId)
         }
         // runtime int/bool:mvKnown == 0
         if (comptimeMustBeKnown == 1) {

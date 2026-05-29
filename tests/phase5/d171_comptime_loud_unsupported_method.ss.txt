@@ -1,0 +1,18 @@
+// D171 Phase 5 负向 loud-gate doc-anchor —— comptime 未知内置方法(string/array/map)
+//
+// RED(本轮前):exprs_ct_builtin.ss:116/212/249 `println("[comptime] unsupported X method")`
+//   + return null → 编译 exit 0 静默返 0(probe PC/PD/PE 实测)。
+// GREEN(本轮后):comptimeError("unsupported array method: M", id) + exit(1)。
+//
+// commit-time shell verify:
+//   bin/ss build tests/phase5/d171_comptime_loud_unsupported_method.ss.txt -o /tmp/d171n2 2>&1 \
+//     | grep -c "unsupported array method: bogusMethod"   # ≥ 1
+//   bin/ss build tests/phase5/d171_comptime_loud_unsupported_method.ss.txt -o /tmp/d171n2 ; echo $?   # 1
+
+function main() {
+    const v = comptime {
+        const a = [1, 2, 3]
+        return a.bogusMethod()
+    }
+    println(`${v}`)
+}

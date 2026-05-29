@@ -1,0 +1,21 @@
+// D171 Phase 5 负向 loud-gate doc-anchor —— comptime `new X()` 中 X 未知
+//
+// RED(本轮前):exprs_ct_obj.ss:11 `println("[comptime] unknown class")` + return null
+//   → 编译 exit 0 静默误编译(probe PA 实测)。
+// GREEN(本轮后):exprs_ct_obj.ss `comptimeError("unknown class: X", id)` + exit(1)。
+//
+// `.ss.txt` 后缀避 bin/ss test 自动 collect(同 sibling comptime_for_unknown_error.ss.txt),
+// 改 commit-time shell verify:
+//   bin/ss build tests/phase5/d171_comptime_loud_unknown_class.ss.txt -o /tmp/d171n1 2>&1 \
+//     | grep -c "unknown class: NonExistentClass"   # ≥ 1
+//   bin/ss build tests/phase5/d171_comptime_loud_unknown_class.ss.txt -o /tmp/d171n1 ; echo $?   # 1
+//   bin/ss build tests/phase5/d171_comptime_loud_unknown_class.ss.txt -o /tmp/d171n1 2>&1 \
+//     | grep -c "error: \[comptime\]"   # ≥ 1
+
+function main() {
+    const v = comptime {
+        const x = new NonExistentClass()
+        return 1
+    }
+    println(`${v}`)
+}

@@ -42,7 +42,9 @@ function genFor(id: int) {
             ctForLimit = ctForLimit - 1
         }
         interpBreakFlag = 0
-        if (ctForLimit == 0) { println("[comptime] for loop exceeded 10000 iterations") }
+        // D171 Phase 5 loud-gate (D088 §Phase 8):runaway comptime 循环不静默截断返部分结果
+        // (probe PF 实测旧路径印警告后 exit 0 返截断值 = 误编译),改 loud comptimeError exit(1)。
+        if (ctForLimit == 0) { comptimeError(`for loop exceeded 10000 iterations (possible infinite loop)`, id) }
         return
     }
 
@@ -102,7 +104,8 @@ function genWhile(id: int) {
             ctWhileLimit = ctWhileLimit - 1
         }
         interpBreakFlag = 0
-        if (ctWhileLimit == 0) { println("[comptime] while loop exceeded 10000 iterations") }
+        // D171 Phase 5 loud-gate (D088 §Phase 8):同 genFor — runaway 不静默截断,改 loud exit(1)。
+        if (ctWhileLimit == 0) { comptimeError(`while loop exceeded 10000 iterations (possible infinite loop)`, id) }
         return
     }
 
@@ -161,7 +164,8 @@ function genDoWhile(id: int) {
             ctDoLimit = ctDoLimit - 1
         }
         interpBreakFlag = 0
-        if (ctDoLimit == 0) { println("[comptime] do-while loop exceeded 10000 iterations") }
+        // D171 Phase 5 loud-gate (D088 §Phase 8):同 genFor — runaway 不静默截断,改 loud exit(1)。
+        if (ctDoLimit == 0) { comptimeError(`do-while loop exceeded 10000 iterations (possible infinite loop)`, id) }
         return
     }
 

@@ -1,15 +1,16 @@
 // gen/exprs_ct_obj.ss — Comptime 对象构造 + 方法调用分发。
 // ctNewExprDispatch 构造 user-class 实例、ctMethodCallDispatch 分发到 class / type / string-array-map。
 
-function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedArgs: Map): int {
+function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedArgs: Map, id: int): int {
     const realName = resolveCtTypeAlias(className)
     // I014 §路径 A — runtime class(RouteMeta 等在顶级 `class X {}` 声明,走 classNodeIds 注册,
     // 不入 interpClasses)也必须能在 comptime 块里 `new X(...)`。原只查 interpClasses 拒绝 runtime
     // class ctNew → Array<RouteMeta> 无法构造。classNodeIds 是 codegen 层对所有 class(含 runtime)
     // 的 AST node id 映射,与 interpBuildTypeInfo 的双注册源合集判定同构。
     if (interpClasses.has(realName) != 1 && classNodeIds.has(realName) != 1) {
-        println(`[comptime] unknown class: ${realName}`)
-        return ctVal(interpNewNull())
+        // D171 Phase 5 loud-gate (D088 §Phase 8):comptime `new X()` 中 X 未知不静默返 null
+        // (probe PA 实测旧路径 exit 0 误编译),改 loud comptimeError exit(1)。
+        return comptimeError(`unknown class: ${realName}`, id)
     }
     const objId = interpNewVal("object", realName)
     // parent chain walk,父类字段 prepend 在前 — 与 interpBuildTypeInfo 同构但这里消费 fId 取 defaultId。
@@ -54,7 +55,7 @@ function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedA
 function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctArgVals: Array<string>, ctNamedArgs: Map, ctHasNamed: int): int {
     const objType = interpType(objPayload)
     if (objType == "string" || objType == "array" || objType == "map") {
-        return ctVal(ctBuiltinMethod(objPayload, methodName, ctArgVals))
+        return ctVal(ctBuiltinMethod(objPayload, methodName, ctArgVals, id))
     }
     // TypeValue: T.fields()/T.name — read off the underlying class name
     if (objType == "type") {
@@ -64,8 +65,9 @@ function ctMethodCallDispatch(id: int, methodName: string, objPayload: int, ctAr
         return comptimeError(`method '${methodName}' not supported on type value`, id)
     }
     if (objType != "object") {
-        println(`[comptime] cannot call method '${methodName}' on ${objType}`)
-        return ctVal(interpNewNull())
+        // D171 Phase 5 loud-gate (D088 §Phase 8):在非对象值上调方法不静默返 null
+        // (probe PB `(5).bogusMethod()` 旧路径 exit 0 误编译),改 loud comptimeError exit(1)。
+        return comptimeError(`cannot call method '${methodName}' on ${objType}`, id)
     }
     const className = interpAsStr(objPayload)
     if (methodName == "fields") {

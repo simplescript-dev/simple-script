@@ -50,7 +50,7 @@ function evalNewExpr(astId: int): int {
     }
     if (comptimeMustBeKnown == 1) {
         callPreRegs = savedNewPreRegs
-        return ctNewExprDispatch(newClassName, newCtArgVals, newCtNamedArgs)
+        return ctNewExprDispatch(newClassName, newCtArgVals, newCtNamedArgs, astId)
     }
     const newResult = 0 - constVal(genNewExpr(astId)) - 1
     callPreRegs = savedNewPreRegs

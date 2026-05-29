@@ -25,7 +25,9 @@ function evalPostfixInc(astId: int): int {
                 return ctVal(piOld)
             }
         }
-        return ctVal(interpNewNull())
+        // D171 Phase 5 loud-gate (D088 §Phase 8):未绑定/非 ct 变量上的 `x++` 不静默返 null
+        // (probe PG2 `undefinedVarX++` 旧路径静默吞 exit 0),改 loud comptimeError exit(1)。
+        return comptimeError(`postfix '++' on '${piName}' not compile-time known`, astId)
     }
     return 0 - constVal(genPostfixExpr(astId)) - 1
 }

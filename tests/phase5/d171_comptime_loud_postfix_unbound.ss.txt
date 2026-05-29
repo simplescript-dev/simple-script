@@ -1,0 +1,18 @@
+// D171 Phase 5 负向 loud-gate doc-anchor —— comptime 未绑定变量 `x++`
+//
+// RED(本轮前):postfix_inc.ss:28 strict comptime 下未绑定/非 ct 变量 `x++` `return null`
+//   → 静默吞 exit 0(probe PG2 `undefinedVarX++` 实测)。
+// GREEN(本轮后):comptimeError("postfix '++' on 'x' not compile-time known", astId) + exit(1)。
+//
+// commit-time shell verify:
+//   bin/ss build tests/phase5/d171_comptime_loud_postfix_unbound.ss.txt -o /tmp/d171n4 2>&1 \
+//     | grep -c "postfix '++' on 'undefinedVarX'"   # ≥ 1
+//   bin/ss build tests/phase5/d171_comptime_loud_postfix_unbound.ss.txt -o /tmp/d171n4 ; echo $?   # 1
+
+function main() {
+    const v = comptime {
+        undefinedVarX++
+        return 7
+    }
+    println(`${v}`)
+}

@@ -1,0 +1,23 @@
+// D171 Phase 5 负向 loud-gate doc-anchor —— comptime 高阶数组方法回调非函数值
+//
+// RED(本轮前):exprs_ct_builtin.ss:6 `println("[comptime] ctCallValue: not a function")`
+//   + return null → 每元素静默返 0 exit 0(probe PL `[..].map(5)` 实测)。
+// GREEN(本轮后):comptimeError("comptime callback value is not a function", id) + exit(1)。
+//
+// 注:本 doc-anchor 也守护 Phase 5 §衍生根因修复(ctCallValue 读 fn-value astId 改 interpAsInt
+// 走 tvI1)的 negative 边界 —— 修复后合法 arrow 回调 GREEN(见 d171_comptime_coverage.ss
+// §3 map/filter/reduce),非法非函数回调仍 loud。
+//
+// commit-time shell verify:
+//   bin/ss build tests/phase5/d171_comptime_loud_notfn_callback.ss.txt -o /tmp/d171n3 2>&1 \
+//     | grep -c "callback value is not a function"   # ≥ 1
+//   bin/ss build tests/phase5/d171_comptime_loud_notfn_callback.ss.txt -o /tmp/d171n3 ; echo $?   # 1
+
+function main() {
+    const v = comptime {
+        const a = [1, 2, 3]
+        const notfn = 5
+        return a.map(notfn).length()
+    }
+    println(`${v}`)
+}
