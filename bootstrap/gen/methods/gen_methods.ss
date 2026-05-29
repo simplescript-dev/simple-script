@@ -256,12 +256,15 @@ let pendingSuperParent = ""
 function resolveSuperParent(objNodeId: int, callNodeId: int): string {
     if (nGetKind(objNodeId) != "SUPER") { return "" }
     if (comptimeMustBeKnown == 1) {
-        if (interpCurrentMethodClass == "" || interpClassParents.has(interpCurrentMethodClass) != 1) {
+        // D171 Phase 3 — 走权威对称解析:interpClassParents(comptime 声明) → classParents
+        // (顶层 class)fallback,与 interpFindMethod 同契约,顶层继承类的 super 才可解析。
+        const ctSuperParent = interpResolveParent(interpCurrentMethodClass)
+        if (interpCurrentMethodClass == "" || ctSuperParent == "") {
             println(`error: [comptime] 'super' invalid in '${interpCurrentMethodClass}' at line ${nGetLine(callNodeId)}:${nGetCol(callNodeId)}`)
             exit(1)
             return ""
         }
-        return interpClassParents.getString(interpCurrentMethodClass)
+        return ctSuperParent
     }
     return classParents.getString(currentClassName)
 }

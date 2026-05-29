@@ -227,11 +227,15 @@ function interpBuildTypeInfo(typeName: string): int {
     const hasNode = classNodeIds.has(typeName) == 1
     const clsNodeId = hasNode ? parseInt(classNodeIds.getString(typeName)) : 0
     let fStr = fromIC ? "" : classFields.getString(typeName)
+    // D171 Phase 3 — node 解析 + parent 上溯走权威对称 helper(与 interpFindMethod 同契约)。
+    // 此前 comptime 声明的 class 若 extends 顶层 class,parent 上溯到顶层 class 时
+    // interpClasses.getString 落空 → 顶层父类字段在 .fields() 反射里漏收(实测 comptime
+    // `class Sub extends TopLevel` 的 fields 数缺父类字段)。第四处 consult-both 收口。
     let cur = fromIC ? typeName : ""
     while (cur != "") {
-        const paramList = nGetList(parseInt(interpClasses.getString(cur)))
+        const paramList = nGetList(interpResolveClassNode(cur))
         if (paramList != "") { fStr = fStr == "" ? paramList : `${paramList},${fStr}` }
-        cur = interpClassParents.getString(cur)
+        cur = interpResolveParent(cur)
     }
     for (fp in fStr.split(",")) {
         if (fp == "") { continue }
@@ -329,11 +333,31 @@ function isKnownClass(name: string): int {
     return (classFields.has(name) == 1 || interpClasses.has(name) == 1) ? 1 : 0
 }
 
+// D171 Phase 3 — comptime class 解析的权威注册表对称访问。comptime 块内声明的 class 入
+// interpClasses/interpClassParents;顶层(runtime)class 入 classNodeIds/classParents
+// (class_register.ss:183 / class.ss:23,75)。两表 scope 不同(comptime-ephemeral class 不得
+// 泄漏为 runtime LLVM struct,故不合并),但 comptime 的方法派发 / super 解析 / 对象构造必须
+// "consult both":comptime 表优先 → 顶层表 fallback。I014 §路径 A 已在 ctNewExprDispatch 的
+// field walk 建此契约(node 二选一);本 helper 是该 invariant 的 SSoT 化,补齐 interpFindMethod
+// (方法派发)+ resolveSuperParent(super 解析)两处遗漏 — 此前只查 comptime 表致顶层 class 断流。
+function interpResolveClassNode(className: string): int {
+    if (interpClasses.has(className) == 1) { return parseInt(interpClasses.getString(className)) }
+    if (classNodeIds.has(className) == 1) { return parseInt(classNodeIds.getString(className)) }
+    return 0
+}
+
+function interpResolveParent(className: string): string {
+    if (interpClassParents.has(className) == 1) { return interpClassParents.getString(className) }
+    if (classParents.has(className) == 1) { return classParents.getString(className) }
+    return ""
+}
+
 function interpFindMethod(className: string, methodName: string): int {
     let cur = className
     while (cur != "") {
-        if (interpClasses.has(cur) == 1) {
-            const mList = nGetList(nGetI2(parseInt(interpClasses.getString(cur))))
+        const nId = interpResolveClassNode(cur)
+        if (nId > 0) {
+            const mList = nGetList(nGetI2(nId))
             if (mList != "") {
                 for (mp in mList.split(",")) {
                     const mId = parseInt(mp)
@@ -344,7 +368,7 @@ function interpFindMethod(className: string, methodName: string): int {
                 }
             }
         }
-        cur = interpClassParents.getString(cur)
+        cur = interpResolveParent(cur)
     }
     return 0
 }

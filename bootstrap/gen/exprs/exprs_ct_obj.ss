@@ -13,16 +13,17 @@ function ctNewExprDispatch(className: string, ctArgVals: Array<string>, ctNamedA
     }
     const objId = interpNewVal("object", realName)
     // parent chain walk,父类字段 prepend 在前 — 与 interpBuildTypeInfo 同构但这里消费 fId 取 defaultId。
+    // D171 Phase 3 — node 解析 + parent 上溯走权威对称 helper(interpResolveClassNode /
+    // interpResolveParent),与 interpFindMethod 同契约;顶层继承类的父类字段在 comptime 构造时
+    // 才会被 prepend(此前 parent walk 只查 interpClassParents,顶层类恒断在第一层漏父字段)。
     let allFields = ""
     let cur = realName
     while (cur != "") {
-        let nId = 0
-        if (interpClasses.has(cur) == 1) { nId = parseInt(interpClasses.getString(cur)) }
-        else if (classNodeIds.has(cur) == 1) { nId = parseInt(classNodeIds.getString(cur)) }
+        const nId = interpResolveClassNode(cur)
         if (nId == 0) { break }
         const paramList = nGetList(nId)
         if (paramList != "") { allFields = allFields == "" ? paramList : `${paramList},${allFields}` }
-        cur = interpClassParents.getString(cur)
+        cur = interpResolveParent(cur)
     }
     let ctFieldNames: Array<string> = []
     for (fp in allFields.split(",")) {
