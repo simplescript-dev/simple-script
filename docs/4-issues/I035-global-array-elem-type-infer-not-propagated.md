@@ -3,7 +3,7 @@
 **父决策:** D171 §收口验收 finding（global_scalar_materialize 标量物化修复轮）衍生。该轮修了全局非字面量 int/bool 标量物化（comparison/逻辑/算术/int-fn-call），但**无标注全局数组** `let a = [1,2,3]` 的 `a[i]` 全局 array-get 仍 llc 硬失败 —— 独立根因。
 **状态:** **[x] Resolved at `bootstrap/gen/gen_decls.ss` genGlobalVar else 分支（2026-05-29，候选 B 接口层 trap，`global_array_elem_infer.options.md` GATE 6/6 + `.bugfix` 6 gate PASS）**。
 **颗粒度:** 预估微改~标准改（genGlobalVar 补 inferArrayElemType→setVarType(Array<elem>) 传播，对齐 genVarDecl:576-581）。
-**依赖:** 无硬依赖；与 global_scalar_materialize 标量物化修复（gen_decls.ss genGlobalVar/emitGlobalInits）同函数、不同根因（推断 vs 物化）。同族 I034（inferArrayElemType 覆盖不全）。
+**依赖:** 无硬依赖；与 global_scalar_materialize 标量物化修复（gen_decls.ss genGlobalVar/emitGlobalInits）同函数、不同根因（推断 vs 物化）。同族 I038（inferArrayElemType 覆盖不全,原 I034,2026-05-30 经 I037 改号）。
 **创建:** 2026-05-29
 **立项由:** global_scalar_materialize 轮 regression test 验证 —— 无标注全局 array-get `let gArr=[10,20,30]; let gIdx=gArr[1]` 实测 `store ptr %13, ptr @gIdx` llc 硬失败，而标注版 `let gArr: Array<int>=[..]` GREEN（prints 20），精确指认根因 = 全局数组 varType 推断缺失。
 
@@ -34,7 +34,7 @@ let m = a[1]            # @m = global i32 0 + store i32 → ✓
 不触发 → 落 else `global ptr null` + `store ptr <i32>` → llc 硬失败。
 
 **单一概念根** = genGlobalVar 与 genVarDecl 在「无标注数组元素类型传播」上的不对称。
-（与 I034 同族：均是 `inferArrayElemType` 链路覆盖完整性问题；I034 是 METHOD_CALL/
+（与 I038 同族：均是 `inferArrayElemType` 链路覆盖完整性问题；I038 是 METHOD_CALL/
 函数返回/嵌套形态覆盖，本 I035 是 global var decl 入口未调用传播。）
 
 ## 候选路径（待 Execute 轮 PSM §字段 10 展开）

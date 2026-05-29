@@ -1,4 +1,4 @@
-# I034 — inferArrayElemType 覆盖不全致 scalar 数组 join 经 fallback 段错(边缘残留)
+# I038 — inferArrayElemType 覆盖不全致 scalar 数组 join 经 fallback 段错(边缘残留)
 
 **父决策:** D171 §下一步 finding A(runtime scalar 数组 .join 段错)修复轮 `/simplify` altitude agent 复查发现的残留入口。finding A 修了 IDENT 字面量/标注主路径,但 `inferArrayElemType` 对若干表达式形态推断不出元素类型 → join 分派 fallback `ss_join`(当 string)→ 若实为 scalar 数组**段错复活**。
 **状态:** **[ ] Planned**(backlog;非阻挡 finding A 核心 RED `let a=[1,2,3]; a.join()` — 该主路径已彻底修)。
@@ -6,6 +6,7 @@
 **依赖:** 无硬依赖;与 finding A 修复(gen_methods join 分派 + gen_types ARRAY_LIT 分支)同族。
 **创建:** 2026-05-29
 **立项由:** `findingA_scalar_join` 轮 `/simplify` altitude agent 复查 —— 指认 fallback `jfn="ss_join"`(elemType="")的危险残留面。
+**编号溯源:** 原编号 **I034**,因与 comparison/logical→bool 修复(已 Done,canonical = `I034-comparison-logical-bool.md`)撞号,2026-05-30 经 `I037` 改号为 **I038**(取当时 top+1)。本 issue 引用面小(自身 + `I035` back-ref),按 I037 §推荐「代价反转」判据迁号。
 
 ---
 
