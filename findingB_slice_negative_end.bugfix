@@ -1,0 +1,25 @@
+# findingB_slice_negative_end.bugfix — D171 §收口验收 finding B 修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter findingB_slice_negative_end.bugfix
+
+title = runtime Array.slice 负 start/end 不归一 → 偏离 comptime/JS slice 语义(D171 §收口验收 finding B parity 闭环)
+test_file = tests/phase5/findingB_slice_negative_end.ss
+stash_exit = 1
+fix_exit = 0
+broken = a.slice(1,-1) runtime 返空(oracle 20-30)、slice(-3,-1) 越界垃圾 [4-4]、负 start slice(-10,2) 读未初始化内存;单参 slice(-2)/slice(1) 编译报错(checker 强制 2 参)
+why = ss_arraySlice(gen_rt_array.ss)仅做 end>len 上界 clamp,缺负索引归一(start<0→len+start / end<0→len+end)+ start 下界 clamp,负 start 直接进 GEP srcp 越界;codegen gen_builtins.ss 无脑读 slArgs[1] + checker (2,2) 拒单参,与 comptime ctArrayMethod slice(已正确归一)双轨分裂
+fix = ss_arraySlice IR 加 start/end 负归一(neg→len+neg)+ start 下界 clamp 0 防 GEP 越界 + GEP 改用 clamped %s_c,对齐 comptime exprs_ct_builtin.ss:156-159 与 JS slice 语义(runtime 函数边界单一真相源);codegen 单参 end 缺省 sentinel 2147483647(复用解构 rest 既有 sentinel);checker registerMethodParams Array.slice (2,2)→(1,2)
+same_pattern_count = 0
+net_new_ifs = 1
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 345
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑):
+#   git stash push bootstrap/gen/rt/gen_rt_array.ss → ./build.sh bootstrap → bin/ss run test
+#   → FAIL: slice(1,-1) 负 end — expected "20-30", got ""  (stash_exit=1,test 无 fix 必失败)
+#   git stash pop → ./build.sh bootstrap → bin/ss run test → all pass (fix_exit=0)
+# same_pattern_count=0 论证:slice 是唯一接受 start/end 双索引的 array runtime;
+#   字符串 substring 是 start+count 语义(JS substring 本身 clamp 负为 0,非 len+neg),非同模式,无残留 sink。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params

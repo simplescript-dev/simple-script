@@ -161,7 +161,10 @@ function genArrayMethod(method: string, objVal: string, objType: string, argList
     if (method == "slice") {
         const slArgs = argList.split(",")
         const slStart = genExpr(parseInt(slArgs[0]))
-        const slEnd = genExpr(parseInt(slArgs[1]))
+        // 单参 slice(start):end 缺省传 sentinel 2147483647,ss_arraySlice clamp 到 len
+        // (复用解构 rest gen_decls.ss:399 既有 sentinel,对齐 comptime end 缺省 = len)
+        let slEnd = "2147483647"
+        if (slArgs.length() > 1) { slEnd = genExpr(parseInt(slArgs[1])) }
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_arraySlice(ptr ${objVal}, i32 ${slStart}, i32 ${slEnd})`); return r
     }
     if (method == "concat") {

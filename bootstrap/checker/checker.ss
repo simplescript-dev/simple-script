@@ -243,7 +243,7 @@ function initChecker() {
     classConsMin.set("Array", "0")
     classConsMax.set("Array", "99")
     registerMethodParams("Array", "push", 1, 1)
-    registerMethodParams("Array", "slice", 2, 2)
+    registerMethodParams("Array", "slice", 1, 2)
     registerMethodParams("Array", "concat", 1, 1)
     registerMethodParams("Array", "reverse", 0, 0)
     registerMethodParams("Array", "sort", 0, 0)

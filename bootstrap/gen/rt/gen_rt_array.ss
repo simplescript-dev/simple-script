@@ -261,9 +261,20 @@ function emitRuntimeArrayOps() {
     irLoad("len", "i64", "%src_lenp")
     irSext("s", "i32", "%start", "i64")
     irSext("e", "i32", "%end_idx", "i64")
-    irICmp("e2", "sgt", "i64", "%e", "%len")
-    irSelect("end", "e2", "i64", "%len", "%e")
-    irSub("nlen", "i64", "%end", "%s")
+    // finding B (D171 §收口验收): 负 start/end 归一 (neg → len+neg) + clamp,runtime 边界单一真相源,
+    // 对齐 comptime ctArrayMethod slice (exprs_ct_builtin.ss:156-159) + JS slice 语义。
+    // 负 start → len+s 再 clamp 下界 0 (防 GEP srcp 越界);负 end → len+e;end 上界 clamp 到 len。
+    irICmp("s_neg", "slt", "i64", "%s", "0")
+    irAdd("s_add", "i64", "%len", "%s")
+    irSelect("s_norm", "s_neg", "i64", "%s_add", "%s")
+    irICmp("s_lo", "slt", "i64", "%s_norm", "0")
+    irSelect("s_c", "s_lo", "i64", "0", "%s_norm")
+    irICmp("e_neg", "slt", "i64", "%e", "0")
+    irAdd("e_add", "i64", "%len", "%e")
+    irSelect("e_norm", "e_neg", "i64", "%e_add", "%e")
+    irICmp("e2", "sgt", "i64", "%e_norm", "%len")
+    irSelect("end", "e2", "i64", "%len", "%e_norm")
+    irSub("nlen", "i64", "%end", "%s_c")
     irICmp("nlen2", "slt", "i64", "%nlen", "0")
     irSelect("nlen3", "nlen2", "i64", "0", "%nlen")
     // 继承源 TypeInfo (GEP 1)
@@ -280,7 +291,7 @@ function emitRuntimeArrayOps() {
     irMul("dbytes", "i64", "%nlen3", "8")
     irLoadArrayData("newdata", "%hdr")
     irLoadArrayData("src_data", "%arr")
-    irGEP("srcp", "i64", "%src_data", "%s")
+    irGEP("srcp", "i64", "%src_data", "%s_c")
     irCall("_1", "ptr", "memcpy", "ptr %newdata, ptr %srcp, i64 %dbytes")
     // 若 ref array (TypeInfo == @Array_ref_type_info),元素 retain 走元素 vtable
     emitIR("  %is_ref = icmp eq ptr %src_ti, @Array_ref_type_info")
