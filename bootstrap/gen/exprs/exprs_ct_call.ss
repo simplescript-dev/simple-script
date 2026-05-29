@@ -1,6 +1,35 @@
 // gen/exprs_ct_call.ss — Comptime 函数调用分发:intrinsics (println/emit/getTypeInfo/...)
 // + user-defined comptime 函数调用(参数绑定 + scope 切换 + body 执行 + return 捕获)。
 
+// D171 Phase 1:把 callee 名解析到绑定的 fn-kind ctVar 值所指向的 ARROW_FUNC astId
+// (闭包/arrow 在 comptime 可调用)。只读现有 ctVars / fn-value(D093 §差距 #3 `fn|${id}` 入
+// InternPool),不新开 ct* 注册表(D171 §拒绝准则)。作用域解析镜像 evalIdent(eval/ident.ss):
+// scope 链(由内向外)→ currentFunc → 全局 `:name`,与 arrow 绑定点 gen_decls.ss:530 同 key 协议
+// (外层变量捕获沿同一链解析)。返 -1 = 该名未绑定 fn-kind value。
+function ctResolveFnNodeId(name: string): int {
+    let ctFnRaw = -1
+    if (ctScopeStack.length() > 0) {
+        let csi = ctScopeStack.length() - 1
+        while (csi >= 0 && ctFnRaw == -1) {
+            const csk = `${ctScopeStack[csi]}:${name}`
+            if (ctVars.has(csk) == 1) { ctFnRaw = parseInt(ctVars.getString(csk)) }
+            csi = csi - 1
+        }
+    }
+    if (ctFnRaw == -1) {
+        const cck = `${currentFunc}:${name}`
+        if (ctVars.has(cck) == 1 && ctInvalidated.has(cck) == 0) { ctFnRaw = parseInt(ctVars.getString(cck)) }
+    }
+    if (ctFnRaw == -1) {
+        const cgk = `:${name}`
+        if (ctVars.has(cgk) == 1) { ctFnRaw = parseInt(ctVars.getString(cgk)) }
+    }
+    if (ctFnRaw == -1 || isCt(ctFnRaw) == 0) { return -1 }
+    const ctFnTv = payload(ctFnRaw)
+    if (interpType(ctFnTv) != "fn") { return -1 }
+    return interpAsInt(ctFnTv)  // fn-value 的 tvI1 = ARROW_FUNC astId(interp_obj.ss:106)
+}
+
 function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamedArgs: Map, ctHasNamed: int): int {
     // ── Intrinsics ──
     if (name == "println") {
@@ -197,9 +226,17 @@ function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamed
         return ctVal(interpNewInt(0))
     }
 
-    // ── User-defined function call ──
+    // ── User-defined function call OR comptime closure/arrow value (D171 Phase 1) ──
+    // callee 解析到一个 func-node astId(布局 nGetList=params / nGetI1=body,FUNC_DECL 与
+    // ARROW_FUNC 同布局):(a) 顶层注册函数 ctFuncNodes;(b) ctVars 作用域链绑定的 fn-kind value
+    // (arrow/闭包,走 D093 统一 evalExpr 产出的 fn-value,只消费不另立 ct* 注册表 — D171 §拒绝准则)。
+    let ctFuncId = -1
     if (ctFuncNodes.has(name) == 1) {
-        const ctFuncId = parseInt(ctFuncNodes.getString(name))
+        ctFuncId = parseInt(ctFuncNodes.getString(name))
+    } else {
+        ctFuncId = ctResolveFnNodeId(name)
+    }
+    if (ctFuncId > 0) {
         const ctParamList = nGetList(ctFuncId)
         const ctBodyId = nGetI1(ctFuncId)
 
@@ -263,6 +300,7 @@ function ctCallDispatch(id: int, name: string, ctArgVals: Array<string>, ctNamed
         return ctVal(ctResult)
     }
 
-    println(`[comptime] unknown function: ${name}`)
-    return ctVal(interpNewNull())
+    // 真未命中(非 intrinsic / 顶层函数 / 绑定 fn-value)— D088 §Phase 8 不变量 + D171 Phase 1:
+    // 静默返 null(解码为 0)是误编译,升 loud comptimeError 不再 swallow。
+    return comptimeError(`unknown function: ${name}`, id)
 }

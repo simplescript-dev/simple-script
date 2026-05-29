@@ -1,6 +1,6 @@
 # D171: SEMA Q2 — comptime 解释器语言覆盖度补全（走统一 evalExpr）
 
-**Status:** draft — Phase 1 Planned（RED 已固化）；Phase 2-5 Planned
+**Status:** draft — Phase 1 **[x] Done**（闭包/arrow 在 comptime 可调用，含外层捕获）；Phase 2-5 Planned
 **Depends on:** D088（Zig 路线 / §核心验证三问 / Phase 6-8）, D093（SEMA Q1 单函数 dispatch — closure 宣告）, D094（comptime purity）, D098（SEMA Value Model — InternPool / Type-as-Value）
 **Date:** 2026-05-29
 
@@ -152,7 +152,7 @@ bin/ss run /tmp/d171_p1_closure.ss 2>&1 | grep -c "unknown function"
 
 ## 下一步
 
-- **[ ] Planned** Phase 1 Execute：闭包 / arrow 在 comptime 可调用（`eval_expr.ss` CALL 分派解析 fn-value callee + 外层捕获 + `exprs_ct_call.ss:266` 静默 null 升 loud `comptimeError`）。RED 已固化（见 §Phase 1 起手目标）。
+- **[x] Done** Phase 1：闭包 / arrow 在 comptime 可调用。`exprs_ct_call.ss` `ctCallDispatch` 在「unknown function」前经 `ctResolveFnNodeId(name)` 解析 callee→绑定的 fn-kind ctVar 值→ARROW_FUNC astId（作用域链镜像 `eval/ident.ss`，外层捕获沿 `ctVars` 同 key 协议解析），与顶层 `ctFuncNodes` 统一到同一 `if (ctFuncId > 0)` bind+exec（复用 lines 206-263，零重复，不新开 ct* 注册表）；静默 null fallback 升 loud `comptimeError`（D088 §Phase 8 不变量）。GREEN：`add(3,4)=7` + `grep -c "unknown function"=0`，回归测试 `tests/phase5/d171_comptime_closure_call.ss`（简单/捕获/多捕获/嵌套 4 例），bootstrap 三阶段固定点 + 全测 335→336 passed（+1 新测，3 pre-existing 不变）。
 - **[ ] Planned** Phase 2-5：spread 数组字面量 / super 继承方法 / try-catch / loud-gate 审计 + 覆盖度回归套件（各 Phase Execute 轮起手细化 PSM）。
 
 **本 D 文档不触发任何 `.ss` 代码改动，不跑 bootstrap。代码改动从 Phase 1 Execute 轮开始。**
