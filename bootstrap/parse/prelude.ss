@@ -255,3 +255,55 @@ function _ss_join(arr: List<string>, delim: string): string {
     }
     return result
 }
+
+// finding A(D171 收口验收): scalar 数组 join 的 typed 变体。签名 List<int>/<double>/<bool>
+// 让 `result + arr[i]` 的 genExprAsString 按真实元素类型转换(int→ss_int_to_string /
+// double→ss_double_to_string),而非把位值当 string ptr 解引用(段错根因)。body 与
+// _ss_join 同构,仅元素类型差。array.join codegen 按 inferArrayElemType 分派(gen_methods.ss)。
+function _ss_joinInt(arr: List<int>, delim: string): string {
+    const len = arr.length()
+    if (len == 0) { return "" }
+    let result = ""
+    let first = 1
+    for (let i = 0; i < len; i++) {
+        if (first == 1) {
+            first = 0
+        } else {
+            result = result + delim
+        }
+        result = result + arr[i]
+    }
+    return result
+}
+
+function _ss_joinDouble(arr: List<double>, delim: string): string {
+    const len = arr.length()
+    if (len == 0) { return "" }
+    let result = ""
+    let first = 1
+    for (let i = 0; i < len; i++) {
+        if (first == 1) {
+            first = 0
+        } else {
+            result = result + delim
+        }
+        result = result + arr[i]
+    }
+    return result
+}
+
+function _ss_joinBool(arr: List<bool>, delim: string): string {
+    const len = arr.length()
+    if (len == 0) { return "" }
+    let result = ""
+    let first = 1
+    for (let i = 0; i < len; i++) {
+        if (first == 1) {
+            first = 0
+        } else {
+            result = result + delim
+        }
+        result = result + arr[i]
+    }
+    return result
+}

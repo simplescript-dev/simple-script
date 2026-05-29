@@ -532,6 +532,20 @@ function genMethodCall(id: int, preObj: string = ""): string {
     // Type-dependent dispatch
     if (method == "length") { return genLengthMethod(objVal, objType) }
     if (method == "indexOf") { return genIndexOfMethod(objVal, objType, argList) }
+    // finding A(D171 收口验收): array.join 归位此处(持 objId 可 inferArrayElemType)。
+    // 旧址 genStringMethod(无类型信息)对 scalar 元素位值当 string ptr 解引用 → 段错。
+    // 按元素类型分派 typed prelude 变体;string/未知(elemType="")默认 _ss_join(string 元素正确)。
+    if (method == "join") {
+        const elemType = inferArrayElemType(objId)
+        const delim = genExpr(parseInt(argList))
+        let jfn = "ss_join"
+        if (elemType == "int") { jfn = "ss_joinInt" }
+        else if (elemType == "double") { jfn = "ss_joinDouble" }
+        else if (elemType == "bool") { jfn = "ss_joinBool" }
+        const r = nextReg()
+        emitIR(`  ${r} = call ptr @${preludeName(jfn)}(ptr ${objVal}, ptr ${delim})`)
+        return r
+    }
 
     // Non-owning push check
     if (method == "push" && nGetKind(objId) == "MEMBER_ACCESS") {

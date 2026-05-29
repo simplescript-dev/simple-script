@@ -62,11 +62,6 @@ function genStringMethod(method: string, objVal: string, argList: string): strin
         const delim = genExpr(parseInt(argList))
         const r = nextReg(); emitIR(`  ${r} = call ptr @ss_split(ptr ${objVal}, ptr ${delim})`); return r
     }
-    if (method == "join") {
-        const delim = genExpr(parseInt(argList))
-        const fn = preludeName("ss_join")
-        const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal}, ptr ${delim})`); return r
-    }
     if (method == "trim" || method == "toUpperCase" || method == "toLowerCase") {
         const fn = preludeName(`ss_${method}`)
         const r = nextReg(); emitIR(`  ${r} = call ptr @${fn}(ptr ${objVal})`); return r

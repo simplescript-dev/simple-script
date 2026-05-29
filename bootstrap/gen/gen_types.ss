@@ -147,6 +147,17 @@ function inferArrayElemType(arrId: int): string {
         const fKey = `${moc}.${nGetS1(arrId)}`
         if (classFieldTypes.has(fKey) == 1) { return extractContainerElemType(classFieldTypes.getString(fKey)) }
     }
+    // finding A(D171 收口验收): 数组字面量元素类型 = 首元素 inferType。缺此 → `let a=[1,2,3]`
+    // 经 gen_decls.ss:577 推断路径取不到 elemType,varType 退化为 "ptr",丢失元素类型 →
+    // a.join(sep) 分派不到 typed 变体 → scalar 位值当 string ptr 段错(显式 Array<int> 标注路径不受影响)。
+    if (aeKind == "ARRAY_LIT") {
+        // nGetList 返回逗号分隔字符串(非数组),用 listGet 取首元素节点 id(直接 [0] 会索引字符串)。
+        const elems = nGetList(arrId)
+        if (elems != "") {
+            const first = parseInt(listGet(elems, 0))
+            if (first > 0) { return inferType(first) }
+        }
+    }
     return ""
 }
 
