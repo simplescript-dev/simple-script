@@ -26,8 +26,16 @@ function genTryCatch(id: int) {
     const catchList = nGetList(id)
 
     if (comptimeMustBeKnown == 1) {
+        // D171 Phase 4: comptime try/catch/finally 走 flag 模拟(无 runtime 栈/landingpad)。
+        // try body 跑完若 interpThrowFlag set → 派发 catch(消费 flag);finally 始终跑。
         if (tryBody > 0) { genBlock(tryBody) }
-        if (finallyBody > 0) { genBlock(finallyBody) }
+        if (interpThrowFlag == 1) {
+            const thrownVal = interpThrowVal
+            interpThrowFlag = 0
+            interpThrowVal = 0
+            ctDispatchComptimeCatch(catchList, thrownVal)
+        }
+        if (finallyBody > 0) { ctRunComptimeFinally(finallyBody) }
         return
     }
 
@@ -171,14 +179,18 @@ function genCatchClauses(catchList: string, convergeLabel: string, finallyBody: 
 
 function genThrow(id: int) {
     if (comptimeMustBeKnown == 1) {
+        // D171 Phase 4: comptime throw 不再直接 exit(1),改 raise 异常 flag(镜像
+        // interpReturnFlag),由 enclosing genTryCatch 捕获;未捕获在 runComptimeBlockBody
+        // 升 loud comptimeError(D088 §Phase 8 不变量)。
         const throwVal = genVal(nGetI1(id))
         if (isCt(throwVal) == 1) {
-            const throwMsg = interpToStr(payload(throwVal))
-            println(`comptime error: ${throwMsg}`)
-        } else {
-            println(`comptime error: throw value is not compile-time constant at line ${nGetLine(nGetI1(id))}`)
+            interpThrowFlag = 1
+            interpThrowVal = payload(throwVal)
+            return
         }
-        exit(1)
+        // 非编译期常量 throw 值 = 真 runtime-only,loud(D088 §Phase 8)
+        comptimeError(`throw value is not compile-time constant`, nGetI1(id))
+        return
     }
     const exprId = nGetI1(id)
     const exprVal = genExpr(exprId)
@@ -197,4 +209,69 @@ function genThrow(id: int) {
     }
     emitIR("  unreachable")
     terminated = 1
+}
+
+// ── comptime 异常派发(D171 Phase 4)──────────────────────────
+// 走 D093 统一 evalExpr/genBlock + 现有 ctVars / interpResolveParent,不新开 ct* 异常注册表
+// (D171 §拒绝准则 / D088 §反模式)。
+
+// catch 派发:多 clause 顺序匹配(untyped 全捕 / typed 走继承链),bind 异常值入 ctVars
+// (与 VAR_DECL 同 `${currentFunc}:${name}` key 协议)后跑 catch body;无匹配 clause →
+// re-raise(重置 flag 交外层 try 或 runComptimeBlockBody loud gate)。
+function ctDispatchComptimeCatch(catchList: string, thrownVal: int) {
+    if (catchList == "") {
+        interpThrowFlag = 1
+        interpThrowVal = thrownVal
+        return
+    }
+    let handled = 0
+    for (cp in catchList.split(",")) {
+        const cid = parseInt(cp)
+        const errType = nGetS2(cid)
+        const errName = nGetS1(cid)
+        const catchBody = nGetI1(cid)
+        if (errType == "" || ctThrownMatchesType(thrownVal, errType) == 1) {
+            ctVars.set(`${currentFunc}:${errName}`, `${ctVal(thrownVal)}`)
+            if (catchBody > 0) { genBlock(catchBody) }
+            handled = 1
+            break
+        }
+    }
+    if (handled == 0) {
+        interpThrowFlag = 1
+        interpThrowVal = thrownVal
+    }
+}
+
+// thrown 值是否匹配 catch 类型注解:仅对象走继承链(interpResolveParent — Phase 3 权威
+// consult-both,与 interpFindMethod / super 解析同协议);非对象(string/int 等)不匹配 typed catch。
+function ctThrownMatchesType(thrownVal: int, errType: string): int {
+    if (interpType(thrownVal) != "object") { return 0 }
+    let cur = tvStringOf(thrownVal)
+    while (cur != "") {
+        if (cur == errType) { return 1 }
+        cur = interpResolveParent(cur)
+    }
+    return 0
+}
+
+// finally 始终执行:save+clear try/catch 留下的 pending throw/return,跑 finally body,
+// 若 finally 自身未抛/未返则恢复 pending(标准语义:正常 finally 不吞控制流;finally 自身
+// throw/return 覆盖 pending)。
+function ctRunComptimeFinally(finallyBody: int) {
+    const savedThrow = interpThrowFlag
+    const savedThrowVal = interpThrowVal
+    const savedReturn = interpReturnFlag
+    const savedReturnVal = interpReturnVal
+    interpThrowFlag = 0
+    interpThrowVal = 0
+    interpReturnFlag = 0
+    interpReturnVal = 0
+    genBlock(finallyBody)
+    if (interpThrowFlag == 0 && interpReturnFlag == 0) {
+        interpThrowFlag = savedThrow
+        interpThrowVal = savedThrowVal
+        interpReturnFlag = savedReturn
+        interpReturnVal = savedReturnVal
+    }
 }

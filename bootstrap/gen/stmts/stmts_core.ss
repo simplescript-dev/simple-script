@@ -54,6 +54,8 @@ function runComptimeBlockBody(bodyId: int): int {
     ctScopeStack = ctScopeStack.push("__comptime__")
     interpReturnFlag = 0
     interpReturnVal = 0
+    interpThrowFlag = 0
+    interpThrowVal = 0
     interpBreakFlag = 0
     interpContinueFlag = 0
     terminated = 0
@@ -61,12 +63,19 @@ function runComptimeBlockBody(bodyId: int): int {
     enterComptimeBlock()
     genBlock(bodyId)
     exitComptimeBlock()
+    // D171 Phase 4: 未被任何 enclosing catch 消费的 comptime throw = uncaught 异常,
+    // 升 loud comptimeError(兑现 D088 §Phase 8「未知/runtime-only comptime 不静默」不变量)。
+    if (interpThrowFlag == 1) {
+        comptimeError(`uncaught exception: ${interpToStr(interpThrowVal)}`, bodyId)
+    }
     terminated = savedTerminated
     ctPopScope()
     currentFunc = savedFunc
     const retVal = interpReturnFlag == 1 ? interpReturnVal : 0
     interpReturnFlag = 0
     interpReturnVal = 0
+    interpThrowFlag = 0
+    interpThrowVal = 0
     interpBreakFlag = 0
     interpContinueFlag = 0
     return retVal

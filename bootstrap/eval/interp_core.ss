@@ -19,6 +19,14 @@ import { interpGetField, interpSetField, interpArrayPush, interpArraySet, interp
 
 let interpReturnFlag = 0
 let interpReturnVal = 0
+// D171 Phase 4: comptime throw/catch 异常通道。comptime 无 runtime 栈/landingpad
+// (D171 §张力 3),throw 不能走 runtime setjmp/longjmp,改镜像 interpReturnFlag 用 flag
+// 模拟:genThrow set flag,enclosing genTryCatch 消费,未捕获在 runComptimeBlockBody 升 loud。
+// 传播契约(三 flag 三种语义,刻意不同):return 在 ct call handler 被 consume(取返回值)、
+// break/continue 被 save/restore(loop-local 不外泄)、throw 则**不被 call handler 触碰**——
+// 经 interpShouldStop/interpCheckLoopExit 穿透函数边界冒泡,交外层 try/catch 或 loud gate。
+let interpThrowFlag = 0
+let interpThrowVal = 0
 let interpBreakFlag = 0
 let interpContinueFlag = 0
 let interpCurrentMethodClass = ""
@@ -59,14 +67,17 @@ function lookupEnumOrdinal(eName: string, eKey: string): int {
 
 function interpShouldStop(): int {
     if (interpReturnFlag == 1) { return 1 }
+    if (interpThrowFlag == 1) { return 1 }
     if (interpBreakFlag == 1) { return 1 }
     if (interpContinueFlag == 1) { return 1 }
     return 0
 }
 
-// continue 由循环体自行消费,不向循环外层冒泡,因此不计入 exit 判据
+// continue 由循环体自行消费,不向循环外层冒泡,因此不计入 exit 判据;
+// throw 须冒泡出循环(交 enclosing try/catch 或 loud gate),与 return/break 同列。
 function interpCheckLoopExit(): int {
     if (interpReturnFlag == 1) { return 1 }
+    if (interpThrowFlag == 1) { return 1 }
     if (interpBreakFlag == 1) { return 1 }
     return 0
 }

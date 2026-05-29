@@ -155,9 +155,33 @@ bin/ss run /tmp/d171_p1_closure.ss 2>&1 | grep -c "unknown function"
 - **[x] Done** Phase 1：闭包 / arrow 在 comptime 可调用。`exprs_ct_call.ss` `ctCallDispatch` 在「unknown function」前经 `ctResolveFnNodeId(name)` 解析 callee→绑定的 fn-kind ctVar 值→ARROW_FUNC astId（作用域链镜像 `eval/ident.ss`，外层捕获沿 `ctVars` 同 key 协议解析），与顶层 `ctFuncNodes` 统一到同一 `if (ctFuncId > 0)` bind+exec（复用 lines 206-263，零重复，不新开 ct* 注册表）；静默 null fallback 升 loud `comptimeError`（D088 §Phase 8 不变量）。GREEN：`add(3,4)=7` + `grep -c "unknown function"=0`，回归测试 `tests/phase5/d171_comptime_closure_call.ss`（简单/捕获/多捕获/嵌套 4 例），bootstrap 三阶段固定点 + 全测 335→336 passed（+1 新测，3 pre-existing 不变）。
 - **[x] Done** Phase 2：spread 数组字面量 `[...a, x]` + comptime 数组 `.length`。**§字段3 最小变量隔离实测翻案根因**：spread 展平（`array_lit.ss:27-40` SPREAD_ELEM 分支）**本就工作**（probe `b[0..2]` 全对），真正断流在 `.length` —— `member_access.ss:23-26` 旧路径经 `interpAsStr`（读 tvS1 字符串列）`.split(",")` 数长度,而数组数据存 `tvArrElem`/`tvI2`、tvS1 对数组恒空 → **任何 ct 数组 `.length` 恒返 0**（连普通 `[1,2].length` 亦然）。改走权威 `interpArrayLen`（`interp_obj.ss:39` 读 `tvI2`，全库 array 长度唯一源；string 分支保留 `interpAsStr().length()`）。GREEN：`[...a,3].length` 0→3 + `[1,2].length` 0→2，回归测试 `tests/phase5/d171_comptime_spread_array.ss`（RED case / 元素值 / 中间 spread / 双 spread / 普通数组 5 例），bootstrap 三阶段固定点 + 全测 336→337 passed（+1 新测，3 pre-existing 不变）。走 D093 统一 `evalExpr`/`interpArray*`，不新开 ct* 注册表（D171 §拒绝准则 / D088 §反模式）。
 - **[x] Done** Phase 3：super / 继承方法在 comptime 可调用。**§字段 3 最小变量隔离实证翻案根因**:prompt 三假设 (a) interpFindMethod 未沿继承链上溯 / (c) super 缺 this 绑定 **均伪**（`interp_obj.ss:347` 早已 walk `interpClassParents` / `eval_expr.ss:40` THIS/SUPER 早已返 `interpThisVal`）;真根因 = (d) **注册表不对称** —— comptime 块内声明的 class 入 `interpClasses`/`interpClassParents`,顶层(runtime)class 入 `classNodeIds`/`classParents`（`class_register.ss:183` / `class.ss:23,75`),而 `interpFindMethod` + `resolveSuperParent` comptime 分支**只查前者** → 顶层 class 的方法在 comptime **整体断流**（PROBE 实测连非继承的顶层 `Animal.speak()` 都失败,非仅继承）。两表 scope 不同（comptime-ephemeral class 不得泄漏为 runtime LLVM struct）故不合并,改抽 `interpResolveClassNode`/`interpResolveParent` 两 helper（comptime 表优先 → 顶层表 fallback,SSoT 化 I014 §路径 A 已在 `ctNewExprDispatch` field walk 建的 "consult both" 契约）,`interpFindMethod`（方法派发）+ `resolveSuperParent` comptime 分支（super 解析）+ `ctNewExprDispatch` field walk（继承字段构造）+ `interpBuildTypeInfo` field walk（`.fields()` 反射 — `/simplify` 4 agent 复查发现的第四处同形不对称,comptime 子类 extends 顶层 class 时漏顶层父字段,实测 fields 数 1→2）四处统一走 helper。`isSubclassOf`（exprs_ct_call.ss:221）复查为**非 bug**:comptime 声明 class 经 pending-ct flush 亦入 `classParents`,实测对 comptime class = 1（已正确）。loud-gate 保留（no-method / 无父类 super / 父类缺方法均 loud `comptimeError`,D088 §Phase 8 不变量,VCM §4 三边界实证）。GREEN:`d.speak()` 继承 = "generic" + `super.speak()` 可调 + `grep -c "no method 'speak'"` 1→0 + comptime 子类 `.fields()` 1→2,回归测试 `tests/phase5/d171_comptime_super_inherited.ss`（RED canonical / super 透传 / super 增强 / 完全 override / 多级继承 / 继承字段构造 / 继承字段反射 7 例),bootstrap 三阶段固定点 + 全测 337→338 passed（+1 新测,3 pre-existing 不变）。走 D093 统一 `evalExpr`/`interpFindMethod`,不新开 ct* 注册表（D171 §拒绝准则 / D088 §反模式）。
-- **[ ] Planned** Phase 4-5：try-catch / loud-gate 审计 + 覆盖度回归套件（各 Phase Execute 轮起手细化 PSM）。
+- **[x] Done** Phase 4：try / catch / throw 在 comptime 可捕获。**§字段 3 最小变量隔离实证**：prompt 三假设 (a) throw 无异常 flag /(b) try 无 catch landing /(c) catch 无 bind **三处全断**（probe A `try` 无 throw = `tryRan` 正常 → try 执行本就 OK；probe B 裸 throw = `exit(1)`；RED catch 不运行），singular 根因 = **comptime 异常流未建模**（非单点 bug）。comptime 无 runtime 栈/landingpad（§张力 3），throw 改 raise `interpThrowFlag`/`interpThrowVal`（`interp_core.ss` 镜像 `interpReturnFlag`/`Val`，纳入 `interpShouldStop`/`interpCheckLoopExit` 中央短路 → genBlock 语句边界 / 循环 / 函数调用自动传播，无须改 loop/switch/if/call handler），`genThrow` ct 分支 set flag 替 `exit(1)`、非编译期常量 throw 值升 loud（`stmts_exc.ss`），`genTryCatch` ct 分支建 catch landing（`ctDispatchComptimeCatch` 多 clause 顺序匹配：untyped 全捕 / typed 走 `interpResolveParent` 继承链 — Phase 3 权威 consult-both 复用；bind `ctVars` 同 `${currentFunc}:${name}` key 协议；无匹配 re-raise），`ctRunComptimeFinally` save/clear/restore pending throw/return（标准 finally 语义：finally 正常结束不吞控制流 / 自身 throw/return 覆盖），未捕获在 `runComptimeBlockBody` 升 loud `comptimeError`（D088 §Phase 8 不变量，probe B 实证）。GREEN：RED `grep -c "comptime error: boom"` 1→0 + `trycatch result = boom`，回归测试 `tests/phase5/d171_comptime_trycatch.ss`（RED canonical / catch 绑值表达式 / try 正常跳 catch / 嵌套内层捕获 / 嵌套 re-raise 外层捕获 / finally return 覆盖 / finally 保留 pending / typed catch 继承链 / typed no-match 落 catch-all 9 例），bootstrap 三阶段固定点 + 全测 338→339 passed（+1 新测，3 pre-existing 不变）。reflection_health_linter 3 项硬 REGRESSION（M1/M5/N3）走 §扩容申报-Phase4 bump（非反射路径合法特性增长，flag 模拟本质赋值密集 → M5）。走 D093 统一 `evalExpr`/`genBlock` + 现有 `ctVars`/`interpResolveParent`，不新开 ct* 异常注册表（D171 §拒绝准则 / D088 §反模式）。
+- **[ ] Planned** Phase 5：loud-gate 审计 + 覆盖度回归套件（残余静默 fallback 全转 loud `comptimeError`，Execute 轮起手细化 PSM）。
 
 **本 D 文档不触发任何 `.ss` 代码改动，不跑 bootstrap。代码改动从 Phase 1 Execute 轮开始。**
+
+---
+
+## 扩容申报-Phase4-comptime-trycatch（reflection_health_linter）
+
+Phase 4（comptime try/catch/throw，flag 模拟异常通道）落地后 `tools/reflection_health_linter.ss` 3 项**硬 REGRESSION**（M1/M5/N3），均为**非反射路径的合法特性增长**：Phase 4 在 `bootstrap/gen/stmts/`（被 scope filter 粗粒度判为反射白名单域）补 comptime 异常流，而 flag 模拟（§张力 3 唯一根因方案 — comptime 无 runtime 栈/landingpad，不能走 setjmp/longjmp）**本质赋值密集**（set/clear/save/restore flag），非反射 Meta/`.fields`/`.methods` 膨胀。
+
+**§第一性需求关联**：D171 §第一性需求「comptime = 完整语言」，try/catch 是 D088 Phase 7 明列缺口；不补则 Zig 路线未兑现。该增长是能力的内在成本，非八股（反身性：去掉则 catch 不捕获、throw exit、finally 不跑）。
+
+**delta 表**（cur = Phase 4 后实测；HEAD = Phase 1-3 累积，3 项全 AUTO-DRIFT soft 未 bump → 本轮 Phase 4 tip 过 1% 硬线）：
+
+| 指标 | 定义 | HEAD(Ph1-3) | Phase 4 cur | 我的 slice | 旧 bm(来源) | 新 bm | 性质 |
+|---|---|---|---|---|---|---|---|
+| **M1** | 节点/边计数 | 5794 | 5813 | +19 | 5750(D148) | **5830** | 代码增长 |
+| **M5** | 可变 state(VAR_DECL+赋值数) | 1917 | 1941 | +24 | 1900(D148) | **1955** | flag set/clear/save/restore 本质赋值密集 |
+| **N3** | AST 深度总和 | 589506 | 590609 | +1103 | 584000(D168) | **592000** | 代码增长 |
+| M7b | 函数总数 | 749 | 752 | +3 | 750 | 不 bump | AUTO-DRIFT soft（3 helper，留 1% 设计豁免） |
+| M3a | 调用边数 | — | 13751 | — | 13700 | 不 bump | AUTO-DRIFT soft |
+| N4 | 最大出度 | 352 | 352 | +0 | 350 | 不 bump | AUTO-DRIFT soft（delta=0 非本轮） |
+
+**本地抵消路径（A 路径不可达）**：flag set/clear/save/restore 是 finally/catch 正确语义的最小赋值集（M5 +24），typed catch 走 `interpResolveParent` 复用 Phase 3 权威解析（零新数据结构）；削 ~24 M5 / ~1103 N3 必阉割特性（去 typed catch / 去 finally 语义），违 Root Cause（不为迁就 stale 预算砍特性）。故走 **B 路径扩容申报**，只 bump 3 个硬 REGRESSION，soft AUTO-DRIFT（M7b/M3a/N4）留 1% 设计豁免不 bump。
+
+**预估 vs 实测**：bump 后 cur ≤ 新 bm（M1 5813≤5830 / M5 1941≤1955 / N3 590609≤592000），re-run gate 预期 PASS（实测见 VCM §1）。
 
 ---
 
