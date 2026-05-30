@@ -208,6 +208,17 @@ function evalAnnotationArg(nodeId: int): int {
             return interpNewString(clsName)
         }
     }
+    // I039: 负数字面量 `-2.5` / `-10` 是 UNARY(op="Neg", operand=INT_LIT/DOUBLE_LIT;SS 无裸负
+    // 字面量,负号统一走 UNARY,见 parse_exprs.ss:184 / eval_expr.ss:52-65 op="Neg")。numeric
+    // 字面量守卫 + int/double 单 ternary 分派,镜像上方 INT_LIT/DOUBLE_LIT 分支加负号;非 Neg
+    // (如 !x/~x)或非数值 operand 维持 fall-through loud(annotation value 语义只认常量字面量)。
+    if (kind == "UNARY" && nGetS1(nodeId) == "Neg") {
+        const operandId = nGetI1(nodeId)
+        const ok = nGetKind(operandId)
+        if (ok == "INT_LIT" || ok == "DOUBLE_LIT") {
+            return ok == "DOUBLE_LIT" ? interpNewDouble(0.0 - parseDouble(nGetS1(operandId))) : interpNewInt(0 - parseInt(nGetS1(operandId)))
+        }
+    }
     comptimeError(`annotation arg kind '${kind}' not yet supported`, nodeId)
     return interpNewNull()
 }

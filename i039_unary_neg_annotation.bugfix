@@ -1,0 +1,29 @@
+# i039_unary_neg_annotation.bugfix — I039 annotation arg 负数字面量(UNARY)未支持修复证据
+# 机械校验:bin/ss build tools/bugfix_linter.ss -o /tmp/bugfix_linter && /tmp/bugfix_linter i039_unary_neg_annotation.bugfix
+
+title = annotation arg 负数字面量 -2.5/-10(parser 解析为 UNARY op="Neg" operand=DOUBLE_LIT/INT_LIT,SS 无裸负字面量)经 evalAnnotationArg(interp_obj.ss:170)8-kind 分派表无 UNARY 分支 → fall through comptimeError(:211)"annotation arg kind 'UNARY' not yet supported"(I011 复核衍生发现,D171 §下一步行 165 立项 I039)
+test_file = tests/phase5/i039_unary_neg_annotation.ss
+stash_exit = 1
+fix_exit = 0
+broken = @M(neg=-2.5)/@M(min=-10) annotation 参数用负数字面量 → 编译期 loud comptimeError(非静默误编译,安全但功能缺口);string/正 int/正 double/bool/enum/array/类名 OK,唯负数原语缺;@Range(min=-10)/@Retry(min=-1) 类落不了
+why = evalAnnotationArg(interp_obj.ss:170)kind 分派表覆盖 STRING_LIT/INT_LIT/DOUBLE_LIT/TRUE_LIT/FALSE_LIT/MEMBER_ACCESS(enum)/ARRAY_LIT/IDENT(类名),独缺 UNARY;-x 在 parser 统一 UNARY(op="Neg" @nGetS1,operand @nGetI1,eval_expr.ss:52-65 坐实)→ 负字面量 fall through 到 :211 comptimeError
+fix = 接口层根因(候选 A,options.md GATE 6/6):evalAnnotationArg 补 UNARY 分支 kind=="UNARY" && nGetS1=="Neg" + numeric-literal 守卫(ok==INT_LIT||DOUBLE_LIT)+ int/double 单 ternary 分派,镜像既有 INT_LIT/DOUBLE_LIT 分支加负号(interpNewInt(0-parseInt) / interpNewDouble(0.0-parseDouble));非 Neg(!x/~x)或非数值 operand 维持 fall-through loud;零新函数,interp_obj.ss only,不触中央 evalExpr(候选 C scope creep 排除:eval_expr double-unary-fold 独立 deferred 项 eval_expr.ss:50-51 line 55 punt)
+same_pattern_count = 0
+net_new_ifs = 2
+net_new_fns = 0
+bootstrap = PASS
+test_passed = 352
+test_failed = 3
+test_known_fail = 3
+
+# 因果证据(VCM §3,本轮已实跑):
+#   git stash push bootstrap/eval/interp_obj.ss → ./build.sh bootstrap(rebuilt WITHOUT fix)→ bin/ss run test
+#   → STASH(no-fix) exit=1(负 int/double annotation arg 撞 UNARY comptimeError,test 无 fix 必失败)
+#   git stash pop → ./build.sh bootstrap(WITH fix,Stage2==Stage3 固定点)→ bin/ss run test → exit=0(4/4 pass)
+# same_pattern_count=0 论证:evalAnnotationArg UNARY 分派唯一站点(interp_obj.ss);eval_expr.ss UNARY 是独立
+#   comptime path(只 fold int/bool,double 走 runtime punt line 55,line 50-51 finding-C-前 stale 注释),不复用、非同模式。
+# net_new_ifs=2:外层 if(kind=="UNARY" && nGetS1=="Neg")+ numeric 守卫 if(ok==INT_LIT||DOUBLE_LIT);int/double 经单 ternary 分派非新增 if。
+# net_new_fns=0:零新函数,复用既有 interpNewInt/interpNewDouble/parseInt/parseDouble。
+# 3 known fail(pre-existing,非本轮引入):d096_p4_l2_reactive / harness_task/main / spring_web_params(全测 352 passed / 3 failed / 355 total = 351 baseline + 1 新测 i039,3 pre-existing 不变)。
+# reflection_health GATE PASS — no regressions(interp_obj.ss 430 行在 F1 budget 内;M/N 软 AUTO-DRIFT 1% 内不 bump);sunset/d_doc/derived_issue GATE OK。
+# 范围外 backlog(不混入):eval_expr.ss comptime double unary fold(line 55 punt,独立 deferred);Map.getInt I003b deferred。

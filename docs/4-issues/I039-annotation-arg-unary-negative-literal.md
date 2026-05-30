@@ -1,10 +1,16 @@
 # I039 — annotation arg 负数字面量(UNARY)未支持
 
 **父决策:** I011 复核(2026-05-30)衍生发现
-**状态:** Draft
+**状态:** Resolved(2026-05-30 — 接口层 evalAnnotationArg 补 UNARY-Neg 分支,options/bugfix GATE 6/6 + 回归测试落地)
 **颗粒度:** ~1-2 万 token(定位明确)
 **依赖:** 无(I003 annotation arg eval 已落,本 issue 补 UNARY 分支)
 **创建:** 2026-05-30
+
+## 解决(2026-05-30)
+
+**Status: Resolved** — `evalAnnotationArg`(`bootstrap/eval/interp_obj.ss:170`)补 UNARY 分支(候选 A 接口层根因,`i039_unary_neg_annotation.options.md` GATE 6/6):`kind=="UNARY" && nGetS1=="Neg"` + numeric-literal 守卫(`ok==INT_LIT||DOUBLE_LIT`)+ int/double 单 ternary 分派,镜像既有 INT_LIT/DOUBLE_LIT 分支加负号(`interpNewInt(0 - parseInt(...))` / `interpNewDouble(0.0 - parseDouble(...))`);非 Neg(`!x`/`~x`)或非数值 operand 维持 fall-through loud。零新函数,`interp_obj.ss` only,不触中央 evalExpr(候选 C scope creep 排除:eval_expr double-unary-fold 是独立 deferred 项 `eval_expr.ss:50-51` line 55 punt)。
+
+**验收**:RED `@M(neg=-2.5, negi=-10)` + getDouble/getInt → 现 `d=-2.5 i=-10`(原 `[comptime] annotation arg kind 'UNARY' not yet supported`);回归 `tests/phase5/i039_unary_neg_annotation.ss`(4 test:负 int / 负 double / 多位 bit-exact + parity / 正 double 不回归)。VCM §3:stash interp_obj.ss + rebuild → test exit 1 ↔ pop + rebuild → exit 0。bootstrap 三阶段定点 + 全测 351→352(+1,3 pre-existing 不变)+ reflection/sunset/d_doc/derived/bugfix GATE 全 PASS,net_new_ifs=2 / net_new_fns=0 / same_pattern_count=0。
 
 ## 上下文
 
