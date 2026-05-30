@@ -1,10 +1,22 @@
 # I011 — double 类型 comptime materialize bug
 
 **父决策:** D127 §A.1 I003 收尾发现的 pre-existing bug
-**状态:** Draft
+**状态:** Resolved(2026-05-30 — D171 finding C / I032 根因家族修复,本轮复核 bit-exact 验证 + 回归测试落地)
 **颗粒度:** ~1-2 万 token(定位明确)
 **依赖:** 无(I003 已实装 DOUBLE_LIT → interpNewDouble,本 issue 修阻断路径)
 **创建:** 2026-04-22
+
+## 解决(2026-05-30)
+
+**Status: Resolved** — I011 定义范围内的 bug(comptime double materialize 取 string slot 而非 double exact-bits → `return double_tv` 产错 IR / llc 崩)已由 **D171 follow-up storm 的 finding C + I032 根因家族**修复:`materialize()`(`interp_value.ss:39`)改走 exact-bits hex `0x<16hex>` + `gen_types.ss` COMPTIME_EXPR double 分支补齐,同根除"取错 slot"与"%g 丢精"双因。
+
+**本轮复核实证(2026-05-30)**:RED 命令现 GREEN,多角度 bit-exact:
+- `@M(pi = 3.14)` + `getDouble("pi")` + comptime return → `3.14`,无 llc 崩
+- 非精确可表示 `0.1` / 多位 `3.14159` / `1.5` 全 bit-exact,无 %g 丢精残留
+- `getDouble` 进算术(`half + tenth = 1.6`)中间值不丢精,comptime == runtime parity
+- 回归测试 `tests/phase5/i011_annotation_double_arg.ss` 落地钉住(4 test,正 double 范围)
+
+**复核衍生发现(非 I011 范围)**:负 double 字面量 `@M(neg = -2.5)` → `[comptime] annotation arg kind 'UNARY' not yet supported`(`interp_obj.ss:211`)—— `evalAnnotationArg` 缺 UNARY 分支,loud 报错(非静默,安全)。独立立项 **I039**。
 
 ## 上下文
 
