@@ -1,6 +1,6 @@
 # D171: SEMA Q2 — comptime 解释器语言覆盖度补全（走统一 evalExpr）
 
-**Status:** **DONE** — Phase 1-5 全 **[x] Done**（Ph1 闭包/arrow 可调用含捕获；Ph2 spread 数组字面量 + ct 数组 `.length`；Ph3 super / 继承方法 + 继承字段构造；Ph4 try/catch/throw/finally；Ph5 loud-gate 审计 + 覆盖度回归套件 + 高阶数组方法回调根因修复）。D171 SEMA Q2 里程碑达成 — comptime 解释器覆盖完整语言主构造,残余静默 fallback 全 loud。**收口验收 PASS（2026-05-29）**:行为级穷举 parity(46 probe,string/array/map 全方法 + 主构造值 vs runtime 逐一比对)零静默误编译,覆盖套件硬化 37→59,**合并就绪**(详见 §下一步 收口验收条 + 4 发现 **A/B/C 已修复**(A scalar.join 段错 / B slice 负 start/end 归一 / C comptime double 物化,均 follow-up)、D 已知 deferred(Map.getInt I003b))。
+**Status:** **DONE** — Phase 1-5 全 **[x] Done**（Ph1 闭包/arrow 可调用含捕获；Ph2 spread 数组字面量 + ct 数组 `.length`；Ph3 super / 继承方法 + 继承字段构造；Ph4 try/catch/throw/finally；Ph5 loud-gate 审计 + 覆盖度回归套件 + 高阶数组方法回调根因修复）。D171 SEMA Q2 里程碑达成 — comptime 解释器覆盖完整语言主构造,残余静默 fallback 全 loud。**收口验收 PASS（2026-05-29）**:行为级穷举 parity(46 probe,string/array/map 全方法 + 主构造值 vs runtime 逐一比对)零静默误编译,覆盖套件硬化 37→59,**已合并 @`446f280`(origin/dev 集成分支)— 2026-05-30 复验绿:三阶段自举定点 Stage2=Stage3 + 全测 350 pass/3 pre-existing baseline + reflection/sunset/d_doc gate 全 PASS + 工作树 clean**(详见 §下一步 收口验收条 + 4 发现 **A/B/C 已修复**(A scalar.join 段错 / B slice 负 start/end 归一 / C comptime double 物化,均 follow-up)、D 已知 deferred(Map.getInt I003b))。
 **Depends on:** D088（Zig 路线 / §核心验证三问 / Phase 6-8）, D093（SEMA Q1 单函数 dispatch — closure 宣告）, D094（comptime purity）, D098（SEMA Value Model — InternPool / Type-as-Value）
 **Date:** 2026-05-29
 
